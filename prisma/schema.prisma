@@ -1,0 +1,13 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// No models yet. docs/02-mapa-de-changes.md requires the domain data model
+// to be written before CH-02, not as part of CH-01. This schema exists so
+// `prisma migrate deploy` has something to run against (it creates Prisma's
+// own migration-tracking table even with zero domain migrations).

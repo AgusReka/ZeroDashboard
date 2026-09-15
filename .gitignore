@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+
+/src/generated/prisma
+
+# Reference skill files dropped by `prisma init`, not part of this project
+/.claude/
+
