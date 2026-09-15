@@ -1,3 +1,21 @@
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:eb2cb82b5855ab575ff0d19d23a11366dcb18bc5b9b8a0faf1d9deb2f6dec949
+verdict: pass
+blockers: 0
+critical_findings: 0
+requirements: 5/5
+scenarios: 5/5
+test_command: "npm run smoke"
+test_exit_code: 0
+test_output_hash: sha256:c735945008a9a2933fab11f37f16a25d9c34d88fa8a427778a00521b89b3d370
+build_command: "npm run build"
+build_exit_code: 0
+build_output_hash: sha256:cdab4d00374babb80b5108285b4b859731dcfcb446f462822a095eba9a576a8e
+```
+
+`evidence_revision` is `sha256(git rev-parse HEAD)` for commit `1f9fbcb747a94739982b5a5b0178fbd06aa49fd3` — the first commit of this repository, containing exactly what this report verifies.
+
 # Verify Report: CH-01 — Application Scaffolding and Environment
 
 Date: 2026-09-15
