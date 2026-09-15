@@ -7,7 +7,45 @@ datasource db {
   provider = "postgresql"
 }
 
-// No models yet. docs/02-mapa-de-changes.md requires the domain data model
-// to be written before CH-02, not as part of CH-01. This schema exists so
-// `prisma migrate deploy` has something to run against (it creates Prisma's
-// own migration-tracking table even with zero domain migrations).
+// Domain data model — CH-02. See openspec/changes/CH-02-initial-data-model/design.md
+// for the rationale behind field choices (Spanish naming, tenantId scoping,
+// no encryption/no motor enum yet — both depend on later work: A2 and D-4).
+
+model Tenant {
+  id                 String             @id @default(uuid())
+  nombre             String
+  creadoEn           DateTime           @default(now())
+  conexiones         Conexion[]
+  consultasGuardadas ConsultaGuardada[]
+}
+
+model Conexion {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  nombre        String
+  motor         String
+  host          String
+  puerto        Int
+  baseDeDatos   String
+  usuarioDb     String
+  credencial    String
+  soloLectura   Boolean  @default(true)
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model ConsultaGuardada {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  nombre        String
+  descripcion   String?
+  sql           String
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
+
+  @@index([tenantId])
+}

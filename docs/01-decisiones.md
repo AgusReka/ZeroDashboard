@@ -88,6 +88,24 @@ Formato de cada entrada: contexto, opciones, decisión, consecuencias, estado.
 
 ---
 
+### DEC-06 — Entidad `tenant` mínima desde CH-02, no diferida a CH-06
+
+**Contexto.** `docs/02-mapa-de-changes.md` define R0 como "consola mínima, local, un cliente" y ubica el bloque T (tenants con aislamiento real: T1, T2, T4) recién en R1 (CH-06). CH-02 ("modelo de datos inicial") necesita decidir si `conexion` y `consulta_guardada` llevan `tenant_id` desde el día uno o si esa columna se agrega en CH-06.
+
+**Opciones.** (a) Sin noción de tenant en CH-02; CH-06 agrega la columna `tenant_id` a `conexion` y `consulta_guardada` y migra los datos existentes. (b) Tabla `tenant` mínima desde CH-02 — una sola fila sembrada por migración/seed, sin aislamiento ni filtrado por tenant todavía — y `conexion`/`consulta_guardada` referencian esa fila desde el inicio.
+
+**Decisión.** (b). Tenant mínimo desde CH-02.
+
+**Por qué.** Evita una migración de columna más backfill de datos existentes cuando llegue CH-06. El aislamiento real (T2: prueba automatizada con dos tenants, T4: indicador de tenant activo) sigue siendo trabajo de CH-06; CH-02 solo deja la forma de la tabla lista para extenderse.
+
+**Se resigna.** CH-02 incluye una tabla que R0 no explota (no hay alta de tenants, no hay UI de selección, todo opera contra la única fila sembrada). Es deuda de alcance aceptada a cambio de evitar la migración posterior.
+
+**Decidido por:** el usuario, durante la exploración de CH-02 (2026-09-15), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
