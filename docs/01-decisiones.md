@@ -106,6 +106,60 @@ Formato de cada entrada: contexto, opciones, decisión, consecuencias, estado.
 
 ---
 
+### DEC-07 — Consola web mínima desde CH-04, no diferida
+
+**Contexto.** B1 ("Como P1, quiero escribir una consulta y ver el resultado") exige "Editor, ejecución, tabla paginada, error legible". Hasta CH-03 el proyecto es exclusivamente API/JSON: no existe ninguna página HTML, activo estático ni dependencia de frontend. Había que decidir si CH-04 introduce la primera superficie visual de la consola (P1) o si esa historia se satisface con una API bien formada, dejando la UI para un change posterior.
+
+**Opciones.** (a) Solo API: endpoint JSON con paginación por parámetros, sin página web; la UI real se construye en un change futuro dedicado. (b) Consola web mínima ahora: una página HTML servida por la propia app (textarea de SQL + tabla de resultados paginada), como primera superficie de P1.
+
+**Decisión.** (b). Consola web mínima desde CH-04.
+
+**Por qué.** R0 se llama explícitamente "consola mínima" y B1 describe literalmente elementos de interfaz (editor, tabla paginada), no solo una forma de respuesta. Ningún change posterior del mapa reserva la construcción de una UI para P1 (CH-22 es el panel de P2, una superficie distinta con reglas distintas — DEC-04). Diferir la UI habría dejado a R0 sin consola real pese a su nombre.
+
+**Se resigna.** CH-04 crece en alcance: además del motor de ejecución de solo lectura, debe servir una página, sus activos y su lógica de cliente. Aumenta el riesgo de superar el presupuesto de revisión de 400 líneas (ya ocurrido en CH-03) y probablemente exige partir el change en PRs encadenados.
+
+**Decidido por:** el usuario, durante la exploración de CH-04 (2026-09-16), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-08 — Verificación activa de permisos de escritura del rol de base del tenant
+
+**Contexto.** A3 exige "usuario de base sin escritura" como una de las dos capas de solo-lectura (la otra es el rechazo a nivel aplicación). El usuario de base lo configura el propio tenant al registrar la conexión (CH-03); la app no controla el servidor del tenant. Había que decidir si la app verifica esto por código, lo advierte sin bloquear, o lo trata como puramente operativo/documental.
+
+**Opciones.** (a) Solo documentación: es responsabilidad operativa de P1 configurar un usuario sin escritura; la app no verifica nada. (b) Advertir sin bloquear: la app detecta permisos de escritura del rol conectado y muestra una advertencia, pero igual permite ejecutar (la garantía real queda en la capa de aplicación). (c) Bloquear activamente: antes de ejecutar, la app consulta los grants del rol conectado (`information_schema`/`has_table_privilege`) y rechaza la ejecución si el rol parece tener permisos de escritura.
+
+**Decisión.** (c). Bloquear activamente si se detectan permisos de escritura.
+
+**Por qué.** A3 pide explícitamente dos capas independientes de solo-lectura, no una capa reforzada por una advertencia ignorable. Un chequeo activo que rechaza la ejecución hace tangible la segunda capa en vez de dejarla como una nota de configuración que nadie vuelve a mirar.
+
+**Se resigna.** El chequeo no es una garantía perfecta: un rol superusuario, permisos otorgados a nivel de esquema en vez de tabla, o cambios de grants entre el chequeo y la ejecución (TOCTOU) pueden eludirlo. Se documenta como límite conocido, no como garantía absoluta — la capa de aplicación (DEC-09) sigue siendo la que realmente impide la escritura.
+
+**Decidido por:** el usuario, durante la exploración de CH-04 (2026-09-16), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-09 — Enforcement de solo-lectura vía transacción `READ ONLY` + protocolo extendido, sin parser de SQL
+
+**Contexto.** La capa de aplicación de A3 debe rechazar sentencias que no sean de lectura. Un chequeo ingenuo por palabra clave o regex es evadible (múltiples sentencias separadas por `;`, CTEs con escritura, `SELECT ... INTO`, funciones con efectos secundarios). Había que decidir si se agrega una dependencia de parseo de SQL para analizar la sentencia antes de ejecutar, o si se apoya en garantías del propio motor de Postgres.
+
+**Opciones.** (a) Agregar una librería de parseo de SQL (ej. `node-sql-parser`) para analizar estáticamente el tipo de sentencia antes de ejecutar. (b) Sin dependencia nueva: forzar sentencia única a través del protocolo extendido de `node-postgres` (rechaza texto multi-sentencia) y ejecutar dentro de `BEGIN TRANSACTION READ ONLY`, que hace que el propio motor de Postgres rechace escrituras y DDL (SQLSTATE `25006`).
+
+**Decisión.** (b). Transacción `READ ONLY` más protocolo extendido, sin parser de SQL.
+
+**Por qué.** Traslada la garantía de "es de lectura" al motor de la base en vez de a un análisis estático que siempre puede quedar desactualizado frente a variantes sintácticas de Postgres. Evita sumar una dependencia nueva y su superficie de mantenimiento.
+
+**Se resigna.** Las tablas temporales siguen permitidas dentro de una transacción de solo lectura (son de alcance de sesión) — es un hueco conocido y documentado, no una omisión. Queda como límite explícito del artefacto, revisable si en la práctica se vuelve un problema real (no antes).
+
+**Decidido por:** el usuario, durante la exploración de CH-04 (2026-09-16), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
