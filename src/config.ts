@@ -1,3 +1,12 @@
+import { validarClaveMaestra } from './cripto-credencial.js';
+
+/**
+ * Everything the application reads from the environment — with one deliberate
+ * exception. The credential master key is **not** here and never will be: it is
+ * validated at boot by `validarClaveMaestra()` below, which returns nothing, and the
+ * derived key stays inside `cripto-credencial.ts`. A key on this object would be one
+ * `log.info(config)` away from a log line (regla 7).
+ */
 interface AppConfig {
   port: number;
   databaseUrl: string;
@@ -25,20 +34,24 @@ function required(name: string): string {
 }
 
 /**
- * Reads an optional positive-integer millisecond budget from the environment.
- * An unset or empty variable falls back to the default; anything present but
- * not a positive integer is a configuration error, not a silent fallback.
+ * Reads an optional positive integer from the environment. An unset or empty variable
+ * falls back to the default; anything present but not a positive integer is a
+ * configuration error, not a silent fallback.
+ *
+ * It was `presupuestoOpcionalMs` until CH-07 and read only millisecond budgets. The
+ * row cap (DEC-19) needs exactly the same parse and exactly the same refusal, and a
+ * second copy would be a second place for the "0 is not a budget" rule to drift.
  */
-function presupuestoOpcionalMs(name: string, porDefecto: number): number {
+function enteroPositivoOpcional(name: string, porDefecto: number): number {
   const valor = process.env[name];
   if (valor === undefined || valor === '') {
     return porDefecto;
   }
-  const ms = Number(valor);
-  if (!Number.isInteger(ms) || ms <= 0) {
+  const numero = Number(valor);
+  if (!Number.isInteger(numero) || numero <= 0) {
     throw new Error(`${name} must be a positive integer, got: ${valor}`);
   }
-  return ms;
+  return numero;
 }
 
 export function loadConfig(): AppConfig {
@@ -48,11 +61,18 @@ export function loadConfig(): AppConfig {
     throw new Error(`APP_PORT must be a positive integer, got: ${portValue}`);
   }
 
-  const connectionTestTimeoutMs = presupuestoOpcionalMs(
+  // Fail-closed master key (DEC-17). This call is the whole boot check: `src/server.ts`
+  // already invokes `loadConfig()` on its first line, before `listen`, so an absent,
+  // malformed or wrong-length key stops the process before any request is accepted —
+  // instead of surfacing later, in production, the first time a connection is dialled.
+  // It returns nothing on purpose; the key never leaves `cripto-credencial.ts`.
+  validarClaveMaestra();
+
+  const connectionTestTimeoutMs = enteroPositivoOpcional(
     'CONNECTION_TEST_TIMEOUT_MS',
     DEFAULT_CONNECTION_TEST_TIMEOUT_MS,
   );
-  const queryTimeoutMs = presupuestoOpcionalMs('QUERY_TIMEOUT_MS', DEFAULT_QUERY_TIMEOUT_MS);
+  const queryTimeoutMs = enteroPositivoOpcional('QUERY_TIMEOUT_MS', DEFAULT_QUERY_TIMEOUT_MS);
 
   return {
     port,

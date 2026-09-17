@@ -288,6 +288,96 @@ Límites conocidos, declarados y no prevenidos: `$queryRaw`/`$executeRaw` no pas
 
 ---
 
+### DEC-16 — Cifrado de credenciales: AES-256-GCM vía `node:crypto`, IV aleatorio por fila, sobre versionado
+
+**Contexto.** A2 exige que comprometer la base propia no alcance para descifrar las credenciales de conexión. Había que elegir un mecanismo de cifrado.
+
+**Opciones.** (a) AES-256-GCM con el módulo `node:crypto` de Node.js, IV aleatorio por fila, sobre versionado (`v1:iv:tag:ciphertext`, base64). (b) `pgcrypto` de PostgreSQL. (c) `libsodium`. (d) AES en modo CBC sin autenticación.
+
+**Decisión.** (a).
+
+**Por qué.** `pgcrypto` (b) mueve la clave a la propia base de datos, exactamente el compromiso que A2 asume y quiere impedir. `libsodium` (c) suma una dependencia nueva sin necesidad, cuando `node:crypto` ya cubre AES-GCM de forma nativa. CBC sin autenticación (d) no detecta manipulación del texto cifrado; GCM es autenticado (AEAD) y descarta esa clase de fallo. El sobre versionado (`v1:...`) deja abierta una futura rotación de algoritmo o de clave sin migrar el formato de columna.
+
+**Se resigna.** No hay rotación de clave automatizada en este change (ver DEC-17); si la clave se filtra, el remedio es manual: generar una nueva, re-cifrar y desplegar.
+
+**Decidido por:** el usuario, durante la exploración de CH-07 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-17 — Clave maestra: una por despliegue, desde variable de entorno, fail-closed al arrancar
+
+**Contexto.** A2 exige que la clave viva fuera de la base propia. Había que decidir el alcance de la clave (una por despliegue o una por tenant) y de dónde se lee.
+
+**Opciones (alcance).** (a) Una clave maestra por despliegue. (b) Una clave maestra por tenant. **Opciones (origen).** (a) Variable de entorno, leída al arrancar. (b) Gestor de secretos / KMS. (c) Archivo en disco. (d) La propia base de datos (descartada por A2).
+
+**Decisión.** Una clave por despliegue, desde variable de entorno; si la clave falta, es demasiado corta o está mal formada, el proceso rechaza arrancar.
+
+**Por qué.** Una clave por tenant reduce el radio de un compromiso, pero hoy no hay ninguna infraestructura de gestión de secretos por tenant, y D-2 (cómo llega el motor a la réplica del cliente) sigue abierta — resolver el alcance de la clave antes que D-2 fijaría una superficie de despliegue que todavía no existe. KMS/gestor de secretos queda fuera de alcance por la misma razón: no hay todavía un objetivo de despliegue concreto contra el cual integrarlo. Fail-closed al arrancar traslada el error al momento del despliegue, no al primer uso de una conexión, cuando ya sería un fallo silencioso en producción.
+
+**Se resigna.** Un solo despliegue comprometido expone la clave de todos los tenants a la vez — el radio de impacto completo de riesgo 1 de `mapa-historias.md` §7 permanece. Es una decisión explícita del usuario, no una omisión: se revisa si en la práctica el número de tenants o el modelo de despliegue lo justifican.
+
+**Decidido por:** el usuario, durante la exploración de CH-07 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme, con D-2 pendiente.
+
+---
+
+### DEC-18 — Tope de filas: veredicto propio de la aplicación, distinto de la paginación
+
+**Contexto.** A4 pide que un corte por tope de filas o por timeout sea legible y distinto de una página más de resultados. Hoy el tope es un `maximum: 200` fijo en el esquema JSON de `src/consultas.ts`, sin ningún veredicto que lo distinga de `hayMas`.
+
+**Opciones.** (a) La aplicación aplica el tope y devuelve un veredicto propio (p. ej. `tope-de-filas`), distinto de `hayMas`. (b) Reutilizar `hayMas` para señalar el corte por tope. (c) Dejar el corte solo del lado del motor (`LIMIT`), sin veredicto en la respuesta.
+
+**Decisión.** (a).
+
+**Por qué.** `hayMas` (b) invita a pedir la página siguiente, que es exactamente lo que el tope existe para impedir — reusarlo confundiría "hay más resultados disponibles" con "esto es todo lo que vas a poder ver". Un `LIMIT` silencioso (c) dejaría a P1 sin saber si vio todo el resultado o si fue cortado.
+
+**Se resigna.** Ninguno nuevo: es una extensión del contrato de respuesta ya existente de `query-execution`, no una garantía nueva.
+
+**Decidido por:** el usuario, durante la exploración de CH-07 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-19 — Timeout y tope de filas: configuración global por variable de entorno, no por conexión ni por tenant
+
+**Contexto.** A4 pide límites "configurables" sin nombrar el sujeto. Había que decidir si el timeout y el tope de filas se configuran de forma global, por conexión (`Conexion`) o por tenant.
+
+**Opciones.** (a) Defaults globales por variable de entorno (mismo valor para toda conexión y todo tenant). (b) Por conexión — agrega columnas a `Conexion` y una migración. (c) Por tenant — agrega columnas a `Tenant` y una migración.
+
+**Decisión.** (a).
+
+**Por qué.** Es la porción más chica del cambio, no requiere migración de esquema, y es consistente con cómo `QUERY_TIMEOUT_MS` ya funciona hoy desde CH-04. Ni (b) ni (c) tienen todavía un caso de uso concreto que los justifique — nada en los documentos pide límites distintos por conexión o por tenant.
+
+**Se resigna.** Si en el futuro un tenant necesita un límite distinto (por ejemplo, una réplica más lenta que tolera menos filas), esta decisión queda para revisar entonces; no se resuelve preventivamente acá. `domain-data-model` no se modifica por este change.
+
+**Decidido por:** el usuario, durante la exploración de CH-07 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-20 — Conexiones registradas antes de CH-07: se tratan como datos de desarrollo, se re-registran
+
+**Contexto.** Antes de CH-07, `Conexion.credencial` se guarda en texto plano. Había que decidir qué pasa con esas filas ya existentes cuando el cifrado entra en vigencia: reescribirlas en la migración (backfill-cifrado) o darlas por datos de desarrollo a reemplazar.
+
+**Opciones.** (a) La migración lee el valor en texto plano de cada fila existente y lo reescribe como sobre cifrado, en el momento de migrar. (b) Las filas existentes se tratan como datos de desarrollo: quedan como están o se limpian, y cualquier conexión registrada antes de CH-07 debe volver a registrarse después del cambio.
+
+**Decisión.** (b).
+
+**Por qué.** (a) obliga a que la clave maestra esté disponible en el momento mismo de correr la migración y a que el proceso de migración manipule texto plano de credenciales — una superficie adicional que (b) evita por completo. El proyecto no tiene todavía datos de producción reales (P1 es el único operador, DEC-04), así que el costo de re-registrar es bajo.
+
+**Se resigna.** Cualquier conexión cargada durante el desarrollo antes de CH-07 deja de funcionar hasta que se vuelva a registrar; no hay ninguna migración de datos que la preserve. Esto también simplifica el plan de rollback de CH-07: revertir el código no deja credenciales ilegibles, porque ninguna fila vieja pasó por un cifrado en migración.
+
+**Decidido por:** el usuario, durante la exploración de CH-07 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

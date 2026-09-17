@@ -22,6 +22,10 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       APP_PORT: ${APP_PORT}
       NODE_ENV: ${NODE_ENV}
+      # Required since CH-07 (DEC-17). It is forwarded rather than baked into the image:
+      # a key in the image would travel with every copy of it. Without it the container
+      # refuses to start, which is the intended fail-closed behaviour, not a defect.
+      CREDENTIAL_MASTER_KEY: ${CREDENTIAL_MASTER_KEY}
     ports:
       - "${APP_PORT}:${APP_PORT}"
 

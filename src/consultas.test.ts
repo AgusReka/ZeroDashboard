@@ -72,6 +72,11 @@ const databaseUrl =
 // `loadConfig()` demands the same variables the server boots with.
 process.env.APP_PORT ??= '3000';
 process.env.DATABASE_URL ??= databaseUrl;
+// CH-07: loadConfig() now refuses to run without a valid master key (DEC-17), so every
+// suite that boots the app supplies a fixture key of its own. It is a literal, not a
+// generated value: slice-2 fixtures write envelopes by hand and have to be able to open
+// them again in the same run.
+process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
 process.env.QUERY_TIMEOUT_MS = String(PRESUPUESTO_CONSULTA_MS);
 
 interface CuerpoOk {
