@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import { registerHealthRoute } from './health.js';
 import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
+import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerConsolaRoute } from './consola.js';
 
 const config = loadConfig();
@@ -15,6 +16,7 @@ const prisma = new PrismaClient({ adapter });
 registerHealthRoute(app, prisma);
 registerConexionRoutes(app, prisma);
 registerConsultaRoutes(app, prisma);
+registerConsultaGuardadaRoutes(app, prisma);
 registerConsolaRoute(app);
 
 app

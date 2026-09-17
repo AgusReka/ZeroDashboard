@@ -160,6 +160,60 @@ Formato de cada entrada: contexto, opciones, decisión, consecuencias, estado.
 
 ---
 
+### DEC-10 — Superficie de consultas guardadas: crear + listar + obtener por ID
+
+**Contexto.** B2 pide, en su redacción literal, "guardar una consulta con nombre y descripción" — leído al pie, solo exige creación. Pero el cierre de R0 describe el flujo completo como "conectarse..., escribir una consulta, guardarla y ejecutarla", lo que presupone poder recuperarla después de guardarla. Había que decidir si CH-05 construye solo el alta, un alta+lectura mínima, o CRUD completo.
+
+**Opciones.** (a) Solo crear — lectura más literal de B2, pero deja la consulta guardada sin forma de recuperarla. (b) Crear + listar + obtener por ID — permite guardar, ver el listado y cargar una consulta guardada; actualizar y borrar quedan fuera. (c) CRUD completo (crear, listar, obtener, actualizar, borrar).
+
+**Decisión.** (b). Crear + listar + obtener por ID.
+
+**Por qué.** Es la superficie mínima que hace utilizable el cierre de R0 sin sobre-construir. Actualizar se solapa con B4 (versionado de consultas guardadas, CH-25, R3) y adelantarlo invita a resolver dos veces el mismo problema; borrar no lo pide ninguna historia del mapa.
+
+**Se resigna.** Una consulta guardada con nombre equivocado o SQL desactualizado no se puede corregir in-place en CH-05: hay que esperar a B4/CH-25, o vivir con guardar una nueva.
+
+**Decidido por:** el usuario, durante la exploración de CH-05 (2026-09-16), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-11 — Consulta guardada sin atar a una conexión específica
+
+**Contexto.** El modelo `ConsultaGuardada` (creado en CH-02) no tiene columna `conexionId`; B2 no menciona explícitamente si una consulta guardada debe asociarse a una `Conexion` puntual. Había que decidir si CH-05 agrega esa relación (con su migración) o si el texto de la consulta queda desacoplado de cualquier conexión, igual que hoy funciona `/consultas/ejecutar` (recibe `conexionId` y `sql` por separado, sin persistir el vínculo).
+
+**Opciones.** (a) Sin atar — el `sql` es texto portable; la conexión se elige aparte al momento de ejecutar. Cero migración de schema. (b) Atar a una conexión — agregar `conexionId` (FK) a `ConsultaGuardada`, exigiendo la primera migración sobre una tabla que CH-02 ya entregó.
+
+**Decisión.** (a). Sin atar a una conexión.
+
+**Por qué.** Coincide con el schema ya existente desde CH-02 (sin migración) y con el patrón ya vigente en `/consultas/ejecutar`, donde `conexionId` y `sql` viajan como parámetros independientes de la misma llamada, no como un vínculo persistido.
+
+**Se resigna.** Una consulta guardada que referencia columnas de un esquema específico puede fallar o devolver resultados sin sentido si se ejecuta contra una conexión con un esquema distinto. No hay validación de compatibilidad; es responsabilidad de quien la ejecuta elegir la conexión correcta.
+
+**Decidido por:** el usuario, durante la exploración de CH-05 (2026-09-16), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-12 — Consola web extendida en CH-05 con guardar, listar y cargar
+
+**Contexto.** DEC-07 construyó la consola HTML en CH-04 porque B1 nombraba elementos de interfaz explícitos (editor, tabla paginada). B2 solo nombra una propiedad de almacenamiento ("persistencia en la base propia"), no un elemento de UI, lo que dejaba abierto si CH-05 debía tocar `src/consola.ts` o quedarse en API pura.
+
+**Opciones.** (a) Extender la consola ahora — agregar a `src/consola.ts` un botón de guardar, un listado de consultas guardadas y la carga de una de ellas al editor. (b) Solo API en CH-05 — las rutas backend nada más; la integración visual se difiere a un change posterior.
+
+**Decisión.** (a). Extender la consola ahora.
+
+**Por qué.** Mantiene el mismo alcance visible de punta a punta que CH-04 y evita que la consola quede con una funcionalidad de guardado invisible para P1 hasta un change futuro sin fecha en el mapa.
+
+**Se resigna.** CH-05 crece en alcance: además de las rutas de persistencia, debe modificar el HTML/JS de la consola. Aumenta el riesgo de superar el presupuesto de revisión de 400 líneas (ya ocurrido en CH-03 y CH-04); la estrategia de PR ya está fijada en modo automático (encadenar si hace falta).
+
+**Decidido por:** el usuario, durante la exploración de CH-05 (2026-09-16), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

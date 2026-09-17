@@ -15,6 +15,12 @@ import type { FastifyInstance } from 'fastify';
  * mechanism, not a convention — it is the one reviewable boundary that makes this
  * page safe to point at untrusted data.
  *
+ * The saved-queries list is the second data source under that same rule. Its `nombre`
+ * and `descripcion` are operator-authored rather than third-party, but they are
+ * *persisted and replayed later*, which is a stored-input surface whichever hand typed
+ * them — so they are rendered through `textContent` too, and a loaded statement
+ * reaches the editor as `textarea.value`, never as markup.
+ *
  * The inline script uses string concatenation rather than JS template literals so the
  * document can live inside this TypeScript template literal without escaping.
  */
@@ -28,6 +34,7 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 62rem; padding: 1.5rem; line-height: 1.5; }
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 .25rem; }
   .ayuda { margin: 0 0 1.25rem; opacity: .75; font-size: .9rem; }
   label { display: block; font-size: .85rem; font-weight: 600; margin: .75rem 0 .25rem; }
   input, textarea { width: 100%; box-sizing: border-box; font: inherit; padding: .4rem .5rem; }
@@ -38,6 +45,7 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   button { font: inherit; padding: .45rem 1rem; cursor: pointer; }
   button[disabled] { cursor: not-allowed; opacity: .5; }
   .banner { margin: 1rem 0 0; padding: .7rem .9rem; border-left: .3rem solid #b3261e; background: rgba(179,38,30,.12); white-space: pre-wrap; }
+  .banner.exito { border-left-color: #1a7f37; background: rgba(26,127,55,.12); }
   .estado { margin: 1rem 0 .25rem; font-size: .85rem; opacity: .8; }
   .tabla-contenedor { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: .9rem; }
@@ -45,6 +53,9 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   th { position: sticky; top: 0; background: rgba(128,128,128,.15); }
   td.nulo { opacity: .5; font-style: italic; }
   .paginacion { display: flex; gap: .75rem; margin-top: .75rem; }
+  #guardadas { list-style: none; padding: 0; margin: .75rem 0 0; }
+  #guardadas li { display: flex; align-items: baseline; gap: .6rem; padding: .4rem 0; border-bottom: 1px solid rgba(128,128,128,.25); }
+  #guardadas li .ayuda { margin: 0; }
 </style>
 </head>
 <body>
@@ -66,6 +77,30 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
     <button id="ejecutar" type="submit">Ejecutar</button>
   </div>
 </form>
+
+<!--
+  Saved queries live OUTSIDE #formulario on purpose. #conexion and #sql are required,
+  so a name field inside the same form would let browser validation block *execution*
+  until a name was typed. #guardar is type="button" for the mirror-image reason: the
+  default type="submit" would run the form's submit handler and execute the query
+  instead of saving it.
+-->
+<section id="guardado">
+  <h2>Consultas guardadas</h2>
+  <p class="ayuda">Guarda la sentencia que está ahora en el editor. No se puede editar ni borrar una consulta guardada: para corregirla, se guarda otra.</p>
+
+  <label for="nombre">Nombre</label>
+  <input id="nombre" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
+
+  <label for="descripcion">Descripción (opcional)</label>
+  <input id="descripcion" type="text" autocomplete="off">
+
+  <div class="controles">
+    <button id="guardar" type="button">Guardar consulta</button>
+  </div>
+
+  <ul id="guardadas"></ul>
+</section>
 
 <p id="banner" class="banner" role="alert" hidden></p>
 <p id="estado" class="estado" hidden></p>
@@ -110,6 +145,10 @@ var entradaLimite = document.getElementById('limite');
 var botonEjecutar = document.getElementById('ejecutar');
 var botonAnterior = document.getElementById('anterior');
 var botonSiguiente = document.getElementById('siguiente');
+var entradaNombre = document.getElementById('nombre');
+var entradaDescripcion = document.getElementById('descripcion');
+var botonGuardar = document.getElementById('guardar');
+var listaGuardadas = document.getElementById('guardadas');
 var banner = document.getElementById('banner');
 var estado = document.getElementById('estado');
 var encabezado = document.querySelector('#resultados thead');
@@ -117,12 +156,25 @@ var cuerpoTabla = document.querySelector('#resultados tbody');
 
 var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null };
 
+// One alert region for the whole page, deliberately not one per section: a save
+// failure and an execution failure overwrite each other, which is simpler than two
+// competing alert regions and keeps a single place where the operator looks.
 function mostrarBanner(texto) {
+  banner.className = 'banner';
+  banner.textContent = texto;
+  banner.hidden = false;
+}
+
+// Same region, success wording. The save flow has to say out loud that the statement
+// was stored; reusing the failure styling for that would be a lie in red.
+function mostrarConfirmacion(texto) {
+  banner.className = 'banner exito';
   banner.textContent = texto;
   banner.hidden = false;
 }
 
 function ocultarBanner() {
+  banner.className = 'banner';
   banner.textContent = '';
   banner.hidden = true;
 }
@@ -255,9 +307,188 @@ async function ejecutar(desplazamiento) {
   botonSiguiente.disabled = !pagina.hayMas;
 }
 
+// --- Saved queries -------------------------------------------------------------
+// Every field below reaches the page through textContent, and the loaded statement
+// reaches the editor through textarea.value. Both are stored text written earlier and
+// replayed now, which makes them a stored-input surface regardless of who typed them:
+// a saved nombre that spells out a script tag has to render as visible text.
+//
+// Note for whoever edits this block: no closing script tag may appear anywhere in this
+// inline script, not even inside a comment. The HTML parser ends the script element at
+// the first such sequence it sees and hands the rest of the file to the page as markup.
+
+function renderizarGuardadas(cuerpo) {
+  vaciar(listaGuardadas);
+
+  var filas = Array.isArray(cuerpo.consultasGuardadas) ? cuerpo.consultasGuardadas : [];
+
+  if (filas.length === 0) {
+    var vacia = document.createElement('li');
+    vacia.className = 'ayuda';
+    vacia.textContent = 'Todavía no hay consultas guardadas.';
+    listaGuardadas.appendChild(vacia);
+    return;
+  }
+
+  filas.forEach(function (fila) {
+    var item = document.createElement('li');
+
+    var nombre = document.createElement('span');
+    nombre.textContent = String(fila.nombre);
+    item.appendChild(nombre);
+
+    // The list shows creadaEn because duplicate names are allowed by design: two rows
+    // called "Stock producible" are otherwise indistinguishable in a list.
+    var fecha = document.createElement('span');
+    fecha.className = 'ayuda';
+    fecha.textContent = String(fila.creadaEn);
+    item.appendChild(fecha);
+
+    if (fila.descripcion !== null && fila.descripcion !== undefined) {
+      var descripcion = document.createElement('span');
+      descripcion.className = 'ayuda';
+      descripcion.textContent = String(fila.descripcion);
+      item.appendChild(descripcion);
+    }
+
+    var boton = document.createElement('button');
+    boton.type = 'button';
+    boton.textContent = 'Cargar';
+    // The closure captures fila.id, never fila.nombre: the id is the only thing that
+    // identifies a row when names can repeat.
+    boton.addEventListener('click', function () { cargarGuardada(fila.id); });
+    item.appendChild(boton);
+
+    listaGuardadas.appendChild(item);
+  });
+
+  // The list is hard-capped server-side and there is no pagination parameter to see
+  // past it, so the cut is announced instead of leaving the operator to guess.
+  if (cuerpo.truncado) {
+    var aviso = document.createElement('li');
+    aviso.className = 'ayuda';
+    aviso.textContent = 'Se muestran solo las ' + filas.length +
+      ' consultas más recientes. Hay más guardadas que esta lista no alcanza a mostrar.';
+    listaGuardadas.appendChild(aviso);
+  }
+}
+
+async function listarGuardadas() {
+  var respuesta;
+  try {
+    respuesta = await fetch('/consultas-guardadas');
+  } catch (fallaDeRed) {
+    // A failed listing must never break the execute path: it reports and returns.
+    mostrarBanner('No se pudo contactar con la aplicación para leer las consultas guardadas.');
+    return;
+  }
+
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+
+  if (cuerpo === null || respuesta.status !== 200) {
+    mostrarBanner('No se pudieron leer las consultas guardadas (HTTP ' + respuesta.status + ').');
+    return;
+  }
+
+  renderizarGuardadas(cuerpo);
+}
+
+async function guardar() {
+  ocultarBanner();
+  botonGuardar.disabled = true;
+
+  var nombre = entradaNombre.value.trim();
+
+  var respuesta;
+  try {
+    respuesta = await fetch('/consultas-guardadas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: nombre,
+        descripcion: entradaDescripcion.value,
+        // Sent verbatim: the API stores the operator's statement as written.
+        sql: entradaSql.value
+      })
+    });
+  } catch (fallaDeRed) {
+    botonGuardar.disabled = false;
+    mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    return;
+  }
+  botonGuardar.disabled = false;
+
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+
+  if (cuerpo === null) {
+    mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    return;
+  }
+  if (respuesta.status === 400) {
+    var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos.join(', ') : '';
+    mostrarBanner('La solicitud es inválida. Revise estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.');
+    return;
+  }
+  if (respuesta.status === 503) {
+    mostrarBanner('La base de la aplicación no tiene todavía un tenant inicializado, así que no se puede guardar una consulta.');
+    return;
+  }
+  if (respuesta.status !== 201) {
+    mostrarBanner('La aplicación respondió HTTP ' + respuesta.status + '.');
+    return;
+  }
+
+  entradaNombre.value = '';
+  entradaDescripcion.value = '';
+  mostrarConfirmacion('Se guardó la consulta y ya aparece en la lista.');
+  await listarGuardadas();
+}
+
+async function cargarGuardada(id) {
+  ocultarBanner();
+
+  var respuesta;
+  try {
+    respuesta = await fetch('/consultas-guardadas/' + encodeURIComponent(id));
+  } catch (fallaDeRed) {
+    mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    return;
+  }
+
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+
+  if (cuerpo === null) {
+    mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    return;
+  }
+  if (respuesta.status === 404) {
+    // The row is gone from under the list; refresh so the stale entry disappears.
+    mostrarBanner('Esa consulta guardada ya no existe. Se actualizó la lista.');
+    await listarGuardadas();
+    return;
+  }
+  if (respuesta.status !== 200) {
+    mostrarBanner('La aplicación respondió HTTP ' + respuesta.status + '.');
+    return;
+  }
+
+  // A plain value assignment on the textarea: the statement is data, not markup.
+  entradaSql.value = cuerpo.consultaGuardada.sql;
+  entradaSql.focus();
+  // #conexion is deliberately left as it is: nothing binds a saved query to a
+  // connection, so the operator chooses which target to run it against.
+}
+
 formulario.addEventListener('submit', function (evento) {
   evento.preventDefault();
   ejecutar(0);
+});
+
+botonGuardar.addEventListener('click', function () {
+  guardar();
 });
 
 botonSiguiente.addEventListener('click', function () {
@@ -267,6 +498,8 @@ botonSiguiente.addEventListener('click', function () {
 botonAnterior.addEventListener('click', function () {
   ejecutar(Math.max(0, pagina.desplazamiento - pagina.limite));
 });
+
+listarGuardadas();
 </script>
 </body>
 </html>
