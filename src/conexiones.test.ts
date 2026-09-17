@@ -7,6 +7,7 @@ import { PrismaClient } from './generated/prisma/client.js';
 import { registerConexionRoutes } from './conexiones.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
+import { cifrarCredencial } from './cripto-credencial.js';
 
 /**
  * Integration cases for CH-03 (tasks 5.1–5.4, plus two cases added after verify to
@@ -331,6 +332,137 @@ describe(
       assert.equal(cuerpo.host, objetivo.host);
       assert.equal(cuerpo.puerto, objetivo.port);
       assert.ok(Number.isInteger(cuerpo.duracionMs) && cuerpo.duracionMs >= 0);
+    });
+
+    // ---- CH-07: the credential is enciphered at rest (A2, DEC-16/DEC-20) -----------
+
+    /**
+     * Seeds a row whose stored `credencial` is whatever is passed in, bypassing the
+     * route. Two of the cases below need a value the create path can no longer produce:
+     * a connection registered before CH-07, which still holds plaintext.
+     */
+    async function sembrarCredencialCruda(credencial: string): Promise<string> {
+      const fila = await prisma.conexion.create({
+        data: {
+          nombre: `CH-07 fila cruda ${Date.now()} ${Math.random()}`,
+          motor: 'postgres',
+          host: objetivo.host,
+          puerto: objetivo.port,
+          baseDeDatos: objetivo.database,
+          usuarioDb: objetivo.user,
+          credencial,
+          tenantId: tenantPruebas,
+        },
+        select: { id: true },
+      });
+      creadas.push(fila.id);
+      return fila.id;
+    }
+
+    /**
+     * Spec `connection-registration`: "the persisted `credencial` value SHALL be an
+     * enciphered envelope, not the submitted plaintext". Read out of band with the raw
+     * client, which is the closest this suite gets to inspecting a dump.
+     */
+    test('CH-07 registering stores a v1 envelope, never the submitted plaintext', async () => {
+      const credencial = `clave-en-claro-ch07-${Date.now()}`;
+      const id = await registrar({ credencial, nombre: 'Replica CH-07 cifrada' });
+
+      const fila = await prisma.conexion.findUnique({
+        where: { id },
+        select: { credencial: true },
+      });
+
+      assert.ok(fila !== null);
+      assert.notEqual(fila.credencial, credencial);
+      assert.ok(!fila.credencial.includes(credencial), 'the row must not contain the plaintext');
+      assert.match(fila.credencial, /^v1:/, 'the stored value must be a versioned envelope');
+      assert.equal(fila.credencial.split(':').length, 4);
+    });
+
+    test('CH-07 two registrations of the same credential store two different envelopes', async () => {
+      // A shared IV would make identical credentials visibly identical in a dump, which
+      // is information a dump is not supposed to yield.
+      const credencial = `clave-repetida-ch07-${Date.now()}`;
+      const primero = await registrar({ credencial, nombre: 'Replica CH-07 repetida A' });
+      const segundo = await registrar({ credencial, nombre: 'Replica CH-07 repetida B' });
+
+      const filas = await prisma.conexion.findMany({
+        where: { id: { in: [primero, segundo] } },
+        select: { credencial: true },
+      });
+
+      assert.equal(filas.length, 2);
+      assert.notEqual(filas[0].credencial, filas[1].credencial);
+    });
+
+    /**
+     * Spec `connection-registration`: the probe deciphers in memory. The round trip is
+     * the assertion — the enciphered value opened back into something the live target
+     * accepted as its password.
+     */
+    test('CH-07 the probe deciphers the stored envelope and still reaches the target', async () => {
+      const id = await registrar({ nombre: 'Replica CH-07 prueba tras cifrado' });
+      const { cuerpo, crudo } = await probar(id);
+
+      assert.equal(cuerpo.resultado, 'ok', crudo);
+      assert.ok(!crudo.includes(objetivo.password), 'the deciphered value must not be echoed');
+    });
+
+    /**
+     * DEC-20: no backfill migration ships, so a row registered before CH-07 still holds
+     * plaintext. It answers `409 credencial-ilegible` instead of being dialled with
+     * whatever the column happens to contain.
+     */
+    test('CH-07 a legacy plaintext row answers 409 credencial-ilegible on prueba', async () => {
+      const id = await sembrarCredencialCruda(objetivo.password);
+
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: `/conexiones/${id}/prueba`,
+        headers: cabeceras(),
+      });
+
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'credencial-ilegible' });
+      assert.ok(
+        !respuesta.body.includes(objetivo.password),
+        'the refusal must not echo the stored value',
+      );
+      assert.ok(
+        !respuesta.body.includes(process.env.CREDENTIAL_MASTER_KEY as string),
+        'the refusal must not echo the master key',
+      );
+    });
+
+    test('CH-07 a corrupted envelope answers 409, not 200 with a failed probe', async () => {
+      // The distinction matters: a 200 with `credenciales-invalidas` would say the
+      // *target* rejected a password, when in fact none was ever sent.
+      const partes = cifrarCredencial(objetivo.password).split(':');
+      const cifrado = Buffer.from(partes[3], 'base64');
+      cifrado[0] ^= 0x01;
+      partes[3] = cifrado.toString('base64');
+      const id = await sembrarCredencialCruda(partes.join(':'));
+
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: `/conexiones/${id}/prueba`,
+        headers: cabeceras(),
+      });
+
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'credencial-ilegible' });
+    });
+
+    test('CH-07 an unknown id is still 404, ahead of any credential handling', async () => {
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/conexiones/no-existe-en-absoluto-ch07/prueba',
+        headers: cabeceras(),
+      });
+
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
     });
   },
 );

@@ -1,13 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
+import { destinoDeConexion } from './conexion-destino.js';
+import { cifrarCredencial, ErrorCredencialIlegible } from './cripto-credencial.js';
 import { probeConnection } from './db-probe.js';
 
 /**
  * The only projection any response path is allowed to read from `Conexion`.
  * `credencial` is absent by construction, so a read path never even fetches the
- * column and no response can echo it. The test path selects it explicitly and
- * hands it straight to the probe.
+ * column and no response can echo it. Since CH-07 the test path does not select it
+ * either: `destinoDeConexion()` is the one read that does, and it returns a destination
+ * rather than a row.
  */
 export const ConexionPublica = {
   id: true,
@@ -180,7 +183,12 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
           puerto: body.puerto,
           baseDeDatos: body.baseDeDatos,
           usuarioDb: body.usuarioDb,
-          credencial: body.credencial,
+          // A2/DEC-16: the credential is enciphered here, before the row reaches the
+          // application's own database, so no plaintext credential is ever persisted.
+          // This is the single write path; there is no other place a `Conexion` is
+          // created, which is what makes "the column only ever holds an envelope" true
+          // rather than aspirational.
+          credencial: cifrarCredencial(body.credencial),
           soloLectura: body.soloLectura ?? true,
         }),
         select: ConexionPublica,
@@ -193,17 +201,22 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
   app.post<{ Params: PruebaParams }>(
     '/conexiones/:id/prueba',
     async (request, reply) => {
-      const conexion = await prisma.conexion.findUnique({
-        where: { id: request.params.id },
-        select: {
-          id: true,
-          host: true,
-          puerto: true,
-          baseDeDatos: true,
-          usuarioDb: true,
-          credencial: true,
-        },
-      });
+      // One call, and the credential is deciphered inside it (CH-07). The route never
+      // sees the stored envelope and never names the column.
+      let conexion;
+      try {
+        conexion = await destinoDeConexion(prisma, request.params.id);
+      } catch (error) {
+        if (error instanceof ErrorCredencialIlegible) {
+          // `409`, not `404` (the row exists) and not `500` (nothing is broken): the row
+          // conflicts with the current key regime. A connection registered before CH-07
+          // still holds plaintext and answers this until it is registered again (DEC-20).
+          // The envelope, the key and any partial plaintext stay inside the crypto
+          // module — this body carries a code and nothing else (regla 7).
+          return reply.code(409).send({ error: 'credencial-ilegible' });
+        }
+        throw error;
+      }
       if (conexion === null) {
         return reply.code(404).send({ error: 'conexion-no-encontrada' });
       }
@@ -212,10 +225,10 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
       // here, so a non-PostgreSQL target fails legibly instead of being refused.
       const prueba = await probeConnection({
         host: conexion.host,
-        port: conexion.puerto,
-        database: conexion.baseDeDatos,
-        user: conexion.usuarioDb,
-        password: conexion.credencial,
+        port: conexion.port,
+        database: conexion.database,
+        user: conexion.user,
+        password: conexion.password,
       });
 
       if (prueba.resultado === 'fallo') {
@@ -238,7 +251,7 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
         categoria: prueba.categoria,
         codigo: prueba.codigo,
         host: conexion.host,
-        puerto: conexion.puerto,
+        puerto: conexion.port,
         duracionMs: prueba.duracionMs,
       });
     },

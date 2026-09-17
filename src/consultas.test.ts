@@ -9,6 +9,7 @@ import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
+import { cifrarCredencial } from './cripto-credencial.js';
 
 /**
  * Integration cases for CH-04 (tasks 6.1–6.5). They dial a real PostgreSQL server on
@@ -555,6 +556,105 @@ describe(
       assert.equal(ok.resultado, 'ok', JSON.stringify(cuerpo));
       assert.deepEqual(ok.columnas, ['a', 'a']);
       assert.deepEqual(ok.filas, [[1, 2]]);
+    });
+
+    // ---- CH-07: the execution path deciphers, and an unreadable row is 409 ----------
+
+    /** Seeds a row whose stored `credencial` is written directly, bypassing the route. */
+    async function sembrarCredencialCruda(credencial: string): Promise<string> {
+      const fila = await prisma.conexion.create({
+        data: {
+          nombre: `CH-07 fila cruda ${Date.now()} ${Math.random()}`,
+          motor: 'postgres',
+          host: objetivo.host,
+          puerto: objetivo.port,
+          baseDeDatos: objetivo.database,
+          usuarioDb: 'ch04_lector',
+          credencial,
+          tenantId: tenantPruebas,
+        },
+        select: { id: true },
+      });
+      creadas.push(fila.id);
+      return fila.id;
+    }
+
+    test('CH-07 execution still works end to end with an enciphered credential', async () => {
+      // The full round trip: the route enciphered on the way in, destinoDeConexion
+      // deciphered on the way out, and the target accepted the result as its password.
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const { cuerpo, crudo } = await ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`);
+
+      assert.equal(cuerpo.resultado, 'ok', JSON.stringify(cuerpo));
+      assert.deepEqual((cuerpo as CuerpoOk).filas, [[1], [2], [3]]);
+      assert.ok(!crudo.includes(CLAVES.lector), 'the deciphered value must not be echoed');
+    });
+
+    test('CH-07 the stored credencial is an envelope, never the registered plaintext', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const fila = await prisma.conexion.findUnique({
+        where: { id },
+        select: { credencial: true },
+      });
+
+      assert.ok(fila !== null);
+      assert.ok(!fila.credencial.includes(CLAVES.lector));
+      assert.match(fila.credencial, /^v1:/);
+    });
+
+    test('CH-07 a legacy plaintext row answers 409 credencial-ilegible on ejecutar', async () => {
+      // DEC-20: the row is from before CH-07 and has to be registered again. It fails
+      // legibly here rather than opening a socket with an unreadable value.
+      const id = await sembrarCredencialCruda(CLAVES.lector);
+
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/consultas/ejecutar',
+        headers: cabeceras(),
+        payload: { conexionId: id, sql: `SELECT id FROM ${TABLA}` },
+      });
+
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'credencial-ilegible' });
+      assert.ok(!respuesta.body.includes(CLAVES.lector), 'the refusal must not echo the value');
+      assert.ok(
+        !respuesta.body.includes(process.env.CREDENTIAL_MASTER_KEY as string),
+        'the refusal must not echo the master key',
+      );
+    });
+
+    test('CH-07 a corrupted envelope answers 409, not a connection-phase failure', async () => {
+      const partes = cifrarCredencial(CLAVES.lector).split(':');
+      const cifrado = Buffer.from(partes[3], 'base64');
+      cifrado[0] ^= 0x01;
+      partes[3] = cifrado.toString('base64');
+      const id = await sembrarCredencialCruda(partes.join(':'));
+
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/consultas/ejecutar',
+        headers: cabeceras(),
+        payload: { conexionId: id, sql: 'SELECT 1' },
+      });
+
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'credencial-ilegible' });
+    });
+
+    test('CH-07 an empty statement is still 400, ahead of any credential handling', async () => {
+      // Ordering matters: the request-shape refusal must not be turned into a 409 by a
+      // row that happens to be unreadable, and vice versa.
+      const id = await sembrarCredencialCruda(CLAVES.lector);
+
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/consultas/ejecutar',
+        headers: cabeceras(),
+        payload: { conexionId: id, sql: '   ' },
+      });
+
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.equal((respuesta.json() as { error: string }).error, 'solicitud-invalida');
     });
   },
 );

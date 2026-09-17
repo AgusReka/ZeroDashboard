@@ -53,15 +53,15 @@ instead of threat-matrix rows.
 
 ## 2. Encipher/Decipher Wiring & 409 Mapping (PR 2 → base PR 1)
 
-- [ ] 2.1 RED: extend `src/conexiones.test.ts` — registering a connection persists a `credencial` value matching the `v1:...` envelope shape, and the submitted plaintext never appears in the stored row (spec `connection-registration`: "Registering a valid connection")
-- [ ] 2.2 Create `src/conexion-destino.ts`: export `destinoDeConexion(prisma, id)` as the sole `credencial: true` read in the codebase; deciphers via `descifrarCredencial`, returns `(DestinoPostgres & { id: string }) | null`, throws `ErrorCredencialIlegible` on an undecipherable envelope (spec `credential-encryption`: "Deciphered Only in Memory at a Use Site"; design interface)
-- [ ] 2.3 Create `src/conexion-destino.test.ts`: RED then GREEN for `destinoDeConexion` — deciphers a valid envelope, returns `null` for an unknown id, throws `ErrorCredencialIlegible` for a legacy plaintext/corrupted row (spec `connection-registration`: "A database dump never yields a readable credential")
-- [ ] 2.4 Modify `src/conexiones.ts` create route: call `cifrarCredencial(body.credencial)` before `prisma.conexion.create` (satisfies 2.1)
-- [ ] 2.5 Modify `src/conexiones.ts` `/conexiones/:id/prueba`: replace the direct `findUnique({ select: { ..., credencial: true } })` block with `destinoDeConexion(prisma, request.params.id)`; map a thrown `ErrorCredencialIlegible` to `409 { error: 'credencial-ilegible' }` (design DEC-20 resolution)
-- [ ] 2.6 Modify `src/consultas.ts` `/consultas/ejecutar`: replace its direct `findUnique({ select: { ..., credencial: true } })` block with `destinoDeConexion(prisma, body.conexionId)`; map `ErrorCredencialIlegible` to `409` the same way
-- [ ] 2.7 Update `src/conexiones.test.ts` and `src/consultas.test.ts` fixtures to seed enciphered credentials directly (no route round-trip needed for setup); add a case asserting a legacy plaintext row returns `409 credencial-ilegible` on both `prueba` and `ejecutar`, with no plaintext/deciphered value in the response body or logged output (spec `connection-registration`: "Credential Value Never Exposed" scenarios)
-- [ ] 2.8 Grep-verify the single-point invariant: `credencial: true` appears in exactly one file, `src/conexion-destino.ts` (design architecture decision)
-- [ ] 2.9 Checkpoint: `npm test -- src/conexion-destino.test.ts src/conexiones.test.ts src/consultas.test.ts` green
+- [x] 2.1 RED: extend `src/conexiones.test.ts` — registering a connection persists a `credencial` value matching the `v1:...` envelope shape, and the submitted plaintext never appears in the stored row (spec `connection-registration`: "Registering a valid connection")
+- [x] 2.2 Create `src/conexion-destino.ts`: export `destinoDeConexion(prisma, id)` as the sole `credencial: true` read in the codebase; deciphers via `descifrarCredencial`, returns `(DestinoPostgres & { id: string }) | null`, throws `ErrorCredencialIlegible` on an undecipherable envelope (spec `credential-encryption`: "Deciphered Only in Memory at a Use Site"; design interface)
+- [x] 2.3 Create `src/conexion-destino.test.ts`: RED then GREEN for `destinoDeConexion` — deciphers a valid envelope, returns `null` for an unknown id, throws `ErrorCredencialIlegible` for a legacy plaintext/corrupted row (spec `connection-registration`: "A database dump never yields a readable credential")
+- [x] 2.4 Modify `src/conexiones.ts` create route: call `cifrarCredencial(body.credencial)` before `prisma.conexion.create` (satisfies 2.1)
+- [x] 2.5 Modify `src/conexiones.ts` `/conexiones/:id/prueba`: replace the direct `findUnique({ select: { ..., credencial: true } })` block with `destinoDeConexion(prisma, request.params.id)`; map a thrown `ErrorCredencialIlegible` to `409 { error: 'credencial-ilegible' }` (design DEC-20 resolution)
+- [x] 2.6 Modify `src/consultas.ts` `/consultas/ejecutar`: replace its direct `findUnique({ select: { ..., credencial: true } })` block with `destinoDeConexion(prisma, body.conexionId)`; map `ErrorCredencialIlegible` to `409` the same way
+- [x] 2.7 Update `src/conexiones.test.ts` and `src/consultas.test.ts` fixtures to seed enciphered credentials directly (no route round-trip needed for setup); add a case asserting a legacy plaintext row returns `409 credencial-ilegible` on both `prueba` and `ejecutar`, with no plaintext/deciphered value in the response body or logged output (spec `connection-registration`: "Credential Value Never Exposed" scenarios)
+- [x] 2.8 Grep-verify the single-point invariant: `credencial: true` appears in exactly one file, `src/conexion-destino.ts` (design architecture decision)
+- [x] 2.9 Checkpoint: `npm test -- src/conexion-destino.test.ts src/conexiones.test.ts src/consultas.test.ts` green
 
 ## 3. Configurable Row Cap & Cutoff Verdict (PR 3 → base PR 2)
 

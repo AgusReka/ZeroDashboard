@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
+import { destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta, sanearSql } from './consulta-ejecucion.js';
+import { ErrorCredencialIlegible } from './cripto-credencial.js';
 
 interface EjecucionBody {
   conexionId: string;
@@ -47,34 +49,35 @@ export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAisla
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/sql'] });
       }
 
-      // `credencial` is selected only here, on the one path that needs it, and is
-      // handed straight to the engine — it is never read back into a response.
+      // Since CH-07 this route does not name `credencial` at all: `destinoDeConexion()`
+      // is the one read that does, and it hands back a destination whose password is
+      // already deciphered, in memory, for this call only.
       //
-      // Unchanged since CH-04 and now tenant-scoped anyway: the isolation extension
-      // adds `tenantId` to this unique selector (DEC-13), so a `conexionId` belonging
-      // to another tenant resolves to `null` and takes the `404` below — no statement
-      // is ever sent to that tenant's target.
-      const conexion = await prisma.conexion.findUnique({
-        where: { id: body.conexionId },
-        select: {
-          id: true,
-          host: true,
-          puerto: true,
-          baseDeDatos: true,
-          usuarioDb: true,
-          credencial: true,
-        },
-      });
+      // Tenant scoping is unchanged: the isolation extension adds `tenantId` to that
+      // unique selector (DEC-13), so a `conexionId` belonging to another tenant resolves
+      // to `null` and takes the `404` below — no envelope is opened and no statement is
+      // ever sent to that tenant's target.
+      let conexion;
+      try {
+        conexion = await destinoDeConexion(prisma, body.conexionId);
+      } catch (error) {
+        if (error instanceof ErrorCredencialIlegible) {
+          // Same verdict as the probe route: the row exists but cannot be read under the
+          // current key (DEC-20). Nothing about the envelope or the key reaches the body.
+          return reply.code(409).send({ error: 'credencial-ilegible' });
+        }
+        throw error;
+      }
       if (conexion === null) {
         return reply.code(404).send({ error: 'conexion-no-encontrada' });
       }
 
       const ejecucion = await ejecutarConsulta({
         host: conexion.host,
-        port: conexion.puerto,
-        database: conexion.baseDeDatos,
-        user: conexion.usuarioDb,
-        password: conexion.credencial,
+        port: conexion.port,
+        database: conexion.database,
+        user: conexion.user,
+        password: conexion.password,
         sql: body.sql,
         limite: body.limite,
         desplazamiento: body.desplazamiento,
