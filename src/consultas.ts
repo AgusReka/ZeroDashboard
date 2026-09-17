@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { PrismaClient } from './generated/prisma/client.js';
+import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { ejecutarConsulta, sanearSql } from './consulta-ejecucion.js';
 
@@ -28,7 +28,7 @@ const ejecucionSchema = {
   },
 } as const;
 
-export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaClient): void {
+export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
   app.post<{ Body: EjecucionBody }>(
     '/consultas/ejecutar',
     { schema: { body: ejecucionSchema }, attachValidation: true },
@@ -49,6 +49,11 @@ export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaClien
 
       // `credencial` is selected only here, on the one path that needs it, and is
       // handed straight to the engine — it is never read back into a response.
+      //
+      // Unchanged since CH-04 and now tenant-scoped anyway: the isolation extension
+      // adds `tenantId` to this unique selector (DEC-13), so a `conexionId` belonging
+      // to another tenant resolves to `null` and takes the `404` below — no statement
+      // is ever sent to that tenant's target.
       const conexion = await prisma.conexion.findUnique({
         where: { id: body.conexionId },
         select: {

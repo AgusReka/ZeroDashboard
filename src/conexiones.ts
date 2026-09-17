@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import type { PrismaClient } from './generated/prisma/client.js';
+import type { PrismaAislado } from './aislamiento-prisma.js';
+import { conTenantInyectado } from './aislamiento-prisma.js';
 import { probeConnection } from './db-probe.js';
 
 /**
@@ -40,10 +41,32 @@ interface PruebaParams {
  * Strict registration schema: every domain field is required and no unknown
  * property is accepted. `motor` stays free text — gate D-4 is still open, and the
  * test path never branches on it.
+ *
+ * `propertyNames` was added in CH-06, and it is what actually rejects an unknown key.
+ * CH-05 measured that Fastify configures AJV with `removeAdditional: true` by default,
+ * under which `additionalProperties: false` makes AJV **delete** the unknown key and
+ * validate what is left — so a body carrying `tenantId` was answered `201` here, with
+ * the key silently dropped. `registroConsultaGuardadaSchema` was corrected at the time
+ * and this schema was not; CH-06's rule-2 sweep is what caught the gap, because it
+ * exercises both create routes rather than one. `additionalProperties: false` is kept
+ * so the intent still reads at a glance, and the two lists must be kept in step when
+ * a property is added.
  */
 const registroConexionSchema = {
   type: 'object',
   additionalProperties: false,
+  propertyNames: {
+    enum: [
+      'nombre',
+      'motor',
+      'host',
+      'puerto',
+      'baseDeDatos',
+      'usuarioDb',
+      'credencial',
+      'soloLectura',
+    ],
+  },
   required: [
     'nombre',
     'motor',
@@ -131,7 +154,7 @@ export function camposInvalidos(error: { validation?: unknown }): string[] {
   return [...new Set(campos)];
 }
 
-export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaClient): void {
+export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
   app.post<{ Body: RegistroConexionBody }>(
     '/conexiones',
     { schema: { body: registroConexionSchema }, attachValidation: true },
@@ -143,19 +166,14 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaClien
         });
       }
 
-      // The tenant is resolved server-side; the client never supplies a tenantId.
-      const tenant = await prisma.tenant.findFirst({
-        orderBy: { creadoEn: 'asc' },
-        select: { id: true },
-      });
-      if (tenant === null) {
-        return reply.code(503).send({ error: 'tenant-no-inicializado' });
-      }
-
+      // No tenant resolution here any more. The active tenant was validated by the
+      // `onRequest` hooks before this handler ran, and `tenantId` is injected into the
+      // `create` below by the isolation extension (DEC-13) — which is why the
+      // `503 tenant-no-inicializado` this route used to raise is gone rather than
+      // renamed: the condition it described is unreachable on this path.
       const body = request.body;
       const conexion = await prisma.conexion.create({
-        data: {
-          tenantId: tenant.id,
+        data: conTenantInyectado({
           nombre: body.nombre,
           motor: body.motor,
           host: body.host,
@@ -164,7 +182,7 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaClien
           usuarioDb: body.usuarioDb,
           credencial: body.credencial,
           soloLectura: body.soloLectura ?? true,
-        },
+        }),
         select: ConexionPublica,
       });
 

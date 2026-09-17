@@ -214,6 +214,80 @@ Formato de cada entrada: contexto, opciones, decisión, consecuencias, estado.
 
 ---
 
+### DEC-13 — Aislamiento vía extensión de Prisma + contexto de request (AsyncLocalStorage)
+
+**Contexto.** DEC-06 fijó la forma del modelo de tenant desde CH-02 (`tenantId` en `Conexion` y `ConsultaGuardada`), pero ninguna decisión cubre cómo se hace cumplir ese aislamiento en cada consulta. Hoy ninguna ruta de lectura filtra por tenant: `GET /consultas-guardadas`, `GET /consultas-guardadas/:id`, `POST /conexiones/:id/prueba` y la búsqueda de `Conexion` en `POST /consultas/ejecutar` resuelven por `id` sin chequear `tenantId`.
+
+**Opciones.** (a) Filtrado manual por consulta: cada ruta agrega explícitamente `where: { tenantId }`. (b) Extensión de Prisma Client que inyecta automáticamente el filtro `tenantId`, leyendo el tenant activo desde un contexto de request sostenido con `AsyncLocalStorage`. (c) Row-Level Security de Postgres: variable de sesión por transacción más políticas `USING`.
+
+**Decisión.** (b). Extensión de Prisma + `AsyncLocalStorage`.
+
+**Por qué.** Traslada la garantía de aislamiento a un mecanismo estructural en vez de a una convención que cada ruta nueva debe recordar aplicar — mismo criterio que DEC-08/DEC-09 (preferir garantías estructurales sobre disciplina manual). Se hereda sola en las tablas de tenant que se agreguen en CH-08 a CH-14, sin volver a resolver el problema. RLS (opción c) es más de lo que pide el problema para la base propia de la app (no es una réplica semi-confiable de un tercero) y no tiene precedente de roles/políticas en este código.
+
+**Se resigna.** Se agrega un mecanismo de contexto de request (`AsyncLocalStorage`) que no existía antes; la extensión de Prisma se vuelve un punto único donde el aislamiento puede romperse si tiene un bug, en vez de estar distribuido (y por lo tanto más visible en revisión) en cada ruta.
+
+**Decidido por:** el usuario, durante la exploración de CH-06 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-14 — Baja lógica de tenant: congelado por completo
+
+**Contexto.** T1 pide "alta, baja lógica, listado" para tenants, sin que ningún documento previo definiera qué implica exactamente desactivar un tenant.
+
+**Opciones.** (a) Congelado por completo: oculto del listado activo y toda operación futura contra ese tenant (conexiones, consultas guardadas, ejecuciones) se rechaza; las filas existentes quedan intactas para auditoría/historial. (b) Oculto pero operable: se oculta del listado por defecto, pero conexiones/consultas guardadas existentes se pueden seguir leyendo o ejecutando si se referencian explícitamente por ID. (c) Solo bloquea alta nueva: los recursos existentes del tenant siguen funcionando con normalidad; la baja solo impide crear recursos nuevos bajo ese tenant.
+
+**Decisión.** (a). Congelado por completo.
+
+**Por qué.** Es la lectura más segura de "baja lógica" para un sistema que opera sobre credenciales y datos de terceros (PYMEs clientes): un tenant desactivado no debería seguir siendo alcanzable por ninguna operación nueva, aunque su historial se conserve. Evita el caso ambiguo de una operación "fantasma" contra un tenant que P1 ya dio de baja.
+
+**Se resigna.** Si una baja fue un error operativo, no hay forma de seguir operando ese tenant "un poco" mientras se corrige — hay que reactivarlo primero. No se pide reactivación explícita en T1; queda fuera de alcance de CH-06 salvo que se necesite.
+
+**Decidido por:** el usuario, durante la exploración de CH-06 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-15 — Tenant activo de la consola: explícito por request, sin sesión de servidor
+
+**Contexto.** T4 pide un indicador permanente e inequívoco de contra qué tenant opera P1 en la consola. Hoy no existe ninguna infraestructura de sesión o autenticación en el proyecto (P1 es el único operador de la consola, DEC-04).
+
+**Opciones.** (a) Tenant explícito por request: cada llamada de la consola a la API lleva el id del tenant de forma explícita (parámetro de ruta o header); el estado de "tenant activo" vive del lado del cliente (un selector) y se reenvía en cada request. (b) Sesión del lado del servidor: una acción de "cambiar de tenant" fija una sesión (cookie) en el servidor, y las siguientes acciones del operador apuntan implícitamente a ese tenant hasta que se cambie.
+
+**Decisión.** (a). Tenant explícito por request.
+
+**Por qué.** No introduce infraestructura de sesión nueva (el proyecto no tiene ninguna todavía) y es consistente con Regla 2 del mapa de historias, que reserva la prohibición de "tenant tomado de la petición del cliente" específicamente al panel (P2) — la consola (P1) es una superficie distinta (DEC-04) donde un id de tenant explícito en la petición es una superficie de confianza aceptable, no una violación de esa regla.
+
+**Se resigna.** El cliente de la consola (JS) es responsable de mantener y reenviar el tenant seleccionado en cada llamada; un bug en ese estado del lado del cliente podría hacer que una operación apunte al tenant equivocado sin que el servidor tenga una sesión independiente que lo contradiga. El indicador visual de T4 es, en parte, la mitigación de ese riesgo.
+
+**Decidido por:** el usuario, durante la exploración de CH-06 (2026-09-17), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### Resoluciones de nivel diseño bajo DEC-13, DEC-14 y DEC-15 (CH-06)
+
+No son decisiones nuevas ni abren compuertas: son la mecánica interna de tres decisiones ya firmes, resuelta en `openspec/changes/CH-06-tenants-and-isolation/design.md` y registrada acá para que no haya que leer el change para saber cómo quedó. Mismo tipo que DEC-05 y que las resoluciones de diseño de CH-05.
+
+**1. El tenant activo viaja en el encabezado `X-Tenant-Id` (bajo DEC-15).** Es ortogonal al ruteo, así que ninguna URL de CH-03/CH-04/CH-05 cambia de forma y una sola lista de exenciones cubre todas las rutas presentes y futuras. Se descartó el prefijo de ruta `/t/:tenantId/...` (reescribía cada path, la consola y `scripts/smoke.sh`) y el campo en el cuerpo (imposible en `GET`, y reabriría la prohibición de Regla 2 que los esquemas ya hacen cumplir: un `tenantId` **en el cuerpo** sigue siendo `400`).
+
+Exenciones, como lista cerrada y comparada contra el *patrón* de ruta (nunca contra un prefijo de la URL cruda, para que `/consola-falsa` no pueda hacerse pasar por `/consola`): `GET /health`, `GET /consola` y todo `/tenants`. Todo lo demás queda alcanzado por defecto, incluida cualquier ruta que se agregue después y cualquier URL que no exista.
+
+Envoltorios de falla: `400 tenant-no-indicado` si no viene el encabezado, `404 tenant-no-encontrado` si el id no nombra ningún tenant, `409 tenant-desactivado` si el tenant está dado de baja. `409` y no `404` porque borrar esa distinción sería borrar justo lo que DEC-14 existe para afirmar; y no `403` porque no hay sujeto autenticado (DEC-04) del que un veredicto de autorización pudiera hablar.
+
+**2. La extensión de Prisma falla cerrada, por lista blanca de operaciones (bajo DEC-13).** Dos propiedades la hacen una garantía y no una defensa cosmética: la ausencia de contexto de tenant **lanza un error** en vez de dejar pasar una consulta sin filtrar, y una operación no contemplada (`upsert`, por ejemplo) **también lanza**, de modo que un aporte futuro falla en su primera corrida de tests en lugar de cruzar tenants en silencio. En las operaciones de filtro el predicado se conjuga con `AND` en vez de mezclarse dentro del `where`, así que un `tenantId` o un `OR` suministrados por quien llama no pueden desplazarlo.
+
+Límites conocidos, declarados y no prevenidos: `$queryRaw`/`$executeRaw` no pasan por extensiones de modelo, y las escrituras anidadas por relación tampoco. Ninguna ruta usa esas formas hoy. Es la superficie residual del punto único de falla que DEC-13 aceptó a conciencia.
+
+**3. `503 tenant-no-inicializado` se elimina, no se reutiliza (bajo DEC-15).** Existía por un solo motivo: la ruta de alta necesitaba *algún* id de tenant para una clave foránea NOT NULL y la tabla podía estar vacía. Con el tenant nombrado por la petición y validado antes de que corra el handler, esa condición es inalcanzable: una tabla vacía ahora responde `404 tenant-no-encontrado`, que es la afirmación más verdadera. Dejar el código como alias habría dejado una rama muerta que se lee como una garantía viva. `prisma/seed.ts` sigue creando un tenant por comodidad, pero ningún camino de código depende de que exista.
+
+**Estado:** aplicadas en CH-06.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

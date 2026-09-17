@@ -1,9 +1,15 @@
 #!/bin/sh
-# Smoke test for CH-01, CH-03, CH-04 and CH-05: brings the real Docker Compose stack
-# up and checks every scenario in openspec/changes/CH-01-app-scaffolding-and-environment/
+# Smoke test for CH-01, CH-03, CH-04, CH-05 and CH-06: brings the real Docker Compose
+# stack up and checks every scenario in openspec/changes/CH-01-app-scaffolding-and-environment/
 # specs/project-environment/spec.md, openspec/changes/
 # CH-03-connection-registration-and-test/specs/connection-registration/spec.md,
-# CH-04's query-execution specs and CH-05's saved-queries specs against it.
+# CH-04's query-execution specs, CH-05's saved-queries specs and CH-06's
+# tenant-management / tenant-isolation specs against it.
+#
+# Since CH-06 every tenant-scoped call carries an X-Tenant-Id header (DEC-15). The
+# script creates its own tenants through the API rather than relying on the seeded one,
+# and deletes them at the end, so a developer's local data is left as it was found.
+#
 # Requires Docker running and a local .env (copy .env.example if you don't have one yet).
 set -e
 
@@ -58,6 +64,44 @@ sleep 5
 check_health 200 ready
 echo "OK: degrades to 503 when db is down, recovers to 200 without restarting app"
 
+echo "== CH-06: tenant alta, listado and the active-tenant header =="
+# Two tenants, both created through the API: everything below CH-03 runs as TENANT_A,
+# and TENANT_B exists to prove at the end that it sees none of A's rows.
+crear_tenant() {
+  code=$(curl -s -o /tmp/smoke-tenant.json -w '%{http_code}' \
+    -X POST http://localhost:3000/tenants -H 'Content-Type: application/json' \
+    -d "{\"nombre\":\"CH-06 smoke $1\"}" --max-time 10)
+  [ "$code" = "201" ] || fail "expected HTTP 201 creating tenant '$1', got $code ($(cat /tmp/smoke-tenant.json))"
+  grep -q '"activo":true' /tmp/smoke-tenant.json ||
+    fail "a new tenant must be active: $(cat /tmp/smoke-tenant.json)"
+  sed -n 's/.*"id":"\([^"]*\)".*/\1/p' /tmp/smoke-tenant.json
+}
+
+TENANT_A=$(crear_tenant a)
+TENANT_B=$(crear_tenant b)
+[ -n "$TENANT_A" ] && [ -n "$TENANT_B" ] || fail "the tenant creates returned no id"
+echo "OK: two tenants created, both activo:true"
+
+echo "-- /tenants is exempt and lists the new tenants (bootstrap) --"
+code=$(curl -s -o /tmp/smoke-tenants.json -w '%{http_code}' http://localhost:3000/tenants --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 listing tenants with no header, got $code"
+grep -q "$TENANT_A" /tmp/smoke-tenants.json || fail "tenant A is missing from the listing"
+grep -q "$TENANT_B" /tmp/smoke-tenants.json || fail "tenant B is missing from the listing"
+echo "OK: GET /tenants answers headerless and lists both"
+
+echo "-- a scoped route with no active tenant is refused before the handler --"
+code=$(curl -s -o /tmp/smoke-sin-tenant.json -w '%{http_code}' \
+  http://localhost:3000/consultas-guardadas --max-time 10)
+[ "$code" = "400" ] || fail "expected HTTP 400 with no X-Tenant-Id, got $code ($(cat /tmp/smoke-sin-tenant.json))"
+grep -q '"error":"tenant-no-indicado"' /tmp/smoke-sin-tenant.json ||
+  fail "expected tenant-no-indicado, got $(cat /tmp/smoke-sin-tenant.json)"
+code=$(curl -s -o /tmp/smoke-sin-tenant.json -w '%{http_code}' \
+  http://localhost:3000/consultas-guardadas -H 'X-Tenant-Id: no-existe-en-absoluto' --max-time 10)
+[ "$code" = "404" ] || fail "expected HTTP 404 for an unknown tenant, got $code"
+grep -q '"error":"tenant-no-encontrado"' /tmp/smoke-sin-tenant.json ||
+  fail "expected tenant-no-encontrado, got $(cat /tmp/smoke-sin-tenant.json)"
+echo "OK: no header -> 400 tenant-no-indicado; unknown id -> 404 tenant-no-encontrado"
+
 echo "== CH-03: connection registration and test =="
 DB_USER=$(env_value POSTGRES_USER)
 DB_PASSWORD=$(env_value POSTGRES_PASSWORD)
@@ -69,6 +113,7 @@ CREDENCIAL_INVALIDA="contrasena-incorrecta-smoke"
 registrar() {
   code=$(curl -s -o /tmp/smoke-conexion.json -w '%{http_code}' \
     -X POST http://localhost:3000/conexiones -H 'Content-Type: application/json' \
+    -H "X-Tenant-Id: $TENANT_A" \
     -d "{\"nombre\":\"CH-03 smoke $1\",\"motor\":\"postgres\",\"host\":\"$2\",\"puerto\":5432,\"baseDeDatos\":\"$3\",\"usuarioDb\":\"$DB_USER\",\"credencial\":\"$4\"}" \
     --max-time 10)
   [ "$code" = "201" ] || fail "expected HTTP 201 registering '$1', got $code ($(cat /tmp/smoke-conexion.json))"
@@ -80,7 +125,8 @@ registrar() {
 probar() {
   id="$1"; credencial="$2"; shift 2
   code=$(curl -s -o /tmp/smoke-prueba.json -w '%{http_code}' \
-    -X POST "http://localhost:3000/conexiones/$id/prueba" --max-time 15)
+    -X POST "http://localhost:3000/conexiones/$id/prueba" \
+    -H "X-Tenant-Id: $TENANT_A" --max-time 15)
   [ "$code" = "200" ] || fail "expected HTTP 200 from the test endpoint, got $code"
   for fragmento in "$@"; do
     grep -q "$fragmento" /tmp/smoke-prueba.json ||
@@ -155,6 +201,7 @@ echo "OK: fixture schema, table and two roles created"
 registrar_ch04() {
   code=$(curl -s -o /tmp/smoke-conexion.json -w '%{http_code}' \
     -X POST http://localhost:3000/conexiones -H 'Content-Type: application/json' \
+    -H "X-Tenant-Id: $TENANT_A" \
     -d "{\"nombre\":\"CH-04 smoke $1\",\"motor\":\"postgres\",\"host\":\"db\",\"puerto\":5432,\"baseDeDatos\":\"$DB_NAME\",\"usuarioDb\":\"$2\",\"credencial\":\"$3\"}" \
     --max-time 10)
   [ "$code" = "201" ] || fail "expected HTTP 201 registering '$1', got $code ($(cat /tmp/smoke-conexion.json))"
@@ -167,6 +214,7 @@ ejecutar_ch04() {
   id="$1"; sql="$2"; credencial="$3"; shift 3
   code=$(curl -s -o /tmp/smoke-consulta.json -w '%{http_code}' \
     -X POST http://localhost:3000/consultas/ejecutar -H 'Content-Type: application/json' \
+    -H "X-Tenant-Id: $TENANT_A" \
     -d "{\"conexionId\":\"$id\",\"sql\":\"$sql\",\"limite\":2}" --max-time 40)
   [ "$code" = "200" ] || fail "expected HTTP 200 from /consultas/ejecutar, got $code ($(cat /tmp/smoke-consulta.json))"
   for fragmento in "$@"; do
@@ -248,26 +296,21 @@ GUARDADA_NOMBRE="CH-05 smoke consulta"
 GUARDADA_SQL="  SELECT id, nombre FROM ch04_smoke.articulo ORDER BY id;  "
 GUARDADA_NOMBRE_HOSTIL="<script>alert(1)</script>"
 
-echo "-- empty list before anything is saved (a read resolves no tenant) --"
-# Measured rather than assumed empty: this stack reuses its volume, so a developer's
-# own saved rows may already be there. The literal [] is only asserted when the table
-# really is empty; otherwise the shape assertion below still runs.
-guardadas_previas=$(docker compose exec -T db psql -tA -q -U "$DB_USER" -d "$DB_NAME" \
-  -c 'SELECT count(*) FROM "ConsultaGuardada";' | tr -d '[:space:]')
+echo "-- empty list before anything is saved --"
+# Since CH-06 the listing is scoped to the active tenant, and TENANT_A was created by
+# this run seconds ago, so the literal empty case is observable on any stack — it no
+# longer depends on whether a developer's own rows are in the shared table.
 code=$(curl -s -o /tmp/smoke-guardadas.json -w '%{http_code}' \
-  http://localhost:3000/consultas-guardadas --max-time 10)
+  http://localhost:3000/consultas-guardadas -H "X-Tenant-Id: $TENANT_A" --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 from the saved-queries list, got $code"
-if [ "$guardadas_previas" = "0" ]; then
-  grep -q '"consultasGuardadas":\[\]' /tmp/smoke-guardadas.json ||
-    fail "expected an empty list before anything is saved, got $(cat /tmp/smoke-guardadas.json)"
-  echo "OK: empty table -> 200 with [], not 503 — only the create needs a tenant"
-else
-  echo "OK: list -> 200 ($guardadas_previas row(s) already saved locally, so the literal empty case is not observable in this run)"
-fi
+grep -q '"consultasGuardadas":\[\]' /tmp/smoke-guardadas.json ||
+  fail "expected an empty list for a brand-new tenant, got $(cat /tmp/smoke-guardadas.json)"
+echo "OK: a new tenant's list -> 200 with []"
 
 echo "-- save the statement (Saved Query Creation) --"
 code=$(curl -s -o /tmp/smoke-guardada.json -w '%{http_code}' \
   -X POST http://localhost:3000/consultas-guardadas -H 'Content-Type: application/json' \
+  -H "X-Tenant-Id: $TENANT_A" \
   -d "{\"nombre\":\"$GUARDADA_NOMBRE\",\"descripcion\":\"Articulos del esquema de humo\",\"sql\":\"$GUARDADA_SQL\"}" \
   --max-time 10)
 [ "$code" = "201" ] || fail "expected HTTP 201 saving a query, got $code ($(cat /tmp/smoke-guardada.json))"
@@ -278,16 +321,25 @@ echo "OK: save -> 201 with an id"
 echo "-- a request cannot set tenantId (rule 2) --"
 code=$(curl -s -o /tmp/smoke-guardada-rechazo.json -w '%{http_code}' \
   -X POST http://localhost:3000/consultas-guardadas -H 'Content-Type: application/json' \
+  -H "X-Tenant-Id: $TENANT_A" \
   -d "{\"nombre\":\"CH-05 smoke rechazo\",\"sql\":\"SELECT 1\",\"tenantId\":\"invencion-del-cliente\"}" \
   --max-time 10)
 [ "$code" = "400" ] || fail "expected HTTP 400 for a body carrying tenantId, got $code ($(cat /tmp/smoke-guardada-rechazo.json))"
 grep -q '"error":"solicitud-invalida"' /tmp/smoke-guardada-rechazo.json ||
   fail "expected solicitud-invalida, got $(cat /tmp/smoke-guardada-rechazo.json)"
-echo "OK: client-supplied tenantId -> 400 solicitud-invalida, nothing stored"
+# Same body against the connection route: CH-06 closed the same hole there, which
+# CH-05's propertyNames fix had left open (it answered 201 and dropped the key).
+code=$(curl -s -o /tmp/smoke-conexion-rechazo.json -w '%{http_code}' \
+  -X POST http://localhost:3000/conexiones -H 'Content-Type: application/json' \
+  -H "X-Tenant-Id: $TENANT_A" \
+  -d "{\"nombre\":\"CH-06 smoke rechazo\",\"motor\":\"postgres\",\"host\":\"db\",\"puerto\":5432,\"baseDeDatos\":\"$DB_NAME\",\"usuarioDb\":\"$DB_USER\",\"credencial\":\"$DB_PASSWORD\",\"tenantId\":\"invencion-del-cliente\"}" \
+  --max-time 10)
+[ "$code" = "400" ] || fail "expected HTTP 400 registering with a body tenantId, got $code ($(cat /tmp/smoke-conexion-rechazo.json))"
+echo "OK: client-supplied tenantId -> 400 solicitud-invalida on both create routes, nothing stored"
 
 echo "-- list carries metadata only (Saved Query Listing) --"
 code=$(curl -s -o /tmp/smoke-guardadas.json -w '%{http_code}' \
-  http://localhost:3000/consultas-guardadas --max-time 10)
+  http://localhost:3000/consultas-guardadas -H "X-Tenant-Id: $TENANT_A" --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 listing saved queries, got $code"
 grep -q "\"nombre\":\"$GUARDADA_NOMBRE\"" /tmp/smoke-guardadas.json ||
   fail "the saved query did not appear in the list: $(cat /tmp/smoke-guardadas.json)"
@@ -300,7 +352,7 @@ echo "OK: list -> 200, the row is there and no sql field exists on it"
 
 echo "-- get by id round-trips the statement verbatim (Saved Query Retrieval) --"
 code=$(curl -s -o /tmp/smoke-guardada-get.json -w '%{http_code}' \
-  "http://localhost:3000/consultas-guardadas/$id_guardada" --max-time 10)
+  "http://localhost:3000/consultas-guardadas/$id_guardada" -H "X-Tenant-Id: $TENANT_A" --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 retrieving the saved query, got $code"
 sql_guardada=$(sed -n 's/.*"sql":"\([^"]*\)".*/\1/p' /tmp/smoke-guardada-get.json)
 [ "$sql_guardada" = "$GUARDADA_SQL" ] ||
@@ -309,7 +361,7 @@ echo "OK: get by id -> 200 with the statement byte-identical, padding and semico
 
 echo "-- unknown id is a legible 404, not a 500 --"
 code=$(curl -s -o /tmp/smoke-guardada-404.json -w '%{http_code}' \
-  http://localhost:3000/consultas-guardadas/no-existe-en-absoluto-smoke --max-time 10)
+  http://localhost:3000/consultas-guardadas/no-existe-en-absoluto-smoke -H "X-Tenant-Id: $TENANT_A" --max-time 10)
 [ "$code" = "404" ] || fail "expected HTTP 404 for an unknown saved query, got $code"
 grep -q '"error":"consulta-guardada-no-encontrada"' /tmp/smoke-guardada-404.json ||
   fail "expected consulta-guardada-no-encontrada, got $(cat /tmp/smoke-guardada-404.json)"
@@ -324,10 +376,11 @@ echo "OK: the retrieved statement executed -> resultado ok"
 echo "-- a hostile nombre is stored and returned as data (Stored Text Is Data) --"
 code=$(curl -s -o /tmp/smoke-guardada-hostil.json -w '%{http_code}' \
   -X POST http://localhost:3000/consultas-guardadas -H 'Content-Type: application/json' \
+  -H "X-Tenant-Id: $TENANT_A" \
   -d "{\"nombre\":\"$GUARDADA_NOMBRE_HOSTIL\",\"sql\":\"SELECT 1\"}" --max-time 10)
 [ "$code" = "201" ] || fail "expected HTTP 201 saving a query with a hostile nombre, got $code"
 code=$(curl -s -o /tmp/smoke-guardadas.json -w '%{http_code}' \
-  http://localhost:3000/consultas-guardadas --max-time 10)
+  http://localhost:3000/consultas-guardadas -H "X-Tenant-Id: $TENANT_A" --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 listing after the hostile save, got $code"
 grep -qF "$GUARDADA_NOMBRE_HOSTIL" /tmp/smoke-guardadas.json ||
   fail "the hostile nombre was altered on the way out: $(cat /tmp/smoke-guardadas.json)"
@@ -343,6 +396,16 @@ grep -q "type=\"button\"" /tmp/smoke-consola.html ||
   fail "/consola's save control must not be a submit button: it would execute instead of saving"
 grep -q "textContent" /tmp/smoke-consola.html || fail "/consola renders nothing through textContent"
 if grep -q "innerHTML" /tmp/smoke-consola.html; then fail "/consola must never use innerHTML"; fi
+# CH-06 / T4: the tenant bar, the selector and the permanent indicator.
+grep -q "id=\"barra-tenant\"" /tmp/smoke-consola.html || fail "/consola has no tenant bar"
+grep -q "id=\"tenant\"" /tmp/smoke-consola.html || fail "/consola has no tenant selector"
+grep -q "id=\"tenant-activo\"" /tmp/smoke-consola.html || fail "/consola has no active-tenant indicator"
+grep -q "X-Tenant-Id" /tmp/smoke-consola.html || fail "/consola never sends the active tenant"
+# The 503 message is gone with the response it described: leaving it would be a live
+# ladder branch for a status the API can no longer produce.
+if grep -q "tenant-no-inicializado" /tmp/smoke-consola.html; then
+  fail "/consola still carries the removed tenant-no-inicializado message"
+fi
 # Regression guard, found the hard way while verifying this change: an HTML parser ends
 # the inline script at the FIRST closing script sequence it sees, even one written
 # inside a JS comment. The whole console is one script element, so exactly one may exist
@@ -350,13 +413,66 @@ if grep -q "innerHTML" /tmp/smoke-consola.html; then fail "/consola must never u
 cierres=$(grep -o "</script>" /tmp/smoke-consola.html | wc -l | tr -d '[:space:]')
 [ "$cierres" = "1" ] ||
   fail "/consola carries $cierres closing script tags: the inline script is truncated at the first one"
-echo "OK: /consola serves the save control, the name input and the list, one script element, no innerHTML"
+echo "OK: /consola serves the tenant bar, the save control, the name input and the list, one script element, no innerHTML"
+
+echo "== CH-06: the second tenant sees none of the first tenant's rows (T2) =="
+# Same ids, different active tenant. Every one of these resolved happily a moment ago
+# as TENANT_A; as TENANT_B the rows must not exist at all.
+code=$(curl -s -o /tmp/smoke-b-listado.json -w '%{http_code}' \
+  http://localhost:3000/consultas-guardadas -H "X-Tenant-Id: $TENANT_B" --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 listing as tenant B, got $code"
+grep -q '"consultasGuardadas":\[\]' /tmp/smoke-b-listado.json ||
+  fail "tenant B saw rows it does not own: $(cat /tmp/smoke-b-listado.json)"
+
+code=$(curl -s -o /tmp/smoke-b-get.json -w '%{http_code}' \
+  "http://localhost:3000/consultas-guardadas/$id_guardada" -H "X-Tenant-Id: $TENANT_B" --max-time 10)
+[ "$code" = "404" ] || fail "tenant B reached tenant A's saved query: HTTP $code ($(cat /tmp/smoke-b-get.json))"
+
+code=$(curl -s -o /tmp/smoke-b-prueba.json -w '%{http_code}' \
+  -X POST "http://localhost:3000/conexiones/$id_lector/prueba" \
+  -H "X-Tenant-Id: $TENANT_B" --max-time 15)
+[ "$code" = "404" ] || fail "tenant B probed tenant A's connection: HTTP $code ($(cat /tmp/smoke-b-prueba.json))"
+grep -q '"error":"conexion-no-encontrada"' /tmp/smoke-b-prueba.json ||
+  fail "expected conexion-no-encontrada, got $(cat /tmp/smoke-b-prueba.json)"
+
+code=$(curl -s -o /tmp/smoke-b-ejecutar.json -w '%{http_code}' \
+  -X POST http://localhost:3000/consultas/ejecutar -H 'Content-Type: application/json' \
+  -H "X-Tenant-Id: $TENANT_B" \
+  -d "{\"conexionId\":\"$id_lector\",\"sql\":\"SELECT 1\"}" --max-time 20)
+[ "$code" = "404" ] || fail "tenant B executed against tenant A's connection: HTTP $code ($(cat /tmp/smoke-b-ejecutar.json))"
+echo "OK: tenant B -> empty list, and 404 on get-by-id, prueba and ejecutar for tenant A's ids"
+
+echo "-- a tenant dado de baja admits no operation at all (DEC-14) --"
+code=$(curl -s -o /tmp/smoke-baja.json -w '%{http_code}' \
+  -X POST "http://localhost:3000/tenants/$TENANT_B/baja" --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 deactivating tenant B, got $code ($(cat /tmp/smoke-baja.json))"
+grep -q '"activo":false' /tmp/smoke-baja.json || fail "the baja did not report activo:false"
+code=$(curl -s -o /tmp/smoke-congelado.json -w '%{http_code}' \
+  http://localhost:3000/consultas-guardadas -H "X-Tenant-Id: $TENANT_B" --max-time 10)
+[ "$code" = "409" ] || fail "expected HTTP 409 for a deactivated tenant, got $code ($(cat /tmp/smoke-congelado.json))"
+grep -q '"error":"tenant-desactivado"' /tmp/smoke-congelado.json ||
+  fail "expected tenant-desactivado, got $(cat /tmp/smoke-congelado.json)"
+code=$(curl -s -o /tmp/smoke-tenants.json -w '%{http_code}' http://localhost:3000/tenants --max-time 10)
+if grep -q "$TENANT_B" /tmp/smoke-tenants.json; then
+  fail "a deactivated tenant must not appear in the default listing"
+fi
+code=$(curl -s -o /tmp/smoke-tenants.json -w '%{http_code}' \
+  'http://localhost:3000/tenants?incluirInactivos=true' --max-time 10)
+grep -q "$TENANT_B" /tmp/smoke-tenants.json ||
+  fail "?incluirInactivos=true must still show the deactivated tenant"
+echo "OK: baja -> 409 on every scoped route, out of the default listing, still visible with incluirInactivos"
 
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -q -U "$DB_USER" -d "$DB_NAME" >/dev/null <<SQL
 DELETE FROM "Conexion" WHERE nombre LIKE 'CH-03 smoke%' OR nombre LIKE 'CH-04 smoke%';
 -- By prefix and by exact name, never a blanket delete: this database is also where a
 -- developer's own saved queries live, and DEC-10 gives the product no way to restore one.
 DELETE FROM "ConsultaGuardada" WHERE nombre LIKE 'CH-05 smoke%' OR nombre = '<script>alert(1)</script>';
+-- CH-06's two tenants go last: the FK is RESTRICT, so anything still pointing at them
+-- has to be gone first. By prefix, never a blanket delete — a developer's own tenants
+-- (and the seeded one) live in this same table.
+DELETE FROM "ConsultaGuardada" WHERE "tenantId" IN (SELECT id FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%');
+DELETE FROM "Conexion" WHERE "tenantId" IN (SELECT id FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%');
+DELETE FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%';
 DROP SCHEMA IF EXISTS ch04_smoke CASCADE;
 DO \$limpieza\$ DECLARE rol text; BEGIN
   FOREACH rol IN ARRAY ARRAY['ch04_smoke_lector','ch04_smoke_escritor'] LOOP

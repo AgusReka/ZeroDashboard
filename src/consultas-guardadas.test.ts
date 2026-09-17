@@ -8,6 +8,8 @@ import { PrismaClient } from './generated/prisma/client.js';
 import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { LIMITE_LISTADO, registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
+import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { registrarContextoTenant } from './contexto-tenant.js';
 
 /**
  * Integration cases for CH-05 (tasks 2.1–2.10). This module is routes plus Prisma —
@@ -26,12 +28,13 @@ import { LIMITE_LISTADO, registerConsultaGuardadaRoutes } from './consultas-guar
  * execution path has a non-superuser to connect as (DEC-08 blocks a superuser before
  * the statement is sent, so the Compose owner can never be the success case).
  *
- * The skip preflight has two conditions rather than one. Beyond "is there a server",
- * every create here depends on DEC-06's seeded `Tenant` row — `POST` answers `503
- * tenant-no-inicializado` without one — so an unseeded database folds into the same
- * skip reason instead of failing eleven cases for one missing row. Unlike CH-04's
- * fixture this suite does *not* create the tenant: the create path's tenant
- * resolution is part of what is under test here.
+ * The skip preflight has one condition again. It used to have a second — "is there a
+ * seeded `Tenant` row", because every create answered `503 tenant-no-inicializado`
+ * without one. CH-06 removed both the seed dependency and that response: the active
+ * tenant is named by each request (DEC-15) and validated before the handler runs, so
+ * this suite creates the tenant it needs, declares it on every call, and removes it
+ * again. Every case below now proves something about *this* tenant's rows rather than
+ * about the whole table.
  */
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -102,48 +105,31 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
   });
 }
 
-/** Second preflight leg: DEC-06's seeded tenant, without which every create is a 503. */
-async function haySeedDeTenant(): Promise<boolean> {
-  const cliente = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
-  try {
-    const tenant = await cliente.tenant.findFirst({
-      orderBy: { creadoEn: 'asc' },
-      select: { id: true },
-    });
-    return tenant !== null;
-  } catch {
-    return false;
-  } finally {
-    await cliente.$disconnect();
-  }
-}
-
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
-const sembrado = alcanzable ? await haySeedDeTenant() : false;
 
-let motivoSkip: string | false = false;
-if (!alcanzable) {
-  motivoSkip =
-    `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
+const motivoSkip: string | false = alcanzable
+  ? false
+  : `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
     "bring up the Compose db service and set TEST_DB_* (see this file's header)";
-} else if (!sembrado) {
-  motivoSkip =
-    `no seeded Tenant row in ${objetivo.database} — every create answers 503 ` +
-    'tenant-no-inicializado without one; run `npm run seed` against the target';
-}
 
 describe(
   'consulta guardada routes — integration against a live PostgreSQL target',
   { skip: motivoSkip },
   () => {
     let app!: FastifyInstance;
+    /**
+     * The **raw** client, kept for fixtures, cleanup and the out-of-band assertions —
+     * `tenantId` is absent from both response projections, so reading it back is only
+     * possible here. The app under test gets the extended one, so these cases run
+     * against the real CH-06 isolation extension.
+     */
     let prisma!: PrismaClient;
     let admin!: pg.Client;
     /** Every saved query this suite creates, removed in `after` by id. */
     const creadas: string[] = [];
     /** Every connection this suite registers, removed in `after` by id. */
     const conexiones: string[] = [];
-    /** The tenant the routes resolve server-side; case 2.2 asserts rows land on it. */
+    /** The tenant every call declares; case 2.2 asserts rows land on it. */
     let tenantEsperado!: string;
 
     before(async () => {
@@ -156,19 +142,19 @@ describe(
       await admin.query(`CREATE ROLE ${ROL_LECTOR} LOGIN PASSWORD '${CLAVE_LECTOR}'`);
 
       prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
-      const tenant = await prisma.tenant.findFirst({
-        orderBy: { creadoEn: 'asc' },
-        select: { id: true },
-      });
-      assert.ok(tenant !== null, 'the preflight admitted this suite, so a tenant must exist');
+      const tenant = await prisma.tenant.create({ data: { nombre: `CH-05 pruebas ${Date.now()}` } });
       tenantEsperado = tenant.id;
 
       // One app with all three route groups registered: case 2.10 crosses from the
-      // saved-query routes into the execution route in a single round trip.
+      // saved-query routes into the execution route in a single round trip. The
+      // context hooks go first — Fastify runs same-name hooks in registration order,
+      // so a route registered ahead of them would run with no tenant context.
+      const aislado = extenderConAislamiento(prisma);
       app = Fastify({ logger: false });
-      registerConexionRoutes(app, prisma);
-      registerConsultaRoutes(app, prisma);
-      registerConsultaGuardadaRoutes(app, prisma);
+      registrarContextoTenant(app, aislado);
+      registerConexionRoutes(app, aislado);
+      registerConsultaRoutes(app, aislado);
+      registerConsultaGuardadaRoutes(app, aislado);
       await app.ready();
     });
 
@@ -180,11 +166,25 @@ describe(
       if (conexiones.length > 0) {
         await prisma.conexion.deleteMany({ where: { id: { in: conexiones } } });
       }
+      // The FK is RESTRICT, so anything still pointing at the fixture tenant has to go
+      // before the tenant itself can.
+      await prisma.consultaGuardada.deleteMany({ where: { tenantId: tenantEsperado } });
+      await prisma.conexion.deleteMany({ where: { tenantId: tenantEsperado } });
+      await prisma.tenant.delete({ where: { id: tenantEsperado } });
       await prisma.$disconnect();
       await app.close();
       await admin.query(SQL_LIMPIEZA);
       await admin.end();
     });
+
+    /**
+     * The one header that declares the active tenant (DEC-15). Every `inject` in this
+     * suite carries it: since CH-06 a scoped route with no header is a `400
+     * tenant-no-indicado` before the handler runs.
+     */
+    function cabeceras(): Record<string, string> {
+      return { 'x-tenant-id': tenantEsperado };
+    }
 
     /** Creates a saved query and asserts the `201`, returning the echoed row. */
     async function guardar(
@@ -198,6 +198,7 @@ describe(
       const respuesta = await app.inject({
         method: 'POST',
         url: '/consultas-guardadas',
+        headers: cabeceras(),
         payload,
       });
       assert.equal(respuesta.statusCode, 201, respuesta.body);
@@ -211,6 +212,7 @@ describe(
       const respuesta = await app.inject({
         method: 'POST',
         url: '/consultas-guardadas',
+        headers: cabeceras(),
         payload,
       });
       assert.equal(respuesta.statusCode, 400, respuesta.body);
@@ -221,7 +223,11 @@ describe(
     }
 
     async function listar(): Promise<{ cuerpo: CuerpoListado; crudo: string }> {
-      const respuesta = await app.inject({ method: 'GET', url: '/consultas-guardadas' });
+      const respuesta = await app.inject({
+        method: 'GET',
+        url: '/consultas-guardadas',
+        headers: cabeceras(),
+      });
       assert.equal(respuesta.statusCode, 200, respuesta.body);
       return { cuerpo: respuesta.json() as CuerpoListado, crudo: respuesta.body };
     }
@@ -230,6 +236,7 @@ describe(
       const respuesta = await app.inject({
         method: 'GET',
         url: `/consultas-guardadas/${encodeURIComponent(id)}`,
+        headers: cabeceras(),
       });
       assert.equal(respuesta.statusCode, 200, respuesta.body);
       const { consultaGuardada } = respuesta.json() as { consultaGuardada: CompletaGuardada };
@@ -257,7 +264,7 @@ describe(
       assert.deepEqual(leida, creada, 'get-by-id must return exactly what create echoed');
     });
 
-    test('2.2 the row is scoped to the server-resolved tenant, never a submitted one', async () => {
+    test('2.2 the row is scoped to the declared active tenant, never a submitted one', async () => {
       const creada = await guardar();
 
       // Read through Prisma rather than the API: `tenantId` is deliberately absent
@@ -378,7 +385,8 @@ describe(
       assert.equal(await prisma.consultaGuardada.count({ where: { nombre } }), 0);
 
       // And the accepted path never honours a submitted tenant either: the only way a
-      // row gets a tenant is the server-side `findFirst`.
+      // row gets a tenant is the isolation extension injecting the one the request
+      // declared in its header and the hooks validated.
       const aceptada = await guardar({ nombre: `${nombre} aceptada` });
       const fila = await prisma.consultaGuardada.findUnique({
         where: { id: aceptada.id },
@@ -415,16 +423,15 @@ describe(
     });
 
     /**
-     * Spec: "Listing when no saved query exists". Read paths are not tenant-scoped
-     * (decision 7), so "no saved query exists" is a statement about the whole table,
-     * and this suite shares its target with whatever the developer already has saved.
-     * Emptying it to observe the scenario would destroy that data, so the case asserts
-     * the shape the empty answer depends on — `200` with an array and never a `503` or
-     * an error envelope — and asserts the literal `[]` only when the table really is
-     * empty. Recorded as partial coverage rather than dressed up as full.
+     * Spec: "Listing when no saved query exists". This used to be partial coverage:
+     * read paths were unscoped, so "no saved query exists" was a statement about the
+     * whole table, which this suite shares with whatever the developer already has
+     * saved. CH-06 makes the listing tenant-scoped, and this suite now owns a tenant
+     * created seconds ago, so the scenario is reachable for real — the count below is
+     * scoped to that tenant, and the `[]` branch is the one that runs.
      */
-    test('2.6 an empty table lists as 200 with an empty array, never an error', async () => {
-      const total = await prisma.consultaGuardada.count();
+    test('2.6 an empty listing is 200 with an empty array, never an error', async () => {
+      const total = await prisma.consultaGuardada.count({ where: { tenantId: tenantEsperado } });
       const { cuerpo } = await listar();
 
       assert.ok(Array.isArray(cuerpo.consultasGuardadas), 'the list must always be an array');
@@ -455,11 +462,13 @@ describe(
         'the newer saved query must be listed before the older one',
       );
 
-      const total = await prisma.consultaGuardada.count();
+      // Scoped to this suite's tenant since CH-06: the cap now applies to the active
+      // tenant's rows, so a table full of another tenant's rows must not move it.
+      const total = await prisma.consultaGuardada.count({ where: { tenantId: tenantEsperado } });
       assert.equal(
         cuerpo.truncado,
         total > LIMITE_LISTADO,
-        'truncado must report whether the table actually exceeds the cap',
+        "truncado must report whether the active tenant's rows actually exceed the cap",
       );
     });
 
@@ -526,6 +535,7 @@ describe(
       const respuesta = await app.inject({
         method: 'GET',
         url: '/consultas-guardadas/11111111-2222-3333-4444-555555555555',
+        headers: cabeceras(),
       });
 
       assert.equal(respuesta.statusCode, 404, respuesta.body);
@@ -541,6 +551,7 @@ describe(
         const respuesta = await app.inject({
           method: 'GET',
           url: `/consultas-guardadas/${encodeURIComponent(id)}`,
+          headers: cabeceras(),
         });
 
         assert.equal(respuesta.statusCode, 404, `${id} must answer 404: ${respuesta.body}`);
@@ -560,6 +571,7 @@ describe(
       const registro = await app.inject({
         method: 'POST',
         url: '/conexiones',
+        headers: cabeceras(),
         payload: {
           nombre: `CH-05 destino ${Date.now()}`,
           motor: 'postgres',
@@ -581,6 +593,7 @@ describe(
       const ejecucion = await app.inject({
         method: 'POST',
         url: '/consultas/ejecutar',
+        headers: cabeceras(),
         payload: { conexionId: conexion.id, sql: leida.sql },
       });
 

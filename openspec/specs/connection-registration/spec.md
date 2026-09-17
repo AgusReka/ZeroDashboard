@@ -6,20 +6,28 @@ Registering a tenant's target database connection and proving, with a legible re
 
 ## Requirements
 
-### Requirement: Connection Registration Persists Against the Seeded Tenant
+### Requirement: Connection Registration Persists Against the Active Tenant
 
-The system SHALL allow registering a `Conexion` record referencing the single seeded `Tenant`, capturing host, port, database name, user, credential, engine (`motor`), and a name. The system SHALL reject a registration request missing any of these fields.
+The system SHALL allow registering a `Conexion` record referencing the active tenant resolved for the request, capturing host, port, database name, user, credential, engine (`motor`), and a name. The system SHALL reject a registration request missing any of these fields, and SHALL reject it when no active tenant can be resolved, before the request reaches any tenant-scoped query.
+(Previously: the record was always created against the single seeded `Tenant`, resolved by `tenant.findFirst`, with no active-tenant concept.)
 
 #### Scenario: Registering a valid connection
 
-- **GIVEN** the seeded `Tenant` exists and a request supplies host, port, database, user, credential, motor, and name
+- **GIVEN** an active, resolvable tenant and a request supplying host, port, database, user, credential, motor, and name
 - **WHEN** the registration endpoint is called
-- **THEN** a `Conexion` row SHALL be created referencing the seeded `Tenant`
+- **THEN** a `Conexion` row SHALL be created referencing that active tenant
 - **AND** the response SHALL confirm the created record without echoing the credential value
 
 #### Scenario: Rejecting an incomplete registration
 
-- **GIVEN** a registration request missing a required field (host, port, database, user, credential, motor, or name)
+- **GIVEN** a registration request missing a required field
+- **WHEN** the registration endpoint is called
+- **THEN** the request SHALL be rejected
+- **AND** no `Conexion` row SHALL be created
+
+#### Scenario: No active tenant resolvable
+
+- **GIVEN** a registration request with no resolvable active tenant
 - **WHEN** the registration endpoint is called
 - **THEN** the request SHALL be rejected
 - **AND** no `Conexion` row SHALL be created
@@ -102,3 +110,13 @@ The system MUST NOT include the submitted credential value in any test response 
 - **GIVEN** a registered connection tested with the correct credential value
 - **WHEN** the test succeeds
 - **THEN** the response body SHALL NOT contain the credential value
+### Requirement: Connectivity Test Is Scoped to the Active Tenant
+
+The connectivity test endpoint SHALL resolve the target `Conexion` only among rows belonging to the request's active tenant. WHEN the named `Conexion` id belongs to a different tenant, or does not exist, the system SHALL respond as though it does not exist and SHALL NOT attempt the probe.
+
+#### Scenario: Testing another tenant's connection
+
+- **GIVEN** tenants A and B, and a `Conexion` belonging to B
+- **WHEN** A's active tenant calls the test endpoint naming B's `Conexion` id
+- **THEN** the response SHALL report the connection as not found
+- **AND** no probe SHALL be attempted against B's stored host/credential

@@ -7,6 +7,8 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
+import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { registrarContextoTenant } from './contexto-tenant.js';
 
 /**
  * Integration cases for CH-04 (tasks 6.1–6.5). They dial a real PostgreSQL server on
@@ -169,12 +171,19 @@ describe(
   { skip: alcanzable ? false : motivoSkip },
   () => {
     let app!: FastifyInstance;
+    /**
+     * The **raw** client, kept for fixtures and cleanup. The app under test gets the
+     * extended one, so these cases run against the real CH-06 isolation extension.
+     */
     let prisma!: PrismaClient;
     let admin!: pg.Client;
     const creadas: string[] = [];
-    /** Set only when this fixture had to create the tenant, so teardown removes
-     * exactly what it added and leaves a seeded development database untouched. */
-    let tenantCreado: string | null = null;
+    /**
+     * Since CH-06 every request names its tenant (DEC-15): there is no "first tenant
+     * ever created" fallback left to inherit, so this suite always creates its own and
+     * always removes it, rather than branching on whether the target was seeded.
+     */
+    let tenantPruebas!: string;
 
     before(async () => {
       admin = new pg.Client({ ...objetivo });
@@ -183,23 +192,17 @@ describe(
       await admin.query(SQL_FIXTURE);
 
       prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
-      // `POST /conexiones` resolves the tenant server-side and answers `503
-      // tenant-no-inicializado` when no `Tenant` row exists. A freshly migrated
-      // database has none — only the container entrypoint's seed step creates one —
-      // so the fixture provisions it rather than depending on how the target was
-      // brought up.
-      const existente = await prisma.tenant.findFirst({
-        orderBy: { creadoEn: 'asc' },
-        select: { id: true },
-      });
-      if (existente === null) {
-        const tenant = await prisma.tenant.create({ data: { nombre: 'CH-04 pruebas' } });
-        tenantCreado = tenant.id;
-      }
+      const tenant = await prisma.tenant.create({ data: { nombre: `CH-04 pruebas ${Date.now()}` } });
+      tenantPruebas = tenant.id;
 
+      const aislado = extenderConAislamiento(prisma);
       app = Fastify({ logger: false });
-      registerConexionRoutes(app, prisma);
-      registerConsultaRoutes(app, prisma);
+      // First, before the route registrations: Fastify runs same-name hooks in
+      // registration order, so a route registered ahead of this would run with no
+      // tenant context and every scoped query would throw.
+      registrarContextoTenant(app, aislado);
+      registerConexionRoutes(app, aislado);
+      registerConsultaRoutes(app, aislado);
       await app.ready();
     });
 
@@ -207,9 +210,10 @@ describe(
       if (creadas.length > 0) {
         await prisma.conexion.deleteMany({ where: { id: { in: creadas } } });
       }
-      if (tenantCreado !== null) {
-        await prisma.tenant.delete({ where: { id: tenantCreado } });
-      }
+      // The FK is RESTRICT, so anything still pointing at the fixture tenant has to go
+      // before the tenant itself can.
+      await prisma.conexion.deleteMany({ where: { tenantId: tenantPruebas } });
+      await prisma.tenant.delete({ where: { id: tenantPruebas } });
       await prisma.$disconnect();
       await app.close();
       // The fixture roles and schema exist only for this suite; the own database
@@ -218,11 +222,22 @@ describe(
       await admin.end();
     });
 
+    /**
+     * The one header that declares the active tenant (DEC-15). Every `inject` in this
+     * suite carries it: since CH-06 a scoped route with no header is a `400
+     * tenant-no-indicado` before the handler runs, so this is the only change these
+     * CH-04 cases needed — their assertions are untouched.
+     */
+    function cabeceras(): Record<string, string> {
+      return { 'x-tenant-id': tenantPruebas };
+    }
+
     /** Registers a connection that logs in as `usuarioDb` with `credencial`. */
     async function registrar(usuarioDb: string, credencial: string): Promise<string> {
       const respuesta = await app.inject({
         method: 'POST',
         url: '/conexiones',
+        headers: cabeceras(),
         payload: {
           nombre: `CH-04 ${usuarioDb} ${Date.now()}`,
           motor: 'postgres',
@@ -247,6 +262,7 @@ describe(
       const respuesta = await app.inject({
         method: 'POST',
         url: '/consultas/ejecutar',
+        headers: cabeceras(),
         payload: { conexionId, sql, ...paginacion },
       });
       assert.equal(respuesta.statusCode, 200, respuesta.body);

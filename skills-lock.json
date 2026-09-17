@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "fastify-best-practices": {
+      "source": "mcollina/skills",
+      "sourceType": "github",
+      "skillPath": "skills/fastify/SKILL.md",
+      "computedHash": "980cf47d3f104df8be0a2767ccc604e4fa1b94db4405589594dd9f5029b40d25"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf"
+    },
+    "multi-tenant-architecture": {
+      "source": "mblode/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-tenant-architecture/SKILL.md",
+      "computedHash": "c49a5a2a83a3a8f9c2a5e063afaf92a8bdfe18a55c8299fc317926b87bba66c8"
+    }
+  }
+}

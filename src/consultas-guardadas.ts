@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import type { PrismaClient } from './generated/prisma/client.js';
+import type { PrismaAislado } from './aislamiento-prisma.js';
+import { conTenantInyectado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
 
@@ -81,7 +82,7 @@ const registroConsultaGuardadaSchema = {
 
 export function registerConsultaGuardadaRoutes(
   app: FastifyInstance,
-  prisma: PrismaClient,
+  prisma: PrismaAislado,
 ): void {
   app.post<{ Body: RegistroConsultaGuardadaBody }>(
     '/consultas-guardadas',
@@ -102,14 +103,11 @@ export function registerConsultaGuardadaRoutes(
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/sql'] });
       }
 
-      // The tenant is resolved server-side; the client never supplies a tenantId.
-      const tenant = await prisma.tenant.findFirst({
-        orderBy: { creadoEn: 'asc' },
-        select: { id: true },
-      });
-      if (tenant === null) {
-        return reply.code(503).send({ error: 'tenant-no-inicializado' });
-      }
+      // No tenant resolution here any more. The active tenant was validated by the
+      // `onRequest` hooks before this handler ran, and `tenantId` is injected into the
+      // `create` below by the isolation extension (DEC-13) — which is why the
+      // `503 tenant-no-inicializado` this route used to raise is gone rather than
+      // renamed: the condition it described is unreachable on this path.
 
       // One representation of absence: omitted, explicit null and blank-or-whitespace
       // all persist as null, the same treatment `sanearSql` gives a blank statement.
@@ -117,8 +115,7 @@ export function registerConsultaGuardadaRoutes(
         (body.descripcion ?? '').trim() === '' ? null : (body.descripcion ?? null);
 
       const consultaGuardada = await prisma.consultaGuardada.create({
-        data: {
-          tenantId: tenant.id,
+        data: conTenantInyectado({
           nombre: body.nombre,
           descripcion,
           // Stored verbatim. `sanearSql` strips one trailing `;`, which is an
@@ -126,7 +123,7 @@ export function registerConsultaGuardadaRoutes(
           // would silently rewrite the operator's statement in the database. The
           // stored text is re-sanitized at execution time instead.
           sql: body.sql,
-        },
+        }),
         select: ConsultaGuardadaCompleta,
       });
 
@@ -137,9 +134,9 @@ export function registerConsultaGuardadaRoutes(
   app.get('/consultas-guardadas', async (_request, reply) => {
     // `take: LIMITE_LISTADO + 1` is the same bounding trick the execution path uses:
     // one query decides both the page and whether anything was cut off, with no
-    // second `count(*)`. No tenant filter — no read path in this codebase filters by
-    // tenant yet, and half-implementing isolation here would make CH-06 harder to
-    // review, not easier.
+    // second `count(*)`. The tenant filter is not written here and never will be: the
+    // isolation extension conjoins it into this `where` (DEC-13), so the cap applies
+    // to the active tenant's rows and another tenant's rows are not even counted.
     const filas = await prisma.consultaGuardada.findMany({
       select: ConsultaGuardadaResumen,
       // `creadaEn` is millisecond-precision, so two creates in the same millisecond

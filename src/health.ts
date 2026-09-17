@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import type { PrismaClient } from './generated/prisma/client.js';
+import type { PrismaAislado } from './aislamiento-prisma.js';
 
-export function registerHealthRoute(app: FastifyInstance, prisma: PrismaClient): void {
+/**
+ * Retyped to the extended client in CH-06 for one reason only: `src/server.ts` no
+ * longer holds a raw client to hand out. The `$queryRaw` below is unaffected — raw
+ * queries bypass model-level extensions, and this one touches no scoped model, which
+ * is why liveness can still answer on the tenant-exempt `GET /health`.
+ */
+export function registerHealthRoute(app: FastifyInstance, prisma: PrismaAislado): void {
   app.get('/health', async (_request, reply) => {
     try {
       await prisma.$queryRaw`SELECT 1`;

@@ -5,6 +5,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { registerConexionRoutes } from './conexiones.js';
+import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { registrarContextoTenant } from './contexto-tenant.js';
 
 /**
  * Integration cases for CH-03 (tasks 5.1–5.4, plus two cases added after verify to
@@ -96,13 +98,34 @@ describe(
   { skip: alcanzable ? false : motivoSkip },
   () => {
     let app!: FastifyInstance;
+    /**
+     * The **raw** client, kept for fixtures, cleanup and the out-of-band assertions.
+     * The app under test gets the extended one, so these cases exercise the real
+     * CH-06 isolation extension rather than a client that behaves like the old one;
+     * the raw handle is what makes a cross-tenant check meaningful at all, and it
+     * exists only in this file, never in `src/`.
+     */
     let prisma!: PrismaClient;
     const creadas: string[] = [];
+    /**
+     * Since CH-06 every request names its tenant (DEC-15) and there is no
+     * "first tenant ever created" fallback, so this suite creates the one it needs
+     * instead of depending on how the target database was brought up.
+     */
+    let tenantPruebas!: string;
 
     before(async () => {
       prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+      const tenant = await prisma.tenant.create({ data: { nombre: `CH-03 pruebas ${Date.now()}` } });
+      tenantPruebas = tenant.id;
+
+      const aislado = extenderConAislamiento(prisma);
       app = Fastify({ logger: false });
-      registerConexionRoutes(app, prisma);
+      // First, before the route registration: Fastify runs same-name hooks in
+      // registration order, so a route registered ahead of this would run with no
+      // tenant context and every scoped query would throw.
+      registrarContextoTenant(app, aislado);
+      registerConexionRoutes(app, aislado);
       await app.ready();
     });
 
@@ -111,9 +134,23 @@ describe(
       if (creadas.length > 0) {
         await prisma.conexion.deleteMany({ where: { id: { in: creadas } } });
       }
+      // The FK is RESTRICT, so anything still pointing at the fixture tenant has to go
+      // before the tenant itself can.
+      await prisma.conexion.deleteMany({ where: { tenantId: tenantPruebas } });
+      await prisma.tenant.delete({ where: { id: tenantPruebas } });
       await prisma.$disconnect();
       await app.close();
     });
+
+    /**
+     * The one header that declares the active tenant (DEC-15). Every `inject` in this
+     * suite carries it: since CH-06 a scoped route with no header is a `400
+     * tenant-no-indicado` before the handler runs, so this is the only change these
+     * CH-03 cases needed — their assertions are untouched.
+     */
+    function cabeceras(): Record<string, string> {
+      return { 'x-tenant-id': tenantPruebas };
+    }
 
     /** Registers a connection pointing at the live target, with per-case overrides. */
     async function registrar(overrides: Partial<CuerpoRegistro> = {}): Promise<string> {
@@ -127,7 +164,12 @@ describe(
         credencial: objetivo.password,
         ...overrides,
       };
-      const respuesta = await app.inject({ method: 'POST', url: '/conexiones', payload: cuerpo });
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/conexiones',
+        headers: cabeceras(),
+        payload: cuerpo,
+      });
       assert.equal(respuesta.statusCode, 201, respuesta.body);
       assert.ok(
         !respuesta.body.includes(cuerpo.credencial),
@@ -139,7 +181,11 @@ describe(
     }
 
     async function probar(id: string): Promise<{ cuerpo: CuerpoPrueba; crudo: string }> {
-      const respuesta = await app.inject({ method: 'POST', url: `/conexiones/${id}/prueba` });
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: `/conexiones/${id}/prueba`,
+        headers: cabeceras(),
+      });
       assert.equal(respuesta.statusCode, 200, respuesta.body);
       return { cuerpo: respuesta.json() as CuerpoPrueba, crudo: respuesta.body };
     }
@@ -226,6 +272,7 @@ describe(
       const respuesta = await app.inject({
         method: 'POST',
         url: '/conexiones',
+        headers: cabeceras(),
         payload: cuerpoIncompleto,
       });
 
@@ -248,7 +295,11 @@ describe(
     test('a non-postgres motor still probes the stored host and port', async () => {
       const id = await registrar({ motor: 'mysql', nombre: 'Replica CH-03 motor mysql' });
 
-      const respuesta = await app.inject({ method: 'POST', url: `/conexiones/${id}/prueba` });
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: `/conexiones/${id}/prueba`,
+        headers: cabeceras(),
+      });
 
       // Not a gating-shaped rejection: no 4xx/422 refusal on account of `motor`.
       assert.equal(

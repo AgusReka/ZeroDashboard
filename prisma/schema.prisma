@@ -11,9 +11,14 @@ datasource db {
 // for the rationale behind field choices (Spanish naming, tenantId scoping,
 // no encryption/no motor enum yet — both depend on later work: A2 and D-4).
 
+// `activo` is CH-06's only schema change (DEC-14): deactivation is a state
+// transition that keeps the row, so there is no delete and no reactivation path.
+// The `true` default is what makes the migration additive — every pre-CH-06 row
+// backfills as active and every pre-CH-06 code path stays valid on rollback.
 model Tenant {
   id                 String             @id @default(uuid())
   nombre             String
+  activo             Boolean            @default(true)
   creadoEn           DateTime           @default(now())
   conexiones         Conexion[]
   consultasGuardadas ConsultaGuardada[]

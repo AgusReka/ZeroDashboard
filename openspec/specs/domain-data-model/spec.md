@@ -4,22 +4,23 @@ Source of truth for the `domain-data-model` capability. Merged from `CH-02-initi
 
 ## Requirements
 
-### Requirement: Tenant Table With a Single Seeded Row
+### Requirement: Tenant Table With an Active Flag
 
-The own database SHALL have a `Tenant` table. Exactly one `Tenant` row SHALL exist after migrations run, seeded by the migration process itself.
+The own database SHALL have a `Tenant` table with an `activo` boolean field defaulting to `true`. The table MAY contain zero, one, or more rows after migrations run; the migration process SHALL NOT enforce or assume a fixed row count.
+(Previously: exactly one `Tenant` row was required to exist after migrations run, seeded by the migration process itself.)
 
 #### Scenario: Migrating a fresh own database
 
 - **GIVEN** an own database with only CH-01's schema (no domain tables)
 - **WHEN** the migration command is run
-- **THEN** a `Tenant` table SHALL exist
-- **AND** exactly one row SHALL exist in it
+- **THEN** a `Tenant` table SHALL exist with an `activo` column defaulting to `true`
 
-#### Scenario: Re-running migrations
+#### Scenario: Re-running migrations over an already-seeded database
 
-- **GIVEN** an own database already migrated by this change
-- **WHEN** the migration command is run again
-- **THEN** the `Tenant` table SHALL still contain exactly one row
+- **GIVEN** an own database already migrated by CH-02, containing its previously seeded `Tenant` row
+- **WHEN** this change's migration command is run
+- **THEN** existing `Tenant` rows SHALL be backfilled with `activo: true`
+- **AND** no existing row SHALL be dropped or altered otherwise
 - **AND** no error SHALL occur
 
 ### Requirement: Connection Records Scoped to a Tenant

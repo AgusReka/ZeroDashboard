@@ -34,6 +34,15 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 62rem; padding: 1.5rem; line-height: 1.5; }
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  /* Sticky so T4's "permanent and unambiguous" survives scrolling. The z-index is
+     above the sticky table headers below, which share the same top edge. */
+  #barra-tenant { position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
+    flex-wrap: wrap; gap: .6rem; margin: -1.5rem -1.5rem 1rem; padding: .6rem 1.5rem;
+    background: Canvas; border-bottom: 1px solid rgba(128,128,128,.4); }
+  #barra-tenant label { margin: 0; }
+  #barra-tenant select { font: inherit; padding: .25rem .4rem; max-width: 18rem; }
+  #tenant-activo { margin-left: auto; text-align: right; }
+  #tenant-activo.sin-tenant { color: #b3261e; }
   h2 { font-size: 1.1rem; margin: 2rem 0 .25rem; }
   .ayuda { margin: 0 0 1.25rem; opacity: .75; font-size: .9rem; }
   label { display: block; font-size: .85rem; font-weight: 600; margin: .75rem 0 .25rem; }
@@ -59,6 +68,18 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 </style>
 </head>
 <body>
+<!--
+  T4: the active tenant is named here at all times, above everything else and sticky,
+  so no action is ever performed against a tenant the operator cannot see. The name is
+  written with textContent — a tenant nombre is operator-authored but persisted and
+  replayed later, which makes it a stored-input surface (regla 7).
+-->
+<header id="barra-tenant">
+  <label for="tenant">Tenant activo</label>
+  <select id="tenant"></select>
+  <strong id="tenant-activo" class="sin-tenant">Ningún tenant seleccionado</strong>
+</header>
+
 <h1>Consola de consultas</h1>
 <p class="ayuda">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
 
@@ -138,6 +159,26 @@ var MENSAJES = {
 };
 var MENSAJE_GENERICO = 'La ejecución falló y la consola no pudo identificar el motivo.';
 
+// The tenant-level refusals the API can answer on any scoped route. They are not in
+// MENSAJES above because those are {fase, categoria} pairs about the *target* database;
+// these are about which tenant the console is operating as. The 503 message this
+// ladder used to carry is gone with the response it described: CH-06 removed that
+// status entirely, because the tenant is now named by the request instead of being
+// looked up server-side. The smoke test greps the served document for that removed
+// error code, so it must not appear here even in a comment.
+// (No backtick may appear anywhere in this document either: the whole page is one
+// TypeScript template literal, and one backtick in a comment ends it. Same trap CH-05
+// recorded as friction 4.)
+var MENSAJES_TENANT = {
+  'tenant-no-indicado': 'La consola no envió un tenant activo. Elegí uno en la barra superior.',
+  'tenant-no-encontrado': 'El tenant seleccionado ya no existe. Se actualizó la lista; elegí otro.',
+  'tenant-desactivado': 'El tenant seleccionado está dado de baja y no admite ninguna operación. Elegí otro.'
+};
+
+var CLAVE_TENANT = 'zerodashboard.tenantActivo';
+
+var selectorTenant = document.getElementById('tenant');
+var indicadorTenant = document.getElementById('tenant-activo');
 var formulario = document.getElementById('formulario');
 var entradaConexion = document.getElementById('conexion');
 var entradaSql = document.getElementById('sql');
@@ -155,6 +196,10 @@ var encabezado = document.querySelector('#resultados thead');
 var cuerpoTabla = document.querySelector('#resultados tbody');
 
 var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null };
+
+// The selected tenant lives here and nowhere else (DEC-15: explicit per request, no
+// server session). Every call reads it through pedir() below.
+var tenantActivo = null;
 
 // One alert region for the whole page, deliberately not one per section: a save
 // failure and an execution failure overwrite each other, which is simpler than two
@@ -238,6 +283,135 @@ function mensajeDeFallo(cuerpo) {
   return cuerpo.codigo ? base + ' (SQLSTATE ' + cuerpo.codigo + ')' : base;
 }
 
+// --- Active tenant -------------------------------------------------------------
+// One wrapper, one place where the header is attached. A single point is what makes
+// "the console never forgets the tenant" reviewable, and it mirrors the server-side
+// single-point argument of DEC-13. Nothing below calls fetch() on a scoped route.
+
+// localStorage can throw outright (private modes, disabled storage), and a console
+// that will not load because of a preference is worse than one that forgets.
+function leerTenantGuardado() {
+  try { return window.localStorage.getItem(CLAVE_TENANT); } catch (sinAlmacenamiento) { return null; }
+}
+
+function escribirTenantGuardado(id) {
+  try {
+    if (id === null) { window.localStorage.removeItem(CLAVE_TENANT); }
+    else { window.localStorage.setItem(CLAVE_TENANT, id); }
+  } catch (sinAlmacenamiento) { /* the selection simply does not survive a reload */ }
+}
+
+function fijarTenant(id) {
+  tenantActivo = (id === null || id === '') ? null : String(id);
+  selectorTenant.value = tenantActivo === null ? '' : tenantActivo;
+
+  if (tenantActivo === null) {
+    indicadorTenant.className = 'sin-tenant';
+    indicadorTenant.textContent = 'Ningún tenant seleccionado';
+  } else {
+    var opcion = selectorTenant.options[selectorTenant.selectedIndex];
+    var nombre = opcion ? opcion.textContent : '';
+    indicadorTenant.className = '';
+    // The id fragment is not decoration: two tenants may share a nombre by design, so
+    // the name alone would not satisfy T4's "without ambiguity".
+    indicadorTenant.textContent = (nombre === '' ? 'Tenant' : nombre) +
+      ' (' + tenantActivo.slice(0, 8) + '…)';
+  }
+  escribirTenantGuardado(tenantActivo);
+}
+
+function renderizarSelector(tenants) {
+  vaciar(selectorTenant);
+
+  var vacio = document.createElement('option');
+  vacio.value = '';
+  vacio.textContent = tenants.length === 0 ? 'No hay tenants activos' : 'Elegí un tenant';
+  selectorTenant.appendChild(vacio);
+
+  tenants.forEach(function (fila) {
+    var opcion = document.createElement('option');
+    opcion.value = String(fila.id);
+    // textContent, never markup: a stored nombre that spells out a script tag has to
+    // render as visible text (regla 7). The smoke test greps the served document for
+    // the markup-assigning property name, so it must not appear even in a comment.
+    opcion.textContent = String(fila.nombre);
+    selectorTenant.appendChild(opcion);
+  });
+
+  // A stored selection is re-validated against what the API just returned rather than
+  // trusted: a tenant that was deleted or dado de baja must not silently stay active
+  // in the bar while every call answers 404 or 409.
+  var guardado = leerTenantGuardado();
+  var sigueVigente = guardado !== null && tenants.some(function (fila) {
+    return String(fila.id) === guardado;
+  });
+  fijarTenant(sigueVigente ? guardado : null);
+  if (guardado !== null && !sigueVigente) {
+    mostrarBanner('El tenant que estaba seleccionado ya no está activo. Elegí otro en la barra superior.');
+  }
+}
+
+// GET /tenants is exempt from the tenant header, so it is the one call that does not
+// go through pedir() — it is what makes a first selection possible at all.
+async function cargarTenants() {
+  var respuesta;
+  try {
+    respuesta = await fetch('/tenants');
+  } catch (fallaDeRed) {
+    mostrarBanner('No se pudo contactar con la aplicación para leer la lista de tenants.');
+    return;
+  }
+
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+
+  if (cuerpo === null || respuesta.status !== 200) {
+    mostrarBanner('No se pudo leer la lista de tenants (HTTP ' + respuesta.status + ').');
+    return;
+  }
+
+  renderizarSelector(Array.isArray(cuerpo.tenants) ? cuerpo.tenants : []);
+}
+
+/**
+ * Every call to a tenant-scoped route goes through here. Returns null — and makes no
+ * request at all — when no tenant is selected, so the operator sees "elegí un tenant"
+ * instead of a 400 the API had to be bothered for.
+ */
+function pedir(url, opciones) {
+  if (tenantActivo === null) {
+    mostrarBanner('Elegí un tenant en la barra superior antes de operar. No se envió ninguna solicitud.');
+    return Promise.resolve(null);
+  }
+
+  var config = opciones || {};
+  var cabeceras = {};
+  if (config.headers) {
+    Object.keys(config.headers).forEach(function (clave) { cabeceras[clave] = config.headers[clave]; });
+  }
+  cabeceras['X-Tenant-Id'] = tenantActivo;
+
+  return fetch(url, { method: config.method, headers: cabeceras, body: config.body });
+}
+
+/**
+ * True when the response was a tenant-level refusal and the page has already said so.
+ * The list is reloaded on the two cases where the stored selection is provably stale,
+ * so the bar stops naming something the API no longer accepts.
+ */
+function manejarFalloDeTenant(cuerpo) {
+  if (cuerpo === null || typeof cuerpo !== 'object') { return false; }
+  if (!Object.prototype.hasOwnProperty.call(MENSAJES_TENANT, cuerpo.error)) { return false; }
+
+  mostrarBanner(MENSAJES_TENANT[cuerpo.error]);
+  if (cuerpo.error === 'tenant-no-encontrado' || cuerpo.error === 'tenant-desactivado') {
+    limpiarResultados();
+    vaciar(listaGuardadas);
+    cargarTenants();
+  }
+  return true;
+}
+
 async function ejecutar(desplazamiento) {
   ocultarBanner();
   botonEjecutar.disabled = true;
@@ -247,7 +421,7 @@ async function ejecutar(desplazamiento) {
 
   var respuesta;
   try {
-    respuesta = await fetch('/consultas/ejecutar', {
+    respuesta = await pedir('/consultas/ejecutar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -264,10 +438,16 @@ async function ejecutar(desplazamiento) {
     return;
   }
   botonEjecutar.disabled = false;
+  // No tenant selected: pedir() made no request and already showed the banner.
+  if (respuesta === null) { return; }
 
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
 
+  if (manejarFalloDeTenant(cuerpo)) {
+    limpiarResultados();
+    return;
+  }
   if (cuerpo === null) {
     limpiarResultados();
     mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
@@ -376,16 +556,18 @@ function renderizarGuardadas(cuerpo) {
 async function listarGuardadas() {
   var respuesta;
   try {
-    respuesta = await fetch('/consultas-guardadas');
+    respuesta = await pedir('/consultas-guardadas');
   } catch (fallaDeRed) {
     // A failed listing must never break the execute path: it reports and returns.
     mostrarBanner('No se pudo contactar con la aplicación para leer las consultas guardadas.');
     return;
   }
+  if (respuesta === null) { return; }
 
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
 
+  if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null || respuesta.status !== 200) {
     mostrarBanner('No se pudieron leer las consultas guardadas (HTTP ' + respuesta.status + ').');
     return;
@@ -402,7 +584,7 @@ async function guardar() {
 
   var respuesta;
   try {
-    respuesta = await fetch('/consultas-guardadas', {
+    respuesta = await pedir('/consultas-guardadas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -418,10 +600,12 @@ async function guardar() {
     return;
   }
   botonGuardar.disabled = false;
+  if (respuesta === null) { return; }
 
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
 
+  if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null) {
     mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
     return;
@@ -429,10 +613,6 @@ async function guardar() {
   if (respuesta.status === 400) {
     var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos.join(', ') : '';
     mostrarBanner('La solicitud es inválida. Revise estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.');
-    return;
-  }
-  if (respuesta.status === 503) {
-    mostrarBanner('La base de la aplicación no tiene todavía un tenant inicializado, así que no se puede guardar una consulta.');
     return;
   }
   if (respuesta.status !== 201) {
@@ -451,15 +631,17 @@ async function cargarGuardada(id) {
 
   var respuesta;
   try {
-    respuesta = await fetch('/consultas-guardadas/' + encodeURIComponent(id));
+    respuesta = await pedir('/consultas-guardadas/' + encodeURIComponent(id));
   } catch (fallaDeRed) {
     mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
     return;
   }
+  if (respuesta === null) { return; }
 
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
 
+  if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null) {
     mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
     return;
@@ -482,6 +664,18 @@ async function cargarGuardada(id) {
   // connection, so the operator chooses which target to run it against.
 }
 
+// Switching tenants wipes the screen before anything else happens. This is the visual
+// half of the isolation guarantee: rows and saved-query names belonging to the tenant
+// the operator just left must not stay on the page next to the new tenant's name.
+selectorTenant.addEventListener('change', function () {
+  fijarTenant(selectorTenant.value);
+  ocultarBanner();
+  limpiarResultados();
+  vaciar(listaGuardadas);
+  pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null };
+  if (tenantActivo !== null) { listarGuardadas(); }
+});
+
 formulario.addEventListener('submit', function (evento) {
   evento.preventDefault();
   ejecutar(0);
@@ -499,7 +693,11 @@ botonAnterior.addEventListener('click', function () {
   ejecutar(Math.max(0, pagina.desplazamiento - pagina.limite));
 });
 
-listarGuardadas();
+// The tenant list comes first: nothing else on this page can be asked for until the
+// console knows which tenant it is operating as.
+cargarTenants().then(function () {
+  if (tenantActivo !== null) { listarGuardadas(); }
+});
 </script>
 </body>
 </html>
