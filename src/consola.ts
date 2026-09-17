@@ -56,6 +56,11 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   .banner { margin: 1rem 0 0; padding: .7rem .9rem; border-left: .3rem solid #b3261e; background: rgba(179,38,30,.12); white-space: pre-wrap; }
   .banner.exito { border-left-color: #1a7f37; background: rgba(26,127,55,.12); }
   .estado { margin: 1rem 0 .25rem; font-size: .85rem; opacity: .8; }
+  /* The row-cap cut, styled so it cannot be mistaken for the pagination line it sits
+     next to: its own block, its own colour, and full opacity against the dimmed
+     status text. DEC-18 separates the two verdicts in the API; this separates them
+     on screen. */
+  .estado .corte { display: block; margin-top: .35rem; color: #b3261e; opacity: 1; }
   .tabla-contenedor { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: .9rem; }
   th, td { border: 1px solid rgba(128,128,128,.4); padding: .3rem .5rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
@@ -92,8 +97,15 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 
   <div class="controles">
     <div>
+      <!--
+        No max attribute since CH-07, for the same reason the request schema dropped
+        its maximum: 200. The ceiling is now MAX_FILAS_CONSULTA (DEC-19) and the server
+        applies it and says so; a literal here would clamp the request below the ceiling
+        so the cut could never happen, leaving the operator unable to observe from the
+        only surface they have that a limit exists at all.
+      -->
       <label for="limite">Filas por página</label>
-      <input id="limite" type="number" min="1" max="200" value="50">
+      <input id="limite" type="number" min="1" value="50">
     </div>
     <button id="ejecutar" type="submit">Ejecutar</button>
   </div>
@@ -159,6 +171,14 @@ var MENSAJES = {
 };
 var MENSAJE_GENERICO = 'La ejecución falló y la consola no pudo identificar el motivo.';
 
+// Refusals that are about the stored row rather than about the target database or the
+// active tenant, so they are neither a {fase, categoria} pair nor a tenant message.
+// They arrive as an HTTP status with an error code in the body.
+var MENSAJES_ERROR = {
+  'credencial-ilegible': 'La credencial guardada para esta conexión no se pudo descifrar. ' +
+    'Si la conexión se registró antes de que el cifrado entrara en vigencia, hay que volver a registrarla.'
+};
+
 // The tenant-level refusals the API can answer on any scoped route. They are not in
 // MENSAJES above because those are {fase, categoria} pairs about the *target* database;
 // these are about which tenant the console is operating as. The 503 message this
@@ -195,7 +215,7 @@ var estado = document.getElementById('estado');
 var encabezado = document.querySelector('#resultados thead');
 var cuerpoTabla = document.querySelector('#resultados tbody');
 
-var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null };
+var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
 
 // The selected tenant lives here and nowhere else (DEC-15: explicit per request, no
 // server session). Every call reads it through pedir() below.
@@ -231,6 +251,10 @@ function vaciar(nodo) {
 function limpiarResultados() {
   vaciar(encabezado);
   vaciar(cuerpoTabla);
+  // Emptied, not just hidden: since CH-07 the status line holds child nodes (the cap
+  // sentence), and a hidden node that still carries "cortado en el tope" would reappear
+  // over the next, uncut result.
+  vaciar(estado);
   estado.hidden = true;
   botonAnterior.disabled = true;
   botonSiguiente.disabled = true;
@@ -266,14 +290,37 @@ function renderizar(cuerpo) {
   });
 }
 
+// The status line, and the one place the row-cap cut is announced. It is announced HERE
+// and not in the failure banner on purpose: a capped execution succeeded, and putting it
+// in the red banner would tell the operator that something went wrong when the only
+// thing that happened is that they were given less than they asked for. That separation
+// is DEC-18 expressed in the interface.
 function describirPagina(cuerpo) {
+  vaciar(estado);
+
   var desde = cuerpo.paginacion.desplazamiento;
   var cantidad = cuerpo.filas.length;
   var texto = cantidad === 0
     ? 'Sin filas en esta página.'
     : 'Filas ' + (desde + 1) + ' a ' + (desde + cantidad) + '.';
-  if (cuerpo.paginacion.hayMas) { texto += ' Hay más resultados.'; }
-  estado.textContent = texto + ' ' + cuerpo.duracionMs + ' ms.';
+  // Deliberately mutually exclusive with the cut sentence below. "Hay más resultados."
+  // invites asking for the next page, which is exactly what the cap denies, so showing
+  // both would put two contradictory instructions on the same line.
+  if (cuerpo.paginacion.hayMas && cuerpo.corte === null) { texto += ' Hay más resultados.'; }
+
+  var base = document.createElement('span');
+  base.textContent = texto + ' ' + cuerpo.duracionMs + ' ms.';
+  estado.appendChild(base);
+
+  if (cuerpo.corte === 'tope-de-filas') {
+    var aviso = document.createElement('strong');
+    aviso.className = 'corte';
+    aviso.textContent = 'Resultado cortado en el tope configurado de ' +
+      cuerpo.paginacion.topeFilas + ' filas. No hay página siguiente: ' +
+      'acote la consulta o cambie el tope del despliegue.';
+    estado.appendChild(aviso);
+  }
+
   estado.hidden = false;
 }
 
@@ -416,8 +463,12 @@ async function ejecutar(desplazamiento) {
   ocultarBanner();
   botonEjecutar.disabled = true;
 
+  // Only the lower bound is checked here. There is no upper one to check any more: the
+  // ceiling belongs to the deployment (MAX_FILAS_CONSULTA), the server applies it, and
+  // the response says whether it cut. A copy of the number in this file would be a
+  // second place for it to drift out of step.
   var limite = parseInt(entradaLimite.value, 10);
-  if (!(limite >= 1 && limite <= 200)) { limite = 50; }
+  if (!(limite >= 1)) { limite = 50; }
 
   var respuesta;
   try {
@@ -458,6 +509,14 @@ async function ejecutar(desplazamiento) {
     mostrarBanner('No existe una conexión registrada con ese identificador.');
     return;
   }
+  // Row-level refusals, before the generic status ladder: the connection exists but the
+  // application cannot read its stored credential, which is a different thing from the
+  // target rejecting one.
+  if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) {
+    limpiarResultados();
+    mostrarBanner(MENSAJES_ERROR[cuerpo.error]);
+    return;
+  }
   if (respuesta.status === 400) {
     var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos.join(', ') : '';
     limpiarResultados();
@@ -480,11 +539,15 @@ async function ejecutar(desplazamiento) {
     desplazamiento: cuerpo.paginacion.desplazamiento,
     limite: cuerpo.paginacion.limite,
     hayMas: cuerpo.paginacion.hayMas,
-    siguiente: cuerpo.paginacion.siguienteDesplazamiento
+    siguiente: cuerpo.paginacion.siguienteDesplazamiento,
+    corte: cuerpo.corte === undefined ? null : cuerpo.corte
   };
   describirPagina(cuerpo);
   botonAnterior.disabled = pagina.desplazamiento <= 0;
-  botonSiguiente.disabled = !pagina.hayMas;
+  // A capped response leaves hayMas true — the result set really did have more rows —
+  // but there is no next page to serve, so the control stays off. This is the reason
+  // the cut cannot be signalled through hayMas: the two answers point opposite ways.
+  botonSiguiente.disabled = !pagina.hayMas || pagina.corte !== null;
 }
 
 // --- Saved queries -------------------------------------------------------------
@@ -672,7 +735,7 @@ selectorTenant.addEventListener('change', function () {
   ocultarBanner();
   limpiarResultados();
   vaciar(listaGuardadas);
-  pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null };
+  pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
   if (tenantActivo !== null) { listarGuardadas(); }
 });
 

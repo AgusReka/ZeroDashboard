@@ -75,10 +75,10 @@ instead of threat-matrix rows.
 
 ## 4. Console Surface & Smoke (PR 4 → base PR 3)
 
-- [ ] 4.1 Modify `src/consola.ts` `estado` rendering (near line 275's `hayMas` text): when `cuerpo.corte === 'tope-de-filas'`, render a legible "capped at the configured limit" sentence, visually and textually distinct from the existing "Hay más resultados." text, and do not enable the "load more" control for that response (spec `query-console`: both scenarios)
-- [ ] 4.2 Modify `src/consola.ts`: add a `credencial-ilegible` entry to the console's error-message mapping table used for failed responses
-- [ ] 4.3 Extend the existing smoke coverage (`scripts/smoke.sh` or console `inject()` suite) to cover register → test → execute → capped-page, asserting the distinct cap message appears (design Testing Strategy, E2E row)
-- [ ] 4.4 Full-suite checkpoint: `npm test` green across all four slices together end to end
+- [x] 4.1 Modify `src/consola.ts` `estado` rendering (near line 275's `hayMas` text): when `cuerpo.corte === 'tope-de-filas'`, render a legible "capped at the configured limit" sentence, visually and textually distinct from the existing "Hay más resultados." text, and do not enable the "load more" control for that response (spec `query-console`: both scenarios)
+- [x] 4.2 Modify `src/consola.ts`: add a `credencial-ilegible` entry to the console's error-message mapping table used for failed responses
+- [x] 4.3 Extend the existing smoke coverage (`scripts/smoke.sh` or console `inject()` suite) to cover register → test → execute → capped-page, asserting the distinct cap message appears (design Testing Strategy, E2E row)
+- [x] 4.4 Full-suite checkpoint: `npm test` green across all four slices together end to end
 
 ## Key Success-Criteria Traceability
 
