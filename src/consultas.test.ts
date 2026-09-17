@@ -85,11 +85,13 @@ interface CuerpoOk {
   fase: string;
   columnas: string[];
   filas: unknown[][];
+  corte: 'tope-de-filas' | null;
   paginacion: {
     limite: number;
     desplazamiento: number;
     hayMas: boolean;
     siguienteDesplazamiento: number | null;
+    topeFilas: number;
   };
   duracionMs: number;
 }
@@ -639,6 +641,152 @@ describe(
 
       assert.equal(respuesta.statusCode, 409, respuesta.body);
       assert.deepEqual(respuesta.json(), { error: 'credencial-ilegible' });
+    });
+
+    // ---- CH-07: configurable row cap and its own cutoff verdict (DEC-18/DEC-19) -----
+
+    /** Runs `accion` with the row ceiling temporarily set to `tope`. */
+    async function conTope<T>(tope: number, accion: () => Promise<T>): Promise<T> {
+      const previo = process.env.MAX_FILAS_CONSULTA;
+      process.env.MAX_FILAS_CONSULTA = String(tope);
+      try {
+        return await accion();
+      } finally {
+        if (previo === undefined) {
+          delete process.env.MAX_FILAS_CONSULTA;
+        } else {
+          process.env.MAX_FILAS_CONSULTA = previo;
+        }
+      }
+    }
+
+    /**
+     * The schema's `maximum: 200` is gone. It had to be: validation would have answered
+     * `400` before the clamp could fire, so the cut verdict could never be produced.
+     */
+    test('CH-07 a limite above the old hard-coded 200 is accepted, not rejected', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/consultas/ejecutar',
+        headers: cabeceras(),
+        payload: { conexionId: id, sql: `SELECT id FROM ${TABLA} ORDER BY id`, limite: 5000 },
+      });
+
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.equal((respuesta.json() as CuerpoEjecucion).resultado, 'ok');
+    });
+
+    test('CH-07 limite 0 is still rejected: minimum 1 stays a statement about the request', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: '/consultas/ejecutar',
+        headers: cabeceras(),
+        payload: { conexionId: id, sql: 'SELECT 1', limite: 0 },
+      });
+
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.equal((respuesta.json() as { error: string }).error, 'solicitud-invalida');
+    });
+
+    /** Spec `query-execution`: "Execution stays within the row cap". */
+    test('CH-07 a result inside the cap reports corte null and the pagination of CH-04', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const { cuerpo } = await conTope(200, () =>
+        ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`),
+      );
+
+      const ok = cuerpo as CuerpoOk;
+      assert.equal(ok.resultado, 'ok', JSON.stringify(cuerpo));
+      assert.deepEqual(ok.filas, [[1], [2], [3]]);
+      assert.equal(ok.corte, null);
+      assert.equal(ok.paginacion.hayMas, false);
+      assert.equal(ok.paginacion.topeFilas, 200);
+    });
+
+    /** Spec `query-execution`: "Execution is stopped by the row cap". */
+    test('CH-07 a result cut by the cap reports corte tope-de-filas and the ceiling', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const { cuerpo } = await conTope(2, () =>
+        ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`, { limite: 50 }),
+      );
+
+      const ok = cuerpo as CuerpoOk;
+      assert.equal(ok.resultado, 'ok', JSON.stringify(cuerpo));
+      assert.equal(ok.corte, 'tope-de-filas');
+      assert.deepEqual(ok.filas, [[1], [2]], 'only the ceiling many rows come back');
+      assert.equal(ok.paginacion.topeFilas, 2);
+      // The served page size is the effective one, not the requested 50: a caller
+      // paging with the requested number would skip the rows it never received.
+      assert.equal(ok.paginacion.limite, 2);
+    });
+
+    /**
+     * DEC-18's whole point: `hayMas` is true in this case *and* in the ordinary
+     * pagination case below, so it cannot be what tells them apart. `corte` can.
+     */
+    test('CH-07 the cap verdict is not the hayMas signal', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+
+      const cortado = (
+        await conTope(2, () => ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`, { limite: 50 }))
+      ).cuerpo as CuerpoOk;
+      const paginado = (
+        await conTope(200, () => ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`, { limite: 2 }))
+      ).cuerpo as CuerpoOk;
+
+      assert.equal(cortado.paginacion.hayMas, true);
+      assert.equal(paginado.paginacion.hayMas, true);
+      assert.equal(cortado.corte, 'tope-de-filas');
+      assert.equal(paginado.corte, null, 'a small page the caller chose is not a cut');
+    });
+
+    test('CH-07 a clamp that did not actually cut anything reports corte null', async () => {
+      // The ceiling was below the requested page but the result set was short anyway,
+      // so the operator has the whole answer. Claiming a cut here would be a lie.
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const { cuerpo } = await conTope(10, () =>
+        ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`, { limite: 50 }),
+      );
+
+      const ok = cuerpo as CuerpoOk;
+      assert.equal(ok.corte, null);
+      assert.equal(ok.paginacion.hayMas, false);
+      assert.deepEqual(ok.filas, [[1], [2], [3]]);
+    });
+
+    /** Spec `query-execution`: "Row cap is configurable without a source change". */
+    test('CH-07 moving MAX_FILAS_CONSULTA moves the ceiling, with no source change', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+
+      const conUno = (
+        await conTope(1, () => ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`, { limite: 50 }))
+      ).cuerpo as CuerpoOk;
+      const conDos = (
+        await conTope(2, () => ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`, { limite: 50 }))
+      ).cuerpo as CuerpoOk;
+
+      assert.equal(conUno.filas.length, 1);
+      assert.equal(conUno.paginacion.topeFilas, 1);
+      assert.equal(conUno.corte, 'tope-de-filas');
+      assert.equal(conDos.filas.length, 2);
+      assert.equal(conDos.paginacion.topeFilas, 2);
+      assert.equal(conDos.corte, 'tope-de-filas');
+    });
+
+    test('CH-07 corte lives outside paginacion, where DEC-18 requires it', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const { cuerpo } = await conTope(2, () =>
+        ejecutar(id, `SELECT id FROM ${TABLA} ORDER BY id`, { limite: 50 }),
+      );
+
+      const ok = cuerpo as CuerpoOk;
+      assert.ok('corte' in ok, 'corte must be a top-level field');
+      assert.ok(
+        !('corte' in ok.paginacion),
+        'putting the cut verdict inside paginacion is exactly what DEC-18 forbids',
+      );
     });
 
     test('CH-07 an empty statement is still 400, ahead of any credential handling', async () => {

@@ -13,6 +13,7 @@ interface AppConfig {
   nodeEnv: string;
   connectionTestTimeoutMs: number;
   queryTimeoutMs: number;
+  maxFilasPorConsulta: number;
 }
 
 /** Used when CONNECTION_TEST_TIMEOUT_MS is not set. */
@@ -24,6 +25,17 @@ export const DEFAULT_CONNECTION_TEST_TIMEOUT_MS = 5000;
  * one above: a query can be slow on a target that connects instantly.
  */
 export const DEFAULT_QUERY_TIMEOUT_MS = 15000;
+
+/**
+ * Used when MAX_FILAS_CONSULTA is not set. The ceiling on how many rows one execution
+ * may return, applied uniformly to every `Conexion` and every tenant (DEC-19).
+ *
+ * 200 is not a new number: it is the `maximum: 200` that `ejecucionSchema` hard-coded
+ * until CH-07. Keeping it as the default means an untouched deployment behaves exactly
+ * as it did; what CH-07 changes is that the number can now be moved without editing
+ * source, and that an execution the ceiling actually cut says so (DEC-18).
+ */
+export const DEFAULT_MAX_FILAS_CONSULTA = 200;
 
 function required(name: string): string {
   const value = process.env[name];
@@ -73,6 +85,10 @@ export function loadConfig(): AppConfig {
     DEFAULT_CONNECTION_TEST_TIMEOUT_MS,
   );
   const queryTimeoutMs = enteroPositivoOpcional('QUERY_TIMEOUT_MS', DEFAULT_QUERY_TIMEOUT_MS);
+  const maxFilasPorConsulta = enteroPositivoOpcional(
+    'MAX_FILAS_CONSULTA',
+    DEFAULT_MAX_FILAS_CONSULTA,
+  );
 
   return {
     port,
@@ -80,5 +96,6 @@ export function loadConfig(): AppConfig {
     nodeEnv: process.env.NODE_ENV ?? 'development',
     connectionTestTimeoutMs,
     queryTimeoutMs,
+    maxFilasPorConsulta,
   };
 }

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { classifyExecutionError, sanearSql } from './consulta-ejecucion.js';
+import {
+  classifyExecutionError,
+  corteDeEjecucion,
+  limiteEfectivoDe,
+  sanearSql,
+} from './consulta-ejecucion.js';
 
 function errorConCodigo(code: string): Error & { code: string } {
   const error = new Error('driver failure') as Error & { code: string };
@@ -130,6 +135,68 @@ describe('sanearSql — plain trimming, never parsing', () => {
   test('an interior semicolon is left untouched — no statement splitting happens here', () => {
     // Multi-statement text is refused by the wire protocol, not by string inspection.
     assert.equal(sanearSql('SELECT 1; SELECT 2'), 'SELECT 1; SELECT 2');
+  });
+});
+
+describe('limiteEfectivoDe — the clamp, and only the clamp', () => {
+  test('a requested page under the cap is served as requested', () => {
+    assert.equal(limiteEfectivoDe(50, 200), 50);
+  });
+
+  test('a requested page equal to the cap is served as requested', () => {
+    assert.equal(limiteEfectivoDe(200, 200), 200);
+  });
+
+  test('a requested page above the cap is clamped down to the cap', () => {
+    assert.equal(limiteEfectivoDe(1000, 200), 200);
+  });
+
+  test('a cap configured lower than the default clamps a default-sized page', () => {
+    // The point of DEC-19: moving MAX_FILAS_CONSULTA moves the ceiling, with no edit
+    // to any source file.
+    assert.equal(limiteEfectivoDe(50, 5), 5);
+  });
+});
+
+describe('corteDeEjecucion — the cap verdict is not the pagination signal (DEC-18)', () => {
+  test('no clamp and no further rows: nothing was cut', () => {
+    assert.equal(corteDeEjecucion(50, 200, false), null);
+  });
+
+  /**
+   * Design table row 1, and the case DEC-18 exists to keep distinct: the caller asked
+   * for a page smaller than the ceiling and there are further pages. That is ordinary
+   * pagination — `hayMas` invites the next page and the cap has said nothing.
+   */
+  test('no clamp but further rows exist: ordinary pagination, not a cut', () => {
+    assert.equal(corteDeEjecucion(50, 200, true), null);
+  });
+
+  /**
+   * Design table row 2. The caller asked for more than the ceiling allows *and* the
+   * result set actually had more, so the ceiling is what ended the page.
+   */
+  test('clamped and further rows exist: the cap cut the result', () => {
+    assert.equal(corteDeEjecucion(1000, 200, true), 'tope-de-filas');
+  });
+
+  /**
+   * The clamp fired but the result set was short anyway, so the operator has the whole
+   * answer. Saying "capped" here would be a lie about a complete result.
+   */
+  test('clamped but no further rows: the operator saw everything, so no cut', () => {
+    assert.equal(corteDeEjecucion(1000, 200, false), null);
+  });
+
+  test('a page exactly at the cap with nothing beyond it is not a cut', () => {
+    assert.equal(corteDeEjecucion(200, 200, false), null);
+  });
+
+  test('the verdict is independent of hayMas in both directions', () => {
+    // `hayMas` and `corte` answer two different questions, so neither can be derived
+    // from the other: `hayMas` is true in both rows below and the verdicts differ.
+    assert.equal(corteDeEjecucion(50, 200, true), null);
+    assert.equal(corteDeEjecucion(201, 200, true), 'tope-de-filas');
   });
 });
 

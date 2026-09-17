@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
+import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
 import { destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta, sanearSql } from './consulta-ejecucion.js';
@@ -14,9 +15,15 @@ interface EjecucionBody {
 
 /**
  * Strict execution schema: `conexionId` and `sql` are required, the two pagination
- * fields have server-side defaults, and no unknown property is accepted. The upper
- * bound on `limite` is the app's own guard against a page large enough to hurt the
- * tenant's replica; A4's tenant-configurable limits are CH-07.
+ * fields have server-side defaults, and no unknown property is accepted.
+ *
+ * CH-04's `maximum: 200` on `limite` is **gone** since CH-07. A schema literal cannot
+ * express a runtime-configured ceiling, and leaving it would have made the ceiling
+ * unreachable: a request above 200 would be answered `400` by validation before the
+ * clamp had any chance to fire, so the cut verdict DEC-18 asks for could never be
+ * produced. The ceiling now lives in `MAX_FILAS_CONSULTA` (DEC-19) and is applied by
+ * `ejecutarConsulta`, which reports what it did. `minimum: 1` and `default: 50` stay:
+ * they are statements about the request's shape, not about the deployment's limits.
  */
 const ejecucionSchema = {
   type: 'object',
@@ -25,7 +32,7 @@ const ejecucionSchema = {
   properties: {
     conexionId: { type: 'string', minLength: 1 },
     sql: { type: 'string', minLength: 1 },
-    limite: { type: 'integer', minimum: 1, maximum: 200, default: 50 },
+    limite: { type: 'integer', minimum: 1, default: 50 },
     desplazamiento: { type: 'integer', minimum: 0, default: 0 },
   },
 } as const;
@@ -81,6 +88,10 @@ export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAisla
         sql: body.sql,
         limite: body.limite,
         desplazamiento: body.desplazamiento,
+        // The ceiling is global and read from the environment on every call (DEC-19),
+        // the same way both timeout budgets already are. Passing it explicitly keeps
+        // the route as the place where the deployment's policy enters the engine.
+        topeFilas: loadConfig().maxFilasPorConsulta,
       });
 
       if (ejecucion.resultado === 'fallo') {

@@ -40,12 +40,28 @@ export interface ClasificacionEjecucion {
 
 /** Limit/offset pagination state, and how to ask for the next page. */
 export interface Paginacion {
+  /**
+   * The page size actually served, which is the requested one clamped by `topeFilas`.
+   * The effective value rather than the requested one, because the offsets below are
+   * computed from it and a caller paging with the requested number would skip rows.
+   */
   limite: number;
   desplazamiento: number;
   hayMas: boolean;
   /** `null` when this was the last page — there is no next offset to request. */
   siguienteDesplazamiento: number | null;
+  /** The configured ceiling in force for this execution, so a caller can name it. */
+  topeFilas: number;
 }
+
+/**
+ * Why an execution stopped short of the caller's request, when it did (DEC-18).
+ *
+ * A closed set with one member today. It is its own type rather than a boolean so a
+ * second reason — a byte ceiling, a per-tenant quota — can be added without turning a
+ * flag into a flag-plus-an-enum later.
+ */
+export type CorteEjecucion = 'tope-de-filas';
 
 /** The three legs of the role-privilege check, as the target database reports them. */
 export interface PermisosRol {
@@ -63,6 +79,8 @@ export interface PeticionEjecucion extends DestinoPostgres {
   timeoutMs?: number;
   /** Connect-attempt budget. Defaults to `loadConfig().connectionTestTimeoutMs`. */
   connectTimeoutMs?: number;
+  /** Row ceiling (DEC-19). Defaults to `loadConfig().maxFilasPorConsulta`. */
+  topeFilas?: number;
 }
 
 export interface EjecucionExitosa {
@@ -70,6 +88,14 @@ export interface EjecucionExitosa {
   fase: 'ejecucion';
   columnas: string[];
   filas: unknown[][];
+  /**
+   * `null` unless the row ceiling is what ended this page (DEC-18).
+   *
+   * Deliberately a top-level field and **not** part of `Paginacion`: putting it there
+   * is exactly what DEC-18 forbids, because everything inside `Paginacion` describes
+   * how to ask for more, and this field says the opposite.
+   */
+  corte: CorteEjecucion | null;
   paginacion: Paginacion;
   duracionMs: number;
 }
@@ -177,6 +203,35 @@ export function classifyExecutionError(error: unknown): ClasificacionEjecucion {
 }
 
 /**
+ * The clamp: how many rows this execution may actually return (DEC-19).
+ *
+ * There is no second ceiling above the page size. One `LIMIT` serves both the caller's
+ * page and the deployment's ceiling, so there is only ever one number computing one
+ * truth from one row set.
+ */
+export function limiteEfectivoDe(limiteSolicitado: number, topeFilas: number): number {
+  return Math.min(limiteSolicitado, topeFilas);
+}
+
+/**
+ * The cap verdict (DEC-18), which is **not** derivable from `hayMas` and must never be
+ * conflated with it.
+ *
+ * Both conditions are required. The clamp having fired says the caller asked for more
+ * than the deployment allows; `hayMas` says the result set really had more. Without the
+ * clamp it is ordinary pagination — the caller chose a small page and can ask for the
+ * next one. Without further rows the caller saw the whole answer, and reporting a cut
+ * would be a lie about a complete result.
+ */
+export function corteDeEjecucion(
+  limiteSolicitado: number,
+  topeFilas: number,
+  hayMas: boolean,
+): CorteEjecucion | null {
+  return limiteSolicitado > topeFilas && hayMas ? 'tope-de-filas' : null;
+}
+
+/**
  * Prepares the submitted statement for the pagination wrapper: `trim()`, strip
  * **exactly one** trailing `;`, `trim()` again.
  *
@@ -231,7 +286,11 @@ function categoriaBloqueo(permisos: PermisosRol): CategoriaPermiso | null {
 
 interface ContextoTransaccion {
   sqlSaneado: string;
-  limite: number;
+  /** What the caller asked for. Kept only to decide whether the ceiling cut them. */
+  limiteSolicitado: number;
+  /** What is actually served: the requested page clamped by `topeFilas`. */
+  limiteEfectivo: number;
+  topeFilas: number;
   desplazamiento: number;
   presupuestoConsultaMs: number;
   iniciadoEn: number;
@@ -274,27 +333,35 @@ async function correrTransaccion(
       };
     }
 
-    // `limite + 1` is bound so the extra row answers "is there a next page?" without a
-    // second `count(*)` pass over the tenant's live replica. `rowMode: 'array'` keeps
-    // duplicate output column names (`SELECT 1 AS a, 2 AS a`) from collapsing.
+    // `limiteEfectivo + 1` is bound so the extra row answers "is there a next page?"
+    // without a second `count(*)` pass over the tenant's live replica. The same single
+    // `LIMIT` carries both the caller's page and the deployment's ceiling (DEC-19):
+    // there is no second ceiling layer, so no two mechanisms can disagree about one row
+    // set. Both values are **bound as driver parameters** and never spliced into the
+    // statement text (regla 4). `rowMode: 'array'` keeps duplicate output column names
+    // (`SELECT 1 AS a, 2 AS a`) from collapsing.
     const resultado = await cliente.query({
       text: `SELECT * FROM (${ctx.sqlSaneado}) AS _consulta_usuario LIMIT $1 OFFSET $2`,
-      values: [ctx.limite + 1, ctx.desplazamiento],
+      values: [ctx.limiteEfectivo + 1, ctx.desplazamiento],
       rowMode: 'array',
     });
 
     const filasCrudas = resultado.rows as unknown[][];
-    const hayMas = filasCrudas.length > ctx.limite;
+    // Unchanged CH-04 meaning: the probe row says the result set had more than this
+    // page. What the ceiling did about it is a separate verdict, computed below.
+    const hayMas = filasCrudas.length > ctx.limiteEfectivo;
     return {
       resultado: 'ok',
       fase: 'ejecucion',
       columnas: resultado.fields.map((campo) => campo.name),
-      filas: hayMas ? filasCrudas.slice(0, ctx.limite) : filasCrudas,
+      filas: hayMas ? filasCrudas.slice(0, ctx.limiteEfectivo) : filasCrudas,
+      corte: corteDeEjecucion(ctx.limiteSolicitado, ctx.topeFilas, hayMas),
       paginacion: {
-        limite: ctx.limite,
+        limite: ctx.limiteEfectivo,
         desplazamiento: ctx.desplazamiento,
         hayMas,
-        siguienteDesplazamiento: hayMas ? ctx.desplazamiento + ctx.limite : null,
+        siguienteDesplazamiento: hayMas ? ctx.desplazamiento + ctx.limiteEfectivo : null,
+        topeFilas: ctx.topeFilas,
       },
       duracionMs: Date.now() - ctx.iniciadoEn,
     };
@@ -324,6 +391,7 @@ export async function ejecutarConsulta(peticion: PeticionEjecucion): Promise<Res
   const config = loadConfig();
   const presupuestoConsultaMs = peticion.timeoutMs ?? config.queryTimeoutMs;
   const presupuestoConexionMs = peticion.connectTimeoutMs ?? config.connectionTestTimeoutMs;
+  const topeFilas = peticion.topeFilas ?? config.maxFilasPorConsulta;
 
   const { cliente, conectado, cancelarTemporizador } = iniciarConexion(
     peticion,
@@ -365,7 +433,9 @@ export async function ejecutarConsulta(peticion: PeticionEjecucion): Promise<Res
     return await Promise.race([
       correrTransaccion(cliente, {
         sqlSaneado: sanearSql(peticion.sql),
-        limite: peticion.limite,
+        limiteSolicitado: peticion.limite,
+        limiteEfectivo: limiteEfectivoDe(peticion.limite, topeFilas),
+        topeFilas,
         desplazamiento: peticion.desplazamiento,
         presupuestoConsultaMs,
         iniciadoEn,

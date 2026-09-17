@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, describe, test } from 'node:test';
 import {
   DEFAULT_CONNECTION_TEST_TIMEOUT_MS,
+  DEFAULT_MAX_FILAS_CONSULTA,
   DEFAULT_QUERY_TIMEOUT_MS,
   loadConfig,
 } from './config.js';
@@ -26,6 +27,7 @@ const VARIABLES = [
   VARIABLE_CLAVE_MAESTRA,
   'CONNECTION_TEST_TIMEOUT_MS',
   'QUERY_TIMEOUT_MS',
+  'MAX_FILAS_CONSULTA',
 ] as const;
 
 /** A minimal environment in which `loadConfig()` is expected to succeed. */
@@ -117,4 +119,40 @@ describe('loadConfig — the timeout budgets keep their CH-03/CH-04 behaviour', 
     process.env.QUERY_TIMEOUT_MS = 'pronto';
     assert.throws(() => loadConfig(), /QUERY_TIMEOUT_MS/);
   });
+});
+
+describe('loadConfig — the row cap is configuration, not a source literal (DEC-19)', () => {
+  test('maxFilasPorConsulta defaults to 200 when MAX_FILAS_CONSULTA is unset', () => {
+    // 200 is what `ejecucionSchema` used to hard-code as `maximum`. The default keeps
+    // today's behaviour; what changes is that the number can now be moved without an
+    // edit to source, which is the whole of A4's "configurables".
+    assert.equal(loadConfig().maxFilasPorConsulta, DEFAULT_MAX_FILAS_CONSULTA);
+    assert.equal(DEFAULT_MAX_FILAS_CONSULTA, 200);
+  });
+
+  test('MAX_FILAS_CONSULTA overrides the default without a source change', () => {
+    process.env.MAX_FILAS_CONSULTA = '5';
+    assert.equal(loadConfig().maxFilasPorConsulta, 5);
+  });
+
+  test('an empty MAX_FILAS_CONSULTA falls back to the default', () => {
+    process.env.MAX_FILAS_CONSULTA = '';
+    assert.equal(loadConfig().maxFilasPorConsulta, 200);
+  });
+
+  test('the cap is global: it is read once from the environment, not per connection', () => {
+    // DEC-19 is explicit that the cap is neither per `Conexion` nor per `Tenant`, so it
+    // cannot depend on anything but the environment. Two reads with nothing else changed
+    // have to agree.
+    process.env.MAX_FILAS_CONSULTA = '37';
+    assert.equal(loadConfig().maxFilasPorConsulta, 37);
+    assert.equal(loadConfig().maxFilasPorConsulta, 37);
+  });
+
+  for (const valor of ['0', '-1', '12.5', 'muchas']) {
+    test(`MAX_FILAS_CONSULTA=${valor} is a configuration error, not a silent fallback`, () => {
+      process.env.MAX_FILAS_CONSULTA = valor;
+      assert.throws(() => loadConfig(), /MAX_FILAS_CONSULTA/);
+    });
+  }
 });

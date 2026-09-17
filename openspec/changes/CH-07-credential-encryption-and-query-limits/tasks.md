@@ -65,13 +65,13 @@ instead of threat-matrix rows.
 
 ## 3. Configurable Row Cap & Cutoff Verdict (PR 3 → base PR 2)
 
-- [ ] 3.1 RED: extend `src/config.test.ts` — `maxFilasPorConsulta` parses `MAX_FILAS_CONSULTA` via the Phase-1 generalized helper, defaults to `200` when unset, rejects a non-positive-integer value (spec `query-execution`: "Row cap is configurable without a source change")
-- [ ] 3.2 Modify `src/config.ts`: add `maxFilasPorConsulta` to `AppConfig`, default `200` (satisfies 3.1); modify `.env.example` adding `MAX_FILAS_CONSULTA=200`
-- [ ] 3.3 RED: extend `src/consulta-ejecucion.test.ts` — `limiteEfectivo = min(limite, topeFilas)`; a result at or under the cap reports `corte: null` with unchanged `hayMas`/pagination behavior; a result exceeding the cap reports `corte: 'tope-de-filas'` and never sets `hayMas` to signal it (spec `query-execution`: both new scenarios)
-- [ ] 3.4 Modify `src/consulta-ejecucion.ts`: add `topeFilas` to `PeticionEjecucion`; compute `limiteEfectivo`; bind `LIMIT limiteEfectivo + 1` as a driver parameter (never spliced into SQL text — Rule 4); add `CorteEjecucion` type and `corte: CorteEjecucion | null` to `EjecucionExitosa`, outside `Paginacion`; add `topeFilas` to the returned `paginacion` (satisfies 3.3; design interfaces)
-- [ ] 3.5 Modify `src/consultas.ts`: remove `maximum: 200` from `ejecucionSchema` (`minimum: 1`, `default: 50` stay); pass `config.maxFilasPorConsulta` as `topeFilas` into the `ejecutarConsulta` call
-- [ ] 3.6 Update `src/consultas.test.ts`: assert the schema now accepts `limite` values above 200; assert a capped response includes `corte: 'tope-de-filas'` and `paginacion.topeFilas`, and an uncapped response includes `corte: null`
-- [ ] 3.7 Checkpoint: `npm test -- src/consulta-ejecucion.test.ts src/consultas.test.ts src/config.test.ts` green
+- [x] 3.1 RED: extend `src/config.test.ts` — `maxFilasPorConsulta` parses `MAX_FILAS_CONSULTA` via the Phase-1 generalized helper, defaults to `200` when unset, rejects a non-positive-integer value (spec `query-execution`: "Row cap is configurable without a source change")
+- [x] 3.2 Modify `src/config.ts`: add `maxFilasPorConsulta` to `AppConfig`, default `200` (satisfies 3.1); modify `.env.example` adding `MAX_FILAS_CONSULTA=200`
+- [x] 3.3 RED: extend `src/consulta-ejecucion.test.ts` — `limiteEfectivo = min(limite, topeFilas)`; a result at or under the cap reports `corte: null` with unchanged `hayMas`/pagination behavior; a result exceeding the cap reports `corte: 'tope-de-filas'` and never sets `hayMas` to signal it (spec `query-execution`: both new scenarios)
+- [x] 3.4 Modify `src/consulta-ejecucion.ts`: add `topeFilas` to `PeticionEjecucion`; compute `limiteEfectivo`; bind `LIMIT limiteEfectivo + 1` as a driver parameter (never spliced into SQL text — Rule 4); add `CorteEjecucion` type and `corte: CorteEjecucion | null` to `EjecucionExitosa`, outside `Paginacion`; add `topeFilas` to the returned `paginacion` (satisfies 3.3; design interfaces)
+- [x] 3.5 Modify `src/consultas.ts`: remove `maximum: 200` from `ejecucionSchema` (`minimum: 1`, `default: 50` stay); pass `config.maxFilasPorConsulta` as `topeFilas` into the `ejecutarConsulta` call
+- [x] 3.6 Update `src/consultas.test.ts`: assert the schema now accepts `limite` values above 200; assert a capped response includes `corte: 'tope-de-filas'` and `paginacion.topeFilas`, and an uncapped response includes `corte: null`
+- [x] 3.7 Checkpoint: `npm test -- src/consulta-ejecucion.test.ts src/consultas.test.ts src/config.test.ts` green
 
 ## 4. Console Surface & Smoke (PR 4 → base PR 3)
 
