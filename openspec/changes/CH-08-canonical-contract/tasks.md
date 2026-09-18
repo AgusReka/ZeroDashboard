@@ -71,9 +71,9 @@ because they map to independent rollback boundaries, not because a chain is expe
 
 ## 4. Full-Suite Checkpoint
 
-- [ ] 4.1 Verify by inspection: `prisma/schema.prisma` is byte-identical to its pre-CH-08 state (`git diff --stat prisma/schema.prisma` shows no change) — Success Criterion "no migration is added"
-- [ ] 4.2 Verify by inspection: `src/aislamiento-prisma.ts`'s `MODELOS_AISLADOS` list is unchanged — Success Criterion "`MODELOS_AISLADOS` is unchanged"
-- [ ] 4.3 Full-suite checkpoint: `npm test` green across `src/contrato.test.ts`, `src/contrato-rutas.test.ts`, `src/contexto-tenant.test.ts`, and the pre-existing suite together
+- [x] 4.1 Verify by inspection: `prisma/schema.prisma` is byte-identical to its pre-CH-08 state (`git diff --stat prisma/schema.prisma` shows no change) — Success Criterion "no migration is added"
+- [x] 4.2 Verify by inspection: `src/aislamiento-prisma.ts`'s `MODELOS_AISLADOS` list is unchanged — Success Criterion "`MODELOS_AISLADOS` is unchanged"
+- [x] 4.3 Full-suite checkpoint: `npm test` green across `src/contrato.test.ts`, `src/contrato-rutas.test.ts`, `src/contexto-tenant.test.ts`, and the pre-existing suite together
 
 ## Key Success-Criteria Traceability
 
