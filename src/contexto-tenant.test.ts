@@ -11,9 +11,10 @@ import {
   registrarContextoTenant,
   tenantActivoOpcional,
 } from './contexto-tenant.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
 import { registerHealthRoute } from './health.js';
 import { registerConsolaRoute } from './consola.js';
+import { registerContratoRoutes } from './contrato-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 
@@ -121,6 +122,98 @@ describe('contexto de tenant — the store fails closed outside a request', () =
   });
 });
 
+// ---- CH-08 3.1-3.4 the /contrato exemption, still with no database in sight -------
+
+/**
+ * DEC-24 exempts `GET /contrato` because the canonical catalog is not tenant data and
+ * its handler holds no Prisma client. This block asserts that premise the strong way:
+ * the client handed to the hooks is a stub whose only method **throws**. If any request
+ * below ever reaches `prisma.tenant.findUnique`, the test fails with that error instead
+ * of passing quietly against a database that happened to be running. It is also why the
+ * block sits outside the skip — proving an exemption needs no server to prove.
+ */
+const prismaQueNuncaDebeConsultarse = {
+  tenant: {
+    findUnique: async (): Promise<never> => {
+      throw new Error(
+        'una ruta exenta consultó prisma.tenant: el contrato no debe resolver ningún tenant',
+      );
+    },
+  },
+} as unknown as PrismaAislado;
+
+describe('contexto de tenant — GET /contrato es exento del encabezado (CH-08, DEC-24)', () => {
+  let app!: FastifyInstance;
+
+  before(async () => {
+    // Registration order mirrors `src/server.ts`: hooks first, route after, so the
+    // exemption is exercised through the same chain production runs.
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    registerContratoRoutes(app);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  test('3.1 GET /contrato answers headerless', async () => {
+    const respuesta = await app.inject({ method: 'GET', url: '/contrato' });
+
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const { contrato } = respuesta.json() as { contrato: { entidades: unknown[] } };
+    assert.equal(contrato.entidades.length, 5);
+  });
+
+  test('3.1 GET /contrato answers 200 with a header naming a nonexistent tenant', async () => {
+    const respuesta = await app.inject({
+      method: 'GET',
+      url: '/contrato',
+      headers: { 'x-tenant-id': '11111111-2222-3333-4444-555555555555' },
+    });
+
+    // A scoped route answers `404 tenant-no-encontrado` for this id. The catalog never
+    // looks it up, so the id never gets the chance to be wrong — and the throwing stub
+    // above is what proves the lookup did not happen rather than merely succeeded.
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+  });
+
+  test('3.2 both answers are byte-for-byte the same body', async () => {
+    const sinEncabezado = await app.inject({ method: 'GET', url: '/contrato' });
+    const conTenantInexistente = await app.inject({
+      method: 'GET',
+      url: '/contrato',
+      headers: { 'x-tenant-id': '11111111-2222-3333-4444-555555555555' },
+    });
+
+    // Compared as raw text, not through `json()`: key order and formatting are part of
+    // "identical response", and a deep-equal would forgive a difference a client sees.
+    assert.equal(sinEncabezado.body, conTenantInexistente.body);
+    // The third leg of the spec's claim — the same body as a request carrying a *valid*
+    // tenant — needs a real tenant row and therefore lives in the live-database block.
+  });
+
+  test('3.3 /contrato-falso with no header is refused, never let through as exempt', async () => {
+    // The same discipline `/consola-falsa` and `/tenants-falsos` already prove: the
+    // allowlist matches the route pattern exactly, so a name that merely starts with
+    // `/contrato` is scoped like everything else and refused before the `404`.
+    const respuesta = await app.inject({ method: 'GET', url: '/contrato-falso' });
+
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+  });
+
+  test('3.4 POST /contrato with no header is refused: non-GET inherits no exemption', async () => {
+    // Independent of the `404` that Phase 2 pins for an unrouted `POST`: this exercises
+    // the allowlist itself, which runs in `onRequest` before routing decides anything.
+    const respuesta = await app.inject({ method: 'POST', url: '/contrato' });
+
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+  });
+});
+
 // ---- 2.1 the two onRequest hooks, against a live database -------------------------
 
 describe(
@@ -154,6 +247,7 @@ describe(
       registerHealthRoute(app, aislado);
       registerTenantRoutes(app, aislado);
       registerConsolaRoute(app);
+      registerContratoRoutes(app);
       registerConsultaGuardadaRoutes(app, aislado);
       await app.ready();
     });
@@ -277,6 +371,23 @@ describe(
       assert.equal(baja.statusCode, 200, baja.body);
 
       await db.tenant.delete({ where: { id: tenant.id } });
+    });
+
+    test('3.2 GET /contrato answers the same body with a valid tenant header as with none', async () => {
+      // The leg of the spec that needs a real tenant: "the response body SHALL equal the
+      // response body of the same request sent with a valid `x-tenant-id` header". Here
+      // the header names a tenant that genuinely exists and is active, so a non-exempt
+      // route would resolve it and scope its answer — and the two bodies would diverge.
+      const conTenantValido = await app.inject({
+        method: 'GET',
+        url: '/contrato',
+        headers: { 'x-tenant-id': tenantActivoId },
+      });
+      const sinEncabezado = await app.inject({ method: 'GET', url: '/contrato' });
+
+      assert.equal(conTenantValido.statusCode, 200, conTenantValido.body);
+      assert.equal(sinEncabezado.statusCode, 200, sinEncabezado.body);
+      assert.equal(sinEncabezado.body, conTenantValido.body);
     });
 
     test('2.1 the exemption matches the route pattern, not a URL prefix', async () => {

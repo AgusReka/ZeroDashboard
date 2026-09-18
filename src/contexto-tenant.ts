@@ -80,16 +80,30 @@ export function conTenantActivo<T>(tenant: TenantActivo, fn: () => Promise<T>): 
  * route added later and every URL that matches no route at all — an unmatched URL with
  * no header is refused before the `404`, which is fail-closed and leaks nothing.
  *
- * Only `GET` is exempt for `/health` and `/consola`: the table in `design.md` names the
- * method, and widening it would be a decision, not an implementation detail.
+ * Only `GET` is exempt for `/health`, `/consola` and `/contrato`: the table in
+ * `design.md` names the method, and widening it would be a decision, not an
+ * implementation detail.
+ *
+ * `/contrato` joins the list under DEC-24. The canonical contract is not tenant data at
+ * all: it is a static catalog, identical for every tenant, and tenant-agnostic by
+ * construction rather than by filtering. Its handler holds no Prisma client — the
+ * registrar in `src/contrato-rutas.ts` takes the app and nothing else — so the route has
+ * no scoped model it could leak even if a later edit tried to reach for one. That
+ * structural absence, not a promise about the handler's body, is what makes exempting it
+ * safe.
  */
 function esExenta(metodo: string, patron: string | undefined): boolean {
   if (patron === undefined) {
     return false;
   }
   // Liveness has no tenant and must answer before any tenant exists; the console page
-  // *is* where the operator picks one, so needing a tenant to load it would deadlock.
-  if (metodo === 'GET' && (patron === '/health' || patron === '/consola')) {
+  // *is* where the operator picks one, so needing a tenant to load it would deadlock;
+  // and the contract describes what every tenant must expose, so demanding one in order
+  // to read it would be asking the question backwards.
+  if (
+    metodo === 'GET' &&
+    (patron === '/health' || patron === '/consola' || patron === '/contrato')
+  ) {
     return true;
   }
   // Bootstrap: requiring a tenant in order to create the first tenant is unsatisfiable.
