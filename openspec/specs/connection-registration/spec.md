@@ -8,8 +8,8 @@ Registering a tenant's target database connection and proving, with a legible re
 
 ### Requirement: Connection Registration Persists Against the Active Tenant
 
-The system SHALL allow registering a `Conexion` record referencing the active tenant resolved for the request, capturing host, port, database name, user, credential, engine (`motor`), and a name. The system SHALL reject a registration request missing any of these fields, and SHALL reject it when no active tenant can be resolved, before the request reaches any tenant-scoped query.
-(Previously: the record was always created against the single seeded `Tenant`, resolved by `tenant.findFirst`, with no active-tenant concept.)
+The system SHALL allow registering a `Conexion` record referencing the active tenant resolved for the request, capturing host, port, database name, user, credential, engine (`motor`), and a name. The system SHALL reject a registration request missing any of these fields, and SHALL reject it when no active tenant can be resolved, before the request reaches any tenant-scoped query. The submitted credential SHALL be enciphered (per `credential-encryption`) before the row is persisted; the column stores the resulting envelope, never the submitted plaintext.
+(Previously: the credential was persisted as submitted plaintext, with no encipher step; tenant scoping was already in place from CH-06.)
 
 #### Scenario: Registering a valid connection
 
@@ -17,6 +17,7 @@ The system SHALL allow registering a `Conexion` record referencing the active te
 - **WHEN** the registration endpoint is called
 - **THEN** a `Conexion` row SHALL be created referencing that active tenant
 - **AND** the response SHALL confirm the created record without echoing the credential value
+- **AND** the persisted `credencial` value SHALL be an enciphered envelope, not the submitted plaintext
 
 #### Scenario: Rejecting an incomplete registration
 
@@ -34,13 +35,15 @@ The system SHALL allow registering a `Conexion` record referencing the active te
 
 ### Requirement: Connectivity Test Uses a Fixed PostgreSQL Probe
 
-The system SHALL test a registered connection by opening a short-lived PostgreSQL client connection (independent of the application's own database client) to the stored host, port, database, user, and credential, and executing one literal, parameterless probe statement.
+The system SHALL test a registered connection by opening a short-lived PostgreSQL client connection (independent of the application's own database client) to the stored host, port, database, user, and the credential deciphered in memory from the stored envelope, and executing one literal, parameterless probe statement. The deciphered credential SHALL exist only for the duration of this call and SHALL NOT be persisted or returned.
+(Previously: the stored `credencial` column value was passed to the probe directly as plaintext, with no decipher step.)
 
 #### Scenario: Testing a reachable PostgreSQL target
 
 - **GIVEN** a registered connection pointing to a reachable PostgreSQL server with correct credentials and an existing database
 - **WHEN** the test endpoint is called for that connection
-- **THEN** the response SHALL report success
+- **THEN** the stored envelope SHALL be deciphered in memory
+- **AND** the response SHALL report success
 
 #### Scenario: Testing a connection with a non-PostgreSQL engine value
 
@@ -96,7 +99,8 @@ The system SHALL bound each connectivity test attempt to a fixed maximum duratio
 
 ### Requirement: Credential Value Never Exposed
 
-The system MUST NOT include the submitted credential value in any test response body, error message, or log line, regardless of test outcome.
+The system MUST NOT include the submitted credential value, the stored enciphered envelope's deciphered plaintext, or the master key in any test response body, error message, or log line, regardless of test outcome.
+(Previously: covered only the submitted plaintext credential; now also covers the deciphered value and the master key introduced by `credential-encryption`.)
 
 #### Scenario: A failed test does not leak the credential
 
@@ -110,6 +114,12 @@ The system MUST NOT include the submitted credential value in any test response 
 - **GIVEN** a registered connection tested with the correct credential value
 - **WHEN** the test succeeds
 - **THEN** the response body SHALL NOT contain the credential value
+
+#### Scenario: A database dump never yields a readable credential
+
+- **GIVEN** a dump of the application's own database containing a registered `Conexion` row
+- **WHEN** the dump is inspected without the master key
+- **THEN** no credential in it SHALL be decipherable
 ### Requirement: Connectivity Test Is Scoped to the Active Tenant
 
 The connectivity test endpoint SHALL resolve the target `Conexion` only among rows belonging to the request's active tenant. WHEN the named `Conexion` id belongs to a different tenant, or does not exist, the system SHALL respond as though it does not exist and SHALL NOT attempt the probe.
