@@ -7,6 +7,7 @@ import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerConsolaRoute } from './consola.js';
+import { registerContratoRoutes } from './contrato-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
@@ -29,6 +30,10 @@ registerConexionRoutes(app, prisma);
 registerConsultaRoutes(app, prisma);
 registerConsultaGuardadaRoutes(app, prisma);
 registerConsolaRoute(app);
+// No client argument, like the console above it and unlike the four registrars before:
+// the catalog is static and identical for every tenant, so this route has no database to
+// reach (DEC-21) — which is exactly what makes its header exemption safe (DEC-24).
+registerContratoRoutes(app);
 
 app
   .listen({ port: config.port, host: '0.0.0.0' })

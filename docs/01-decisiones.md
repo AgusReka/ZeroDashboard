@@ -378,6 +378,78 @@ Límites conocidos, declarados y no prevenidos: `$queryRaw`/`$executeRaw` no pas
 
 ---
 
+### DEC-21 — Contrato canónico: definición estática en código, expuesta por una API de lectura
+
+**Contexto.** CH-08 (M1) exige que P1 pueda "ver qué entidades y campos exige el contrato", con obligatorios/opcionales y qué automatización depende de cada uno. Había que decidir si ese contrato vive como una definición estática en código o como una entidad guardada/consultable en la base propia.
+
+**Opciones.** (a) Solo código: módulo TS con la estructura fija, sin exponerla todavía por API. (b) Entidad en base de datos: tablas nuevas (`ContratoEntidad`/`ContratoCampo`) migradas y consultadas por Prisma como cualquier otro modelo. (c) Híbrido: definición estática en código como fuente de verdad, expuesta por un endpoint/consola de solo lectura para satisfacer el "ver" de M1.
+
+**Decisión.** (c). Híbrido: código como fuente de verdad, expuesto por una API de lectura.
+
+**Por qué.** El contrato canónico es igual para todos los tenants — no es dato de un tenant particular — así que persistirlo como tabla mutable en la base propia lo trataría como algo que no es. Una definición estática en código lo deja como lo que es: un artefacto de diseño versionado (la contribución central de la tesis, `docs/00-contexto.md` §1), revisable en un diff como cualquier otra decisión. Exponerlo por una API de lectura cierra el criterio de aceptación de M1 sin necesitar una migración.
+
+**Se resigna.** Cuando CH-12 (`Plantilla`) exista, va a haber que reconciliar a mano las referencias a automatizaciones que hoy son solo texto libre (ver DEC-22); no hay mecanismo automático de sincronización entre el código estático y las plantillas reales.
+
+**Decidido por:** el usuario, durante la exploración de CH-08 (2026-09-18), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-22 — Dependencia campo→automatización: etiqueta de texto libre, sin FK a `Plantilla`
+
+**Contexto.** M1 exige mostrar qué automatización depende de cada campo del contrato, pero `Plantilla` (la entidad real de automatización, CH-12) llega recién cuatro changes después de CH-08 (CH-09, CH-10 y CH-11 van antes). Había que decidir cómo representar esa dependencia sin una entidad real a la cual referenciar.
+
+**Opciones.** (a) Etiqueta de texto libre por campo (ej. un string constante `"stock-fisico"`), sin FK, a reconciliar cuando `Plantilla` exista. (b) Referencia futura documentada explícitamente como placeholder de CH-12. (c) Booleano abstracto ("requerido por al menos una automatización"), sin nombrar cuál.
+
+**Decisión.** (a). Etiqueta de texto libre por campo.
+
+**Por qué.** Es la opción más simple que no presupone la forma final de `Plantilla` y no le pide a CH-08 resolver un problema de CH-12. A diferencia del booleano abstracto (c), conserva el detalle que M1 pide explícitamente ("qué automatización depende de cada uno"), no solo que alguna depende.
+
+**Se resigna.** Ninguna garantía estructural ata hoy esas etiquetas a nombres reales de automatización; un typo o un nombre que después no coincide con el `Plantilla` real de CH-12 no se detecta hasta que ese change llegue y reconcilie a mano.
+
+**Decidido por:** el usuario, durante la exploración de CH-08 (2026-09-18), no inferido por el agente.
+
+**Estado:** firme, con reconciliación pendiente en CH-12.
+
+---
+
+### DEC-23 — Exclusión de campos personales (M5): estructural, nunca modelados en CH-08
+
+**Contexto.** M5 exige que el contrato excluya domicilio, teléfono y correo, "salvo que una plantilla lo requiera". Como `Plantilla` (CH-12) no existe todavía, CH-08 no puede cerrar el mecanismo completo de excepción. Había que decidir qué exclusión de base sí puede cerrar CH-08: si los campos personales quedan afuera del catálogo por completo, o si se modelan pero se marcan excluidos por defecto.
+
+**Opciones.** (a) Estructural: los campos personales no se incluyen en el catálogo canónico de CH-08; no hay nada que filtrar porque no existen en la definición. (b) Convencional: los campos personales sí están en el catálogo pero marcados "excluido por defecto", dejando el mecanismo de override más preparado para cuando CH-12 lo necesite.
+
+**Decisión.** (a). Estructural: nunca modelados.
+
+**Por qué.** Coincide con el patrón ya establecido del proyecto de preferir garantías estructurales sobre disciplina manual o convención (mismo criterio que DEC-08, DEC-09, DEC-13, DEC-16, DEC-17). Introducir campos personales en el contrato antes de que exista ninguna plantilla que los necesite adelanta una decisión de CH-12 sin necesidad.
+
+**Se resigna.** El override que M5 menciona ("salvo que una plantilla lo requiera") queda completamente sin mecanismo hasta CH-12; CH-08 solo cierra la exclusión de base, no la excepción completa de la historia.
+
+**Decidido por:** el usuario, durante la exploración de CH-08 (2026-09-18), no inferido por el agente.
+
+**Estado:** firme, con el mecanismo de override pendiente en CH-12.
+
+---
+
+### DEC-24 — `GET /contrato` exenta del header `x-tenant-id`
+
+**Contexto.** `src/contexto-tenant.ts` mantiene una lista blanca cerrada de rutas exentas (`esExenta`) que hoy incluye `GET /health`, `GET /consola` y todo `/tenants`; cualquier ruta no listada exige el header `x-tenant-id` (DEC-15, fail-closed). El nuevo `GET /contrato` (CH-08) proyecta el catálogo canónico estático (DEC-21), que es idéntico para todos los tenants y no lee ningún modelo con aislamiento. Había que decidir si se agrega a la lista de exenciones o si exige el header igual que el resto de las rutas.
+
+**Opciones.** (a) Eximir `GET /contrato`, sumándolo a la lista blanca junto a `GET /health` y `GET /consola`. (b) Exigir `x-tenant-id` igual que cualquier otra ruta no exenta, aunque el handler no lo use.
+
+**Decisión.** (a). Eximir `GET /contrato`.
+
+**Por qué.** El contrato canónico es un artefacto de diseño igual para todos los tenants, no un dato de tenant — es la misma razón por la que DEC-21 descartó guardarlo como tabla. Exigir el header trataría un artefacto tenant-agnóstico como si fuera dato de un tenant particular, la inconsistencia exacta que DEC-21 evitó. El handler no lee la base ni ningún modelo alcanzado por `MODELOS_AISLADOS`, así que la exención no filtra nada; es de solo lectura (`GET`), mismo criterio que las exenciones ya existentes.
+
+**Se resigna.** La lista blanca de exenciones crece en una entrada más; cualquier ruta futura que necesite el mismo criterio (tenant-agnóstica, de solo lectura) va a requerir la misma evaluación caso por caso, no hay una regla general que las cubra a todas de antemano.
+
+**Decidido por:** el usuario, durante la propuesta de CH-08 (2026-09-18), no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
