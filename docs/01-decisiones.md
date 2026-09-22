@@ -450,6 +450,98 @@ Límites conocidos, declarados y no prevenidos: `$queryRaw`/`$executeRaw` no pas
 
 ---
 
+### DEC-25 — Motores de base admitidos: solo PostgreSQL (D-4)
+
+**Contexto.** D-4 definía si la aplicación admite solo PostgreSQL para la réplica del cliente o también MySQL. De eso depende si cada vista canónica necesita una o dos variantes de SQL, ya que las consultas ya escritas usan construcciones específicas de PostgreSQL sin equivalente directo en MySQL.
+
+**Opciones.** (a) Solo PostgreSQL. (b) PostgreSQL y MySQL.
+
+**Decisión.** (a). Solo PostgreSQL.
+
+**Por qué.** D-5 (segundo esquema para la validación de genericidad) se cerró eligiendo Medusa, que corre exclusivamente sobre PostgreSQL. El primer tenant del proyecto (Food Store) también corre sobre PostgreSQL. Con los dos tenants de R1 en el mismo motor, dar soporte a MySQL no tiene ningún caso de prueba real en el alcance actual, y además evita conflar dos variables distintas en el experimento de CH-16 (genericidad de mapeo vs. portabilidad de dialecto), el riesgo que la propia D-5 señalaba.
+
+**Se resigna.** Si en el futuro aparece un tenant real sobre MySQL, esta decisión se reabre y hay que construir la segunda variante de vistas canónicas que D-4 dejaba prevista.
+
+**Decidido por:** el usuario, 2026-09-19, no inferido por el agente.
+
+**Estado:** firme. Cierra D-4.
+
+---
+
+### DEC-26 — Segundo esquema para validar genericidad: Medusa (D-5)
+
+**Contexto.** D-5 exigía elegir un segundo esquema real (distinto de Food Store) para el experimento de CH-16, que es el que responde la pregunta central de genericidad del sistema. Candidatos investigados con fuentes oficiales: Saleor y Medusa (PostgreSQL), WooCommerce y PrestaShop (MySQL/MariaDB).
+
+**Opciones.** (a) Saleor. (b) Medusa. (c) WooCommerce. (d) PrestaShop.
+
+**Decisión.** (b). Medusa.
+
+**Por qué.** Es el único candidato con modelo de insumos/bill-of-materials nativo (Inventory Kit: un `InventoryItem` se vincula a una variante con `required_quantity`), relevante porque el contexto del proyecto modela insumos y recetas y CH-16 necesita ejercitar ese caso, no solo stock por producto/variante. Corre sobre PostgreSQL, igual que Food Store, lo cual permite cerrar D-4 como "solo PostgreSQL" sin dejar nada sin probar en el alcance actual.
+
+**Se resigna.** Medusa no tiene imagen Docker oficial con datos de demo (el repo `medusajs/docker-medusa` es comunitario y pide seed manual), a diferencia de PrestaShop que sí la tiene. Levantar el entorno de prueba para CH-16 va a requerir seed manual documentado, no un `docker compose up` con datos ya cargados. También queda pendiente verificar si Medusa modela recetas con pasos (no solo lista de materiales) — no confirmado en la investigación inicial, revisar al llegar a CH-16.
+
+**Decidido por:** el usuario, 2026-09-19, no inferido por el agente.
+
+**Estado:** firme. Cierra D-5.
+
+---
+
+### DEC-27 — Vista `v_producto` mapea al nivel de variante de Medusa, no al de producto padre
+
+**Contexto.** Al definir las vistas canónicas de CH-16 contra el esquema real de Medusa, apareció una asimetría que ninguna decisión previa contemplaba. El contrato canónico modela `producto` como una entidad plana: una fila por `id`, con un único `stockDisponible` y un único `sku`. Medusa, en cambio, separa esa información en tres tablas encadenadas — `product` (metadata de catálogo: título, estado, sin stock ni SKU propios), `product_variant` (el SKU vendible real, con su propio `sku`) e `inventory_item`/`inventory_level` (el stock físico, enlazado a la variante vía `product_variant_inventory_item`) — y un solo `product` puede tener N variantes, cada una con su propio SKU y su propio stock independientes (confirmado en el seed de demostración: "Medusa T-Shirt" tiene 8 variantes por talle/color, cada una con su propio `product_variant.sku` y su propia fila de inventario). Además, `order_line_item.variant_id` es la referencia real que Medusa usa para vincular una línea de pedido a lo vendido, no `product_id` a secas. Había que decidir a qué nivel de la jerarquía de Medusa corresponde la fila canónica "producto".
+
+**Opciones.** (a) Mapear `v_producto` a `product`, agregando (sumando) el stock de todas sus variantes en una sola fila y resolviendo de algún modo el `sku`, que dejaría de ser único. (b) Mapear `v_producto` a `product_variant`: cada variante de Medusa es una fila canónica "producto" independiente, con su propio `sku` y su propio stock agregado solo sobre sus propios ítems de inventario.
+
+**Decisión.** (b). Cada `product_variant` de Medusa es una fila de `v_producto`.
+
+**Por qué.** Es al nivel de variante donde Medusa liga precio, SKU, stock y la referencia real de una línea de pedido (`order_line_item.variant_id`) — exactamente lo que las tres automatizaciones (stock-físico, stock-producible, reporte-diario) necesitan que `producto.id` identifique sin ambigüedad. La opción (a) obligaría a agregar SKUs y stocks heterogéneos de variantes distintas (p. ej. los talles S/M/L/XL de una misma remera) en una sola fila, perdiendo exactamente la precisión que el contrato exige como obligatoria en `stockDisponible` y `sku`.
+
+**Se resigna.** `producto.nombre` deja de ser el nombre comercial del producto padre (`Medusa T-Shirt`) y pasa a ser una concatenación con el título de la variante (`Medusa T-Shirt - S / Black`), porque `product_variant.title` solo ("S / Black") no identifica el producto sin ambigüedad. Un tercer esquema sin modelo de variantes no va a necesitar esta resolución, pero cualquier otro que sí las tenga la va a necesitar de nuevo, y esta decisión queda como precedente de cómo tratarla.
+
+**Decidido por:** propuesta por el agente durante la ejecución del experimento CH-16 (2026-09-19) — a diferencia de DEC-01 a DEC-26, no surge de una elección de producto hecha por el usuario durante exploración, sino de un hallazgo estructural dentro de un experimento ya autorizado por el usuario. Confirmada por el usuario, con las dos opciones presentadas explícitamente, el 2026-09-21.
+
+**Estado:** firme. El usuario revisó las opciones (a) y (b) y confirmó (b).
+
+---
+
+### DEC-28 — Las vistas canónicas exponen el stock declarado crudo, no el producible calculado
+
+**Contexto.** Al escribir `v_producto` sobre el esquema real de Food Store para CH-16b, apareció una decisión de diseño que ninguna decisión previa contemplaba: qué valor expone `v_producto."stockDisponible"` para un producto con receta. Food Store persiste `product.stock_quantity` (un valor declarado que el propio backend ignora para productos con receta) y no persiste ningún stock producible ya calculado. Medusa, en el mismo campo, expone el stock físico de `inventory_level` (también un hecho crudo, no un cálculo), sin que CH-16 hubiera nombrado esto como una decisión.
+
+**Opciones.** (a) La vista expone el hecho crudo que la plataforma persiste (`stock_quantity` en Food Store, `inventory_level` en Medusa), sin calcular nada. (b) La vista precalcula el stock producible para productos con receta (usando `v_receta_componente`) y expone ese valor en lugar del declarado.
+
+**Decisión.** (a). Las vistas exponen hechos, no cálculos.
+
+**Por qué.** Si la vista precalculara el producible, la divergencia entre stock declarado y stock producible — que la sección 6.2.2 usa como hallazgo central del trabajo — dejaría de ser observable desde la capa canónica: quien consulte `v_producto` ya no podría ver que la plataforma ignora el producible para productos con receta, porque la vista se lo habría resuelto por debajo. El cálculo es responsabilidad de la automatización (`stock-producible`, que ya lo hace cruzando `v_producto`, `v_insumo` y `v_receta_componente`), no de la capa de correspondencia.
+
+**Consecuencia.** Para un producto con receta, `v_producto."stockDisponible"` contiene un valor que la propia plataforma no usa para decidir si puede producirse más. La capa canónica lo expone tal cual porque es lo que la plataforma efectivamente persiste; interpretarlo correctamente queda a cargo de quien consulta la vista (o de la automatización que sí cruza con la receta).
+
+**Decidido por:** propuesta por el agente durante CH-16b (2026-09-21), a partir de la bitácora `docs/bitacora/bitacora_CH-16b_tres_esquemas.md`. Confirmada por el usuario el 2026-09-21.
+
+**Estado:** firme.
+
+---
+
+### DEC-29 — Criterio de obligatoriedad de campos del contrato; `insumo."unidadMedida"` pasa a opcional
+
+**Contexto.** La verificación de PASO 6 de CH-16b encontró que `insumo."unidadMedida"` está declarado `obligatorio` en `src/contrato.ts`, pero Food Store no tiene ninguna columna de la que derivarlo y la consulta canónica (`04_consulta_canonica.sql`, la implementación real de `stock-producible`) nunca lo lee: divide `insumo.stockDisponible` por `receta_componente.cantidadPorUnidad` directamente, sin verificar compatibilidad de unidades. El contrato declaraba una exigencia que ninguna automatización actual hace cumplir.
+
+**Opciones.** (a) Mantener `unidadMedida` obligatorio y tratar a Food Store como un caso que no satisface el contrato. (b) Bajar `unidadMedida` a opcional, y fijar un criterio general para decidir la obligatoriedad de cualquier campo del catálogo: un campo es obligatorio si y solo si al menos una automatización del catálogo no puede ejecutarse sin él.
+
+**Decisión.** (b). `insumo."unidadMedida"` pasa a `opcional` en `src/contrato.ts`. Criterio general adoptado para toda entrada futura al catálogo: **un campo es obligatorio si y solo si al menos una automatización no puede ejecutarse sin él.**
+
+**Por qué.** Ninguna automatización actual (la única implementada es `stock-producible`, vía `04_consulta_canonica.sql`) lee ni valida `unidadMedida`. Declararlo obligatorio imponía una exigencia sobre el esquema de origen que ninguna automatización necesita, y ya produjo un falso conflicto contra Food Store (fricción 1 de la bitácora de CH-16b).
+
+**Revisión del resto de campos obligatorios contra este criterio (2026-09-21).** Se verificó, campo por campo, contra la única automatización con implementación real (`stock-producible` / `04_consulta_canonica.sql`): `producto.id`, `producto.nombre`, `insumo.id`, `insumo.nombre`, `insumo.stockDisponible`, `receta_componente.productoId`, `receta_componente.insumoId` y `receta_componente.cantidadPorUnidad` están todos efectivamente leídos por esa consulta — ninguno falla el criterio. `producto.stockDisponible` no lo lee `stock-producible`, pero sigue pasando el criterio porque el propio comentario del contrato lo ata a `stock-fisico` como el valor que esa automatización reporta directamente.
+
+Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) **no se pudieron verificar contra código real**: `reporte-diario` no tiene implementación en este repositorio (igual que `stock-fisico`), así que no hay ninguna consulta ni función contra la cual confirmar o refutar que cada campo es indispensable para ejecutar la automatización. Aplicar el criterio ahí sería adivinar. Quedan sin cambiar, con esta limitación registrada, para revisar cuando esas automatizaciones existan.
+
+**Decidido por:** el usuario, 2026-09-21 — instrucción directa, no inferida por el agente. La revisión del resto del catálogo la hizo el agente, reportando sin decidir.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
@@ -488,27 +580,19 @@ Resuelta como DEC-05: Node.js + TypeScript, base propia en PostgreSQL.
 
 ---
 
-### D-4 — Motores de base admitidos
+### D-4 — Motores de base admitidos (cerrada)
 
-Opciones: solo PostgreSQL / PostgreSQL y MySQL.
+Resuelta como DEC-25: solo PostgreSQL.
 
-**Qué depende.** Si cada vista canónica necesita una o dos variantes. Las consultas ya escritas usan construcciones específicas de PostgreSQL que no tienen equivalente directo en MySQL.
-
-**Estado:** abierta.
+**Estado:** cerrada. Ver DEC-25 en "Decisiones tomadas".
 
 ---
 
-### D-5 — Segundo esquema para la validación de genericidad
+### D-5 — Segundo esquema para la validación de genericidad (cerrada)
 
-Candidatos a verificar: Saleor y Medusa (PostgreSQL), WooCommerce y PrestaShop (MySQL).
+Resuelta como DEC-26: Medusa.
 
-**Qué depende.** El release R1, que es el que sostiene el capítulo de resultados.
-
-**Advertencia:** si el segundo esquema corre sobre otro motor, se prueban dos cosas a la vez (mapeo de esquema y portabilidad de dialecto) y un fallo no distingue cuál falló.
-
-**Pendiente de verificar:** motor de base de cada candidato, y si modelan insumos y recetas. Su ausencia deja inaplicable la automatización de stock producible, lo cual es un resultado esperado y reportable.
-
-**Estado:** abierta, depende de D-4.
+**Estado:** cerrada. Ver DEC-26 en "Decisiones tomadas".
 
 ---
 

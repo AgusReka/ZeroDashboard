@@ -216,10 +216,11 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
-        // Without a unit, a recipe quantity and a stock quantity cannot be compared:
-        // three kilos against three units is not an answer.
+        // Optional (DEC-29): no current automation reads this field. The
+        // stock-producible query divides insumo.stockDisponible by
+        // cantidadPorUnidad directly, without checking unit compatibility.
         nombre: 'unidadMedida',
-        obligatoriedad: 'obligatorio',
+        obligatoriedad: 'opcional',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
