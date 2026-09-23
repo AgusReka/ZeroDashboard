@@ -21,7 +21,7 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  * `src/consulta-ejecucion.ts` is outside this boundary altogether — it talks to the
  * *tenant's* replica through `pg`, which is a different database.
  */
-const MODELOS_AISLADOS = new Set(['Conexion', 'ConsultaGuardada']);
+const MODELOS_AISLADOS = new Set(['Conexion', 'ConsultaGuardada', 'VistaCanonica']);
 
 /**
  * Operations whose `where` is a filter. The injected predicate is **conjoined**, never

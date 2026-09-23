@@ -22,22 +22,24 @@ model Tenant {
   creadoEn           DateTime           @default(now())
   conexiones         Conexion[]
   consultasGuardadas ConsultaGuardada[]
+  vistasCanonicas    VistaCanonica[]
 }
 
 model Conexion {
-  id            String   @id @default(uuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  nombre        String
-  motor         String
-  host          String
-  puerto        Int
-  baseDeDatos   String
-  usuarioDb     String
-  credencial    String
-  soloLectura   Boolean  @default(true)
-  creadaEn      DateTime @default(now())
-  actualizadaEn DateTime @updatedAt
+  id              String          @id @default(uuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  nombre          String
+  motor           String
+  host            String
+  puerto          Int
+  baseDeDatos     String
+  usuarioDb       String
+  credencial      String
+  soloLectura     Boolean         @default(true)
+  creadaEn        DateTime        @default(now())
+  actualizadaEn   DateTime        @updatedAt
+  vistasCanonicas VistaCanonica[]
 
   @@index([tenantId])
 }
@@ -52,5 +54,32 @@ model ConsultaGuardada {
   creadaEn      DateTime @default(now())
   actualizadaEn DateTime @updatedAt
 
+  @@index([tenantId])
+}
+
+// CH-09 (DEC-30 to DEC-34): one operator-authored canonical view definition per
+// `Conexion` x canonical entity (DEC-32, DEC-33). The `sql` text is stored verbatim;
+// prepending it as a `WITH` is CH-12's job (DEC-31), so nothing here parses, composes
+// or executes it.
+//
+// `entidad` is plain TEXT validated in the application against `CONTRATO_CANONICO`:
+// the contract lives in code (DEC-21), so a DB enum or CHECK would duplicate it and
+// force a migration per contract edit. The unique pair is what makes re-registration
+// an in-place replace (DEC-34). `tenantId` is a direct column so the isolation
+// extension can scope this model like `Conexion` and `ConsultaGuardada` (DEC-13,
+// DEC-33); the cross-tenant `conexionId` case is closed by a scoped lookup in the
+// route, not by a composite FK (DEC-35).
+model VistaCanonica {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  conexionId    String
+  conexion      Conexion @relation(fields: [conexionId], references: [id])
+  entidad       String
+  sql           String
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
+
+  @@unique([conexionId, entidad])
   @@index([tenantId])
 }
