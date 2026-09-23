@@ -542,6 +542,26 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-30 — Mapeo por tenant (CH-09): vistas canónicas registradas, no generadas
+
+**Contexto.** El mapa de changes define CH-09 (M2) como "vistas canónicas registradas o generadas por tenant", sin elegir entre las dos. CH-16b ya escribió a mano las vistas canónicas de tres esquemas (`03_vistas_foodstore.sql`, `06_vistas_medusa.sql`, `08_vistas_woo.sql`) y encontró casos que no son una correspondencia columna a columna: atributos como filas en WooCommerce (entidad-atributo-valor), el stock de Medusa detrás de joins con `inventory_level`, y el mapeo a nivel de variante (DEC-27).
+
+**Opciones.** (a) Registradas: la operadora escribe el SQL de las vistas canónicas de cada tenant y la herramienta lo registra. (b) Generadas: la operadora declara qué columna de origen corresponde a cada campo del contrato y la herramienta arma las vistas.
+
+**Decisión.** (a). Vistas registradas, escritas por la operadora.
+
+**Por qué.** Es lo que CH-16b ya probó que funciona sobre esquemas reales. Un generador por correspondencia de columnas no cubre los casos que CH-16b encontró, y ampliarlo para cubrirlos sería agregarle al producto una capacidad de traducción de esquemas que el anti-alcance no contempla. Además, escribir las vistas es justamente el costo de adaptación que la tesis quiere medir (CH-15, CH-16); generarlas lo ocultaría.
+
+**Se resigna.** El alta de un tenant exige saber SQL y entender el modelo de datos de origen (la barrera de entrada que CH-16b registró para la clase entidad-atributo-valor). No hay asistencia para escribir las vistas.
+
+**Queda abierto para la exploración de CH-09, sin decidir acá:** dónde viven las vistas y cómo se aplican. Crearlas como objetos en la réplica del cliente requiere permisos de DDL, que chocan con la regla 3 (usuario de base sin escritura); guardarlas en la base propia y componerlas en cada consulta no requiere esos permisos. Es una decisión de arquitectura y se registra aparte antes de especificar.
+
+**Decidido por:** el usuario, 2026-09-23 — elección directa entre (a) y (b), no inferida por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
