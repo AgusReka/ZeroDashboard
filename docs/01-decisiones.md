@@ -636,6 +636,24 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-35 — `VistaCanonica` no suma una clave foránea compuesta por tenant; el aislamiento sigue siendo DEC-13
+
+**Contexto.** `VistaCanonica` (CH-09) tiene `tenantId` y `conexionId`. La extensión de aislamiento completa el `tenantId` de la fila nueva, pero la clave foránea a `Conexion` aceptaría el id de una conexión de otro tenant si algo llegara a escribirlo. Había que decidir si la base lo impide por estructura.
+
+**Opciones.** (a) Buscar la conexión con el delegado aislado antes de escribir (la de otro tenant da 404), cubierto por la prueba T2. (b) Clave foránea compuesta `(conexionId, tenantId)` → `Conexion(id, tenantId)`, que exige un índice único nuevo en `Conexion`.
+
+**Decisión.** (a).
+
+**Por qué.** Mantiene un único mecanismo de aislamiento (DEC-13) y no toca la tabla `Conexion` existente.
+
+**Se resigna.** La garantía de no tener filas cruzadas es de la aplicación y de la prueba T2, no de la base. Una escritura que evitara el delegado aislado podría crear una fila cruzada.
+
+**Decidido por:** el usuario, 2026-09-23, durante el diseño de CH-09 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
