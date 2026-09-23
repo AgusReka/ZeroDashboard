@@ -618,6 +618,24 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-34 — Registrar de nuevo el mapeo de una entidad reemplaza la definición anterior
+
+**Contexto.** DEC-32 admite una sola definición por conexión y entidad canónica. DEC-10 dejó fuera la actualización de consultas guardadas por solaparse con B4 (versionado, CH-25), pero ahí siempre se puede guardar una consulta nueva. En el mapeo no: si registrar de nuevo se rechaza, una definición equivocada queda trabada hasta CH-25.
+
+**Opciones.** (a) Reemplazar: registrar de nuevo pisa la definición anterior, sin historial. (b) Rechazar con 409, coherente con DEC-10. (c) Rechazar con 409 y agregar una ruta de borrado.
+
+**Decisión.** (a).
+
+**Por qué.** Corregir un mapeo es parte normal del alta (en CH-16b las vistas se iteraron varias veces), y es la única forma de corregirlo sin agregar una ruta que ninguna historia pide.
+
+**Se resigna.** Se aparta de DEC-10 para esta entidad: una definición reemplazada no deja rastro. El historial queda para B4/CH-25. No hay borrado: una entidad mapeada por error no se puede desmapear en CH-09.
+
+**Decidido por:** el usuario, 2026-09-23, durante la propuesta de CH-09 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
