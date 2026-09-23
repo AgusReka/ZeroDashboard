@@ -297,6 +297,156 @@ Esto no es una casualidad del entorno de prueba: es consistente con la regla no 
 
 ---
 
+## Regeneración de la tabla de divergencia contra la base real (2026-09-22)
+
+Motivo: la tabla de divergencia de la sección 6.2.2 de la tesis no coincide con lo que devolvió la corrida real. Todas las consultas de esta sección son **de solo lectura**; no se modificó ninguna fila de `food_store`.
+
+### TAREA 1 — Tabla de divergencia regenerada desde las vistas canónicas
+
+Consulta ejecutada (tal cual, sin modificar):
+
+```sql
+SELECT
+    pr.id,
+    pr.nombre,
+    pr."stockDisponible" AS stock_declarado,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre, pr."stockDisponible"
+ORDER BY pr.nombre;
+```
+
+Salida cruda completa:
+
+```
+ id |        nombre         | stock_declarado | stock_producible | insumo_limitante
+----+-----------------------+-----------------+------------------+------------------
+ 6  | Aros de Cebolla       |              80 |               70 | Cebolla
+ 2  | Hamburguesa BBQ Bacon |              30 |               20 | Bacon
+ 1  | Hamburguesa Clásica   |              50 |               50 | Tomate
+ 3  | Hamburguesa Doble     |              25 |               40 | Carne vacuna
+ 4  | Hamburguesa Picante   |              20 |               15 | Jalapeños
+ 5  | Papas Fritas          |             100 |              250 | Papas
+(6 rows)
+```
+
+### TAREA 2 — El denominador
+
+```
+ productos_con_receta_activos
+------------------------------
+                            6
+```
+
+```
+ filas_totales | con_divergencia | sin_divergencia
+---------------+-----------------+-----------------
+             6 |               5 |               1
+```
+
+**Consecuencia directa sobre la afirmación de la tesis.** La tesis afirma que "la totalidad" de los productos con receta presentó divergencia. Sobre la base real, de 6 productos con receta activos, **5 divergen y 1 no**: `Hamburguesa Clásica` tiene `stock_declarado = 50` y `stock_producible = 50`. La afirmación "la totalidad" no se sostiene con estos datos; el número correcto es 5 de 6.
+
+### TAREA 3 — Diferencia con la tabla de la tesis
+
+**a) "Hamburguesa Nueva" no existe en `product`.** `SELECT * FROM product WHERE name ILIKE '%Nueva%'` devolvió `(0 rows)`. No está borrada lógicamente: no está. El listado completo de `product` (9 filas, ninguna con `deleted_at`) es:
+
+```
+ id |         name          | stock_quantity | available | deleted_at |         created_at
+----+-----------------------+----------------+-----------+------------+----------------------------
+  1 | Hamburguesa Clásica   |             50 | t         |            | 2026-09-17 13:07:31.644378
+  2 | Hamburguesa BBQ Bacon |             30 | t         |            | 2026-09-17 13:07:31.705501
+  3 | Hamburguesa Doble     |             25 | t         |            | 2026-09-17 13:07:31.738721
+  4 | Hamburguesa Picante   |             20 | t         |            | 2026-09-17 13:07:31.791792
+  5 | Papas Fritas          |            100 | t         |            | 2026-09-17 13:07:31.827475
+  6 | Aros de Cebolla       |             80 | t         |            | 2026-09-17 13:07:31.836429
+  7 | Coca Cola 500ml       |            150 | t         |            | 2026-09-17 13:07:31.844481
+  8 | Agua Mineral 500ml    |            200 | t         |            | 2026-09-17 13:07:31.866781
+  9 | Brownie de Chocolate  |             40 | t         |            | 2026-09-17 13:07:31.878563
+(9 rows)
+```
+
+**b) `created_at` de "Papas Fritas":**
+
+```
+ id |     name     |         created_at
+----+--------------+----------------------------
+  5 | Papas Fritas | 2026-09-17 13:07:31.827475
+```
+
+**c) `created_at`/`updated_at` de los productos con receta y de todos los ingredientes.** Productos con receta:
+
+```
+ id |         name          | available | deleted_at |         created_at         |         updated_at
+----+-----------------------+-----------+------------+----------------------------+----------------------------
+  1 | Hamburguesa Clásica   | t         |            | 2026-09-17 13:07:31.644378 | 2026-09-17 13:07:31.644405
+  2 | Hamburguesa BBQ Bacon | t         |            | 2026-09-17 13:07:31.705501 | 2026-09-17 13:07:31.705516
+  3 | Hamburguesa Doble     | t         |            | 2026-09-17 13:07:31.738721 | 2026-09-17 13:07:31.738737
+  4 | Hamburguesa Picante   | t         |            | 2026-09-17 13:07:31.791792 | 2026-09-17 13:07:31.791843
+  5 | Papas Fritas          | t         |            | 2026-09-17 13:07:31.827475 | 2026-09-17 13:07:31.827506
+  6 | Aros de Cebolla       | t         |            | 2026-09-17 13:07:31.836429 | 2026-09-17 13:07:31.836452
+(6 rows)
+```
+
+Ingredientes (14 filas, ninguna borrada, todas `is_active = t`):
+
+```
+ id |     name      | stock_quantity | is_active | deleted_at |         created_at         |         updated_at
+----+---------------+----------------+-----------+------------+----------------------------+----------------------------
+  1 | Pan brioche   |            120 | t         |            | 2026-09-17 13:07:31.605966 | 2026-09-17 13:07:31.605988
+  2 | Carne vacuna  |             80 | t         |            | 2026-09-17 13:07:31.61179  | 2026-09-17 13:07:31.611815
+  3 | Lechuga       |             60 | t         |            | 2026-09-17 13:07:31.614863 | 2026-09-17 13:07:31.614903
+  4 | Tomate        |             50 | t         |            | 2026-09-17 13:07:31.617426 | 2026-09-17 13:07:31.617445
+  5 | Cebolla       |             70 | t         |            | 2026-09-17 13:07:31.620177 | 2026-09-17 13:07:31.620193
+  6 | Queso cheddar |             90 | t         |            | 2026-09-17 13:07:31.621862 | 2026-09-17 13:07:31.621887
+  7 | Bacon         |             40 | t         |            | 2026-09-17 13:07:31.623984 | 2026-09-17 13:07:31.623998
+  8 | Mayonesa      |            200 | t         |            | 2026-09-17 13:07:31.625464 | 2026-09-17 13:07:31.625478
+  9 | Ketchup       |            200 | t         |            | 2026-09-17 13:07:31.626682 | 2026-09-17 13:07:31.626697
+ 10 | Mostaza       |            150 | t         |            | 2026-09-17 13:07:31.627847 | 2026-09-17 13:07:31.627861
+ 11 | Salsa BBQ     |            100 | t         |            | 2026-09-17 13:07:31.629204 | 2026-09-17 13:07:31.62922
+ 12 | Jalapeños     |             30 | t         |            | 2026-09-17 13:07:31.630785 | 2026-09-17 13:07:31.630804
+ 13 | Papas         |            250 | t         |            | 2026-09-17 13:07:31.633777 | 2026-09-17 13:07:31.633794
+ 14 | Huevo         |              8 | t         |            | 2026-09-17 13:07:31.635835 | 2026-09-17 13:07:31.635849
+(14 rows)
+```
+
+Rango de fechas de todo el catálogo:
+
+```
+       tabla        |          primera           |           ultima           |       ultimo_update        | count
+--------------------+----------------------------+----------------------------+----------------------------+-------
+ product            | 2026-09-17 13:07:31.644378 | 2026-09-17 13:07:31.878563 | 2026-09-17 13:07:31.878598 |     9
+ ingredient         | 2026-09-17 13:07:31.605966 | 2026-09-17 13:07:31.635835 | 2026-09-17 13:07:31.635849 |    14
+ product_ingredient | 2026-09-17 13:07:31.668669 | 2026-09-17 13:07:31.841891 |                            |    26
+```
+
+**Lo que dicen las fechas, sin interpretar más allá del dato.** Las 49 filas de las tres tablas (9 productos, 14 ingredientes, 26 vínculos de receta) tienen `created_at` dentro de la misma ventana de **273 milisegundos del 2026-09-17 13:07:31**. En todas las filas `updated_at` es igual a `created_at` salvo por microsegundos: **ninguna fila fue modificada después de haber sido creada.** No hay ninguna fila anterior al 2026-09-17 en ninguna de las tres tablas, ni ninguna fila borrada lógicamente.
+
+### Comparación mecánica: tabla de la tesis vs. base real
+
+| Producto | Tesis (declarado/producible/limitante) | Base real (declarado/producible/limitante) | Coincide |
+|---|---|---|---|
+| Hamburguesa BBQ Bacon | 30 / 20 / Bacon | 30 / 20 / Bacon | sí |
+| Hamburguesa Picante | 20 / 24 / Jalapeños | 20 / 15 / Jalapeños | no (producible) |
+| Hamburguesa Nueva | 0 / 31 / Queso cheddar | — (no existe en `product`) | no (ausente) |
+| Hamburguesa Doble | 25 / 38 / Carne vacuna | 25 / 40 / Carne vacuna | no (producible) |
+| Hamburguesa Clásica | 50 / 47 / Tomate | 50 / 50 / Tomate | no (producible; además deja de haber divergencia) |
+| Aros de Cebolla | 80 / 67 / Cebolla | 80 / 70 / Cebolla | no (producible) |
+| Papas Fritas | — (no figura) | 100 / 250 / Papas | no (sobra) |
+
+El `stock_declarado` coincide en las cinco filas comparables. Lo que difiere es el `stock_producible` en cuatro de ellas, más una fila ausente y una sobrante. El insumo limitante coincide en todas las filas comparables.
+
+### Lo que esta verificación NO establece
+
+No se puede determinar desde la base por qué la tabla de la tesis difiere. Los `created_at` muestran cuándo se cargaron las filas actuales, no qué valores tenían antes ni si hubo una carga anterior distinta: como `updated_at` nunca se separó de `created_at` y no hay filas borradas, **la base no conserva ningún rastro de un estado previo** contra el cual comparar. Cualquier explicación sobre el origen de los números de la tesis (una carga anterior del catálogo, datos tomados de otro entorno, o cálculo manual) queda fuera de lo que estas consultas pueden sostener. No se modificó la tesis ni ningún documento fuera de esta bitácora.
+
+---
+
 ## Lo que falta hacer vos (actualizado 2026-09-21)
 
 1. ~~Correr `03_vistas_foodstore.sql` contra la base real de Food Store.~~ **Hecho.** Ver "Re-ejecución contra bases reales". No hizo falta ajustar columnas, solo el `search_path`.
