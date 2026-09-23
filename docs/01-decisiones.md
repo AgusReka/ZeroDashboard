@@ -554,9 +554,65 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 **Se resigna.** El alta de un tenant exige saber SQL y entender el modelo de datos de origen (la barrera de entrada que CH-16b registró para la clase entidad-atributo-valor). No hay asistencia para escribir las vistas.
 
-**Queda abierto para la exploración de CH-09, sin decidir acá:** dónde viven las vistas y cómo se aplican. Crearlas como objetos en la réplica del cliente requiere permisos de DDL, que chocan con la regla 3 (usuario de base sin escritura); guardarlas en la base propia y componerlas en cada consulta no requiere esos permisos. Es una decisión de arquitectura y se registra aparte antes de especificar.
+**Queda abierto para la exploración de CH-09, sin decidir acá:** dónde viven las vistas y cómo se aplican. Crearlas como objetos en la réplica del cliente requiere permisos de DDL, que chocan con la regla 3 (usuario de base sin escritura); guardarlas en la base propia y componerlas en cada consulta no requiere esos permisos. Es una decisión de arquitectura y se registra aparte antes de especificar. *(Cerrado por DEC-31.)*
 
 **Decidido por:** el usuario, 2026-09-23 — elección directa entre (a) y (b), no inferida por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-31 — Las vistas registradas viven en la base propia y se aplican como `WITH` en cada consulta
+
+**Contexto.** DEC-30 dejó abierto dónde viven las vistas canónicas registradas y cómo se aplican al consultar. La exploración de CH-09 (`openspec/changes/CH-09-tenant-schema-mapping/explore.md`) comparó cuatro opciones contra las reglas no negociables y el motor ya implementado.
+
+**Opciones.** (A) Crearlas como `VIEW` reales en la réplica con la credencial guardada. (A-sub) Que el cliente las cree en su réplica con un usuario con privilegios, y ZeroDashboard solo las verifique. (B) Guardar el SQL en la base propia y anteponerlo como `WITH v_x AS (...)` a cada consulta. (C) Tablas foráneas (`postgres_fdw`) y vistas reales dentro de la base propia.
+
+**Decisión.** (B).
+
+**Por qué.** Es la única opción que no requiere DDL en la réplica: (A) es inviable con el motor actual, porque `verificarPermisosRol()` bloquea cualquier rol con `CREATE` (`rol-con-create-en-esquema`, DEC-08) y además pondría una credencial con escritura en la base propia, contra DEC-16/17. (A) y (A-sub) son imposibles si la réplica es una réplica física real (hot standby no admite DDL). La consulta armada pasa por el mismo pipeline que cualquier otra (`BEGIN TRANSACTION READ ONLY`, chequeo de permisos, `LIMIT $1 OFFSET $2`), así que no hace falta maquinaria de validación nueva. Anteponer SQL escrito por la operadora no viola la regla 4, que se refiere a valores en tiempo de ejecución: es el mismo patrón que el envoltorio de paginación ya implementado. El registro es una llamada a la API, medible por CH-15, y no depende de cómo se cierre D-2. (C) exige una conexión persistente entre servidores y una credencial duplicada por tenant.
+
+**Se resigna.** Las vistas no existen como objetos en la base del cliente, así que no se pueden inspeccionar con herramientas de catálogo del lado del cliente. El armado tiene que manejar consultas que abren su propio `WITH`, y los nombres de las vistas pasan a ser identificadores reservados dentro de la consulta armada.
+
+**Alcance acordado para CH-09.** Solo registro: alta, listado y lectura del mapeo, más una vista previa opcional de cero filas por el pipeline existente. El armado de los `WITH` en tiempo de ejecución se construye en CH-12, donde se consume. `POST /consultas/ejecutar` no cambia: sigue ejecutando SQL ad hoc contra el esquema nativo.
+
+**Decidido por:** el usuario, 2026-09-23, a partir de la exploración de CH-09 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-32 — El mapeo se registra por entidad canónica, con el nombre del contrato como clave
+
+**Contexto.** El mapeo registrado (DEC-30/31) podía guardarse como un único bloque de SQL por origen (como los archivos de CH-16b) o como una definición por entidad canónica.
+
+**Opciones.** (a) Una definición por entidad, con el nombre exacto de `CONTRATO_CANONICO` como clave (`producto`, `pedido`, `item_pedido`, `insumo`, `receta_componente`). (b) Un único bloque de SQL con todas las vistas.
+
+**Decisión.** (a).
+
+**Por qué.** CH-10 (M3/M4) necesita saber qué entidades están mapeadas para declarar qué automatizaciones son inaplicables; con (a) es un chequeo de existencia, con (b) habría que parsear el SQL. Usar los nombres del contrato como clave formaliza lo que `src/contrato.ts` ya anticipaba.
+
+**Se resigna.** Una vista que dependa de otra (por ejemplo, una CTE auxiliar compartida) no tiene lugar propio; cada definición tiene que ser autocontenida.
+
+**Decidido por:** el usuario, 2026-09-23 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-33 — El mapeo se asocia a la `Conexion`, no al `Tenant`
+
+**Contexto.** El modelo permite varias `Conexion` por tenant. Había que decidir a qué entidad pertenece el mapeo registrado.
+
+**Opciones.** (a) A la `Conexion`. (b) Al `Tenant`.
+
+**Decisión.** (a).
+
+**Por qué.** El SQL de las vistas depende del esquema de origen, que es propio de cada conexión. Asociarlo al tenant asumiría una sola plataforma por tenant, algo que no está escrito en ningún documento.
+
+**Se resigna.** Un tenant con dos conexiones al mismo esquema tiene que registrar el mapeo dos veces. El modelo nuevo entra en `MODELOS_AISLADOS` (DEC-13) igual que `Conexion`.
+
+**Decidido por:** el usuario, 2026-09-23 — no inferido por el agente.
 
 **Estado:** firme.
 
