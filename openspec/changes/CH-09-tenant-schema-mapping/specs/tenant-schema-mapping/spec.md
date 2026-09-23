@@ -75,7 +75,7 @@ The system SHALL return a schema-mapping definition's full record (including SQL
 #### Scenario: Reading another tenant's definition
 
 - GIVEN tenants A and B, and a definition on a `Conexion` owned by B
-- WHEN A's active tenant requests that definition's id
+- WHEN A's active tenant requests that definition by its connection and canonical entity name
 - THEN the response SHALL be `404`
 
 ### Requirement: Request Body Rejects Client-Supplied Tenant Id
