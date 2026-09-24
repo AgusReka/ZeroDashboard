@@ -1,0 +1,36 @@
+2026-09-24T13:29:05-03:00
+== C1. Rol actual
+ current_user 
+--------------
+ saleor
+(1 row)
+
+== C2. Claves foráneas hacia product_productvariant según pg_catalog
+              tabla_origen               |       columna        |     tabla_destino      
+-----------------------------------------+----------------------+------------------------
+ attribute_assignedvariantattribute      | variant_id           | product_productvariant
+ attribute_assignedvariantattributevalue | variant_id           | product_productvariant
+ attribute_attributevalue                | reference_variant_id | product_productvariant
+ checkout_checkoutline                   | variant_id           | product_productvariant
+ discount_promotionrule_gifts            | productvariant_id    | product_productvariant
+ discount_promotionrule_variants         | productvariant_id    | product_productvariant
+ discount_voucher_variants               | productvariant_id    | product_productvariant
+ order_orderline                         | variant_id           | product_productvariant
+ product_product                         | default_variant_id   | product_productvariant
+ product_productvariantchannellisting    | variant_id           | product_productvariant
+ product_productvarianttranslation       | product_variant_id   | product_productvariant
+ product_variantmedia                    | variant_id           | product_productvariant
+ warehouse_stock                         | product_variant_id   | product_productvariant
+(13 rows)
+
+== C3. Diferencia simétrica entre pg_catalog y la sección 3 (information_schema); 0 filas = coinciden
+ origen | tabla_origen | columna | tabla_destino 
+--------+--------------+---------+---------------
+(0 rows)
+
+== C4. Conteos
+ fk_pg_catalog 
+---------------
+            13
+(1 row)
+

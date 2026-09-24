@@ -1,0 +1,25 @@
+2026-09-24T13:29:20-03:00
+== R1. Rol que crea la vista (CREATE sobre public + SELECT sobre las tablas que lee la vista)
+CREATE ROLE zd_ch16c_creador LOGIN PASSWORD 'ch16c';
+CREATE ROLE
+GRANT CONNECT ON DATABASE saleor TO zd_ch16c_creador;
+GRANT
+GRANT USAGE, CREATE ON SCHEMA public TO zd_ch16c_creador;
+GRANT
+GRANT SELECT ON product_productvariant, product_product, warehouse_stock, product_productchannellisting TO zd_ch16c_creador;
+GRANT
+== R2. Rol de solo lectura de la prueba (sin permisos sobre tablas; recibirá SELECT sobre v_producto)
+CREATE ROLE zd_ch16c_lectura LOGIN PASSWORD 'ch16c';
+CREATE ROLE
+GRANT CONNECT ON DATABASE saleor TO zd_ch16c_lectura;
+GRANT
+GRANT USAGE ON SCHEMA public TO zd_ch16c_lectura;
+GRANT
+== R3. Atributos de los roles
+SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls FROM pg_roles WHERE rolname LIKE 'zd_ch16c_%' ORDER BY 1;
+     rolname      | rolsuper | rolcreaterole | rolcreatedb | rolbypassrls 
+------------------+----------+---------------+-------------+--------------
+ zd_ch16c_creador | f        | f             | f           | f
+ zd_ch16c_lectura | f        | f             | f           | f
+(2 rows)
+

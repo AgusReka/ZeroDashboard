@@ -1,0 +1,31 @@
+2026-09-24T13:22:09-03:00
+== D1. Rol actual
+   current_user   
+------------------
+ saleor_read_only
+(1 row)
+
+== D2. Claves foráneas hacia product_productvariant según pg_catalog (no filtra por dueño)
+              tabla_origen               |       columna        |     tabla_destino      
+-----------------------------------------+----------------------+------------------------
+ product_product                         | default_variant_id   | product_productvariant
+ warehouse_stock                         | product_variant_id   | product_productvariant
+ product_productvarianttranslation       | product_variant_id   | product_productvariant
+ discount_promotionrule_gifts            | productvariant_id    | product_productvariant
+ discount_promotionrule_variants         | productvariant_id    | product_productvariant
+ discount_voucher_variants               | productvariant_id    | product_productvariant
+ attribute_attributevalue                | reference_variant_id | product_productvariant
+ attribute_assignedvariantattributevalue | variant_id           | product_productvariant
+ order_orderline                         | variant_id           | product_productvariant
+ attribute_assignedvariantattribute      | variant_id           | product_productvariant
+ checkout_checkoutline                   | variant_id           | product_productvariant
+ product_productvariantchannellisting    | variant_id           | product_productvariant
+ product_variantmedia                    | variant_id           | product_productvariant
+(13 rows)
+
+== D3. Dueño de product_productvariant
+ tableowner 
+------------
+ saleor
+(1 row)
+

@@ -1,0 +1,68 @@
+== 0. Versión del motor y fecha de ejecución
+                                         version                                          |              now              
+------------------------------------------------------------------------------------------+-------------------------------
+ PostgreSQL 15.19 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit | 2026-09-24 16:21:56.343276+00
+(1 row)
+
+== 1. Tablas cuyo nombre sugiere composición (insumo, receta, componente, kit, BOM, ensamble)
+ table_name 
+------------
+(0 rows)
+
+== 2. Columnas cuyo nombre sugiere cantidad requerida por unidad
+    table_name     |         column_name         | data_type 
+-------------------+-----------------------------+-----------
+ site_sitesettings | limit_quantity_per_checkout | integer
+(1 row)
+
+== 3. Toda clave foránea que apunte a la tabla de variantes
+ tabla_origen | columna | tabla_destino 
+--------------+---------+---------------
+(0 rows)
+
+== 4. Estructura de la existencia: stock por variante y depósito
+    column_name     | data_type 
+--------------------+-----------
+ id                 | integer
+ quantity           | integer
+ product_variant_id | integer
+ warehouse_id       | uuid
+ quantity_allocated | integer
+(5 rows)
+
+== 5. Mecanismo genérico que podría aproximar composición por convención:
+==    valores de atributo que referencian variantes (sin cantidad por vínculo)
+       column_name       |        data_type         
+-------------------------+--------------------------
+ id                      | integer
+ name                    | character varying
+ attribute_id            | integer
+ slug                    | character varying
+ sort_order              | integer
+ value                   | character varying
+ content_type            | character varying
+ file_url                | character varying
+ rich_text               | jsonb
+ boolean                 | boolean
+ date_time               | timestamp with time zone
+ reference_page_id       | integer
+ reference_product_id    | integer
+ plain_text              | text
+ reference_variant_id    | integer
+ external_reference      | character varying
+ reference_category_id   | integer
+ reference_collection_id | integer
+ numeric                 | double precision
+(19 rows)
+
+ valores_que_referencian_variantes 
+-----------------------------------
+                                 0
+(1 row)
+
+== 6. Tamaño de los datos de demostración
+ productos | variantes | depositos | filas_stock 
+-----------+-----------+-----------+-------------
+        29 |        81 |         8 |         648
+(1 row)
+

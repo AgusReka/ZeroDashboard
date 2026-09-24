@@ -674,6 +674,42 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-37 — En Saleor, `v_producto."stockDisponible"` suma sobre todos los depósitos lo no asignado
+
+**Contexto.** CH-16c escribe `v_producto` sobre una instancia real de Saleor (`openspec/changes/CH-16c-saleor-caso-negativo/sql/10_vistas_saleor.sql`). Saleor registra la existencia en `warehouse_stock` por variante **y** por depósito, con `quantity` y `quantity_allocated` (lo ya asignado a pedidos). El contrato espera un único `stockDisponible` por producto, así que hay que decidir cómo agregar. La granularidad por variante sigue a DEC-27.
+
+**Opciones.** (a) Sumar sobre todos los depósitos `quantity - quantity_allocated`. (b) Sumar `quantity` sin restar lo asignado. (c) Tomar un solo depósito. (d) Filtrar por canal.
+
+**Decisión.** (a): `stockDisponible = SUM(quantity - quantity_allocated)` sobre todos los depósitos de la variante, `0` si no tiene filas de stock.
+
+**Por qué.** Decidido por el autor. Es la lectura más directa de "disponible" en el modelo de Saleor: lo que existe en cualquier depósito y todavía no está comprometido.
+
+**Se resigna.** La distinción por depósito y por canal: una variante con stock en un depósito que no abastece a ningún canal cuenta igual. Es la misma pregunta que quedó abierta para `insumo.stockDisponible` en Medusa; esta decisión la cierra solo para `producto` en Saleor.
+
+**Decidido por:** el usuario (autor), 2026-09-24 — decisión tomada por el autor y transcripta por el agente, no inferida.
+
+**Estado:** firme.
+
+---
+
+### DEC-38 — En Saleor, `producto.activo` = publicado en al menos un canal
+
+**Contexto.** DEC-36 hizo obligatorio `producto.activo`. Saleor no tiene un campo "activo" ni en la variante ni en el producto: la publicación depende del canal (`product_productchannellisting.is_published`). La vista de CH-16c tiene que derivarlo, y si lo dejara en `NULL` la consulta canónica devolvería cero filas sin error.
+
+**Opciones.** (a) Activo si el producto está publicado en al menos un canal. (b) Activo solo si está publicado en un canal determinado (por ejemplo, el canal por defecto). (c) Fijarlo en `true`.
+
+**Decisión.** (a): `activo = EXISTS (product_productchannellisting con is_published)` para el producto de la variante. Nunca es `NULL`.
+
+**Por qué.** Decidido por el autor. Es una decisión de granularidad, no una columna: traduce la publicación por canal a un booleano sin elegir un canal arbitrario.
+
+**Se resigna.** La visibilidad por canal y la fecha de publicación (`published_at`). Un producto publicado en un canal que el negocio no usa cuenta como activo.
+
+**Decidido por:** el usuario (autor), 2026-09-24 — decisión tomada por el autor y transcripta por el agente, no inferida.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

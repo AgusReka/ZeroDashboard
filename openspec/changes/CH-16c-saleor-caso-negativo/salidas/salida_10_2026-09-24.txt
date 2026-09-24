@@ -1,0 +1,20 @@
+CREATE VIEW
+ filas_v_producto | activas | con_sku 
+------------------+---------+---------
+               81 |      81 |      67
+(1 row)
+
+ id  |                   nombre                   | stockDisponible |    sku     | activo 
+-----+--------------------------------------------+-----------------+------------+--------
+ 384 | Apple Juice - UHJvZHVjdFZhcmlhbnQ6Mzg0     |            3592 |            | t
+ 386 | Banana Juice - UHJvZHVjdFZhcmlhbnQ6Mzg2    |            2696 |            | t
+ 372 | Battle-tested at brands like Lush - DVD    |            3224 | 9018223582 | t
+ 374 | Battle-tested at brands like Lush - MP3    |            3771 | 9018223584 | t
+ 373 | Battle-tested at brands like Lush - iTunes |            2064 | 9018223583 | t
+ 385 | Bean Juice - UHJvZHVjdFZhcmlhbnQ6Mzg1      |            2088 |            | t
+ 362 | Blue Polygon Shirt - L                     |            2584 | 218223581  | t
+ 361 | Blue Polygon Shirt - M                     |            1136 | 218223580  | t
+ 363 | Blue Polygon Shirt - XL                    |            2464 | 218223582  | t
+ 387 | Carrot Juice - UHJvZHVjdFZhcmlhbnQ6Mzg3    |            2992 |            | t
+(10 rows)
+

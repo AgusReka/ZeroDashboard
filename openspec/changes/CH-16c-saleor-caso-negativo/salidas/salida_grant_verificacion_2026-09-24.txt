@@ -1,0 +1,55 @@
+2026-09-24T13:29:39-03:00
+--- como zd_ch16c_creador
+== G1. Dueño de la vista y GRANT al rol de solo lectura de la prueba
+SELECT current_user;
+   current_user   
+------------------
+ zd_ch16c_creador
+(1 row)
+
+SELECT viewowner FROM pg_views WHERE schemaname='public' AND viewname='v_producto';
+    viewowner     
+------------------
+ zd_ch16c_creador
+(1 row)
+
+GRANT SELECT ON v_producto TO zd_ch16c_lectura;
+GRANT
+SELECT grantee, privilege_type FROM information_schema.role_table_grants WHERE table_name='v_producto' ORDER BY 1,2;
+     grantee      | privilege_type 
+------------------+----------------
+ zd_ch16c_creador | DELETE
+ zd_ch16c_creador | INSERT
+ zd_ch16c_creador | REFERENCES
+ zd_ch16c_creador | SELECT
+ zd_ch16c_creador | TRIGGER
+ zd_ch16c_creador | TRUNCATE
+ zd_ch16c_creador | UPDATE
+ zd_ch16c_lectura | SELECT
+(8 rows)
+
+exit_grant=0
+--- como zd_ch16c_lectura
+== V1. Rol actual
+SELECT current_user;
+   current_user   
+------------------
+ zd_ch16c_lectura
+(1 row)
+
+== V2. Filas de v_producto con activo NULL (esperado 0)
+SELECT count(*) AS filas, count(*) FILTER (WHERE activo IS NULL) AS activo_null, count(*) FILTER (WHERE activo) AS activas, count(*) FILTER (WHERE NOT activo) AS inactivas FROM v_producto;
+ filas | activo_null | activas | inactivas 
+-------+-------------+---------+-----------
+    81 |           0 |      81 |         0
+(1 row)
+
+== V3. Control: el rol de solo lectura no lee la tabla base
+SELECT count(*) FROM product_product;
+psql:<stdin>:6: ERROR:  permission denied for table product_product
+== V4. Control: el rol de solo lectura no escribe
+CREATE TABLE zd_ch16c_prueba (x int);
+psql:<stdin>:8: ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE zd_ch16c_prueba (x int);
+                     ^
+exit_verif=0
