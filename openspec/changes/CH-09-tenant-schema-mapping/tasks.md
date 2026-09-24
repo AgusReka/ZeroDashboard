@@ -76,6 +76,7 @@ Threat Matrix rows are carried as explicit RED tests below rather than separate 
 ## 4. Full-Suite Checkpoint
 
 - [ ] 4.1 Verify by inspection: `src/contrato.ts`, `src/consultas.ts`, `src/consulta-ejecucion.ts` are byte-identical to their pre-CH-09 state (`git diff --stat` shows no change for the three) — proposal Success Criterion "byte-identical"
+  - Nota: Excepción documentada: src/contrato.ts cambió por DEC-36 (2026-09-24), ajena a CH-09. La comparación byte a byte se hace contra el estado posterior a DEC-36.
 - [ ] 4.2 Verify by inspection: the new migration under `prisma/migrations/` is additive only — `CREATE TABLE` plus two FKs, no `ALTER`/`DROP` on `Conexion` or `Tenant` — proposal Success Criterion "the migration is additive only"
 - [ ] 4.3 Full-suite checkpoint: `npm test` green across `src/vistas-canonicas.test.ts`, `src/aislamiento.test.ts`, and the full pre-existing suite together; `npx tsc --noEmit` clean
 
