@@ -35,7 +35,7 @@ Formato de cada entrada: contexto, opciones, decisión, consecuencias, estado.
 **Decisión.** Motor propio.
 
 **Por qué.**
-1. **Licencia.** La Sustainable Use License de n8n restringe el uso a fines internos de negocio y excluye explícitamente alojar n8n cobrando por el acceso, y embeberlo en un producto propio. El modelo multi-tenant cae de ese lado. *(Verificado en la documentación oficial de n8n. Para uso comercial, confirmar con el proveedor.)*
+1. **Licencia.** La Sustainable Use License de n8n limita el uso a fines internos propios de negocio o a fines no comerciales o personales, y solo permite distribuir el software o proveerlo a terceros en forma gratuita y con fines no comerciales: *"You may use or modify the software only for your own internal business purposes or for non-commercial or personal use. You may distribute the software or provide it to others only if you do so free of charge for non-commercial purposes."* Un modelo en el que el implementador aloja las automatizaciones de varios clientes y cobra por el servicio no encuadra en el uso interno propio. *(Fuente: `LICENSE.md` del repositorio `n8n-io/n8n`, rama `master`, Sustainable Use License versión 1.0, sección "Limitations". Consultado el 2026-09-24. Para uso comercial, confirmar con el proveedor.)*
 2. **Alcance.** La generalidad de n8n excede lo que el catálogo necesita: todas las automatizaciones responden al mismo patrón lineal.
 
 **Se resigna.** Todo lo que n8n resolvía pasa a ser responsabilidad propia: planificación, reintentos, solapamientos, ejecuciones interrumpidas, historial. Es el bloque X del mapa de historias.
@@ -43,6 +43,8 @@ Formato de cada entrada: contexto, opciones, decisión, consecuencias, estado.
 **Efecto sobre la tesis.** Los tres workflows dejan de ser el artefacto y pasan a ser el estudio previo que define el patrón y el catálogo inicial.
 
 **Estado:** firme.
+
+**Nota de corrección (2026-09-24).** Se reescribió el punto 1 del "Por qué". Decía que la licencia "excluye explícitamente alojar n8n cobrando por el acceso, y embeberlo en un producto propio", pero el texto de la licencia no contiene esa exclusión literal. Ahora cita el texto de la sección "Limitations" y aclara que la conclusión sobre el modelo multi-tenant es una interpretación de ese texto. La decisión no cambia.
 
 ---
 
@@ -649,6 +651,24 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 **Se resigna.** La garantía de no tener filas cruzadas es de la aplicación y de la prueba T2, no de la base. Una escritura que evitara el delegado aislado podría crear una fila cruzada.
 
 **Decidido por:** el usuario, 2026-09-23, durante el diseño de CH-09 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-36 — `producto.activo` pasa a obligatorio; `stock-producible` deja de figurar en `producto.stockDisponible`
+
+**Contexto.** La consulta canónica de `stock-producible` (`openspec/changes/CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql`) filtra `WHERE pr.activo = true`, pero `src/contrato.ts` declaraba `producto.activo` como `opcional`. Si una plataforma no puede poblarlo, la vista lo deja en `NULL`, el filtro descarta todas las filas y la automatización devuelve cero filas sin error. Además, el contrato declaraba que `stock-producible` usa `producto.stockDisponible`, pero esa consulta no lo lee: solo lee `insumo."stockDisponible"`. Por el criterio de DEC-29, `activo` debería ser obligatorio y la etiqueta de `producto.stockDisponible` no correspondía.
+
+**Opciones.** (a) `producto.activo` pasa a `obligatorio`, y se quita `STOCK_PRODUCIBLE` de las automatizaciones de `producto.stockDisponible`. (b) Cambiar la consulta a `COALESCE(pr.activo, true)`, para que un `activo` ausente cuente como activo y el campo pueda seguir siendo opcional.
+
+**Decisión.** (a).
+
+**Por qué.** Aplica el criterio de DEC-29 a lo que la consulta real hace hoy: `stock-producible` no puede dar un resultado correcto sin `activo`, así que el campo es obligatorio. `producto.stockDisponible` sigue siendo obligatorio por `stock-fisico` y `reporte-diario`, pero `stock-producible` no lo lee, y declarar esa dependencia era falso. El contrato se ajusta a la consulta, no al revés.
+
+**Se resigna.** (b), que habría evitado exigir el campo. Una plataforma que no modele productos activos/inactivos tiene que derivar `activo` en su vista canónica (por ejemplo, fijarlo en `true`), en lugar de que la consulta lo resuelva. El contrato declara la exigencia pero no la hace cumplir: una vista que deje `activo` en `NULL` sigue produciendo cero filas sin error. Esa verificación queda fuera de esta decisión.
+
+**Decidido por:** el usuario (autor), 2026-09-24 — decisión tomada por el autor y transcripta por el agente, no inferida.
 
 **Estado:** firme.
 

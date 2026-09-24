@@ -173,18 +173,19 @@ describe('contrato canónico — every field is marked and traces to an automati
 // ---- 1.4 the literal cases the spec's two field scenarios name --------------------
 
 describe('contrato canónico — the field-level scenarios, literally', () => {
-  test('1.4 producto.id, producto.nombre and producto.stockDisponible are obligatorio with ≥1 automation', () => {
-    for (const nombre of ['id', 'nombre', 'stockDisponible']) {
+  test('1.4 producto.id, producto.nombre, producto.stockDisponible and producto.activo are obligatorio with ≥1 automation', () => {
+    for (const nombre of ['id', 'nombre', 'stockDisponible', 'activo']) {
       const c = campo('producto', nombre);
       assert.equal(c.obligatoriedad, 'obligatorio', `producto.${nombre}`);
       assert.ok(c.automatizaciones.length >= 1, `producto.${nombre} names no automation`);
     }
   });
 
-  test('1.4 producto.sku and producto.activo are opcional with ≥1 automation', () => {
+  test('1.4 producto.sku is opcional with ≥1 automation', () => {
     // The other half of the same requirement: field optionality is independent of the
     // entity's own mark, so a required entity still carries optional fields.
-    for (const nombre of ['sku', 'activo']) {
+    // producto.activo moved to obligatorio (DEC-36).
+    for (const nombre of ['sku']) {
       const c = campo('producto', nombre);
       assert.equal(c.obligatoriedad, 'opcional', `producto.${nombre}`);
       assert.ok(c.automatizaciones.length >= 1, `producto.${nombre} names no automation`);

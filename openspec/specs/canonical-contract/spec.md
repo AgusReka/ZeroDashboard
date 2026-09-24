@@ -25,16 +25,16 @@ Every field in every catalog entity SHALL be marked required or optional at the 
 #### Scenario: A required entity's required field
 
 - **GIVEN** the `producto` entity in the catalog
-- **WHEN** its `id`, `nombre`, and `stockDisponible` fields are inspected
+- **WHEN** its `id`, `nombre`, `stockDisponible`, and `activo` fields are inspected
 - **THEN** each SHALL be marked required
 - **AND** each SHALL name at least one automation
 
 #### Scenario: An optional field on a required entity
 
 - **GIVEN** the `producto` entity in the catalog
-- **WHEN** its `sku` and `activo` fields are inspected
-- **THEN** each SHALL be marked optional
-- **AND** each SHALL name at least one automation
+- **WHEN** its `sku` field is inspected
+- **THEN** it SHALL be marked optional
+- **AND** it SHALL name at least one automation
 
 ### Requirement: Personal Fields Are Structurally Absent
 

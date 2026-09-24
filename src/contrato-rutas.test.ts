@@ -123,11 +123,8 @@ describe('GET /contrato — the read-only projection of the static catalog', () 
     assert.equal(stock.obligatoriedad, 'obligatorio');
     // Serialized as plain strings, not as some object wrapper: this is the exact shape
     // design.md's JSON example promises and the shape CH-09's mapeo will read.
-    assert.deepEqual(stock.automatizaciones, [
-      'stock-fisico',
-      'stock-producible',
-      'reporte-diario',
-    ]);
+    // stock-producible dropped from this field by DEC-36.
+    assert.deepEqual(stock.automatizaciones, ['stock-fisico', 'reporte-diario']);
 
     const sku = producto.campos.find((c) => c.nombre === 'sku');
     assert.ok(sku !== undefined, 'producto.sku must be projected');

@@ -93,15 +93,12 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         ],
       },
       {
-        // The quantity `stock-fisico` reports, the floor `stock-producible` compares
-        // its computed figure against, and a column of the daily report.
+        // The quantity `stock-fisico` reports and a column of the daily report.
+        // `stock-producible` does not read it (DEC-36): it computes from
+        // insumo.stockDisponible only.
         nombre: 'stockDisponible',
         obligatoriedad: 'obligatorio',
-        automatizaciones: [
-          AUTOMATIZACIONES.STOCK_FISICO,
-          AUTOMATIZACIONES.STOCK_PRODUCIBLE,
-          AUTOMATIZACIONES.REPORTE_DIARIO,
-        ],
+        automatizaciones: [AUTOMATIZACIONES.STOCK_FISICO, AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         // Optional: an external identifier reconciles stock against a catalog kept
@@ -111,10 +108,11 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         automatizaciones: [AUTOMATIZACIONES.STOCK_FISICO, AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
-        // Optional: lets both stock automations skip discontinued products instead of
-        // reporting them at zero forever.
+        // Required (DEC-36): the stock-producible query filters on activo = true, so a
+        // mapping that leaves it NULL returns zero rows with no error. Also lets
+        // `stock-fisico` skip discontinued products instead of reporting them at zero.
         nombre: 'activo',
-        obligatoriedad: 'opcional',
+        obligatoriedad: 'obligatorio',
         automatizaciones: [AUTOMATIZACIONES.STOCK_FISICO, AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
     ],
