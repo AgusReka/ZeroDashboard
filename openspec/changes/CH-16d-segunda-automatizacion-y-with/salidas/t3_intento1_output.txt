@@ -1,0 +1,20 @@
+2026-09-25T13:05:59-03:00
+BEGIN;
+BEGIN
+SELECT now() AS instante, current_setting('transaction_read_only') AS solo_lectura;
+           instante            | solo_lectura 
+-------------------------------+--------------
+ 2026-09-25 16:05:59.633637+00 | off
+(1 row)
+
+SELECT id, name, stock_quantity FROM product WHERE id = 8;
+ id |        name        | stock_quantity 
+----+--------------------+----------------
+  8 | Agua Mineral 500ml |            200
+(1 row)
+
+UPDATE product SET stock_quantity = 8 WHERE id = 8 AND stock_quantity = 200;
+UPDATE 1
+SELECT id, name, stock_quantity, CASE WHEN stock_quantity = 8 THEN 'ok' ELSE (1/0)::text END AS guarda FROM product WHERE id = 8;
+ERROR:  division by zero
+exit=3

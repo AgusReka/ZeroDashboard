@@ -1,0 +1,500 @@
+2026-09-25T13:04:21-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS instante, current_setting('transaction_isolation') AS aislamiento, current_setting('transaction_read_only') AS solo_lectura, current_setting('search_path') AS search_path;
+           instante            |   aislamiento   | solo_lectura |   search_path   
+-------------------------------+-----------------+--------------+-----------------
+ 2026-09-25 16:04:21.871851+00 | repeatable read | on           | "$user", public
+(1 row)
+
+SELECT c.relname, pg_get_viewdef(c.oid, true) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='v' AND c.relname IN ('v_producto','v_insumo','v_receta_componente') ORDER BY 1;
+       relname       |                                         pg_get_viewdef                                          
+---------------------+-------------------------------------------------------------------------------------------------
+ v_insumo            |  SELECT ii.id,                                                                                 +
+                     |     ii.title AS nombre,                                                                        +
+                     |     COALESCE(sum(il.stocked_quantity - il.reserved_quantity), 0::numeric) AS "stockDisponible",+
+                     |     ii.unit_of_measure AS "unidadMedida",                                                      +
+                     |     ii.sku AS codigo                                                                           +
+                     |    FROM inventory_item ii                                                                      +
+                     |      LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id                              +
+                     |   GROUP BY ii.id, ii.title, ii.unit_of_measure, ii.sku;
+ v_producto          |  SELECT pv.id,                                                                                 +
+                     |     (p.title || ' - '::text) || pv.title AS nombre,                                            +
+                     |     COALESCE(sum(il.stocked_quantity - il.reserved_quantity), 0::numeric) AS "stockDisponible",+
+                     |     pv.sku,                                                                                    +
+                     |     p.status = 'published'::text AS activo                                                     +
+                     |    FROM product_variant pv                                                                     +
+                     |      JOIN product p ON p.id = pv.product_id                                                    +
+                     |      LEFT JOIN product_variant_inventory_item pvi ON pvi.variant_id::text = pv.id              +
+                     |      LEFT JOIN inventory_item ii ON ii.id = pvi.inventory_item_id::text                        +
+                     |      LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id                              +
+                     |   GROUP BY pv.id, p.title, pv.title, pv.sku, p.status;
+ v_receta_componente |  SELECT variant_id AS "productoId",                                                            +
+                     |     inventory_item_id AS "insumoId",                                                           +
+                     |     required_quantity AS "cantidadPorUnidad"                                                   +
+                     |    FROM product_variant_inventory_item pvi;
+(3 rows)
+
+WITH
+v_producto AS (
+SELECT pv.id AS id,
+       p.title || ' - ' || pv.title AS nombre,
+       COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS "stockDisponible",
+       pv.sku AS sku,
+       (p.status = 'published') AS activo
+FROM product_variant pv
+JOIN product p ON p.id = pv.product_id
+LEFT JOIN product_variant_inventory_item pvi ON pvi.variant_id = pv.id
+LEFT JOIN inventory_item ii ON ii.id = pvi.inventory_item_id
+LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id
+GROUP BY pv.id, p.title, pv.title, pv.sku, p.status
+),
+v_insumo AS (
+SELECT ii.id AS id, ii.title AS nombre,
+       COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS "stockDisponible",
+       ii.unit_of_measure AS "unidadMedida", ii.sku AS codigo
+FROM inventory_item ii
+LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id
+GROUP BY ii.id, ii.title, ii.unit_of_measure, ii.sku
+),
+v_receta_componente AS (
+SELECT pvi.variant_id AS "productoId", pvi.inventory_item_id AS "insumoId",
+       pvi.required_quantity AS "cantidadPorUnidad"
+FROM product_variant_inventory_item pvi
+)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+                 id                 |           nombre            | stock_producible | insumo_limitante | stock_insumo_limitante 
+------------------------------------+-----------------------------+------------------+------------------+------------------------
+ variant_01M2Y2W2W86H25DSB7KMSCC47J | Medusa T-Shirt - S / Black  |          1000000 | S / Black        |                1000000
+ variant_01M2Y2W2W9EHVM9GA5NZYGQETN | Medusa T-Shirt - S / White  |          1000000 | S / White        |                1000000
+ variant_01M2Y2W2WA2AB8KRVTSJP377F6 | Medusa T-Shirt - M / White  |          1000000 | M / White        |                1000000
+ variant_01M2Y2W2WAEQN1WGVNMSQN5YWZ | Medusa T-Shirt - M / Black  |          1000000 | M / Black        |                1000000
+ variant_01M2Y2W2WB4DRSJ5NPDZ3D641J | Medusa T-Shirt - L / Black  |          1000000 | L / Black        |                1000000
+ variant_01M2Y2W2WBGWW1CSTJ7QJ0Q68N | Medusa T-Shirt - L / White  |          1000000 | L / White        |                1000000
+ variant_01M2Y2W2WCF477K88QC0SK8RPA | Medusa T-Shirt - XL / Black |          1000000 | XL / Black       |                1000000
+ variant_01M2Y2W2WCKNVJWQFM3XB9CHTC | Medusa T-Shirt - XL / White |          1000000 | XL / White       |                1000000
+ variant_01M2Y2W2WCYPHE9EZZ1J9B5G57 | Medusa Sweatshirt - S       |          1000000 | S                |                1000000
+ variant_01M2Y2W2WD56H2PC86FPSQGHEM | Medusa Sweatshirt - L       |          1000000 | L                |                1000000
+ variant_01M2Y2W2WDCV1WWACMH64J7TZ7 | Medusa Sweatshirt - XL      |          1000000 | XL               |                1000000
+ variant_01M2Y2W2WDJKYGCJRBMNCCH2XC | Medusa Sweatshirt - M       |          1000000 | M                |                1000000
+ variant_01M2Y2W2WE7G7WPFFAS2A8MY34 | Medusa Shorts - S           |          1000000 | S                |                1000000
+ variant_01M2Y2W2WE9FAGJK3QWSD464K5 | Medusa Sweatpants - XL      |          1000000 | XL               |                1000000
+ variant_01M2Y2W2WE9VEJ2KZ2FW72508C | Medusa Sweatpants - S       |          1000000 | S                |                1000000
+ variant_01M2Y2W2WEARDDAEYAM00YK86Z | Medusa Sweatpants - M       |          1000000 | M                |                1000000
+ variant_01M2Y2W2WER1WC9P88B2G6X7X3 | Medusa Shorts - M           |          1000000 | M                |                1000000
+ variant_01M2Y2W2WERKSASVJSAB4VR4NV | Medusa Sweatpants - L       |          1000000 | L                |                1000000
+ variant_01M2Y2W2WF5T9YV3WJ166WZ37X | Medusa Shorts - XL          |          1000000 | XL               |                1000000
+ variant_01M2Y2W2WFPSYCQ1T8MHWNWVD9 | Medusa Shorts - L           |          1000000 | L                |                1000000
+(20 rows)
+
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+                 id                 |           nombre            | stock_producible | insumo_limitante | stock_insumo_limitante 
+------------------------------------+-----------------------------+------------------+------------------+------------------------
+ variant_01M2Y2W2W86H25DSB7KMSCC47J | Medusa T-Shirt - S / Black  |          1000000 | S / Black        |                1000000
+ variant_01M2Y2W2W9EHVM9GA5NZYGQETN | Medusa T-Shirt - S / White  |          1000000 | S / White        |                1000000
+ variant_01M2Y2W2WA2AB8KRVTSJP377F6 | Medusa T-Shirt - M / White  |          1000000 | M / White        |                1000000
+ variant_01M2Y2W2WAEQN1WGVNMSQN5YWZ | Medusa T-Shirt - M / Black  |          1000000 | M / Black        |                1000000
+ variant_01M2Y2W2WB4DRSJ5NPDZ3D641J | Medusa T-Shirt - L / Black  |          1000000 | L / Black        |                1000000
+ variant_01M2Y2W2WBGWW1CSTJ7QJ0Q68N | Medusa T-Shirt - L / White  |          1000000 | L / White        |                1000000
+ variant_01M2Y2W2WCF477K88QC0SK8RPA | Medusa T-Shirt - XL / Black |          1000000 | XL / Black       |                1000000
+ variant_01M2Y2W2WCKNVJWQFM3XB9CHTC | Medusa T-Shirt - XL / White |          1000000 | XL / White       |                1000000
+ variant_01M2Y2W2WCYPHE9EZZ1J9B5G57 | Medusa Sweatshirt - S       |          1000000 | S                |                1000000
+ variant_01M2Y2W2WD56H2PC86FPSQGHEM | Medusa Sweatshirt - L       |          1000000 | L                |                1000000
+ variant_01M2Y2W2WDCV1WWACMH64J7TZ7 | Medusa Sweatshirt - XL      |          1000000 | XL               |                1000000
+ variant_01M2Y2W2WDJKYGCJRBMNCCH2XC | Medusa Sweatshirt - M       |          1000000 | M                |                1000000
+ variant_01M2Y2W2WE7G7WPFFAS2A8MY34 | Medusa Shorts - S           |          1000000 | S                |                1000000
+ variant_01M2Y2W2WE9FAGJK3QWSD464K5 | Medusa Sweatpants - XL      |          1000000 | XL               |                1000000
+ variant_01M2Y2W2WE9VEJ2KZ2FW72508C | Medusa Sweatpants - S       |          1000000 | S                |                1000000
+ variant_01M2Y2W2WEARDDAEYAM00YK86Z | Medusa Sweatpants - M       |          1000000 | M                |                1000000
+ variant_01M2Y2W2WER1WC9P88B2G6X7X3 | Medusa Shorts - M           |          1000000 | M                |                1000000
+ variant_01M2Y2W2WERKSASVJSAB4VR4NV | Medusa Sweatpants - L       |          1000000 | L                |                1000000
+ variant_01M2Y2W2WF5T9YV3WJ166WZ37X | Medusa Shorts - XL          |          1000000 | XL               |                1000000
+ variant_01M2Y2W2WFPSYCQ1T8MHWNWVD9 | Medusa Shorts - L           |          1000000 | L                |                1000000
+(20 rows)
+
+SELECT COALESCE(w.id, v.id) AS id, w.stock_producible AS sp_with, v.stock_producible AS sp_vistas,
+       CASE WHEN v.id IS NULL THEN 'solo_with' WHEN w.id IS NULL THEN 'solo_vistas'
+            WHEN w.stock_producible IS DISTINCT FROM v.stock_producible THEN 'interseccion_valor_distinto' ELSE 'interseccion_igual' END AS conjunto,
+       (w.insumo_limitante IS NOT DISTINCT FROM v.insumo_limitante AND w.stock_insumo_limitante IS NOT DISTINCT FROM v.stock_insumo_limitante AND w.nombre IS NOT DISTINCT FROM v.nombre) AS resto_de_columnas_igual
+FROM (
+-- ============================================================
+-- DEC-31: composición con WITH. Las definiciones de v_producto,
+-- v_insumo y v_receta_componente se copian de 06_vistas_medusa.sql
+-- (sin CREATE VIEW ni SET search_path) y se anteponen, sin
+-- tocar su texto, a 04_consulta_canonica.sql.
+-- ============================================================
+WITH
+v_producto AS (
+SELECT pv.id AS id,
+       p.title || ' - ' || pv.title AS nombre,
+       COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS "stockDisponible",
+       pv.sku AS sku,
+       (p.status = 'published') AS activo
+FROM product_variant pv
+JOIN product p ON p.id = pv.product_id
+LEFT JOIN product_variant_inventory_item pvi ON pvi.variant_id = pv.id
+LEFT JOIN inventory_item ii ON ii.id = pvi.inventory_item_id
+LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id
+GROUP BY pv.id, p.title, pv.title, pv.sku, p.status
+),
+v_insumo AS (
+SELECT ii.id AS id, ii.title AS nombre,
+       COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS "stockDisponible",
+       ii.unit_of_measure AS "unidadMedida", ii.sku AS codigo
+FROM inventory_item ii
+LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id
+GROUP BY ii.id, ii.title, ii.unit_of_measure, ii.sku
+),
+v_receta_componente AS (
+SELECT pvi.variant_id AS "productoId", pvi.inventory_item_id AS "insumoId",
+       pvi.required_quantity AS "cantidadPorUnidad"
+FROM product_variant_inventory_item pvi
+)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC
+) w FULL JOIN (
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC
+) v ON w.id = v.id
+ORDER BY 4, 1;
+                 id                 | sp_with | sp_vistas |      conjunto      | resto_de_columnas_igual 
+------------------------------------+---------+-----------+--------------------+-------------------------
+ variant_01M2Y2W2W86H25DSB7KMSCC47J | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2W9EHVM9GA5NZYGQETN | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WA2AB8KRVTSJP377F6 | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WAEQN1WGVNMSQN5YWZ | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WB4DRSJ5NPDZ3D641J | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WBGWW1CSTJ7QJ0Q68N | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WCF477K88QC0SK8RPA | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WCKNVJWQFM3XB9CHTC | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WCYPHE9EZZ1J9B5G57 | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WD56H2PC86FPSQGHEM | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WDCV1WWACMH64J7TZ7 | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WDJKYGCJRBMNCCH2XC | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WE7G7WPFFAS2A8MY34 | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WE9FAGJK3QWSD464K5 | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WE9VEJ2KZ2FW72508C | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WEARDDAEYAM00YK86Z | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WER1WC9P88B2G6X7X3 | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WERKSASVJSAB4VR4NV | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WF5T9YV3WJ166WZ37X | 1000000 |   1000000 | interseccion_igual | t
+ variant_01M2Y2W2WFPSYCQ1T8MHWNWVD9 | 1000000 |   1000000 | interseccion_igual | t
+(20 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+-- ============================================================
+-- DEC-31: composición con WITH. Las definiciones de v_producto,
+-- v_insumo y v_receta_componente se copian de 06_vistas_medusa.sql
+-- (sin CREATE VIEW ni SET search_path) y se anteponen, sin
+-- tocar su texto, a 04_consulta_canonica.sql.
+-- ============================================================
+WITH
+v_producto AS (
+SELECT pv.id AS id,
+       p.title || ' - ' || pv.title AS nombre,
+       COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS "stockDisponible",
+       pv.sku AS sku,
+       (p.status = 'published') AS activo
+FROM product_variant pv
+JOIN product p ON p.id = pv.product_id
+LEFT JOIN product_variant_inventory_item pvi ON pvi.variant_id = pv.id
+LEFT JOIN inventory_item ii ON ii.id = pvi.inventory_item_id
+LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id
+GROUP BY pv.id, p.title, pv.title, pv.sku, p.status
+),
+v_insumo AS (
+SELECT ii.id AS id, ii.title AS nombre,
+       COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS "stockDisponible",
+       ii.unit_of_measure AS "unidadMedida", ii.sku AS codigo
+FROM inventory_item ii
+LEFT JOIN inventory_level il ON il.inventory_item_id = ii.id
+GROUP BY ii.id, ii.title, ii.unit_of_measure, ii.sku
+),
+v_receta_componente AS (
+SELECT pvi.variant_id AS "productoId", pvi.inventory_item_id AS "insumoId",
+       pvi.required_quantity AS "cantidadPorUnidad"
+FROM product_variant_inventory_item pvi
+)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: pv.id, (((p.title || ' - '::text) || pv.title)), (floor(min((((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))), ((array_agg(ii.title ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1]), ((array_agg((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1])
+   Sort Key: (floor(min((((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity)))))
+   ->  GroupAggregate
+         Output: pv.id, (((p.title || ' - '::text) || pv.title)), floor(min((((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity)))), (array_agg(ii.title ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1], (array_agg((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1]
+         Group Key: pv.id, (((p.title || ' - '::text) || pv.title))
+         ->  Sort
+               Output: pv.id, (((p.title || ' - '::text) || pv.title)), (COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)), pvi.required_quantity, ii.title, (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))
+               Sort Key: pv.id, (((p.title || ' - '::text) || pv.title)), (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))
+               ->  Hash Join
+                     Output: pv.id, (((p.title || ' - '::text) || pv.title)), (COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)), pvi.required_quantity, ii.title, ((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity)
+                     Hash Cond: (ii.id = (pvi.inventory_item_id)::text)
+                     ->  HashAggregate
+                           Output: ii.id, ii.title, COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric), ii.unit_of_measure, ii.sku
+                           Group Key: ii.id
+                           ->  Hash Right Join
+                                 Output: ii.id, ii.title, il.stocked_quantity, il.reserved_quantity, ii.unit_of_measure, ii.sku
+                                 Inner Unique: true
+                                 Hash Cond: (il.inventory_item_id = ii.id)
+                                 ->  Seq Scan on public.inventory_level il
+                                       Output: il.id, il.created_at, il.updated_at, il.deleted_at, il.inventory_item_id, il.location_id, il.stocked_quantity, il.reserved_quantity, il.incoming_quantity, il.metadata, il.raw_stocked_quantity, il.raw_reserved_quantity, il.raw_incoming_quantity
+                                 ->  Hash
+                                       Output: ii.id, ii.title, ii.unit_of_measure, ii.sku
+                                       ->  Seq Scan on public.inventory_item ii
+                                             Output: ii.id, ii.title, ii.unit_of_measure, ii.sku
+                     ->  Hash
+                           Output: pv.id, (((p.title || ' - '::text) || pv.title)), pvi.required_quantity, pvi.inventory_item_id
+                           ->  Nested Loop
+                                 Output: pv.id, (((p.title || ' - '::text) || pv.title)), pvi.required_quantity, pvi.inventory_item_id
+                                 ->  GroupAggregate
+                                       Output: pv.id, ((p.title || ' - '::text) || pv.title), NULL::numeric, pv.sku, NULL::boolean, p.title, pv.title, p.status
+                                       Group Key: pv.id, p.title
+                                       ->  Sort
+                                             Output: pv.id, p.title, pv.title, pv.sku, p.status
+                                             Sort Key: pv.id, p.title
+                                             ->  Nested Loop Left Join
+                                                   Output: pv.id, p.title, pv.title, pv.sku, p.status
+                                                   ->  Hash Join
+                                                         Output: pv.id, pv.title, pv.sku, p.title, p.status
+                                                         Inner Unique: true
+                                                         Hash Cond: (pv.product_id = p.id)
+                                                         ->  Seq Scan on public.product_variant pv
+                                                               Output: pv.id, pv.title, pv.sku, pv.barcode, pv.ean, pv.upc, pv.allow_backorder, pv.manage_inventory, pv.hs_code, pv.origin_country, pv.mid_code, pv.material, pv.weight, pv.length, pv.height, pv.width, pv.metadata, pv.variant_rank, pv.product_id, pv.created_at, pv.updated_at, pv.deleted_at, pv.thumbnail
+                                                         ->  Hash
+                                                               Output: p.title, p.status, p.id
+                                                               ->  Seq Scan on public.product p
+                                                                     Output: p.title, p.status, p.id
+                                                                     Filter: (p.status = 'published'::text)
+                                                   ->  Nested Loop Left Join
+                                                         Output: pvi_1.variant_id
+                                                         ->  Index Only Scan using product_variant_inventory_item_pkey on public.product_variant_inventory_item pvi_1
+                                                               Output: pvi_1.variant_id, pvi_1.inventory_item_id
+                                                               Index Cond: (pvi_1.variant_id = pv.id)
+                                                         ->  Hash Right Join
+                                                               Output: ii_1.id
+                                                               Inner Unique: true
+                                                               Hash Cond: (il_1.inventory_item_id = ii_1.id)
+                                                               ->  Seq Scan on public.inventory_level il_1
+                                                                     Output: il_1.id, il_1.created_at, il_1.updated_at, il_1.deleted_at, il_1.inventory_item_id, il_1.location_id, il_1.stocked_quantity, il_1.reserved_quantity, il_1.incoming_quantity, il_1.metadata, il_1.raw_stocked_quantity, il_1.raw_reserved_quantity, il_1.raw_incoming_quantity
+                                                               ->  Hash
+                                                                     Output: ii_1.id
+                                                                     ->  Index Only Scan using inventory_item_pkey on public.inventory_item ii_1
+                                                                           Output: ii_1.id
+                                                                           Index Cond: (ii_1.id = (pvi_1.inventory_item_id)::text)
+                                 ->  Index Scan using product_variant_inventory_item_pkey on public.product_variant_inventory_item pvi
+                                       Output: pvi.variant_id, pvi.inventory_item_id, pvi.id, pvi.required_quantity, pvi.created_at, pvi.updated_at, pvi.deleted_at
+                                       Index Cond: ((pvi.variant_id)::text = pv.id)
+                                       Filter: (pvi.required_quantity > '0'::numeric)
+(68 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: pv.id, (((p.title || ' - '::text) || pv.title)), (floor(min((((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))), ((array_agg(ii.title ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1]), ((array_agg((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1])
+   Sort Key: (floor(min((((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity)))))
+   ->  GroupAggregate
+         Output: pv.id, (((p.title || ' - '::text) || pv.title)), floor(min((((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity)))), (array_agg(ii.title ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1], (array_agg((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) ORDER BY (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))))[1]
+         Group Key: pv.id, (((p.title || ' - '::text) || pv.title))
+         ->  Sort
+               Output: pv.id, (((p.title || ' - '::text) || pv.title)), (COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)), pvi.required_quantity, ii.title, (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))
+               Sort Key: pv.id, (((p.title || ' - '::text) || pv.title)), (((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity))
+               ->  Hash Join
+                     Output: pv.id, (((p.title || ' - '::text) || pv.title)), (COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)), pvi.required_quantity, ii.title, ((COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric)) / pvi.required_quantity)
+                     Hash Cond: (ii.id = (pvi.inventory_item_id)::text)
+                     ->  HashAggregate
+                           Output: ii.id, ii.title, COALESCE(sum((il.stocked_quantity - il.reserved_quantity)), '0'::numeric), ii.unit_of_measure, ii.sku
+                           Group Key: ii.id
+                           ->  Hash Right Join
+                                 Output: ii.id, ii.title, il.stocked_quantity, il.reserved_quantity, ii.unit_of_measure, ii.sku
+                                 Inner Unique: true
+                                 Hash Cond: (il.inventory_item_id = ii.id)
+                                 ->  Seq Scan on public.inventory_level il
+                                       Output: il.id, il.created_at, il.updated_at, il.deleted_at, il.inventory_item_id, il.location_id, il.stocked_quantity, il.reserved_quantity, il.incoming_quantity, il.metadata, il.raw_stocked_quantity, il.raw_reserved_quantity, il.raw_incoming_quantity
+                                 ->  Hash
+                                       Output: ii.id, ii.title, ii.unit_of_measure, ii.sku
+                                       ->  Seq Scan on public.inventory_item ii
+                                             Output: ii.id, ii.title, ii.unit_of_measure, ii.sku
+                     ->  Hash
+                           Output: pv.id, (((p.title || ' - '::text) || pv.title)), pvi.required_quantity, pvi.inventory_item_id
+                           ->  Nested Loop
+                                 Output: pv.id, (((p.title || ' - '::text) || pv.title)), pvi.required_quantity, pvi.inventory_item_id
+                                 ->  GroupAggregate
+                                       Output: pv.id, ((p.title || ' - '::text) || pv.title), NULL::numeric, pv.sku, NULL::boolean, p.title, pv.title, p.status
+                                       Group Key: pv.id, p.title
+                                       ->  Sort
+                                             Output: pv.id, p.title, pv.title, pv.sku, p.status
+                                             Sort Key: pv.id, p.title
+                                             ->  Nested Loop Left Join
+                                                   Output: pv.id, p.title, pv.title, pv.sku, p.status
+                                                   ->  Hash Join
+                                                         Output: pv.id, pv.title, pv.sku, p.title, p.status
+                                                         Inner Unique: true
+                                                         Hash Cond: (pv.product_id = p.id)
+                                                         ->  Seq Scan on public.product_variant pv
+                                                               Output: pv.id, pv.title, pv.sku, pv.barcode, pv.ean, pv.upc, pv.allow_backorder, pv.manage_inventory, pv.hs_code, pv.origin_country, pv.mid_code, pv.material, pv.weight, pv.length, pv.height, pv.width, pv.metadata, pv.variant_rank, pv.product_id, pv.created_at, pv.updated_at, pv.deleted_at, pv.thumbnail
+                                                         ->  Hash
+                                                               Output: p.title, p.status, p.id
+                                                               ->  Seq Scan on public.product p
+                                                                     Output: p.title, p.status, p.id
+                                                                     Filter: (p.status = 'published'::text)
+                                                   ->  Nested Loop Left Join
+                                                         Output: pvi_1.variant_id
+                                                         ->  Index Only Scan using product_variant_inventory_item_pkey on public.product_variant_inventory_item pvi_1
+                                                               Output: pvi_1.variant_id, pvi_1.inventory_item_id
+                                                               Index Cond: (pvi_1.variant_id = pv.id)
+                                                         ->  Hash Right Join
+                                                               Output: ii_1.id
+                                                               Inner Unique: true
+                                                               Hash Cond: (il_1.inventory_item_id = ii_1.id)
+                                                               ->  Seq Scan on public.inventory_level il_1
+                                                                     Output: il_1.id, il_1.created_at, il_1.updated_at, il_1.deleted_at, il_1.inventory_item_id, il_1.location_id, il_1.stocked_quantity, il_1.reserved_quantity, il_1.incoming_quantity, il_1.metadata, il_1.raw_stocked_quantity, il_1.raw_reserved_quantity, il_1.raw_incoming_quantity
+                                                               ->  Hash
+                                                                     Output: ii_1.id
+                                                                     ->  Index Only Scan using inventory_item_pkey on public.inventory_item ii_1
+                                                                           Output: ii_1.id
+                                                                           Index Cond: (ii_1.id = (pvi_1.inventory_item_id)::text)
+                                 ->  Index Scan using product_variant_inventory_item_pkey on public.product_variant_inventory_item pvi
+                                       Output: pvi.variant_id, pvi.inventory_item_id, pvi.id, pvi.required_quantity, pvi.created_at, pvi.updated_at, pvi.deleted_at
+                                       Index Cond: ((pvi.variant_id)::text = pv.id)
+                                       Filter: (pvi.required_quantity > '0'::numeric)
+(68 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+WITH v_producto AS (SELECT 'SOMBRA'::text AS id, 'SOMBRA'::text AS nombre, 0 AS "stockDisponible", NULL::text AS sku, true AS activo)
+SELECT * FROM v_producto;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Result
+   Output: 'SOMBRA'::text, 'SOMBRA'::text, 0, NULL::text, true
+(2 rows)
+
+WITH v_producto AS (SELECT 'SOMBRA'::text AS id, 'SOMBRA'::text AS nombre, 0 AS "stockDisponible", NULL::text AS sku, true AS activo)
+SELECT * FROM v_producto;
+   id   | nombre | stockDisponible | sku | activo 
+--------+--------+-----------------+-----+--------
+ SOMBRA | SOMBRA |               0 |     | t
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+exit=0

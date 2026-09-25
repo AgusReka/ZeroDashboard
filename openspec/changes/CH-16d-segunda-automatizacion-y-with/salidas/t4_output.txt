@@ -1,0 +1,41 @@
+2026-09-25T13:03:40-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS instante, current_setting('transaction_isolation') AS aislamiento, current_setting('transaction_read_only') AS solo_lectura, current_setting('search_path') AS search_path;
+           instante            |   aislamiento   | solo_lectura |   search_path   
+-------------------------------+-----------------+--------------+-----------------
+ 2026-09-25 16:03:40.780964+00 | repeatable read | on           | "$user", public
+(1 row)
+
+SELECT pr.id, pr.nombre, pr."stockDisponible"
+FROM v_producto pr
+WHERE pr.activo = true
+  AND pr."stockDisponible" <= 20
+  AND NOT EXISTS (SELECT 1 FROM v_receta_componente rc WHERE rc."productoId" = pr.id)
+ORDER BY pr."stockDisponible" ASC;
+ id | nombre | stockDisponible 
+----+--------+-----------------
+(0 rows)
+
+SELECT pr.id, pr.nombre, pr."stockDisponible"
+FROM v_producto pr
+WHERE pr.activo = true
+  AND NOT EXISTS (SELECT 1 FROM v_receta_componente rc WHERE rc."productoId" = pr.id)
+ORDER BY pr."stockDisponible" ASC;
+ id | nombre | stockDisponible 
+----+--------+-----------------
+(0 rows)
+
+SELECT (SELECT count(*) FROM v_producto) AS variantes_en_v_producto,
+       (SELECT count(*) FROM v_producto pr WHERE EXISTS (SELECT 1 FROM v_receta_componente rc WHERE rc."productoId" = pr.id)) AS variantes_con_al_menos_una_fila_en_v_receta_componente,
+       (SELECT count(*) FROM v_producto pr WHERE NOT EXISTS (SELECT 1 FROM v_receta_componente rc WHERE rc."productoId" = pr.id)) AS variantes_sin_filas_en_v_receta_componente,
+       (SELECT count(DISTINCT rc."productoId") FROM v_receta_componente rc) AS productoid_distintos_en_v_receta_componente,
+       (SELECT count(*) FROM v_receta_componente) AS filas_v_receta_componente;
+ variantes_en_v_producto | variantes_con_al_menos_una_fila_en_v_receta_componente | variantes_sin_filas_en_v_receta_componente | productoid_distintos_en_v_receta_componente | filas_v_receta_componente 
+-------------------------+--------------------------------------------------------+--------------------------------------------+---------------------------------------------+---------------------------
+                      20 |                                                     20 |                                          0 |                                          20 |                        20
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+exit=0

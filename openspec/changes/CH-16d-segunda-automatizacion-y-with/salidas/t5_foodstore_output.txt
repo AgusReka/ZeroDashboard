@@ -1,0 +1,420 @@
+2026-09-25T13:04:20-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS instante, current_setting('transaction_isolation') AS aislamiento, current_setting('transaction_read_only') AS solo_lectura, current_setting('search_path') AS search_path;
+           instante            |   aislamiento   | solo_lectura |   search_path   
+-------------------------------+-----------------+--------------+-----------------
+ 2026-09-25 16:04:21.319689+00 | repeatable read | on           | "$user", public
+(1 row)
+
+SELECT c.relname, pg_get_viewdef(c.oid, true) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='v' AND c.relname IN ('v_producto','v_insumo','v_receta_componente') ORDER BY 1;
+       relname       |                               pg_get_viewdef                                
+---------------------+-----------------------------------------------------------------------------
+ v_insumo            |  SELECT id::text AS id,                                                    +
+                     |     name AS nombre,                                                        +
+                     |     stock_quantity AS "stockDisponible",                                   +
+                     |     NULL::text AS "unidadMedida",                                          +
+                     |     NULL::text AS codigo                                                   +
+                     |    FROM ingredient i                                                       +
+                     |   WHERE deleted_at IS NULL;
+ v_producto          |  SELECT id::text AS id,                                                    +
+                     |     name AS nombre,                                                        +
+                     |     stock_quantity AS "stockDisponible",                                   +
+                     |     NULL::text AS sku,                                                     +
+                     |     available AS activo                                                    +
+                     |    FROM product p                                                          +
+                     |   WHERE deleted_at IS NULL;
+ v_receta_componente |  SELECT pi.product_id::text AS "productoId",                               +
+                     |     pi.ingredient_id::text AS "insumoId",                                  +
+                     |     pi.quantity AS "cantidadPorUnidad"                                     +
+                     |    FROM product_ingredient pi                                              +
+                     |      JOIN product p ON p.id = pi.product_id AND p.deleted_at IS NULL       +
+                     |      JOIN ingredient i ON i.id = pi.ingredient_id AND i.deleted_at IS NULL;
+(3 rows)
+
+WITH
+v_producto AS (
+SELECT
+  p.id::text                AS id,
+  p.name                    AS nombre,
+  p.stock_quantity          AS "stockDisponible",  -- declarado, crudo
+  NULL::text                AS sku,                -- SIN ORIGEN en Food Store
+  p.available                AS activo
+FROM product p
+WHERE p.deleted_at IS NULL
+),
+v_insumo AS (
+SELECT
+  i.id::text                AS id,
+  i.name                    AS nombre,
+  i.stock_quantity          AS "stockDisponible",
+  NULL::text                AS "unidadMedida",     -- SIN ORIGEN en Food Store
+  NULL::text                AS codigo              -- SIN ORIGEN en Food Store
+FROM ingredient i
+WHERE i.deleted_at IS NULL
+),
+v_receta_componente AS (
+SELECT
+  pi.product_id::text       AS "productoId",
+  pi.ingredient_id::text    AS "insumoId",
+  pi.quantity               AS "cantidadPorUnidad"
+FROM product_ingredient pi
+JOIN product p    ON p.id = pi.product_id  AND p.deleted_at IS NULL
+JOIN ingredient i ON i.id = pi.ingredient_id AND i.deleted_at IS NULL
+)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+ id |        nombre         | stock_producible | insumo_limitante | stock_insumo_limitante 
+----+-----------------------+------------------+------------------+------------------------
+ 4  | Hamburguesa Picante   |               15 | Jalapeños        |                     30
+ 2  | Hamburguesa BBQ Bacon |               20 | Bacon            |                     40
+ 3  | Hamburguesa Doble     |               40 | Carne vacuna     |                     80
+ 1  | Hamburguesa Clásica   |               50 | Tomate           |                     50
+ 6  | Aros de Cebolla       |               70 | Cebolla          |                     70
+ 5  | Papas Fritas          |              250 | Papas            |                    250
+(6 rows)
+
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+ id |        nombre         | stock_producible | insumo_limitante | stock_insumo_limitante 
+----+-----------------------+------------------+------------------+------------------------
+ 4  | Hamburguesa Picante   |               15 | Jalapeños        |                     30
+ 2  | Hamburguesa BBQ Bacon |               20 | Bacon            |                     40
+ 3  | Hamburguesa Doble     |               40 | Carne vacuna     |                     80
+ 1  | Hamburguesa Clásica   |               50 | Tomate           |                     50
+ 6  | Aros de Cebolla       |               70 | Cebolla          |                     70
+ 5  | Papas Fritas          |              250 | Papas            |                    250
+(6 rows)
+
+SELECT COALESCE(w.id, v.id) AS id, w.stock_producible AS sp_with, v.stock_producible AS sp_vistas,
+       CASE WHEN v.id IS NULL THEN 'solo_with' WHEN w.id IS NULL THEN 'solo_vistas'
+            WHEN w.stock_producible IS DISTINCT FROM v.stock_producible THEN 'interseccion_valor_distinto' ELSE 'interseccion_igual' END AS conjunto,
+       (w.insumo_limitante IS NOT DISTINCT FROM v.insumo_limitante AND w.stock_insumo_limitante IS NOT DISTINCT FROM v.stock_insumo_limitante AND w.nombre IS NOT DISTINCT FROM v.nombre) AS resto_de_columnas_igual
+FROM (
+-- ============================================================
+-- DEC-31: composición con WITH. Las definiciones de v_producto,
+-- v_insumo y v_receta_componente se copian de 03_vistas_foodstore.sql
+-- (sin CREATE VIEW ni SET search_path) y se anteponen, sin
+-- tocar su texto, a 04_consulta_canonica.sql.
+-- ============================================================
+WITH
+v_producto AS (
+SELECT
+  p.id::text                AS id,
+  p.name                    AS nombre,
+  p.stock_quantity          AS "stockDisponible",  -- declarado, crudo
+  NULL::text                AS sku,                -- SIN ORIGEN en Food Store
+  p.available                AS activo
+FROM product p
+WHERE p.deleted_at IS NULL
+),
+v_insumo AS (
+SELECT
+  i.id::text                AS id,
+  i.name                    AS nombre,
+  i.stock_quantity          AS "stockDisponible",
+  NULL::text                AS "unidadMedida",     -- SIN ORIGEN en Food Store
+  NULL::text                AS codigo              -- SIN ORIGEN en Food Store
+FROM ingredient i
+WHERE i.deleted_at IS NULL
+),
+v_receta_componente AS (
+SELECT
+  pi.product_id::text       AS "productoId",
+  pi.ingredient_id::text    AS "insumoId",
+  pi.quantity               AS "cantidadPorUnidad"
+FROM product_ingredient pi
+JOIN product p    ON p.id = pi.product_id  AND p.deleted_at IS NULL
+JOIN ingredient i ON i.id = pi.ingredient_id AND i.deleted_at IS NULL
+)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC
+) w FULL JOIN (
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC
+) v ON w.id = v.id
+ORDER BY 4, 1;
+ id | sp_with | sp_vistas |      conjunto      | resto_de_columnas_igual 
+----+---------+-----------+--------------------+-------------------------
+ 1  |      50 |        50 | interseccion_igual | t
+ 2  |      20 |        20 | interseccion_igual | t
+ 3  |      40 |        40 | interseccion_igual | t
+ 4  |      15 |        15 | interseccion_igual | t
+ 5  |     250 |       250 | interseccion_igual | t
+ 6  |      70 |        70 | interseccion_igual | t
+(6 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+-- ============================================================
+-- DEC-31: composición con WITH. Las definiciones de v_producto,
+-- v_insumo y v_receta_componente se copian de 03_vistas_foodstore.sql
+-- (sin CREATE VIEW ni SET search_path) y se anteponen, sin
+-- tocar su texto, a 04_consulta_canonica.sql.
+-- ============================================================
+WITH
+v_producto AS (
+SELECT
+  p.id::text                AS id,
+  p.name                    AS nombre,
+  p.stock_quantity          AS "stockDisponible",  -- declarado, crudo
+  NULL::text                AS sku,                -- SIN ORIGEN en Food Store
+  p.available                AS activo
+FROM product p
+WHERE p.deleted_at IS NULL
+),
+v_insumo AS (
+SELECT
+  i.id::text                AS id,
+  i.name                    AS nombre,
+  i.stock_quantity          AS "stockDisponible",
+  NULL::text                AS "unidadMedida",     -- SIN ORIGEN en Food Store
+  NULL::text                AS codigo              -- SIN ORIGEN en Food Store
+FROM ingredient i
+WHERE i.deleted_at IS NULL
+),
+v_receta_componente AS (
+SELECT
+  pi.product_id::text       AS "productoId",
+  pi.ingredient_id::text    AS "insumoId",
+  pi.quantity               AS "cantidadPorUnidad"
+FROM product_ingredient pi
+JOIN product p    ON p.id = pi.product_id  AND p.deleted_at IS NULL
+JOIN ingredient i ON i.id = pi.ingredient_id AND i.deleted_at IS NULL
+)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+                                                                                                                                                      QUERY PLAN                                                                                                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ((p.id)::text), p.name, (floor(min((((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))), ((array_agg(i_1.name ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1]), ((array_agg(i_1.stock_quantity ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1])
+   Sort Key: (floor(min((((i_1.stock_quantity)::numeric / (pi.quantity)::numeric)))))
+   ->  GroupAggregate
+         Output: ((p.id)::text), p.name, floor(min((((i_1.stock_quantity)::numeric / (pi.quantity)::numeric)))), (array_agg(i_1.name ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1], (array_agg(i_1.stock_quantity ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1]
+         Group Key: ((p.id)::text), p.name
+         ->  Incremental Sort
+               Output: ((p.id)::text), p.name, i_1.stock_quantity, pi.quantity, i_1.name, (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))
+               Sort Key: ((p.id)::text), p.name, (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))
+               Presorted Key: ((p.id)::text)
+               ->  Nested Loop
+                     Output: (p.id)::text, p.name, i_1.stock_quantity, pi.quantity, i_1.name, ((i_1.stock_quantity)::numeric / (pi.quantity)::numeric)
+                     Join Filter: ((pi.ingredient_id)::text = (i_1.id)::text)
+                     ->  Nested Loop
+                           Output: p.id, p.name, pi.quantity, pi.ingredient_id
+                           Inner Unique: true
+                           ->  Merge Join
+                                 Output: p.id, p.name, pi.quantity, pi.ingredient_id
+                                 Merge Cond: (((pi.product_id)::text) = ((p.id)::text))
+                                 ->  Sort
+                                       Output: pi.quantity, pi.product_id, pi.ingredient_id, ((pi.product_id)::text)
+                                       Sort Key: ((pi.product_id)::text)
+                                       ->  Nested Loop
+                                             Output: pi.quantity, pi.product_id, pi.ingredient_id, (pi.product_id)::text
+                                             ->  Seq Scan on public.product p_1
+                                                   Output: p_1.id, p_1.name, p_1.description, p_1.base_price, p_1.image_urls, p_1.stock_quantity, p_1.prep_time_min, p_1.available, p_1.created_at, p_1.updated_at, p_1.deleted_at
+                                                   Filter: (p_1.deleted_at IS NULL)
+                                             ->  Bitmap Heap Scan on public.product_ingredient pi
+                                                   Output: pi.product_id, pi.ingredient_id, pi.is_removable, pi.quantity, pi.created_at
+                                                   Recheck Cond: (pi.product_id = p_1.id)
+                                                   Filter: (pi.quantity > 0)
+                                                   ->  Bitmap Index Scan on product_ingredient_pkey
+                                                         Index Cond: (pi.product_id = p_1.id)
+                                 ->  Sort
+                                       Output: p.id, p.name, ((p.id)::text)
+                                       Sort Key: ((p.id)::text)
+                                       ->  Seq Scan on public.product p
+                                             Output: p.id, p.name, (p.id)::text
+                                             Filter: ((p.deleted_at IS NULL) AND p.available)
+                           ->  Index Scan using ingredient_pkey on public.ingredient i
+                                 Output: i.id, i.name, i.description, i.stock_quantity, i.is_allergen, i.is_active, i.created_at, i.updated_at, i.deleted_at
+                                 Index Cond: (i.id = pi.ingredient_id)
+                                 Filter: (i.deleted_at IS NULL)
+                     ->  Seq Scan on public.ingredient i_1
+                           Output: i_1.id, i_1.name, i_1.description, i_1.stock_quantity, i_1.is_allergen, i_1.is_active, i_1.created_at, i_1.updated_at, i_1.deleted_at
+                           Filter: (i_1.deleted_at IS NULL)
+(46 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+-- ============================================================
+-- CONSULTA CANÓNICA: stock producible con insumo limitante.
+-- Escrita UNA sola vez, contra las vistas canónicas.
+-- No menciona ninguna tabla nativa de ninguna plataforma.
+-- Debe correr sin modificarse sobre cualquier esquema que
+-- satisfaga el contrato.
+-- ============================================================
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+                                                                                                                                                      QUERY PLAN                                                                                                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: ((p.id)::text), p.name, (floor(min((((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))), ((array_agg(i_1.name ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1]), ((array_agg(i_1.stock_quantity ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1])
+   Sort Key: (floor(min((((i_1.stock_quantity)::numeric / (pi.quantity)::numeric)))))
+   ->  GroupAggregate
+         Output: ((p.id)::text), p.name, floor(min((((i_1.stock_quantity)::numeric / (pi.quantity)::numeric)))), (array_agg(i_1.name ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1], (array_agg(i_1.stock_quantity ORDER BY (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))))[1]
+         Group Key: ((p.id)::text), p.name
+         ->  Incremental Sort
+               Output: ((p.id)::text), p.name, i_1.stock_quantity, pi.quantity, i_1.name, (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))
+               Sort Key: ((p.id)::text), p.name, (((i_1.stock_quantity)::numeric / (pi.quantity)::numeric))
+               Presorted Key: ((p.id)::text)
+               ->  Nested Loop
+                     Output: (p.id)::text, p.name, i_1.stock_quantity, pi.quantity, i_1.name, ((i_1.stock_quantity)::numeric / (pi.quantity)::numeric)
+                     Join Filter: ((pi.ingredient_id)::text = (i_1.id)::text)
+                     ->  Nested Loop
+                           Output: p.id, p.name, pi.quantity, pi.ingredient_id
+                           Inner Unique: true
+                           ->  Merge Join
+                                 Output: p.id, p.name, pi.quantity, pi.ingredient_id
+                                 Merge Cond: (((pi.product_id)::text) = ((p.id)::text))
+                                 ->  Sort
+                                       Output: pi.quantity, pi.product_id, pi.ingredient_id, ((pi.product_id)::text)
+                                       Sort Key: ((pi.product_id)::text)
+                                       ->  Nested Loop
+                                             Output: pi.quantity, pi.product_id, pi.ingredient_id, (pi.product_id)::text
+                                             ->  Seq Scan on public.product p_1
+                                                   Output: p_1.id, p_1.name, p_1.description, p_1.base_price, p_1.image_urls, p_1.stock_quantity, p_1.prep_time_min, p_1.available, p_1.created_at, p_1.updated_at, p_1.deleted_at
+                                                   Filter: (p_1.deleted_at IS NULL)
+                                             ->  Bitmap Heap Scan on public.product_ingredient pi
+                                                   Output: pi.product_id, pi.ingredient_id, pi.is_removable, pi.quantity, pi.created_at
+                                                   Recheck Cond: (pi.product_id = p_1.id)
+                                                   Filter: (pi.quantity > 0)
+                                                   ->  Bitmap Index Scan on product_ingredient_pkey
+                                                         Index Cond: (pi.product_id = p_1.id)
+                                 ->  Sort
+                                       Output: p.id, p.name, ((p.id)::text)
+                                       Sort Key: ((p.id)::text)
+                                       ->  Seq Scan on public.product p
+                                             Output: p.id, p.name, (p.id)::text
+                                             Filter: ((p.deleted_at IS NULL) AND p.available)
+                           ->  Index Scan using ingredient_pkey on public.ingredient i
+                                 Output: i.id, i.name, i.description, i.stock_quantity, i.is_allergen, i.is_active, i.created_at, i.updated_at, i.deleted_at
+                                 Index Cond: (i.id = pi.ingredient_id)
+                                 Filter: (i.deleted_at IS NULL)
+                     ->  Seq Scan on public.ingredient i_1
+                           Output: i_1.id, i_1.name, i_1.description, i_1.stock_quantity, i_1.is_allergen, i_1.is_active, i_1.created_at, i_1.updated_at, i_1.deleted_at
+                           Filter: (i_1.deleted_at IS NULL)
+(46 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+WITH v_producto AS (SELECT 'SOMBRA'::text AS id, 'SOMBRA'::text AS nombre, 0 AS "stockDisponible", NULL::text AS sku, true AS activo)
+SELECT * FROM v_producto;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Result
+   Output: 'SOMBRA'::text, 'SOMBRA'::text, 0, NULL::text, true
+(2 rows)
+
+WITH v_producto AS (SELECT 'SOMBRA'::text AS id, 'SOMBRA'::text AS nombre, 0 AS "stockDisponible", NULL::text AS sku, true AS activo)
+SELECT * FROM v_producto;
+   id   | nombre | stockDisponible | sku | activo 
+--------+--------+-----------------+-----+--------
+ SOMBRA | SOMBRA |               0 |     | t
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+exit=0

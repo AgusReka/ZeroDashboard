@@ -1,0 +1,18 @@
+2026-09-25T13:05:59-03:00
+BEGIN TRANSACTION READ ONLY;
+BEGIN
+SELECT now() AS instante, pg_backend_pid() AS pid_sesion_nueva;
+           instante            | pid_sesion_nueva 
+-------------------------------+------------------
+ 2026-09-25 16:06:00.239308+00 |              404
+(1 row)
+
+SELECT id, name, stock_quantity FROM product WHERE id = 8;
+ id |        name        | stock_quantity 
+----+--------------------+----------------
+  8 | Agua Mineral 500ml |            200
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+exit=0
