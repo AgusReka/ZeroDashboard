@@ -1,0 +1,6 @@
+En preparación en cocina|EN_PREP
+Entregado exitosamente|ENTREGADO
+Listo para entrega — preparación finalizada en cocina|LISTO
+Pago confirmado, listo para preparar|CONFIRMADO
+Pedido cancelado|cancelado
+Pedido recibido, esperando confirmación|PENDIENTE

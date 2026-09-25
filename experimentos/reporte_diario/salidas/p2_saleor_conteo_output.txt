@@ -1,0 +1,37 @@
+2026-09-25T15:32:09-03:00
+SET TIME ZONE 'America/Argentina/Buenos_Aires';
+SET
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_setting('TimeZone') AS zona;
+        hora_servidor         |              zona              
+------------------------------+--------------------------------
+ 2026-09-25 15:32:10.15079-03 | America/Argentina/Buenos_Aires
+(1 row)
+
+SELECT count(*) AS pedidos_total, count(*) FILTER (WHERE status <> 'draft') AS pedidos_no_borrador FROM order_order;
+ pedidos_total | pedidos_no_borrador 
+---------------+---------------------
+            20 |                  20
+(1 row)
+
+SELECT (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date AS dia,
+       count(*) FILTER (WHERE status <> 'draft') AS no_borrador,
+       count(*) AS total
+FROM order_order GROUP BY 1 ORDER BY 1;
+    dia     | no_borrador | total 
+------------+-------------+-------
+ 2026-09-24 |          20 |    20
+(1 row)
+
+SELECT status, count(*) FROM order_order GROUP BY 1 ORDER BY 1;
+       status        | count 
+---------------------+-------
+ partially fulfilled |     9
+ unconfirmed         |     3
+ unfulfilled         |     8
+(3 rows)
+
+ROLLBACK;
+ROLLBACK
+exit=0

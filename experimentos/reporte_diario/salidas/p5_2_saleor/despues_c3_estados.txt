@@ -1,0 +1,4 @@
+partially fulfilled|8
+unfulfilled|8
+unconfirmed|3
+cancelado|1

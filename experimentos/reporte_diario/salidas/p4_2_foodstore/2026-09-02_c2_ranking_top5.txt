@@ -1,0 +1,3 @@
+2|Hamburguesa BBQ Bacon|9|18000.00
+3|Hamburguesa Doble|5|11000.00
+5|Papas Fritas|5|4000.00

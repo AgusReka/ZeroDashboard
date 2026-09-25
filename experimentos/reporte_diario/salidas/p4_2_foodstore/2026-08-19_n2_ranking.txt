@@ -1,0 +1,2 @@
+Hamburguesa Clásica|4|6000.00
+Hamburguesa Doble|3|6600.00

@@ -1,0 +1,5 @@
+8|Agua Mineral 500ml|5|2000.00
+6|Aros de Cebolla|4|3600.00
+7|Coca Cola 500ml|4|2400.00
+9|Brownie de Chocolate|3|2100.00
+1|Hamburguesa Clásica|1|1500.00

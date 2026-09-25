@@ -1,0 +1,14 @@
+2026-09-25T15:34:17-03:00
+SET TIME ZONE 'America/Argentina/Buenos_Aires';
+SET
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_setting('TimeZone') AS zona, pg_backend_pid() AS pid;
+         hora_servidor         |              zona              |  pid  
+-------------------------------+--------------------------------+-------
+ 2026-09-25 15:34:18.202928-03 | America/Argentina/Buenos_Aires | 12963
+(1 row)
+
+Output format is unaligned.
+Field separator is "|".
+/tmp/rd/out/mapeo_productos.txt: No such file or directory

@@ -1,0 +1,6 @@
+6|Aros de Cebolla|6|5400.00
+1|Hamburguesa Clásica|4|6000.00
+2|Hamburguesa BBQ Bacon|3|6000.00
+9|Brownie de Chocolate|3|2100.00
+3|Hamburguesa Doble|1|2200.00
+5|Papas Fritas|1|800.00

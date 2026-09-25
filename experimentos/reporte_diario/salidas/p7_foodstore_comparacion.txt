@@ -1,0 +1,2 @@
+pares dia x consulta: iguales=93 distintos=0
+diferencias contra paso 4: 0

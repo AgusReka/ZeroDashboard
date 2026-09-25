@@ -1,0 +1,33 @@
+2026-09-25T15:33:03-03:00
+GRANT SELECT ON order_order, order_orderline TO zd_ch16c_creador;
+GRANT
+exit=0
+2026-09-25T15:33:04-03:00
+BEGIN;
+BEGIN
+CREATE VIEW v_pedido AS
+SELECT
+  o.id::text                                    AS id,
+  o.created_at                                  AS "fechaCreacion",   -- timestamp with time zone
+  CASE WHEN o.status = 'canceled' THEN 'cancelado'
+       ELSE o.status::text END                  AS estado,
+  o.total_gross_amount                          AS total,             -- bruto: con impuestos y envio, neto de descuentos
+  o.number                                      AS numero,
+  o.currency::text                              AS moneda
+FROM order_order o
+WHERE o.status <> 'draft';
+CREATE VIEW
+CREATE VIEW v_item_pedido AS
+SELECT
+  ol.id::text                                   AS id,
+  ol.order_id::text                             AS "pedidoId",
+  ol.variant_id::text                           AS "productoId",      -- NULL si la variante se borro (ON DELETE SET NULL)
+  ol.quantity                                   AS cantidad,
+  ol.unit_price_gross_amount                    AS "precioUnitario"   -- bruto: con impuestos, neto de descuentos
+FROM order_orderline ol;
+CREATE VIEW
+GRANT SELECT ON v_pedido, v_item_pedido TO zd_ch16c_lectura;
+GRANT
+COMMIT;
+COMMIT
+exit=0

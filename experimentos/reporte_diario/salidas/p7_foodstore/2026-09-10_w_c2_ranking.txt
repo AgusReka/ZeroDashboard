@@ -1,0 +1,4 @@
+2|Hamburguesa BBQ Bacon|3|6000.00
+5|Papas Fritas|3|2400.00
+9|Brownie de Chocolate|3|2100.00
+7|Coca Cola 500ml|1|600.00

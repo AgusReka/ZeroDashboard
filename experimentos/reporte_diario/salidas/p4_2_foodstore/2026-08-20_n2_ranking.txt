@@ -1,0 +1,5 @@
+Hamburguesa Doble|5|11000.00
+Hamburguesa BBQ Bacon|3|6000.00
+Agua Mineral 500ml|2|800.00
+Aros de Cebolla|2|1800.00
+Papas Fritas|2|1600.00

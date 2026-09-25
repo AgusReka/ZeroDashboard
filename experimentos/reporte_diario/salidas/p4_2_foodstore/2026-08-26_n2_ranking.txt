@@ -1,0 +1,5 @@
+Aros de Cebolla|4|3600.00
+Papas Fritas|3|2400.00
+Hamburguesa Doble|2|4400.00
+Coca Cola 500ml|1|600.00
+Hamburguesa Picante|1|1900.00

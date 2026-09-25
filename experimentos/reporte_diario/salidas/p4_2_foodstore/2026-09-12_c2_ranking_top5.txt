@@ -1,0 +1,5 @@
+3|Hamburguesa Doble|5|11000.00
+7|Coca Cola 500ml|4|2400.00
+2|Hamburguesa BBQ Bacon|3|6000.00
+8|Agua Mineral 500ml|3|1200.00
+4|Hamburguesa Picante|2|3800.00

@@ -1,0 +1,7 @@
+Hamburguesa Picante|8|15200.00
+Hamburguesa Doble|4|8800.00
+Hamburguesa Clásica|3|4500.00
+Agua Mineral 500ml|3|1200.00
+Coca Cola 500ml|3|1800.00
+Aros de Cebolla|2|1800.00
+Hamburguesa BBQ Bacon|1|2000.00

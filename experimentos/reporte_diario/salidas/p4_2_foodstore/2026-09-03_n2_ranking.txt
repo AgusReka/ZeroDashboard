@@ -1,0 +1,4 @@
+Coca Cola 500ml|3|1800.00
+Hamburguesa Picante|3|5700.00
+Papas Fritas|3|2400.00
+Agua Mineral 500ml|2|800.00

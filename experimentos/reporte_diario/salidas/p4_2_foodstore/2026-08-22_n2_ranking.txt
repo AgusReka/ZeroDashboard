@@ -1,0 +1,5 @@
+Hamburguesa Doble|4|8800.00
+Aros de Cebolla|3|2700.00
+Hamburguesa BBQ Bacon|3|6000.00
+Hamburguesa Picante|3|5700.00
+Papas Fritas|1|800.00

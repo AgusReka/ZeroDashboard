@@ -1,0 +1,5 @@
+Agua Mineral 500ml|3|1200.00
+Brownie de Chocolate|3|2100.00
+Hamburguesa BBQ Bacon|2|4000.00
+Hamburguesa Clásica|1|1500.00
+Papas Fritas|1|800.00

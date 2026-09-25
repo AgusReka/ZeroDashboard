@@ -1,0 +1,7 @@
+Agua Mineral 500ml|5|2000.00
+Aros de Cebolla|4|3600.00
+Coca Cola 500ml|4|2400.00
+Brownie de Chocolate|3|2100.00
+Hamburguesa BBQ Bacon|1|2000.00
+Hamburguesa Clásica|1|1500.00
+Papas Fritas|1|800.00

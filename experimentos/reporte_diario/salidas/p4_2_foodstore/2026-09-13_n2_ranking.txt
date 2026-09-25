@@ -1,0 +1,5 @@
+Coca Cola 500ml|3|1800.00
+Papas Fritas|3|2400.00
+Aros de Cebolla|2|1800.00
+Brownie de Chocolate|1|700.00
+Hamburguesa Picante|1|1900.00

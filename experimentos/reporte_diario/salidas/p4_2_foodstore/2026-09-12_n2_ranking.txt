@@ -1,0 +1,6 @@
+Hamburguesa Doble|5|11000.00
+Coca Cola 500ml|4|2400.00
+Agua Mineral 500ml|3|1200.00
+Hamburguesa BBQ Bacon|3|6000.00
+Brownie de Chocolate|2|1400.00
+Hamburguesa Picante|2|3800.00

@@ -1,0 +1,2 @@
+Entregado exitosamente|4
+Pedido cancelado|1

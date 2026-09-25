@@ -1,0 +1,88 @@
+2026-09-25T15:38:45-03:00
+SET TIME ZONE 'America/Argentina/Buenos_Aires';
+SET
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+BEGIN
+SELECT now() AS hora_servidor, current_setting('TimeZone') AS zona, current_user, pg_backend_pid() AS pid;
+         hora_servidor         |              zona              | current_user | pid 
+-------------------------------+--------------------------------+--------------+-----
+ 2026-09-25 15:38:45.708551-03 | America/Argentina/Buenos_Aires | saleor       | 183
+(1 row)
+
+SELECT o.id AS sel_id, o.number AS sel_number, o.status AS sel_status
+FROM order_order o
+WHERE o.status NOT IN ('draft', 'canceled')
+  AND o.created_at >= '2026-09-24' AND o.created_at < '2026-09-25'
+ORDER BY o.number
+LIMIT 1 
+Output format is unaligned.
+Field separator is "|".
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT o.id, o.number, o.status, o.total_gross_amount, o.currency FROM order_order o WHERE o.id = 'b1785e85-5f6b-4cf4-ae0f-a6f363cd5b56';
+SELECT ol.variant_id::text, ol.quantity, ol.unit_price_gross_amount FROM order_orderline ol WHERE ol.order_id = 'b1785e85-5f6b-4cf4-ae0f-a6f363cd5b56' ORDER BY 1;
+UPDATE order_order SET status = 'canceled' WHERE id = 'b1785e85-5f6b-4cf4-ae0f-a6f363cd5b56' AND status = 'partially fulfilled';
+UPDATE 1
+SELECT CASE WHEN o.status = 'canceled' THEN 'ok' ELSE (1 / (length(o.status) * 0))::text END AS guarda
+FROM order_order o WHERE o.id = 'b1785e85-5f6b-4cf4-ae0f-a6f363cd5b56';
+ok
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+ROLLBACK;
+ROLLBACK
+exit=0
+2026-09-25T15:38:45-03:00

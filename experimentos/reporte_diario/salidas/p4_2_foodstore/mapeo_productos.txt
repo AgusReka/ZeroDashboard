@@ -1,0 +1,9 @@
+Agua Mineral 500ml|8
+Aros de Cebolla|6
+Brownie de Chocolate|9
+Coca Cola 500ml|7
+Hamburguesa BBQ Bacon|2
+Hamburguesa Clásica|1
+Hamburguesa Doble|3
+Hamburguesa Picante|4
+Papas Fritas|5

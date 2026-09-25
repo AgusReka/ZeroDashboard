@@ -1,0 +1,126 @@
+2026-09-25T15:33:20-03:00
+SET TIME ZONE 'America/Argentina/Buenos_Aires';
+SET
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_setting('TimeZone') AS zona;
+         hora_servidor         |              zona              
+-------------------------------+--------------------------------
+ 2026-09-25 15:33:20.522989-03 | America/Argentina/Buenos_Aires
+(1 row)
+
+SELECT count(*) AS lineas_con_nombre_distinto,
+       count(DISTINCT dp.producto_id) AS productos_afectados
+FROM detalle_pedido dp JOIN product pr ON pr.id = dp.producto_id
+WHERE dp.producto_nombre <> pr.name;
+ lineas_con_nombre_distinto | productos_afectados 
+----------------------------+---------------------
+                          0 |                   0
+(1 row)
+
+SELECT dp.producto_id, dp.producto_nombre AS nombre_historico, pr.name AS nombre_actual,
+       pr.deleted_at IS NOT NULL AS producto_borrado, count(*) AS lineas,
+       count(*) FILTER (WHERE dp.deleted_at IS NULL) AS lineas_vivas
+FROM detalle_pedido dp JOIN product pr ON pr.id = dp.producto_id
+WHERE dp.producto_nombre <> pr.name
+GROUP BY 1,2,3,4 ORDER BY 1,2;
+ producto_id | nombre_historico | nombre_actual | producto_borrado | lineas | lineas_vivas 
+-------------+------------------+---------------+------------------+--------+--------------
+(0 rows)
+
+SELECT producto_nombre, array_agg(DISTINCT producto_id ORDER BY producto_id) AS ids
+FROM detalle_pedido GROUP BY 1 HAVING count(DISTINCT producto_id) > 1;
+ producto_nombre | ids 
+-----------------+-----
+(0 rows)
+
+SELECT producto_id, array_agg(DISTINCT producto_nombre ORDER BY producto_nombre) AS nombres
+FROM detalle_pedido GROUP BY 1 HAVING count(DISTINCT producto_nombre) > 1;
+ producto_id | nombres 
+-------------+---------
+(0 rows)
+
+SELECT DISTINCT dp.producto_id FROM detalle_pedido dp JOIN product pr ON pr.id = dp.producto_id WHERE pr.deleted_at IS NOT NULL;
+ producto_id 
+-------------
+(0 rows)
+
+SELECT id, codigo, descripcion FROM estado_pedido ORDER BY orden;
+ id |   codigo   |                      descripcion                      
+----+------------+-------------------------------------------------------
+  1 | PENDIENTE  | Pedido recibido, esperando confirmación
+  2 | CONFIRMADO | Pago confirmado, listo para preparar
+  3 | EN_PREP    | En preparación en cocina
+  4 | LISTO      | Listo para entrega — preparación finalizada en cocina
+  5 | ENTREGADO  | Entregado exitosamente
+  6 | CANCELADO  | Pedido cancelado
+(6 rows)
+
+SELECT p.created_at::date AS dia, count(*) AS pedidos,
+       count(*) FILTER (WHERE p.deleted_at IS NULL) AS pedidos_vivos,
+       count(*) FILTER (WHERE ep.codigo = 'CANCELADO') AS cancelados
+FROM pedido p JOIN estado_pedido ep ON ep.id = p.estado_id GROUP BY 1 ORDER BY 1;
+    dia     | pedidos | pedidos_vivos | cancelados 
+------------+---------+---------------+------------
+ 2026-08-18 |       2 |             2 |          1
+ 2026-08-19 |       2 |             2 |          0
+ 2026-08-20 |       3 |             3 |          0
+ 2026-08-21 |       2 |             2 |          0
+ 2026-08-22 |       5 |             5 |          1
+ 2026-08-23 |       3 |             3 |          1
+ 2026-08-24 |       3 |             3 |          0
+ 2026-08-25 |       4 |             4 |          0
+ 2026-08-26 |       3 |             3 |          0
+ 2026-08-27 |       2 |             2 |          0
+ 2026-08-28 |       3 |             3 |          1
+ 2026-08-29 |       6 |             6 |          1
+ 2026-08-30 |       4 |             4 |          0
+ 2026-08-31 |       4 |             4 |          0
+ 2026-09-01 |       4 |             4 |          0
+ 2026-09-02 |       4 |             4 |          0
+ 2026-09-03 |       3 |             3 |          0
+ 2026-09-04 |       2 |             2 |          0
+ 2026-09-05 |       4 |             4 |          0
+ 2026-09-06 |       5 |             5 |          0
+ 2026-09-07 |       2 |             2 |          0
+ 2026-09-08 |       4 |             4 |          0
+ 2026-09-09 |       2 |             2 |          0
+ 2026-09-10 |       2 |             2 |          0
+ 2026-09-11 |       3 |             3 |          0
+ 2026-09-12 |       5 |             5 |          0
+ 2026-09-13 |       5 |             5 |          2
+ 2026-09-14 |       3 |             3 |          1
+ 2026-09-15 |       3 |             3 |          0
+ 2026-09-16 |       2 |             2 |          0
+(30 rows)
+
+SELECT (SELECT count(*) FROM pedido WHERE deleted_at IS NOT NULL) AS pedidos_borrados,
+       (SELECT count(*) FROM detalle_pedido WHERE deleted_at IS NOT NULL) AS detalles_borrados;
+ pedidos_borrados | detalles_borrados 
+------------------+-------------------
+                0 |                 0
+(1 row)
+
+SELECT count(*) FILTER (WHERE total <> subtotal + COALESCE(costo_envio,0)) AS pedidos_total_distinto,
+       count(*) FILTER (WHERE COALESCE(costo_envio,0) <> 0) AS pedidos_con_envio
+FROM pedido;
+ pedidos_total_distinto | pedidos_con_envio 
+------------------------+-------------------
+                      0 |                99
+(1 row)
+
+SELECT count(*) FILTER (WHERE subtotal <> cantidad * producto_precio_unitario) AS lineas_subtotal_distinto FROM detalle_pedido;
+ lineas_subtotal_distinto 
+--------------------------
+                        0
+(1 row)
+
+SELECT min(created_at), max(created_at) FROM pedido;
+            min             |            max             
+----------------------------+----------------------------
+ 2026-08-18 13:07:31.934432 | 2026-09-16 13:07:31.934432
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+exit=0

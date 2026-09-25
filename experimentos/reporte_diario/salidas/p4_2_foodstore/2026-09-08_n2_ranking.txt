@@ -1,0 +1,6 @@
+Brownie de Chocolate|7|4900.00
+Hamburguesa Picante|3|5700.00
+Agua Mineral 500ml|2|800.00
+Coca Cola 500ml|2|1200.00
+Hamburguesa Doble|2|4400.00
+Papas Fritas|2|1600.00

@@ -1,0 +1,5 @@
+Coca Cola 500ml|5|3000.00
+Hamburguesa Picante|4|7600.00
+Hamburguesa Clásica|2|3000.00
+Agua Mineral 500ml|1|400.00
+Aros de Cebolla|1|900.00

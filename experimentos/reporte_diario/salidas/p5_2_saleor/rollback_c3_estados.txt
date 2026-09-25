@@ -1,0 +1,3 @@
+partially fulfilled|9
+unfulfilled|8
+unconfirmed|3
