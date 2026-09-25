@@ -336,7 +336,7 @@ Columna "Cambio": diferencia respecto de la clasificación de las secciones 1 a 
 | cantidadPorUnidad | WooCommerce | sin vista | 4 | — (E-1) |
 | cantidadPorUnidad | Saleor | sin vista | 4 | — |
 
-Nota sobre Medusa `receta_componente.productoId`: la resolución de G-1 alcanza a los atributos de la entidad cuya fila canónica requirió la decisión de nivel (`producto`). `pvi.variant_id` es una columna de la propia fila de `product_variant_inventory_item`, sin reunión, así que queda en 1. La pregunta de la sección 8 (si la decisión alcanza también a las referencias hacia esa entidad) no forma parte de las resoluciones del 2026-09-24.
+Nota sobre Medusa `receta_componente.productoId`: la resolución de G-1 alcanza a los atributos de la entidad cuya fila canónica requirió la decisión de nivel (`producto`). `pvi.variant_id` es una columna de la propia fila de `product_variant_inventory_item`, sin reunión, así que queda en 1. La pregunta de la sección 8 (si la decisión alcanza también a las referencias hacia esa entidad) quedó decidida por el autor (2026-09-24): no alcanza. Las referencias a `producto` desde otras entidades se clasifican por su propia expresión, así que esta celda queda en 1.
 
 ### Conteo
 
