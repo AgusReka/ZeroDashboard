@@ -210,3 +210,157 @@ La clase 3 solo aparece con la lectura A. La tabla de `bitacora_CH-16b_tres_esqu
 **E-1. La ausencia en WooCommerce se observó sobre un fixture escrito por el propio proyecto.** V-7 encontró "0 tablas" de insumo o receta (`bitacora_CH-16b_tres_esquemas.md:98`), pero sobre un esquema creado por `07_woocommerce_fixture.sql`, que por construcción no las tiene. Todavía falta verificar la ausencia contra una fuente primaria (`bitacora_CH-16b_tres_esquemas.md:457`). Las 8 celdas de clase 4 de WooCommerce se apoyan en ese fixture y en fuentes documentales (`:467-471`). En Saleor, en cambio, la ausencia se observó sobre una instancia real (3.23.36) y en el código fuente (3.23.35) (`bitacora_CH-16c_saleor.md:27-29`).
 
 **E-2. Hay celdas clasificadas cuyo caso no está ejercitado en los datos.** Medusa: suma sobre varias ubicaciones (sección 6) y pedidos (0 filas, `CH-16:36`). Saleor: el caso `activo = false` (`bitacora_CH-16c_saleor.md:463`). WooCommerce: variaciones (G-2). La clase se asignó por la estructura del SQL, no por lo que devolvió.
+
+---
+
+## Reclasificación con el criterio refinado (2026-09-24)
+
+Esta sección aplica las resoluciones del autor (2026-09-24) a las 96 correspondencias. Las secciones 1 a 9 quedan como estaban: son la clasificación con el criterio original. Las expresiones citadas no cambian.
+
+### Criterio refinado
+
+- **Multietiqueta.** Cada correspondencia registra todos los obstáculos presentes: **2** Granularidad, **3** Entidad-atributo-valor, **4** Ausencia. Si no hay ninguno, es **1** Directa. Ya no se asigna solo la primera regla que aplica.
+- **Regla 2 ampliada.** Incluye tomar el atributo de otra entidad relacionada que no es una tabla de valores enumerados.
+- **NI**: no implementado (no hay vista, o no hay expresión, para la entidad en esa plataforma). NI no es un obstáculo y no cuenta como correspondencia clasificada.
+
+### Resolución de los casos de la sección 8
+
+| Caso | Resolución | Celdas afectadas |
+|---|---|---|
+| G-1 | La decisión de nivel de una entidad alcanza a todos sus atributos. | Los 5 atributos de `producto` en Medusa, Saleor y WooCommerce llevan obstáculo 2. |
+| G-2 | Queda cubierto por G-1: la vista de WooCommerce mezcla niveles de la cadena `post_parent`, así que la decisión de nivel está presente (aunque sin tomar) para toda la entidad. | Las mismas 5 celdas de WooCommerce. |
+| G-3 | `item_pedido.productoId` y `precioUnitario` de Medusa son clase 2 (regla 2 ampliada: se toman de `order_line_item`, entidad relacionada que no es de valores enumerados). | 2 celdas de Medusa. |
+| G-4 | `pedido.total` de Medusa es NI. | 1 celda de Medusa. |
+| T-1 | Los filtros de fila no cuentan para la clase. | Ninguna celda cambia: la matriz ya clasificaba por la expresión del valor. |
+
+### Tabla completa
+
+Columna "Cambio": diferencia respecto de la clasificación de las secciones 1 a 5.
+
+#### `producto`
+
+| Atributo | Plataforma | Expresión | Clase | Cambio |
+|---|---|---|---|---|
+| id | Food Store | `p.id::text` (`03:18`) | 1 | — |
+| id | Medusa | `pv.id` (`06:4`) | 2 | ? → 2 (G-1) |
+| id | WooCommerce | `p.ID::text` (`08:6`) | 2 | ? → 2 (G-1/G-2) |
+| id | Saleor | `pv.id::text` (`10:26`) | 2 | ? → 2 (G-1) |
+| nombre | Food Store | `p.name` (`03:19`) | 1 | — |
+| nombre | Medusa | `p.title \|\| ' - ' \|\| pv.title` (`06:5`) | 2 | — |
+| nombre | WooCommerce | `p.post_title` (`08:7`) | 2 | ? → 2 (G-1/G-2) |
+| nombre | Saleor | `CASE WHEN pv.name IS NULL OR pv.name = '' THEN p.name ELSE p.name \|\| ' - ' \|\| pv.name END` (`10:27-28`) | 2 | — |
+| stockDisponible | Food Store | `p.stock_quantity` (`03:20`) | 1 | — |
+| stockDisponible | Medusa | `COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0)` con `GROUP BY pv.id, …` (`06:6`, `06:11-14`) | 2 | — |
+| stockDisponible | WooCommerce | `COALESCE(m_stock.meta_value::numeric, 0)::int` con `LEFT JOIN wp_postmeta m_stock … AND m_stock.meta_key = '_stock'` (`08:8`, `08:12`) | 2 + 3 | ? → 2 + 3 (G-1/G-2 y clave-valor, multietiqueta) |
+| stockDisponible | Saleor | `COALESCE(SUM(s.quantity - s.quantity_allocated), 0)` con `LEFT JOIN warehouse_stock s` y `GROUP BY pv.id, …` (`10:29`, `10:37-38`) | 2 | — |
+| sku | Food Store | `NULL::text` (`03:21`) | 4 | — |
+| sku | Medusa | `pv.sku` (`06:7`) | 2 | ? → 2 (G-1) |
+| sku | WooCommerce | `m_sku.meta_value` con `LEFT JOIN wp_postmeta m_sku … AND m_sku.meta_key = '_sku'` (`08:9`, `08:13`) | 2 + 3 | ? → 2 + 3 (G-1/G-2 y clave-valor, multietiqueta) |
+| sku | Saleor | `pv.sku` (`10:30`) | 2 | ? → 2 (G-1) |
+| activo | Food Store | `p.available` (`03:22`) | 1 | — |
+| activo | Medusa | `(p.status = 'published')` (`06:8`) | 2 | — |
+| activo | WooCommerce | `(p.post_status = 'publish')` (`08:10`) | 2 | ? → 2 (G-1/G-2) |
+| activo | Saleor | `EXISTS (SELECT 1 FROM product_productchannellisting pcl WHERE pcl.product_id = p.id AND pcl.is_published)` (`10:31-34`) | 2 | — |
+
+#### `pedido`
+
+| Atributo | Plataforma | Expresión | Clase | Cambio |
+|---|---|---|---|---|
+| id | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| id | Medusa | `o.id` (`CH-16:146`) | 1 | — |
+| fechaCreacion | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| fechaCreacion | Medusa | `o.created_at` (`CH-16:147`) | 1 | — |
+| estado | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| estado | Medusa | `o.status::text` (`CH-16:148`) | 1 | — |
+| total | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| total | Medusa | sin vista: omitido a propósito de `v_pedido` (`CH-16:134-142`) | NI | ? → NI (G-4). Nota: la estructura existe en `order_summary.totals` (jsonb, `CH-16:219`), sin verificar su contenido ni su cardinalidad respecto de `order`; clasificarla requiere primero implementar la expresión. |
+| numero | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| numero | Medusa | `o.display_id` (`CH-16:149`) | 1 | — |
+| moneda | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| moneda | Medusa | `o.currency_code` (`CH-16:150`) | 1 | — |
+
+#### `item_pedido`
+
+| Atributo | Plataforma | Expresión | Clase | Cambio |
+|---|---|---|---|---|
+| id | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| id | Medusa | `oi.id` (`CH-16:164`) | 1 | — |
+| pedidoId | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| pedidoId | Medusa | `oi.order_id` (`CH-16:165`) | 1 | — |
+| productoId | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| productoId | Medusa | `oli.variant_id` con `JOIN order_line_item oli ON oli.id = oi.item_id` (`CH-16:166`, `CH-16:169-170`) | 2 | ? → 2 (G-3, regla 2 ampliada) |
+| cantidad | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| cantidad | Medusa | `oi.quantity` (`CH-16:167`) | 1 | — |
+| precioUnitario | Food Store / WooCommerce / Saleor | sin vista | NI | — |
+| precioUnitario | Medusa | `oli.unit_price` (`CH-16:168`, reunión en `CH-16:170`) | 2 | ? → 2 (G-3, regla 2 ampliada) |
+
+#### `insumo`
+
+| Atributo | Plataforma | Expresión | Clase | Cambio |
+|---|---|---|---|---|
+| id | Food Store | `i.id::text` (`03:28`) | 1 | — |
+| id | Medusa | `ii.id` (`06:17`) | 1 | — |
+| id | WooCommerce | sin vista | 4 | — (E-1) |
+| id | Saleor | sin vista | 4 | — |
+| nombre | Food Store | `i.name` (`03:29`) | 1 | — |
+| nombre | Medusa | `ii.title` (`06:17`) | 1 | — |
+| nombre | WooCommerce | sin vista | 4 | — (E-1) |
+| nombre | Saleor | sin vista | 4 | — |
+| stockDisponible | Food Store | `i.stock_quantity` (`03:30`) | 1 | — |
+| stockDisponible | Medusa | `COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0)` con `LEFT JOIN inventory_level il` y `GROUP BY ii.id, …` (`06:18`, `06:21-22`) | 2 | — |
+| stockDisponible | WooCommerce | sin vista | 4 | — (E-1) |
+| stockDisponible | Saleor | sin vista | 4 | — |
+| unidadMedida | Food Store | `NULL::text` (`03:31`) | 4 | — |
+| unidadMedida | Medusa | `ii.unit_of_measure` (`06:19`) | 1 | — |
+| unidadMedida | WooCommerce | sin vista | 4 | — (E-1) |
+| unidadMedida | Saleor | sin vista | 4 | — |
+| codigo | Food Store | `NULL::text` (`03:32`) | 4 | — |
+| codigo | Medusa | `ii.sku` (`06:19`) | 1 | — |
+| codigo | WooCommerce | sin vista | 4 | — (E-1) |
+| codigo | Saleor | sin vista | 4 | — |
+
+#### `receta_componente`
+
+| Atributo | Plataforma | Expresión | Clase | Cambio |
+|---|---|---|---|---|
+| productoId | Food Store | `pi.product_id::text` (`03:38`) | 1 | — (T-1: los `JOIN` que filtran no cuentan) |
+| productoId | Medusa | `pvi.variant_id` (`06:25`) | 1 | — (ver nota abajo) |
+| productoId | WooCommerce | sin vista | 4 | — (E-1) |
+| productoId | Saleor | sin vista | 4 | — |
+| insumoId | Food Store | `pi.ingredient_id::text` (`03:39`) | 1 | — |
+| insumoId | Medusa | `pvi.inventory_item_id` (`06:25`) | 1 | — |
+| insumoId | WooCommerce | sin vista | 4 | — (E-1) |
+| insumoId | Saleor | sin vista | 4 | — |
+| cantidadPorUnidad | Food Store | `pi.quantity` (`03:40`) | 1 | — |
+| cantidadPorUnidad | Medusa | `pvi.required_quantity` (`06:26`) | 1 | — |
+| cantidadPorUnidad | WooCommerce | sin vista | 4 | — (E-1) |
+| cantidadPorUnidad | Saleor | sin vista | 4 | — |
+
+Nota sobre Medusa `receta_componente.productoId`: la resolución de G-1 alcanza a los atributos de la entidad cuya fila canónica requirió la decisión de nivel (`producto`). `pvi.variant_id` es una columna de la propia fila de `product_variant_inventory_item`, sin reunión, así que queda en 1. La pregunta de la sección 8 (si la decisión alcanza también a las referencias hacia esa entidad) no forma parte de las resoluciones del 2026-09-24.
+
+### Conteo
+
+**Correspondencias clasificadas por plataforma** (todas las que no son NI):
+
+| | Food Store | Medusa | Saleor | WooCommerce | Total |
+|---|---|---|---|---|---|
+| Clasificadas | 13 | 23 | 13 | 13 | **62** |
+| NI | 11 | 1 | 11 | 11 | **34** |
+| **Total** | 24 | 24 | 24 | 24 | 96 |
+
+**Obstáculos** (multietiqueta: una celda con 2 + 3 cuenta en ambas filas, así que las filas de obstáculo no suman el total de clasificadas):
+
+| | Food Store | Medusa | Saleor | WooCommerce | Total |
+|---|---|---|---|---|---|
+| 1. Directa (sin obstáculos) | 10 | 15 | 0 | 0 | **25** |
+| Con obstáculo 2 (Granularidad) | 0 | 8 | 5 | 5 | **18** |
+| Con obstáculo 3 (Entidad-atributo-valor) | 0 | 0 | 0 | 2 | **2** |
+| Con obstáculo 4 (Ausencia) | 3 | 0 | 8 | 8 | **19** |
+
+Combinaciones de obstáculos: {2} en 16 celdas, {2, 3} en 2 (WooCommerce `producto.stockDisponible` y `producto.sku`), {4} en 19. Control: 25 + 16 + 2 + 19 = 62 clasificadas.
+
+Detalle del obstáculo 2 en Medusa (8): los 5 atributos de `producto`; `item_pedido.productoId` y `item_pedido.precioUnitario`; `insumo.stockDisponible`.
+
+Contraste con el cálculo del autor: coincide en todos los valores (clasificadas 62 = 13 + 23 + 13 + 13; directas 25; obstáculo 2: 18; obstáculo 3: 2; obstáculo 4: 19; NI 34). No hay diferencias celda por celda.
+
+Las salvedades E-1 y E-2 de la sección 9 siguen vigentes: la reclasificación cambia el criterio, no la evidencia. En particular, las 2 celdas con obstáculo 3 y las 8 con obstáculo 4 de WooCommerce siguen apoyadas en el fixture.
