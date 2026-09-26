@@ -74,6 +74,8 @@ El mapa solo dice "Depende de D-4 y D-5".
 **D-9. Ramas de experimentos no publicadas** (afirmación 8).
 *Texto propuesto (si la tesis remite a GitHub):* publicar `experimento/reporte-diario` y `experimento/odoo` en `origin` antes de citarlas, o aclarar que "las ramas de experimentos están en el repositorio local y no se publicaron". Agregar que `experimento/odoo` parte de `experimento/reporte-diario`.
 
+> **Nota posterior (2026-09-26 19:52, UTC-3):** después de esta auditoría, por pedido del autor, se publicaron las dos ramas en `origin` con `git push -u origin experimento/reporte-diario experimento/odoo`. `git ls-remote --heads origin` muestra ahora `refs/heads/experimento/reporte-diario` en `0e80098` y `refs/heads/experimento/odoo` en `c3ee7b4`. Los commits `d43ac67`, `385b170` y `b163bc8` se pueden consultar en GitHub. Queda resuelta la primera parte de D-9 y el matiz (2) de la afirmación 8, que describe el estado anterior a la publicación. Sigue vigente la aclaración de que `experimento/odoo` parte de `experimento/reporte-diario`.
+
 **D-10. `main` frente a `master`.**
 *Texto propuesto:* donde la tesis o los pedidos digan `main`, usar `master`, que es el nombre real de la rama principal.
 
@@ -253,3 +255,4 @@ Todas las horas son locales (UTC-3) y salen de `date "+%Y-%m-%d %H:%M:%S %z"`, e
 | 19:34:52 | Detención del contenedor de Medusa (vuelta al estado previo) | `docker stop ch16-medusa-pg` |
 | 19:35:09 | Fechas de DEC-37/38, DEC-36 en código e informe del congelamiento | `git log -S"### DEC-37" …`; `git log -S"DEC-36" … -- src/contrato.ts`; `git log … -- docs/estado_prototipo_2026-09-24.md` |
 | 19:35:14 | Creación de la rama de auditoría | `git switch -c auditoria/mapa-cambios master` |
+| 19:52 aprox. | Publicación de las ramas de experimentos (pedido del autor, posterior a la auditoría; ver nota en D-9) | `git push -u origin experimento/reporte-diario experimento/odoo`; `git ls-remote --heads origin` |
