@@ -1,0 +1,859 @@
+2026-09-26T13:33:42-03:00
+SET TIME ZONE 'America/Argentina/Buenos_Aires';
+SET
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+BEGIN
+SELECT now() AS hora_servidor, current_setting('TimeZone') AS zona, current_user, pg_backend_pid() AS pid;
+         hora_servidor         |              zona              | current_user | pid 
+-------------------------------+--------------------------------+--------------+-----
+ 2026-09-26 13:33:42.838649-03 | America/Argentina/Buenos_Aires | odoo         | 398
+(1 row)
+
+SELECT "fechaCreacion"::date AS sel_dia, ("fechaCreacion"::date + 1) AS sel_hasta, count(*) AS sel_no_cancelados
+FROM v_pedido WHERE estado <> 'cancelado' GROUP BY 1, 2 ORDER BY 3 DESC, 1 LIMIT 1 
+SELECT so.id AS sel_id, so.name AS sel_name, so.state AS sel_state FROM sale_order so
+WHERE so.state NOT IN ('draft', 'sent', 'cancel')
+  AND so.date_order >= ('2026-09-26'::timestamptz AT TIME ZONE 'UTC')
+  AND so.date_order <  ('2026-09-27'::timestamptz AT TIME ZONE 'UTC')
+ORDER BY so.id LIMIT 1 
+Output format is unaligned.
+Field separator is "|".
+SELECT '2026-09-26', '15', '4', 'S00004', 'sale';
+SELECT so.id, so.name, so.state, so.amount_total, c.name FROM sale_order so JOIN res_currency c ON c.id = so.currency_id WHERE so.id = 4;
+SELECT sol.product_id::text, sol.product_uom_qty, sol.price_reduce_taxinc FROM sale_order_line sol
+WHERE sol.order_id = 4 AND sol.display_type IS NULL ORDER BY sol.id;
+SET ROLE zd_odoo_lectura;
+SET
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-22'
+  AND p."fechaCreacion" <  '2026-08-23';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-22'
+  AND p."fechaCreacion" <  '2026-08-23'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-22'
+  AND p."fechaCreacion" <  '2026-08-23'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-26'
+  AND p."fechaCreacion" <  '2026-08-27';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-26'
+  AND p."fechaCreacion" <  '2026-08-27'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-26'
+  AND p."fechaCreacion" <  '2026-08-27'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-29'
+  AND p."fechaCreacion" <  '2026-08-30';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-29'
+  AND p."fechaCreacion" <  '2026-08-30'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-29'
+  AND p."fechaCreacion" <  '2026-08-30'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-05'
+  AND p."fechaCreacion" <  '2026-09-06';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-05'
+  AND p."fechaCreacion" <  '2026-09-06'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-05'
+  AND p."fechaCreacion" <  '2026-09-06'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-12'
+  AND p."fechaCreacion" <  '2026-09-13';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-12'
+  AND p."fechaCreacion" <  '2026-09-13'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-12'
+  AND p."fechaCreacion" <  '2026-09-13'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-19'
+  AND p."fechaCreacion" <  '2026-09-20';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-19'
+  AND p."fechaCreacion" <  '2026-09-20'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-19'
+  AND p."fechaCreacion" <  '2026-09-20'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-20'
+  AND p."fechaCreacion" <  '2026-09-21';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-20'
+  AND p."fechaCreacion" <  '2026-09-21'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-20'
+  AND p."fechaCreacion" <  '2026-09-21'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-21'
+  AND p."fechaCreacion" <  '2026-09-22';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-21'
+  AND p."fechaCreacion" <  '2026-09-22'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-21'
+  AND p."fechaCreacion" <  '2026-09-22'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-22'
+  AND p."fechaCreacion" <  '2026-09-23';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-22'
+  AND p."fechaCreacion" <  '2026-09-23'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-22'
+  AND p."fechaCreacion" <  '2026-09-23'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-23'
+  AND p."fechaCreacion" <  '2026-09-24';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-23'
+  AND p."fechaCreacion" <  '2026-09-24'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-23'
+  AND p."fechaCreacion" <  '2026-09-24'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-25'
+  AND p."fechaCreacion" <  '2026-09-26';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-25'
+  AND p."fechaCreacion" <  '2026-09-26'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-25'
+  AND p."fechaCreacion" <  '2026-09-26'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-26'
+  AND p."fechaCreacion" <  '2026-09-27';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-26'
+  AND p."fechaCreacion" <  '2026-09-27'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-26'
+  AND p."fechaCreacion" <  '2026-09-27'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-21'
+  AND p."fechaCreacion" <  '2026-08-22';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-21'
+  AND p."fechaCreacion" <  '2026-08-22'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-21'
+  AND p."fechaCreacion" <  '2026-08-22'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+RESET ROLE;
+RESET
+Output format is aligned.
+UPDATE sale_order SET state = 'cancel' WHERE id = 4 AND state = 'sale';
+UPDATE 1
+SELECT CASE WHEN so.state = 'cancel' THEN 'ok' ELSE (1 / (length(so.state) * 0))::text END AS guarda
+FROM sale_order so WHERE so.id = 4;
+ guarda 
+--------
+ ok
+(1 row)
+
+Output format is unaligned.
+SET ROLE zd_odoo_lectura;
+SET
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-22'
+  AND p."fechaCreacion" <  '2026-08-23';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-22'
+  AND p."fechaCreacion" <  '2026-08-23'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-22'
+  AND p."fechaCreacion" <  '2026-08-23'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-26'
+  AND p."fechaCreacion" <  '2026-08-27';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-26'
+  AND p."fechaCreacion" <  '2026-08-27'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-26'
+  AND p."fechaCreacion" <  '2026-08-27'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-29'
+  AND p."fechaCreacion" <  '2026-08-30';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-29'
+  AND p."fechaCreacion" <  '2026-08-30'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-29'
+  AND p."fechaCreacion" <  '2026-08-30'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-05'
+  AND p."fechaCreacion" <  '2026-09-06';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-05'
+  AND p."fechaCreacion" <  '2026-09-06'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-05'
+  AND p."fechaCreacion" <  '2026-09-06'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-12'
+  AND p."fechaCreacion" <  '2026-09-13';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-12'
+  AND p."fechaCreacion" <  '2026-09-13'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-12'
+  AND p."fechaCreacion" <  '2026-09-13'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-19'
+  AND p."fechaCreacion" <  '2026-09-20';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-19'
+  AND p."fechaCreacion" <  '2026-09-20'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-19'
+  AND p."fechaCreacion" <  '2026-09-20'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-20'
+  AND p."fechaCreacion" <  '2026-09-21';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-20'
+  AND p."fechaCreacion" <  '2026-09-21'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-20'
+  AND p."fechaCreacion" <  '2026-09-21'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-21'
+  AND p."fechaCreacion" <  '2026-09-22';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-21'
+  AND p."fechaCreacion" <  '2026-09-22'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-21'
+  AND p."fechaCreacion" <  '2026-09-22'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-22'
+  AND p."fechaCreacion" <  '2026-09-23';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-22'
+  AND p."fechaCreacion" <  '2026-09-23'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-22'
+  AND p."fechaCreacion" <  '2026-09-23'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-23'
+  AND p."fechaCreacion" <  '2026-09-24';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-23'
+  AND p."fechaCreacion" <  '2026-09-24'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-23'
+  AND p."fechaCreacion" <  '2026-09-24'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-24'
+  AND p."fechaCreacion" <  '2026-09-25'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-25'
+  AND p."fechaCreacion" <  '2026-09-26';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-25'
+  AND p."fechaCreacion" <  '2026-09-26'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-25'
+  AND p."fechaCreacion" <  '2026-09-26'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-26'
+  AND p."fechaCreacion" <  '2026-09-27';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-09-26'
+  AND p."fechaCreacion" <  '2026-09-27'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-09-26'
+  AND p."fechaCreacion" <  '2026-09-27'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+SELECT
+    COUNT(*) AS cantidad_pedidos,
+    COALESCE(SUM(p.total), 0) AS facturacion_total,
+    COALESCE(ROUND(AVG(p.total), 2), 0) AS ticket_promedio
+FROM v_pedido p
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-21'
+  AND p."fechaCreacion" <  '2026-08-22';
+SELECT
+    i."productoId",
+    pr.nombre,
+    SUM(i.cantidad) AS unidades_vendidas,
+    COALESCE(SUM(i.cantidad * i."precioUnitario"), 0) AS total_generado
+FROM v_item_pedido i
+JOIN v_pedido p ON p.id = i."pedidoId"
+LEFT JOIN v_producto pr ON pr.id = i."productoId"
+WHERE p.estado <> 'cancelado'
+  AND p."fechaCreacion" >= '2026-08-21'
+  AND p."fechaCreacion" <  '2026-08-22'
+GROUP BY i."productoId", pr.nombre
+ORDER BY unidades_vendidas DESC, i."productoId";
+SELECT
+    p.estado,
+    COUNT(*) AS cantidad
+FROM v_pedido p
+WHERE p."fechaCreacion" >= '2026-08-21'
+  AND p."fechaCreacion" <  '2026-08-22'
+GROUP BY p.estado
+ORDER BY cantidad DESC, p.estado;
+RESET ROLE;
+RESET
+ROLLBACK;
+ROLLBACK
+exit=0
+2026-09-26T13:33:43-03:00

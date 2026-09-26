@@ -1,0 +1,3 @@
+b635ec2dcd06b077ace2d187fcfddd33d26490907dbda0adef4c7c1230b18b46  c1_ventas.sql
+e8b901198a3ece44682d0daab152d1222d0ad598135acd3fe9f9b8b5b42dee5d  c2_ranking.sql
+dad49f4bd34a524ae187f41f356527740d6427ad3d9b1c0e551ec583b47a4f7f  c3_estados.sql

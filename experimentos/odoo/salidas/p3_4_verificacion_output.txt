@@ -1,0 +1,52 @@
+2026-09-26T13:30:28-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_user, pg_backend_pid() AS pid;
+         hora_servidor         | current_user | pid 
+-------------------------------+--------------+-----
+ 2026-09-26 16:30:28.701372+00 | odoo         | 282
+(1 row)
+
+SELECT id, bom_id, product_id, product_qty FROM mrp_bom_line WHERE id = 6;
+ id | bom_id | product_id | product_qty 
+----+--------+------------+-------------
+  6 |      2 |         57 |        4.00
+(1 row)
+
+SELECT count(*) AS quants_57_internos FROM stock_quant q JOIN stock_location l ON l.id = q.location_id WHERE q.product_id = 57 AND l.usage = 'internal';
+ quants_57_internos 
+--------------------
+                  0
+(1 row)
+
+SELECT count(*) AS quants_totales, max(id) AS max_id FROM stock_quant;
+ quants_totales | max_id 
+----------------+--------
+             67 |     67
+(1 row)
+
+Output format is unaligned.
+Field separator is "|".
+SET ROLE zd_odoo_lectura;
+SET
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+RESET ROLE;
+RESET
+ROLLBACK;
+ROLLBACK
+exit=0
+2026-09-26T13:30:28-03:00

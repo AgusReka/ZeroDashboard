@@ -1,0 +1,11 @@
+38|Acoustic Bloc Screens (Black)|36.00|10420.0000
+27|Cabinet with Doors|15.00|2100.0000
+31|Office Chair Black|14.00|1687.0000
+19|Corner Desk Right Sit|10.00|1990.0000
+39|Drawer|2.00|221.0000
+13|Customizable Desk (Steel, White)|1.00|750.0000
+23|Large Desk (Wood)|1.00|1799.0000
+33|Drawer Black|1.00|25.0000
+43|Two-Seat Sofa (Linen)|1.00|173.0000
+5|Office Chair|1.00|18.0000
+6|Office Lamp|1.00|40.0000

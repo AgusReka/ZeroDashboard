@@ -1,0 +1,7 @@
+63|Plastic Laminate|0|Ply Veneer|0
+54|Table|0|Table Leg|0
+8|Desk Combination|0|Corner Desk Left Sit|0.00
+64|Table Kit|1|Bolt|7
+62|Wood Panel|6|Ply Layer|20.00
+55|Table Top|24|Wood Panel|48.00
+39|Drawer|45|Drawer Black|45.00

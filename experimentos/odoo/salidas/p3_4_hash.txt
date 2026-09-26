@@ -1,0 +1,2 @@
+979131ebbf5055a6a267221db8c2de80ae7ccbaa3d56c091e24d900d66359c90 *../../openspec/changes/CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql
+979131ebbf5055a6a267221db8c2de80ae7ccbaa3d56c091e24d900d66359c90  /tmp/zd/04_consulta_canonica.sql
