@@ -580,3 +580,13 @@ Todas el 2026-09-26, hora de Buenos Aires (-03:00). Las horas de servidor en UTC
 | 13:33:42 – 13:33:43 | Modificación controlada del reporte y verificación | `p4_3_modificacion_output.txt`, `p4_3_verificacion_output.txt` |
 
 El texto exacto de cada consulta ejecutada está en los archivos `*_input.sql` de `experimentos/odoo/salidas/`. Las consultas canónicas se leyeron con `\i` desde copias verificadas por hash.
+
+### Commits de la rama `experimento/odoo`
+
+| Commit | Fecha | Contenido |
+|---|---|---|
+| `385b170469328118ef8743f7393551d701f66650` | 2026-09-26 13:21:00 -03:00 | Preregistro |
+| `b163bc8462b40c08ebc95bd845f857920fdbe856` | 2026-09-26 13:30:04 -03:00 | Instancia, vistas, stock producible y esperado de la modificación controlada |
+| `2c1ee7cc5dcc414d2e366f8fca6a15859f1e9346` | 2026-09-26 13:38:07 -03:00 | Reporte diario, modificaciones controladas y bitácora (commit final del experimento) |
+
+Esta tabla se agregó en un commit posterior, que solo modifica esta sección. Un commit no puede contener su propio hash.
