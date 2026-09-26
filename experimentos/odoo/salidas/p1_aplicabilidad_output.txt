@@ -1,0 +1,472 @@
+2026-09-26T13:26:07-03:00
+SET TIME ZONE 'America/Argentina/Buenos_Aires';
+SET
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_setting('TimeZone') AS zona, current_user, version();
+         hora_servidor         |              zona              | current_user |                                                       version                                                        
+-------------------------------+--------------------------------+--------------+----------------------------------------------------------------------------------------------------------------------
+ 2026-09-26 13:26:07.714645-03 | America/Argentina/Buenos_Aires | odoo         | PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+(1 row)
+
+SELECT name, state, latest_version FROM ir_module_module WHERE state = 'installed' ORDER BY name;
+                name                 |   state   | latest_version 
+-------------------------------------+-----------+----------------
+ account                             | installed | 19.0.1.4
+ account_add_gln                     | installed | 19.0.1.0
+ account_edi_ubl_cii                 | installed | 19.0.1.0
+ account_payment                     | installed | 19.0.2.0
+ analytic                            | installed | 19.0.1.2
+ api_doc                             | installed | 19.0.1.0
+ auth_passkey                        | installed | 19.0.1.1
+ auth_passkey_portal                 | installed | 19.0.1.0
+ auth_signup                         | installed | 19.0.1.0
+ auth_totp                           | installed | 19.0.1.0
+ auth_totp_mail                      | installed | 19.0.1.0
+ auth_totp_portal                    | installed | 19.0.1.0
+ barcodes                            | installed | 19.0.2.0
+ barcodes_gs1_nomenclature           | installed | 19.0.1.0
+ base                                | installed | 19.0.1.3
+ base_import                         | installed | 19.0.2.0
+ base_import_module                  | installed | 19.0.1.0
+ base_install_request                | installed | 19.0.1.0
+ base_setup                          | installed | 19.0.1.0
+ bus                                 | installed | 19.0.1.0
+ delivery                            | installed | 19.0.1.0
+ digest                              | installed | 19.0.1.1
+ google_gmail                        | installed | 19.0.1.2
+ google_recaptcha                    | installed | 19.0.1.0
+ html_builder                        | installed | 19.0.0.1
+ html_editor                         | installed | 19.0.1.0
+ http_routing                        | installed | 19.0.1.0
+ iap                                 | installed | 19.0.1.1
+ iap_mail                            | installed | 19.0.1.0
+ l10n_us                             | installed | 19.0.1.1
+ l10n_us_account                     | installed | 19.0.1.0
+ mail                                | installed | 19.0.1.19
+ mail_bot                            | installed | 19.0.1.2
+ microsoft_outlook                   | installed | 19.0.1.1
+ mrp                                 | installed | 19.0.2.0
+ mrp_account                         | installed | 19.0.1.0
+ onboarding                          | installed | 19.0.1.2
+ partner_autocomplete                | installed | 19.0.1.1
+ payment                             | installed | 19.0.2.0
+ payment_custom                      | installed | 19.0.2.0
+ phone_validation                    | installed | 19.0.2.1
+ portal                              | installed | 19.0.1.0
+ portal_rating                       | installed | 19.0.1.0
+ privacy_lookup                      | installed | 19.0.1.0
+ product                             | installed | 19.0.1.2
+ rating                              | installed | 19.0.1.1
+ resource                            | installed | 19.0.1.1
+ resource_mail                       | installed | 19.0.1.0
+ rpc                                 | installed | 19.0.1.0
+ sale                                | installed | 19.0.1.2
+ sale_edi_ubl                        | installed | 19.0.1.0
+ sale_management                     | installed | 19.0.1.0
+ sale_mrp                            | installed | 19.0.1.0
+ sale_pdf_quote_builder              | installed | 19.0.1.0
+ sale_sms                            | installed | 19.0.1.0
+ sale_stock                          | installed | 19.0.1.0
+ sales_team                          | installed | 19.0.1.1
+ sms                                 | installed | 19.0.3.0
+ snailmail                           | installed | 19.0.0.4
+ snailmail_account                   | installed | 19.0.0.1
+ social_media                        | installed | 19.0.0.1
+ spreadsheet                         | installed | 19.0.1.0
+ spreadsheet_account                 | installed | 19.0.1.0
+ spreadsheet_dashboard               | installed | 19.0.1.0
+ spreadsheet_dashboard_account       | installed | 19.0.1.0
+ spreadsheet_dashboard_sale          | installed | 19.0.1.0
+ spreadsheet_dashboard_stock_account | installed | 19.0.1.0
+ spreadsheet_dashboard_website_sale  | installed | 19.0.1.0
+ stock                               | installed | 19.0.1.1
+ stock_account                       | installed | 19.0.1.1
+ stock_delivery                      | installed | 19.0.1.0
+ stock_sms                           | installed | 19.0.1.0
+ uom                                 | installed | 19.0.1.0
+ utm                                 | installed | 19.0.1.1
+ web                                 | installed | 19.0.1.0
+ web_tour                            | installed | 19.0.1.0
+ web_unsplash                        | installed | 19.0.1.1
+ website                             | installed | 19.0.1.0
+ website_mail                        | installed | 19.0.0.1
+ website_payment                     | installed | 19.0.1.0
+ website_sale                        | installed | 19.0.1.1
+ website_sale_comparison             | installed | 19.0.1.0
+ website_sale_comparison_wishlist    | installed | 19.0.1.0
+ website_sale_mrp                    | installed | 19.0.1.0
+ website_sale_stock                  | installed | 19.0.1.0
+ website_sale_stock_wishlist         | installed | 19.0.1.0
+ website_sale_wishlist               | installed | 19.0.1.0
+ website_sms                         | installed | 19.0.1.0
+(88 rows)
+
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN ('product_product','product_template','mrp_bom','mrp_bom_line','stock_quant','stock_location',
+                     'uom_uom','sale_order','sale_order_line','res_currency')
+ORDER BY table_name, ordinal_position;
+    table_name    |             column_name              |          data_type          
+------------------+--------------------------------------+-----------------------------
+ mrp_bom          | id                                   | integer
+ mrp_bom          | product_tmpl_id                      | integer
+ mrp_bom          | product_id                           | integer
+ mrp_bom          | product_uom_id                       | integer
+ mrp_bom          | sequence                             | integer
+ mrp_bom          | picking_type_id                      | integer
+ mrp_bom          | company_id                           | integer
+ mrp_bom          | produce_delay                        | integer
+ mrp_bom          | days_to_prepare_mo                   | integer
+ mrp_bom          | create_uid                           | integer
+ mrp_bom          | write_uid                            | integer
+ mrp_bom          | code                                 | character varying
+ mrp_bom          | type                                 | character varying
+ mrp_bom          | ready_to_produce                     | character varying
+ mrp_bom          | consumption                          | character varying
+ mrp_bom          | product_qty                          | numeric
+ mrp_bom          | batch_size                           | numeric
+ mrp_bom          | active                               | boolean
+ mrp_bom          | allow_operation_dependencies         | boolean
+ mrp_bom          | enable_batch_size                    | boolean
+ mrp_bom          | create_date                          | timestamp without time zone
+ mrp_bom          | write_date                           | timestamp without time zone
+ mrp_bom_line     | id                                   | integer
+ mrp_bom_line     | product_id                           | integer
+ mrp_bom_line     | product_tmpl_id                      | integer
+ mrp_bom_line     | company_id                           | integer
+ mrp_bom_line     | product_uom_id                       | integer
+ mrp_bom_line     | sequence                             | integer
+ mrp_bom_line     | bom_id                               | integer
+ mrp_bom_line     | operation_id                         | integer
+ mrp_bom_line     | create_uid                           | integer
+ mrp_bom_line     | write_uid                            | integer
+ mrp_bom_line     | product_qty                          | numeric
+ mrp_bom_line     | create_date                          | timestamp without time zone
+ mrp_bom_line     | write_date                           | timestamp without time zone
+ product_product  | id                                   | integer
+ product_product  | product_tmpl_id                      | integer
+ product_product  | create_uid                           | integer
+ product_product  | write_uid                            | integer
+ product_product  | default_code                         | character varying
+ product_product  | barcode                              | character varying
+ product_product  | combination_indices                  | character varying
+ product_product  | standard_price                       | jsonb
+ product_product  | volume                               | numeric
+ product_product  | weight                               | numeric
+ product_product  | active                               | boolean
+ product_product  | can_image_variant_1024_be_zoomed     | boolean
+ product_product  | is_favorite                          | boolean
+ product_product  | is_in_selected_section_of_order      | boolean
+ product_product  | write_date                           | timestamp without time zone
+ product_product  | create_date                          | timestamp without time zone
+ product_product  | lot_properties_definition            | jsonb
+ product_product  | variant_ribbon_id                    | integer
+ product_product  | base_unit_id                         | integer
+ product_product  | base_unit_count                      | numeric
+ product_template | id                                   | integer
+ product_template | sequence                             | integer
+ product_template | categ_id                             | integer
+ product_template | uom_id                               | integer
+ product_template | company_id                           | integer
+ product_template | color                                | integer
+ product_template | create_uid                           | integer
+ product_template | write_uid                            | integer
+ product_template | type                                 | character varying
+ product_template | service_tracking                     | character varying
+ product_template | default_code                         | character varying
+ product_template | name                                 | jsonb
+ product_template | description                          | jsonb
+ product_template | description_purchase                 | jsonb
+ product_template | description_sale                     | jsonb
+ product_template | product_properties                   | jsonb
+ product_template | list_price                           | numeric
+ product_template | volume                               | numeric
+ product_template | weight                               | numeric
+ product_template | sale_ok                              | boolean
+ product_template | purchase_ok                          | boolean
+ product_template | active                               | boolean
+ product_template | can_image_1024_be_zoomed             | boolean
+ product_template | has_configurable_attributes          | boolean
+ product_template | is_favorite                          | boolean
+ product_template | create_date                          | timestamp without time zone
+ product_template | write_date                           | timestamp without time zone
+ product_template | property_account_income_id           | jsonb
+ product_template | property_account_expense_id          | jsonb
+ product_template | sale_delay                           | integer
+ product_template | lot_sequence_id                      | integer
+ product_template | tracking                             | character varying
+ product_template | responsible_id                       | jsonb
+ product_template | property_stock_production            | jsonb
+ product_template | property_stock_inventory             | jsonb
+ product_template | description_picking                  | jsonb
+ product_template | description_pickingout               | jsonb
+ product_template | description_pickingin                | jsonb
+ product_template | is_storable                          | boolean
+ product_template | property_price_difference_account_id | jsonb
+ product_template | lot_valuated                         | boolean
+ product_template | service_type                         | character varying
+ product_template | expense_policy                       | character varying
+ product_template | invoice_policy                       | character varying
+ product_template | sale_line_warn_msg                   | text
+ product_template | country_of_origin                    | integer
+ product_template | hs_code                              | character varying
+ product_template | variants_default_code                | character varying
+ product_template | website_id                           | integer
+ product_template | website_size_x                       | integer
+ product_template | website_size_y                       | integer
+ product_template | website_ribbon_id                    | integer
+ product_template | website_sequence                     | integer
+ product_template | base_unit_id                         | integer
+ product_template | website_meta_og_img                  | character varying
+ product_template | website_meta_title                   | jsonb
+ product_template | website_meta_description             | jsonb
+ product_template | website_meta_keywords                | jsonb
+ product_template | seo_name                             | jsonb
+ product_template | website_description                  | jsonb
+ product_template | description_ecommerce                | jsonb
+ product_template | base_unit_count                      | numeric
+ product_template | compare_list_price                   | numeric
+ product_template | is_published                         | boolean
+ product_template | is_seo_optimized                     | boolean
+ product_template | publish_date                         | timestamp without time zone
+ product_template | rating_last_value                    | double precision
+ product_template | out_of_stock_message                 | jsonb
+ product_template | allow_out_of_stock_order             | boolean
+ product_template | show_availability                    | boolean
+ product_template | available_threshold                  | double precision
+ res_currency     | id                                   | integer
+ res_currency     | name                                 | character varying
+ res_currency     | symbol                               | character varying
+ res_currency     | iso_numeric                          | integer
+ res_currency     | decimal_places                       | integer
+ res_currency     | create_uid                           | integer
+ res_currency     | write_uid                            | integer
+ res_currency     | full_name                            | character varying
+ res_currency     | position                             | character varying
+ res_currency     | currency_unit_label                  | jsonb
+ res_currency     | currency_subunit_label               | jsonb
+ res_currency     | rounding                             | numeric
+ res_currency     | active                               | boolean
+ res_currency     | create_date                          | timestamp without time zone
+ res_currency     | write_date                           | timestamp without time zone
+ sale_order       | id                                   | integer
+ sale_order       | campaign_id                          | integer
+ sale_order       | source_id                            | integer
+ sale_order       | medium_id                            | integer
+ sale_order       | company_id                           | integer
+ sale_order       | partner_id                           | integer
+ sale_order       | pending_email_template_id            | integer
+ sale_order       | journal_id                           | integer
+ sale_order       | partner_invoice_id                   | integer
+ sale_order       | partner_shipping_id                  | integer
+ sale_order       | fiscal_position_id                   | integer
+ sale_order       | payment_term_id                      | integer
+ sale_order       | preferred_payment_method_line_id     | integer
+ sale_order       | pricelist_id                         | integer
+ sale_order       | currency_id                          | integer
+ sale_order       | user_id                              | integer
+ sale_order       | team_id                              | integer
+ sale_order       | create_uid                           | integer
+ sale_order       | write_uid                            | integer
+ sale_order       | access_token                         | character varying
+ sale_order       | name                                 | character varying
+ sale_order       | state                                | character varying
+ sale_order       | client_order_ref                     | character varying
+ sale_order       | origin                               | character varying
+ sale_order       | reference                            | character varying
+ sale_order       | signed_by                            | character varying
+ sale_order       | invoice_status                       | character varying
+ sale_order       | validity_date                        | date
+ sale_order       | note                                 | text
+ sale_order       | currency_rate                        | numeric
+ sale_order       | amount_untaxed                       | numeric
+ sale_order       | amount_tax                           | numeric
+ sale_order       | amount_total                         | numeric
+ sale_order       | locked                               | boolean
+ sale_order       | require_signature                    | boolean
+ sale_order       | require_payment                      | boolean
+ sale_order       | create_date                          | timestamp without time zone
+ sale_order       | commitment_date                      | timestamp without time zone
+ sale_order       | date_order                           | timestamp without time zone
+ sale_order       | signed_on                            | timestamp without time zone
+ sale_order       | write_date                           | timestamp without time zone
+ sale_order       | prepayment_percent                   | double precision
+ sale_order       | carrier_id                           | integer
+ sale_order       | delivery_message                     | character varying
+ sale_order       | pickup_location_data                 | jsonb
+ sale_order       | recompute_delivery_price             | boolean
+ sale_order       | shipping_weight                      | double precision
+ sale_order       | sale_order_template_id               | integer
+ sale_order       | incoterm                             | integer
+ sale_order       | warehouse_id                         | integer
+ sale_order       | incoterm_location                    | character varying
+ sale_order       | picking_policy                       | character varying
+ sale_order       | delivery_status                      | character varying
+ sale_order       | effective_date                       | timestamp without time zone
+ sale_order       | customizable_pdf_form_fields         | jsonb
+ sale_order       | website_id                           | integer
+ sale_order       | shop_warning                         | character varying
+ sale_order       | cart_recovery_email_sent             | boolean
+ sale_order_line  | id                                   | integer
+ sale_order_line  | order_id                             | integer
+ sale_order_line  | sequence                             | integer
+ sale_order_line  | company_id                           | integer
+ sale_order_line  | currency_id                          | integer
+ sale_order_line  | order_partner_id                     | integer
+ sale_order_line  | salesman_id                          | integer
+ sale_order_line  | product_id                           | integer
+ sale_order_line  | product_uom_id                       | integer
+ sale_order_line  | linked_line_id                       | integer
+ sale_order_line  | combo_item_id                        | integer
+ sale_order_line  | create_uid                           | integer
+ sale_order_line  | write_uid                            | integer
+ sale_order_line  | state                                | character varying
+ sale_order_line  | display_type                         | character varying
+ sale_order_line  | virtual_id                           | character varying
+ sale_order_line  | linked_virtual_id                    | character varying
+ sale_order_line  | qty_delivered_method                 | character varying
+ sale_order_line  | invoice_status                       | character varying
+ sale_order_line  | analytic_distribution                | jsonb
+ sale_order_line  | extra_tax_data                       | jsonb
+ sale_order_line  | name                                 | text
+ sale_order_line  | product_uom_qty                      | numeric
+ sale_order_line  | price_unit                           | numeric
+ sale_order_line  | discount                             | numeric
+ sale_order_line  | price_subtotal                       | numeric
+ sale_order_line  | price_total                          | numeric
+ sale_order_line  | price_reduce_taxexcl                 | numeric
+ sale_order_line  | price_reduce_taxinc                  | numeric
+ sale_order_line  | qty_delivered                        | numeric
+ sale_order_line  | qty_invoiced                         | numeric
+ sale_order_line  | qty_to_invoice                       | numeric
+ sale_order_line  | untaxed_amount_invoiced              | numeric
+ sale_order_line  | untaxed_amount_to_invoice            | numeric
+ sale_order_line  | is_downpayment                       | boolean
+ sale_order_line  | is_expense                           | boolean
+ sale_order_line  | collapse_prices                      | boolean
+ sale_order_line  | collapse_composition                 | boolean
+ sale_order_line  | create_date                          | timestamp without time zone
+ sale_order_line  | write_date                           | timestamp without time zone
+ sale_order_line  | technical_price_unit                 | double precision
+ sale_order_line  | price_tax                            | double precision
+ sale_order_line  | customer_lead                        | double precision
+ sale_order_line  | is_delivery                          | boolean
+ sale_order_line  | is_optional                          | boolean
+ sale_order_line  | warehouse_id                         | integer
+ sale_order_line  | shop_warning                         | character varying
+ stock_location   | id                                   | integer
+ stock_location   | location_id                          | integer
+ stock_location   | company_id                           | integer
+ stock_location   | removal_strategy_id                  | integer
+ stock_location   | cyclic_inventory_frequency           | integer
+ stock_location   | warehouse_id                         | integer
+ stock_location   | storage_category_id                  | integer
+ stock_location   | create_uid                           | integer
+ stock_location   | write_uid                            | integer
+ stock_location   | name                                 | character varying
+ stock_location   | complete_name                        | character varying
+ stock_location   | usage                                | character varying
+ stock_location   | parent_path                          | character varying
+ stock_location   | barcode                              | character varying
+ stock_location   | last_inventory_date                  | date
+ stock_location   | next_inventory_date                  | date
+ stock_location   | active                               | boolean
+ stock_location   | replenish_location                   | boolean
+ stock_location   | create_date                          | timestamp without time zone
+ stock_location   | write_date                           | timestamp without time zone
+ stock_location   | valuation_account_id                 | integer
+ stock_quant      | id                                   | integer
+ stock_quant      | product_id                           | integer
+ stock_quant      | company_id                           | integer
+ stock_quant      | location_id                          | integer
+ stock_quant      | lot_id                               | integer
+ stock_quant      | package_id                           | integer
+ stock_quant      | owner_id                             | integer
+ stock_quant      | user_id                              | integer
+ stock_quant      | create_uid                           | integer
+ stock_quant      | write_uid                            | integer
+ stock_quant      | inventory_date                       | date
+ stock_quant      | quantity                             | numeric
+ stock_quant      | reserved_quantity                    | numeric
+ stock_quant      | inventory_quantity                   | numeric
+ stock_quant      | inventory_diff_quantity              | numeric
+ stock_quant      | inventory_quantity_set               | boolean
+ stock_quant      | in_date                              | timestamp without time zone
+ stock_quant      | create_date                          | timestamp without time zone
+ stock_quant      | write_date                           | timestamp without time zone
+ stock_quant      | accounting_date                      | date
+ uom_uom          | id                                   | integer
+ uom_uom          | sequence                             | integer
+ uom_uom          | relative_uom_id                      | integer
+ uom_uom          | create_uid                           | integer
+ uom_uom          | write_uid                            | integer
+ uom_uom          | parent_path                          | character varying
+ uom_uom          | name                                 | jsonb
+ uom_uom          | relative_factor                      | numeric
+ uom_uom          | factor                               | numeric
+ uom_uom          | active                               | boolean
+ uom_uom          | create_date                          | timestamp without time zone
+ uom_uom          | write_date                           | timestamp without time zone
+ uom_uom          | package_type_id                      | integer
+(300 rows)
+
+SELECT (SELECT count(*) FROM mrp_bom) AS mrp_bom, (SELECT count(*) FROM mrp_bom_line) AS mrp_bom_line;
+ mrp_bom | mrp_bom_line 
+---------+--------------
+       8 |           17
+(1 row)
+
+SELECT type, active, count(*) AS listas FROM mrp_bom GROUP BY type, active ORDER BY type, active;
+  type   | active | listas 
+---------+--------+--------
+ normal  | t      |      7
+ phantom | t      |      1
+(2 rows)
+
+SELECT l.usage, count(*) AS filas_stock_quant FROM stock_quant q JOIN stock_location l ON l.id = q.location_id GROUP BY l.usage ORDER BY l.usage;
+   usage    | filas_stock_quant 
+------------+-------------------
+ internal   |                32
+ inventory  |                32
+ production |                 3
+(3 rows)
+
+SELECT state, count(*) AS pedidos FROM sale_order GROUP BY state ORDER BY state;
+ state | pedidos 
+-------+---------
+ draft |       9
+ sale  |      29
+ sent  |       2
+(3 rows)
+
+SELECT (date_order AT TIME ZONE 'UTC')::date AS dia, state, count(*) AS pedidos
+FROM sale_order GROUP BY 1, 2 ORDER BY 1, 2;
+    dia     | state | pedidos 
+------------+-------+---------
+ 2026-07-26 | draft |       1
+ 2026-08-22 | sale  |       1
+ 2026-08-24 | draft |       1
+ 2026-08-26 | draft |       3
+ 2026-08-26 | sale  |       2
+ 2026-08-26 | sent  |       1
+ 2026-08-29 | sale  |       1
+ 2026-09-05 | sale  |       1
+ 2026-09-12 | sale  |       1
+ 2026-09-19 | sale  |       2
+ 2026-09-20 | sale  |       1
+ 2026-09-21 | sale  |       1
+ 2026-09-22 | sale  |       1
+ 2026-09-23 | sale  |       1
+ 2026-09-24 | sale  |       1
+ 2026-09-25 | sale  |       1
+ 2026-09-26 | draft |       4
+ 2026-09-26 | sale  |      15
+ 2026-09-26 | sent  |       1
+(19 rows)
+
+ROLLBACK;
+ROLLBACK
+exit=0
+2026-09-26T13:26:07-03:00

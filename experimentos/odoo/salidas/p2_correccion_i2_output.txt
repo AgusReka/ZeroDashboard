@@ -1,0 +1,21 @@
+2026-09-26T13:28:24-03:00
+SELECT now() AS hora_servidor, current_user;
+         hora_servidor         | current_user 
+-------------------------------+--------------
+ 2026-09-26 16:28:25.021263+00 | odoo
+(1 row)
+
+DROP TABLE zd_prueba;
+DROP TABLE
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE
+SELECT has_schema_privilege('zd_odoo_lectura', 'public', 'CREATE') AS lectura_create,
+       has_schema_privilege('zd_odoo_creador', 'public', 'CREATE') AS creador_create,
+       has_schema_privilege('odoo', 'public', 'CREATE') AS odoo_create;
+ lectura_create | creador_create | odoo_create 
+----------------+----------------+-------------
+ f              | t              | t
+(1 row)
+
+exit=0
+2026-09-26T13:28:25-03:00

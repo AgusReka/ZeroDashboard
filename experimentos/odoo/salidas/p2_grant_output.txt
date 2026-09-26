@@ -1,0 +1,33 @@
+2026-09-26T13:28:04-03:00
+SELECT now() AS hora_servidor, current_user;
+         hora_servidor         |  current_user   
+-------------------------------+-----------------
+ 2026-09-26 16:28:04.813827+00 | zd_odoo_creador
+(1 row)
+
+GRANT SELECT ON v_producto, v_insumo, v_receta_componente, v_pedido, v_item_pedido TO zd_odoo_lectura;
+GRANT
+SELECT c.relname, pg_get_userbyid(c.relowner) AS duenio FROM pg_class c WHERE c.relname IN ('v_producto','v_insumo','v_receta_componente','v_pedido','v_item_pedido','zd_nombre_variante','zd_disponible_variante') ORDER BY 1;
+        relname         |     duenio      
+------------------------+-----------------
+ v_insumo               | zd_odoo_creador
+ v_item_pedido          | zd_odoo_creador
+ v_pedido               | zd_odoo_creador
+ v_producto             | zd_odoo_creador
+ v_receta_componente    | zd_odoo_creador
+ zd_disponible_variante | zd_odoo_creador
+ zd_nombre_variante     | zd_odoo_creador
+(7 rows)
+
+SELECT grantee, table_name, privilege_type FROM information_schema.role_table_grants WHERE grantee = 'zd_odoo_lectura' ORDER BY 2, 3;
+     grantee     |     table_name      | privilege_type 
+-----------------+---------------------+----------------
+ zd_odoo_lectura | v_insumo            | SELECT
+ zd_odoo_lectura | v_item_pedido       | SELECT
+ zd_odoo_lectura | v_pedido            | SELECT
+ zd_odoo_lectura | v_producto          | SELECT
+ zd_odoo_lectura | v_receta_componente | SELECT
+(5 rows)
+
+exit=0
+2026-09-26T13:28:04-03:00

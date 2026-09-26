@@ -1,0 +1,28 @@
+2026-09-26T13:28:02-03:00
+SELECT now() AS hora_servidor, current_user;
+         hora_servidor         | current_user 
+-------------------------------+--------------
+ 2026-09-26 16:28:03.379925+00 | odoo
+(1 row)
+
+CREATE ROLE zd_odoo_creador LOGIN PASSWORD '<redactada>';
+CREATE ROLE
+CREATE ROLE zd_odoo_lectura LOGIN PASSWORD '<redactada>';
+CREATE ROLE
+GRANT CONNECT ON DATABASE odoo TO zd_odoo_creador, zd_odoo_lectura;
+GRANT
+GRANT USAGE, CREATE ON SCHEMA public TO zd_odoo_creador;
+GRANT
+GRANT USAGE ON SCHEMA public TO zd_odoo_lectura;
+GRANT
+GRANT SELECT ON product_product, product_template, product_variant_combination, product_template_attribute_value, product_attribute_value, product_attribute, stock_quant, stock_location, uom_uom, mrp_bom, mrp_bom_line, mrp_bom_line_product_template_attribute_value_rel, sale_order, sale_order_line, res_currency TO zd_odoo_creador;
+GRANT
+SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls FROM pg_roles WHERE rolname LIKE 'zd_odoo_%' ORDER BY 1;
+     rolname     | rolsuper | rolcreaterole | rolcreatedb | rolbypassrls 
+-----------------+----------+---------------+-------------+--------------
+ zd_odoo_creador | f        | f             | f           | f
+ zd_odoo_lectura | f        | f             | f           | f
+(2 rows)
+
+exit=0
+2026-09-26T13:28:03-03:00

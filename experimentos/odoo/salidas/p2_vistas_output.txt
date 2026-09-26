@@ -1,0 +1,114 @@
+2026-09-26T13:28:03-03:00
+SELECT now() AS hora_servidor, current_user;
+         hora_servidor         |  current_user   
+-------------------------------+-----------------
+ 2026-09-26 16:28:04.075311+00 | zd_odoo_creador
+(1 row)
+
+CREATE VIEW zd_nombre_variante AS
+SELECT pp.id AS product_id,
+       (pt.name->>'en_US')
+       || COALESCE(' (' || (SELECT string_agg(pav.name->>'en_US', ', ' ORDER BY ptav.id)
+                            FROM product_variant_combination pvc
+                            JOIN product_template_attribute_value ptav ON ptav.id = pvc.product_template_attribute_value_id
+                            JOIN product_attribute_value pav ON pav.id = ptav.product_attribute_value_id
+                            WHERE pvc.product_product_id = pp.id) || ')', '') AS nombre
+FROM product_product pp
+JOIN product_template pt ON pt.id = pp.product_tmpl_id;
+CREATE VIEW
+CREATE VIEW zd_disponible_variante AS
+SELECT q.product_id, SUM(q.quantity - q.reserved_quantity) AS disponible
+FROM stock_quant q
+JOIN stock_location l ON l.id = q.location_id
+WHERE l.usage = 'internal'
+GROUP BY q.product_id;
+CREATE VIEW
+CREATE VIEW v_producto AS
+SELECT pp.id::text                        AS id,
+       n.nombre                           AS nombre,
+       COALESCE(d.disponible, 0)          AS "stockDisponible",   -- hecho crudo (DEC-28), no producible
+       pp.default_code                    AS sku,
+       (pp.active AND pt.active)          AS activo               -- archivado en variante o plantilla
+FROM product_product pp
+JOIN product_template pt ON pt.id = pp.product_tmpl_id
+JOIN zd_nombre_variante n ON n.product_id = pp.id
+LEFT JOIN zd_disponible_variante d ON d.product_id = pp.id;
+CREATE VIEW
+CREATE VIEW v_insumo AS
+SELECT pp.id::text                        AS id,
+       n.nombre                           AS nombre,
+       COALESCE(d.disponible, 0)          AS "stockDisponible",   -- en la unidad del producto (uom_id)
+       u.name->>'en_US'                   AS "unidadMedida",
+       pp.default_code                    AS codigo
+FROM product_product pp
+JOIN product_template pt ON pt.id = pp.product_tmpl_id
+JOIN uom_uom u ON u.id = pt.uom_id
+JOIN zd_nombre_variante n ON n.product_id = pp.id
+LEFT JOIN zd_disponible_variante d ON d.product_id = pp.id
+WHERE EXISTS (SELECT 1 FROM mrp_bom_line l JOIN mrp_bom b ON b.id = l.bom_id
+              WHERE l.product_id = pp.id AND b.active AND b.type IN ('normal', 'phantom'));
+CREATE VIEW
+CREATE VIEW v_receta_componente AS
+WITH elegida AS (
+  SELECT pp.id AS product_id, pt.uom_id AS uom_producto,
+         (SELECT b.id FROM mrp_bom b
+          WHERE b.active AND b.type IN ('normal', 'phantom')
+            AND (b.product_id = pp.id OR (b.product_id IS NULL AND b.product_tmpl_id = pp.product_tmpl_id))
+          ORDER BY b.sequence, (b.product_id IS NULL), b.id
+          LIMIT 1) AS bom_id
+  FROM product_product pp
+  JOIN product_template pt ON pt.id = pp.product_tmpl_id
+  WHERE pt.type <> 'service'
+)
+SELECT e.product_id::text                AS "productoId",
+       l.product_id::text                AS "insumoId",
+       SUM( (l.product_qty * ul.factor / uc.factor)
+          / (b.product_qty * ub.factor / up.factor) ) AS "cantidadPorUnidad"
+FROM elegida e
+JOIN mrp_bom b          ON b.id = e.bom_id
+JOIN mrp_bom_line l     ON l.bom_id = b.id
+JOIN product_product c  ON c.id = l.product_id
+JOIN product_template ct ON ct.id = c.product_tmpl_id
+JOIN uom_uom ul ON ul.id = l.product_uom_id
+JOIN uom_uom uc ON uc.id = ct.uom_id
+JOIN uom_uom ub ON ub.id = b.product_uom_id
+JOIN uom_uom up ON up.id = e.uom_producto
+WHERE NOT EXISTS (   -- linea restringida a valores de atributo que la variante no tiene
+        SELECT 1
+        FROM mrp_bom_line_product_template_attribute_value_rel r
+        JOIN product_template_attribute_value lv ON lv.id = r.product_template_attribute_value_id
+        JOIN product_attribute a ON a.id = lv.attribute_id
+        WHERE r.mrp_bom_line_id = l.id
+          AND (a.create_variant = 'no_variant'
+               OR NOT EXISTS (SELECT 1
+                              FROM mrp_bom_line_product_template_attribute_value_rel r2
+                              JOIN product_template_attribute_value lv2 ON lv2.id = r2.product_template_attribute_value_id
+                              JOIN product_variant_combination pvc ON pvc.product_template_attribute_value_id = lv2.id
+                              WHERE r2.mrp_bom_line_id = l.id
+                                AND lv2.attribute_id = lv.attribute_id
+                                AND pvc.product_product_id = e.product_id)))
+GROUP BY e.product_id, l.product_id;
+CREATE VIEW
+CREATE VIEW v_pedido AS
+SELECT so.id::text                               AS id,
+       (so.date_order AT TIME ZONE 'UTC')        AS "fechaCreacion",  -- UTC sin zona en la base -> timestamptz
+       CASE WHEN so.state = 'cancel' THEN 'cancelado'
+            ELSE so.state::text END              AS estado,
+       so.amount_total                           AS total,            -- con impuestos
+       so.name                                   AS numero,
+       c.name                                    AS moneda
+FROM sale_order so
+JOIN res_currency c ON c.id = so.currency_id
+WHERE so.state NOT IN ('draft', 'sent');
+CREATE VIEW
+CREATE VIEW v_item_pedido AS
+SELECT sol.id::text                   AS id,
+       sol.order_id::text             AS "pedidoId",
+       sol.product_id::text           AS "productoId",   -- variante, igual que v_producto.id
+       sol.product_uom_qty            AS cantidad,       -- en la unidad de la linea (product_uom_id)
+       sol.price_reduce_taxinc        AS "precioUnitario" -- con impuestos, neto de descuento
+FROM sale_order_line sol
+WHERE sol.display_type IS NULL;
+CREATE VIEW
+exit=0
+2026-09-26T13:28:04-03:00

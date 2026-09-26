@@ -1,0 +1,26 @@
+# Instancia de Odoo Community para la replicacion P13. Imagen oficial, sin modificar.
+# Credenciales en .env (fuera del repositorio); ver .env.example.
+name: zd-odoo
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD}
+    volumes:
+      - odoo-db:/var/lib/postgresql/data
+  odoo:
+    image: odoo:latest
+    depends_on: [db]
+    ports:
+      - "8069:8069"
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: ${ODOO_DB_PASSWORD}
+    volumes:
+      - odoo-data:/var/lib/odoo
+volumes:
+  odoo-db:
+  odoo-data:

@@ -1,0 +1,63 @@
+SET
+BEGIN
+         hora_servidor         
+-------------------------------
+ 2026-09-26 13:26:51.309957-03
+(1 row)
+
+ variantes | activas | sale_ok | publicadas | servicios | combos 
+-----------+---------+---------+------------+-----------+--------
+        66 |      65 |      63 |         40 |        10 |      1
+(1 row)
+
+ variantes_con_atributos 
+-------------------------
+                      18
+(1 row)
+
+ id | active | t_act | sale_ok | is_published | type  
+----+--------+-------+---------+--------------+-------
+  8 | t      | t     | t       | t            | consu
+ 31 | t      | t     | t       | t            | consu
+ 32 | t      | t     | t       | t            | consu
+ 33 | t      | t     | t       | t            | consu
+ 39 | t      | t     | t       | t            | consu
+ 54 | t      | t     | t       |              | consu
+ 55 | t      | t     | t       |              | consu
+ 56 | t      | t     | t       |              | consu
+ 57 | t      | t     | t       |              | consu
+ 58 | t      | t     | t       |              | consu
+ 59 | t      | t     | t       |              | consu
+ 60 | t      | t     | t       |              | consu
+ 61 | t      | t     | t       |              | consu
+ 62 | t      | t     | t       |              | consu
+ 63 | t      | t     | t       |              | consu
+ 64 | t      | t     | t       |              | consu
+ 65 | t      | t     | t       |              | consu
+ 66 | t      | t     | t       |              | consu
+(18 rows)
+
+ display_type | is_delivery | is_downpayment | count | sin_producto | uom_distinta | con_descuento | combo_o_ligada 
+--------------+-------------+----------------+-------+--------------+--------------+---------------+----------------
+              |             |                |    44 |            0 |            0 |             0 |              0
+              | f           |                |    23 |            0 |            0 |             0 |              0
+(2 rows)
+
+ name | state | count 
+------+-------+-------
+ USD  | draft |     9
+ USD  | sale  |    29
+ USD  | sent  |     2
+(3 rows)
+
+ total_no_cuadra_con_lineas 
+----------------------------
+                          0
+(1 row)
+
+ company_id | count 
+------------+-------
+          1 |    40
+(1 row)
+
+ROLLBACK

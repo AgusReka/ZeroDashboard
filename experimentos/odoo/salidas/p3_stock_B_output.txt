@@ -1,0 +1,30 @@
+2026-09-26T13:29:11-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_user, pg_backend_pid() AS pid;
+         hora_servidor         |  current_user   | pid 
+-------------------------------+-----------------+-----
+ 2026-09-26 16:29:11.372461+00 | zd_odoo_lectura | 226
+(1 row)
+
+Output format is unaligned.
+Field separator is "|".
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC))[1] AS stock_insumo_limitante
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC;
+ROLLBACK;
+ROLLBACK
+exit=0
+2026-09-26T13:29:11-03:00

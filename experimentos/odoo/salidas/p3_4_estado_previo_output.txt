@@ -1,0 +1,46 @@
+2026-09-26T13:29:41-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_user;
+         hora_servidor         | current_user 
+-------------------------------+--------------
+ 2026-09-26 16:29:41.897633+00 | odoo
+(1 row)
+
+SELECT "insumoId", count(DISTINCT rc."productoId") AS productos, string_agg(rc."productoId", ',' ORDER BY rc."productoId"::int) AS cuales
+FROM v_receta_componente rc JOIN v_producto p ON p.id = rc."productoId" WHERE p.activo
+GROUP BY 1 HAVING count(DISTINCT rc."productoId") >= 2 ORDER BY "insumoId"::int;
+ insumoId | productos | cuales 
+----------+-----------+--------
+ 57       |         2 | 54,64
+ 62       |         2 | 55,64
+(2 rows)
+
+SELECT l.id, l.bom_id, l.product_id, l.product_qty, l.product_uom_id FROM mrp_bom_line l WHERE l.product_id = 57 ORDER BY l.id;
+ id | bom_id | product_id | product_qty | product_uom_id 
+----+--------+------------+-------------+----------------
+  6 |      2 |         57 |        4.00 |              1
+ 13 |      6 |         57 |        4.00 |              1
+(2 rows)
+
+SELECT q.id, q.location_id, q.quantity, q.reserved_quantity FROM stock_quant q JOIN stock_location l ON l.id=q.location_id
+WHERE q.product_id = 57 AND l.usage='internal' ORDER BY q.id;
+ id | location_id | quantity | reserved_quantity 
+----+-------------+----------+-------------------
+(0 rows)
+
+SELECT id, lot_stock_id, company_id FROM stock_warehouse ORDER BY id LIMIT 1;
+ id | lot_stock_id | company_id 
+----+--------------+------------
+  1 |            5 |          1
+(1 row)
+
+SELECT count(*) AS quants_totales, max(id) AS max_id FROM stock_quant;
+ quants_totales | max_id 
+----------------+--------
+             67 |     67
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+2026-09-26T13:29:42-03:00
