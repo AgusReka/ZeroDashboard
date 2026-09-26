@@ -53,6 +53,16 @@ No depende de ninguna compuerta salvo D-3 (stack). Se puede empezar hoy.
 
 > CH-16 no produce pantallas y es el change más importante del proyecto. Es el que responde la pregunta sobre genericidad.
 
+### Experimentos agregados durante R1
+
+No estaban en el plan original de R1. Se agregaron después de CH-16, como experimentos fuera de la aplicación: no producen código del prototipo ni tienen propuesta, spec o tareas. Se listan acá para que el mapa refleje todo lo ejecutado. Sus resultados están en las bitácoras.
+
+| ID | Experimento | Fecha | Evidencia |
+|---|---|---|---|
+| CH-16b | Vistas canónicas sobre Food Store y Medusa (bases reales) y WooCommerce (*fixture*); equivalencia de `stock-producible` con la consulta original | 2026-09-21 y 2026-09-23 (`fc54f19`, `c6ef5a0`) | `docs/bitacora/bitacora_CH-16b_tres_esquemas.md`, `openspec/changes/CH-16b-vistas-canonicas/sql/`. Origen de DEC-28 y DEC-29 |
+| CH-16c | Saleor como caso negativo ejecutado | 2026-09-24 (`ab93586`) | `docs/bitacora/bitacora_CH-16c_saleor.md`, `openspec/changes/CH-16c-saleor-caso-negativo/`. Origen de DEC-37 y DEC-38 |
+| CH-16d | Segunda automatización (stock físico) y composición con `WITH` | 2026-09-25 (`a6e605a`), posterior al congelamiento de la tesis | `docs/bitacora/bitacora_CH-16d.md`, `openspec/changes/CH-16d-segunda-automatizacion-y-with/` |
+
 ---
 
 ## R2 — Endurecimiento, catálogo, panel, conectividad
