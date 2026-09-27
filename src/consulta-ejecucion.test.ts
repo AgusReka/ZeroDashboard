@@ -5,7 +5,9 @@ import {
   corteDeEjecucion,
   limiteEfectivoDe,
   sanearSql,
+  sentenciaPaginada,
 } from './consulta-ejecucion.js';
+import { prepararSentencia, type SentenciaPreparada } from './parametros.js';
 
 function errorConCodigo(code: string): Error & { code: string } {
   const error = new Error('driver failure') as Error & { code: string };
@@ -227,5 +229,44 @@ describe('classifyExecutionError — credential safety', () => {
     assert.ok(!serializado.includes('connectionParameters'), 'connection parameters must not appear');
     assert.ok(!serializado.includes('_handleErrorMessage'), 'the stack must not appear');
     assert.ok(!serializado.includes('read-only transaction for user'), 'the message must not appear');
+  });
+});
+
+describe('sentenciaPaginada — pagination binds after the declared parameters (DEC-53)', () => {
+  function preparar(sql: string, parametros: unknown, valores: unknown): SentenciaPreparada {
+    const resultado = prepararSentencia(sql, parametros, valores);
+    assert.ok(resultado.ok, JSON.stringify(resultado));
+    return resultado.valor;
+  }
+
+  test('zero parameters: the wrapped text and binds are the pre-CH-11 ones, byte for byte', () => {
+    const sql = 'SELECT id, nombre FROM articulo ORDER BY id';
+    const paginada = sentenciaPaginada(preparar(sql, [], {}), 50, 100);
+
+    assert.equal(
+      paginada.text,
+      `SELECT * FROM (${sql}) AS _consulta_usuario LIMIT $1 OFFSET $2`,
+    );
+    assert.deepEqual(paginada.values, [51, 100]);
+  });
+
+  test('two declared parameters bind at $1/$2 and pagination at $3/$4', () => {
+    const sentencia = preparar(
+      'SELECT id FROM t WHERE b = :b AND a = :a OR a = :a',
+      [
+        { nombre: 'a', tipo: 'numero' },
+        { nombre: 'b', tipo: 'texto' },
+      ],
+      { b: "O'Brien", a: 7 },
+    );
+    const paginada = sentenciaPaginada(sentencia, 2, 2);
+
+    assert.equal(
+      paginada.text,
+      'SELECT * FROM (SELECT id FROM t WHERE b = $2 AND a = $1 OR a = $1) ' +
+        'AS _consulta_usuario LIMIT $3 OFFSET $4',
+    );
+    assert.deepEqual(paginada.values, [7, "O'Brien", 3, 2]);
+    assert.ok(!paginada.text.includes('Brien'), 'a value must never reach the SQL text');
   });
 });
