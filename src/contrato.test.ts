@@ -313,3 +313,94 @@ describe('contrato canónico — personal fields are structurally absent (DEC-23
     }
   });
 });
+
+// ---- CH-10 1.3 every field declares one semantic type (DEC-39) --------------------
+
+describe('contrato canónico — every field declares a semantic type (DEC-39)', () => {
+  /**
+   * The spec's per-field table, transcribed literally. It is the expected value of the
+   * whole dimension, not a sample: CH-10's validation compares a probed column's
+   * Postgres type against exactly this, so a silent retype of one field here would move
+   * a verdict without any other test noticing.
+   */
+  const TIPOS_ESPERADOS: Record<string, Record<string, string>> = {
+    producto: {
+      id: 'identificador',
+      nombre: 'texto',
+      stockDisponible: 'numero',
+      sku: 'texto',
+      activo: 'booleano',
+    },
+    pedido: {
+      id: 'identificador',
+      fechaCreacion: 'fecha',
+      estado: 'texto',
+      total: 'numero',
+      numero: 'identificador',
+      moneda: 'texto',
+    },
+    item_pedido: {
+      id: 'identificador',
+      pedidoId: 'identificador',
+      productoId: 'identificador',
+      cantidad: 'numero',
+      precioUnitario: 'numero',
+    },
+    insumo: {
+      id: 'identificador',
+      nombre: 'texto',
+      stockDisponible: 'numero',
+      unidadMedida: 'texto',
+      codigo: 'texto',
+    },
+    receta_componente: {
+      productoId: 'identificador',
+      insumoId: 'identificador',
+      cantidadPorUnidad: 'numero',
+    },
+  };
+
+  test('1.3 every field declares exactly one of the five types, matching the spec table', () => {
+    const tipos = new Set(['texto', 'numero', 'booleano', 'fecha', 'identificador']);
+    let revisados = 0;
+
+    for (const e of CONTRATO_CANONICO) {
+      for (const c of e.campos) {
+        assert.ok(
+          tipos.has(c.tipo),
+          `${e.nombre}.${c.nombre} declares an unknown semantic type: ${String(c.tipo)}`,
+        );
+        assert.equal(c.tipo, TIPOS_ESPERADOS[e.nombre]?.[c.nombre], `${e.nombre}.${c.nombre}`);
+        revisados += 1;
+      }
+    }
+
+    // Loop guard, and the converse: the table names no field the catalog lacks.
+    assert.equal(revisados, 24);
+    assert.equal(
+      Object.values(TIPOS_ESPERADOS).reduce((n, campos) => n + Object.keys(campos).length, 0),
+      24,
+    );
+  });
+
+  test('1.3 the identity and reference fields, and pedido.numero, are identificador', () => {
+    const identificadores: ReadonlyArray<readonly [string, string]> = [
+      ['producto', 'id'],
+      ['pedido', 'id'],
+      ['pedido', 'numero'],
+      ['item_pedido', 'id'],
+      ['item_pedido', 'pedidoId'],
+      ['item_pedido', 'productoId'],
+      ['insumo', 'id'],
+      ['receta_componente', 'productoId'],
+      ['receta_componente', 'insumoId'],
+    ];
+    for (const [nombreEntidad, nombreCampo] of identificadores) {
+      assert.equal(
+        campo(nombreEntidad, nombreCampo).tipo,
+        'identificador',
+        `${nombreEntidad}.${nombreCampo}`,
+      );
+    }
+  });
+});

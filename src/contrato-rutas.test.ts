@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { AUTOMATIZACIONES, CONTRATO_CANONICO } from './contrato.js';
+import {
+  AUTOMATIZACIONES,
+  CONTRATO_CANONICO,
+  type CampoCanonico,
+  type EntidadCanonica,
+} from './contrato.js';
 import { registerContratoRoutes } from './contrato-rutas.js';
 
 /**
@@ -30,7 +35,12 @@ interface CuerpoContrato {
     entidades: {
       nombre: string;
       obligatoriedad: string;
-      campos: { nombre: string; obligatoriedad: string; automatizaciones: string[] }[];
+      campos: {
+        nombre: string;
+        obligatoriedad: string;
+        automatizaciones: string[];
+        tipo: string;
+      }[];
     }[];
   };
 }
@@ -130,6 +140,31 @@ describe('GET /contrato — the read-only projection of the static catalog', () 
     assert.ok(sku !== undefined, 'producto.sku must be projected');
     assert.equal(sku.obligatoriedad, 'opcional');
     assert.deepEqual(sku.automatizaciones, ['stock-fisico', 'reporte-diario']);
+  });
+
+  test('CH-10 1.4 every field projects its semantic type verbatim (DEC-39)', async () => {
+    const respuesta = await app.inject({ method: 'GET', url: '/contrato' });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const { entidades } = (respuesta.json() as CuerpoContrato).contrato;
+
+    let camposVistos = 0;
+    for (const entidad of entidades) {
+      const declarada: EntidadCanonica | undefined = CONTRATO_CANONICO.find((e) => e.nombre === entidad.nombre);
+      assert.ok(declarada !== undefined, `${entidad.nombre} must exist in the module`);
+      for (const campo of entidad.campos) {
+        const nombreCampo = campo.nombre;
+        const declarado: CampoCanonico | undefined = declarada.campos.find((c) => c.nombre === nombreCampo);
+        assert.ok(declarado !== undefined, `${entidad.nombre}.${campo.nombre} in the module`);
+        // A plain string equal to the module's value: no reshaping, no default filled in.
+        assert.equal(campo.tipo, declarado.tipo, `${entidad.nombre}.${campo.nombre}.tipo`);
+        camposVistos += 1;
+      }
+    }
+    assert.equal(camposVistos, 24);
+
+    const producto = entidades.find((e) => e.nombre === 'producto');
+    assert.equal(producto?.campos.find((c) => c.nombre === 'id')?.tipo, 'identificador');
+    assert.equal(producto?.campos.find((c) => c.nombre === 'activo')?.tipo, 'booleano');
   });
 
   test('2.3 no method other than GET is routed on /contrato', async () => {

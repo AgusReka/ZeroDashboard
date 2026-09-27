@@ -46,11 +46,11 @@ read (4.5), data exposure via rows/personal columns (4.4, 4.2). The Shell/VCS/PR
 
 ## 1. Contract Type Foundation (`src/contrato.ts`)
 
-- [ ] 1.1 Modify `src/contrato.ts`: add `export type TipoSemantico = 'texto'|'numero'|'booleano'|'fecha'|'identificador'` and `tipo: TipoSemantico` on `CampoCanonico` (spec `canonical-contract` "Each Field... Declares a Semantic Type", DEC-39)
-- [ ] 1.2 Set `tipo` on all 23 fields per the design's per-field table; `id`/`pedidoId`/`productoId`/`insumoId`/`pedido.numero` are `identificador`
-- [ ] 1.3 RED: `src/contrato.test.ts` — every field across all five entities declares exactly one of the five types; the identifier fields listed above are `identificador` (spec scenario "Every field declares one of the five semantic types")
-- [ ] 1.4 RED: `src/contrato-rutas.test.ts` — `GET /contrato` projects `tipo` verbatim per field (spec "Read-Only Endpoint Projects the Catalog")
-- [ ] 1.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/contrato.test.ts src/contrato-rutas.test.ts` green
+- [x] 1.1 Modify `src/contrato.ts`: add `export type TipoSemantico = 'texto'|'numero'|'booleano'|'fecha'|'identificador'` and `tipo: TipoSemantico` on `CampoCanonico` (spec `canonical-contract` "Each Field... Declares a Semantic Type", DEC-39)
+- [x] 1.2 Set `tipo` on all 23 fields per the design's per-field table; `id`/`pedidoId`/`productoId`/`insumoId`/`pedido.numero` are `identificador`
+- [x] 1.3 RED: `src/contrato.test.ts` — every field across all five entities declares exactly one of the five types; the identifier fields listed above are `identificador` (spec scenario "Every field declares one of the five semantic types")
+- [x] 1.4 RED: `src/contrato-rutas.test.ts` — `GET /contrato` projects `tipo` verbatim per field (spec "Read-Only Endpoint Projects the Catalog")
+- [x] 1.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/contrato.test.ts src/contrato-rutas.test.ts` green
 
 ## 2. Read-Only Session Primitive & Domain Model (`prisma/`, `src/consulta-ejecucion.ts`)
 

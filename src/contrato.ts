@@ -46,10 +46,25 @@ export type Automatizacion = (typeof AUTOMATIZACIONES)[keyof typeof AUTOMATIZACI
 
 export type Obligatoriedad = 'obligatorio' | 'opcional';
 
+/**
+ * The semantic type a field declares (DEC-39): what CH-10's validation compares a
+ * mapped column's Postgres type against. Deliberately not a physical Postgres type —
+ * the same concept is `int`, `uuid` or `text` depending on the platform, and a tolerant
+ * OID → category table (`src/validacion-mapeo.ts`) absorbs that heterogeneity.
+ *
+ * `identificador` covers the identity and reference fields (`id`, `pedidoId`,
+ * `productoId`, `insumoId`) and `pedido.numero`, which is an integer on one platform and
+ * alphanumeric on another. Typing them `texto` would have weakened that category for
+ * every other field.
+ */
+export type TipoSemantico = 'texto' | 'numero' | 'booleano' | 'fecha' | 'identificador';
+
 export interface CampoCanonico {
   readonly nombre: string;
   /** Independent of the entity's own mark; read only once the entity is present. */
   readonly obligatoriedad: Obligatoriedad;
+  /** Exactly one of the five semantic types; `GET /contrato` projects it verbatim. */
+  readonly tipo: TipoSemantico;
   /**
    * Never empty. A field that traces to no automation is not admitted into the
    * catalog at all — the non-empty tuple type is that rule, expressed to the compiler.
@@ -77,6 +92,7 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
       {
         nombre: 'id',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [
           AUTOMATIZACIONES.STOCK_FISICO,
           AUTOMATIZACIONES.STOCK_PRODUCIBLE,
@@ -86,6 +102,7 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
       {
         nombre: 'nombre',
         obligatoriedad: 'obligatorio',
+        tipo: 'texto',
         automatizaciones: [
           AUTOMATIZACIONES.STOCK_FISICO,
           AUTOMATIZACIONES.STOCK_PRODUCIBLE,
@@ -98,6 +115,7 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         // insumo.stockDisponible only.
         nombre: 'stockDisponible',
         obligatoriedad: 'obligatorio',
+        tipo: 'numero',
         automatizaciones: [AUTOMATIZACIONES.STOCK_FISICO, AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
@@ -105,6 +123,7 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         // outside the platform, but neither automation stops without it.
         nombre: 'sku',
         obligatoriedad: 'opcional',
+        tipo: 'texto',
         automatizaciones: [AUTOMATIZACIONES.STOCK_FISICO, AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
@@ -113,6 +132,7 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         // `stock-fisico` skip discontinued products instead of reporting them at zero.
         nombre: 'activo',
         obligatoriedad: 'obligatorio',
+        tipo: 'booleano',
         automatizaciones: [AUTOMATIZACIONES.STOCK_FISICO, AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
     ],
@@ -124,23 +144,27 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
       {
         nombre: 'id',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         // What makes the report *daily*: without it there is no day to group by.
         nombre: 'fechaCreacion',
         obligatoriedad: 'obligatorio',
+        tipo: 'fecha',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         // Cancelled and pending orders cannot be counted as sales.
         nombre: 'estado',
         obligatoriedad: 'obligatorio',
+        tipo: 'texto',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         nombre: 'total',
         obligatoriedad: 'obligatorio',
+        tipo: 'numero',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
@@ -148,12 +172,14 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         // an order by `id`; the number only makes a line legible to an operator.
         nombre: 'numero',
         obligatoriedad: 'opcional',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         // Optional: a single-currency platform needs no column for it.
         nombre: 'moneda',
         obligatoriedad: 'opcional',
+        tipo: 'texto',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
     ],
@@ -165,22 +191,26 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
       {
         nombre: 'id',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         nombre: 'pedidoId',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         nombre: 'productoId',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
         // How many units moved: the per-product half of the daily report.
         nombre: 'cantidad',
         obligatoriedad: 'obligatorio',
+        tipo: 'numero',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
       {
@@ -188,6 +218,7 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         // per-line price only refines the breakdown.
         nombre: 'precioUnitario',
         obligatoriedad: 'opcional',
+        tipo: 'numero',
         automatizaciones: [AUTOMATIZACIONES.REPORTE_DIARIO],
       },
     ],
@@ -201,16 +232,19 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
       {
         nombre: 'id',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
         nombre: 'nombre',
         obligatoriedad: 'obligatorio',
+        tipo: 'texto',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
         nombre: 'stockDisponible',
         obligatoriedad: 'obligatorio',
+        tipo: 'numero',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
@@ -219,12 +253,14 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         // cantidadPorUnidad directly, without checking unit compatibility.
         nombre: 'unidadMedida',
         obligatoriedad: 'opcional',
+        tipo: 'texto',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
         // Optional: an internal code for the supply. `id` already identifies it.
         nombre: 'codigo',
         obligatoriedad: 'opcional',
+        tipo: 'texto',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
     ],
@@ -238,11 +274,13 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
       {
         nombre: 'productoId',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
         nombre: 'insumoId',
         obligatoriedad: 'obligatorio',
+        tipo: 'identificador',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
       {
@@ -250,6 +288,7 @@ export const CONTRATO_CANONICO: readonly EntidadCanonica[] = [
         // of the product consumes.
         nombre: 'cantidadPorUnidad',
         obligatoriedad: 'obligatorio',
+        tipo: 'numero',
         automatizaciones: [AUTOMATIZACIONES.STOCK_PRODUCIBLE],
       },
     ],
