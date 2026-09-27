@@ -81,6 +81,23 @@ Tasks 3.1–3.7. `PeticionEjecucion.sentencia: SentenciaPreparada` replaces `sql
 | Runtime harness | `app.inject()` against live PostgreSQL 16 (8 CH-11 route cases) |
 | Rollback boundary | Revert `src/consulta-ejecucion.ts`, `src/consultas.ts` and their tests; `src/parametros.ts` stays correct unconsumed |
 
+## Unit 4 — `ch11/5-persistencia-guardadas`
+
+Tasks 4.1–4.6. `ConsultaGuardada.parametros Json @default("[]")`; migration `20260927000000_consulta_parametros` (DEC-55). The create schema gains `parametros` (same shape as `/consultas/ejecutar`, default `[]`, listed in `propertyNames`); create runs `validarDeclaracion` then `analizarSentencia` on the sanitized statement (no values) and answers `400 {error, campos, problemas}`; it persists the validated copy. `ConsultaGuardadaCompleta` projects `parametros`; the list projection is unchanged.
+
+- `prisma migrate diff --from-schema <HEAD schema> --to-schema prisma/schema.prisma --script` emitted exactly `ALTER TABLE "ConsultaGuardada" ADD COLUMN "parametros" JSONB NOT NULL DEFAULT '[]';` (Prisma pads the spaces after `COLUMN`). Applied to the :5434 test DB with `prisma migrate deploy`; client regenerated with `prisma generate` (untracked output).
+- Backfill checked in a rolled-back transaction (the test DB had no rows): a pre-existing row kept its `sql` and read `parametros = []`.
+- The JSON write needs `as unknown as Prisma.InputJsonValue`, following CH-10's `diagnosticoValidacion` (an interface has no index signature).
+
+| Evidence | Value |
+|---|---|
+| Focused test | `npx tsx --test src/consultas-guardadas.test.ts` (live DB :5434): 22 pass, 0 fail (4 RED before the route change; 4.4 is a regression guard and passed before) |
+| Mutation check | Dropping the `analizarSentencia` call fails 1 test (21/22); restored |
+| Typecheck / schema | `npx tsc --noEmit`: exit 0. `npx prisma validate`: valid |
+| Full suite | `npm test` (live DB :5434): 400 pass, 0 fail (baseline 395) |
+| Runtime harness | `app.inject()` against live PostgreSQL 16 (5 CH-11 route cases) |
+| Rollback boundary | Revert `src/consultas-guardadas.ts`/test and the schema line; `ALTER TABLE "ConsultaGuardada" DROP COLUMN "parametros";` then delete the migration directory |
+
 ## Remaining
 
-Phases 4–6. Branches: `ch11/5-persistencia-guardadas`, `ch11/6-consola`, `ch11/7-verify-archivo`.
+Phases 5–6. Branches: `ch11/6-consola`, `ch11/7-verify-archivo`.

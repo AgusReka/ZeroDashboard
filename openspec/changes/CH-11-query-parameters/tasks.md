@@ -80,12 +80,12 @@ hijacking `LIMIT` (2.4), `:x` inside a literal/comment/`$$` (1.2), `"10"`/`null`
 
 ## 4. Saved-Query Persistence (`prisma/schema.prisma`, migration, `src/consultas-guardadas.ts`)
 
-- [ ] 4.1 Modify `prisma/schema.prisma`: add `parametros Json @default("[]")` to `ConsultaGuardada` (DEC-55)
-- [ ] 4.2 Generate migration `prisma/migrations/20260927000000_consulta_parametros/`; verify Prisma 7 emits exactly `ALTER TABLE "ConsultaGuardada" ADD COLUMN "parametros" JSONB NOT NULL DEFAULT '[]';`, backfilling existing rows, with `DROP COLUMN "parametros"` as the down path (design "Migration / Rollout")
-- [ ] 4.3 RED extend `src/consultas-guardadas.test.ts`: create persists a submitted `parametros`; omitted `parametros` stores `[]`; get-by-id returns `parametros`; an unknown `tipo` or a DEC-56/57 mismatch against `sql` returns `400` naming the entry and creates no row (spec "Creating a saved query with a valid declaration", "...with an unused or undeclared parameter", "Unknown tipo in a saved declaration")
-- [ ] 4.4 RED extend: get-by-id for another tenant's id is `404` and the response contains no `sql`/`parametros` (spec "Retrieving another tenant's saved query", regression)
-- [ ] 4.5 Modify `src/consultas-guardadas.ts`: schema gains `parametros?` in `properties`/`propertyNames`; run `validarDeclaracion` + `analizarSentencia` (no values) before create; add `parametros: true` to `ConsultaGuardadaCompleta` — satisfies 4.3–4.4
-- [ ] 4.6 Checkpoint: `npx prisma validate && npx tsc --noEmit`; `npm test -- src/consultas-guardadas.test.ts` green
+- [x] 4.1 Modify `prisma/schema.prisma`: add `parametros Json @default("[]")` to `ConsultaGuardada` (DEC-55)
+- [x] 4.2 Generate migration `prisma/migrations/20260927000000_consulta_parametros/`; verify Prisma 7 emits exactly `ALTER TABLE "ConsultaGuardada" ADD COLUMN "parametros" JSONB NOT NULL DEFAULT '[]';`, backfilling existing rows, with `DROP COLUMN "parametros"` as the down path (design "Migration / Rollout")
+- [x] 4.3 RED extend `src/consultas-guardadas.test.ts`: create persists a submitted `parametros`; omitted `parametros` stores `[]`; get-by-id returns `parametros`; an unknown `tipo` or a DEC-56/57 mismatch against `sql` returns `400` naming the entry and creates no row (spec "Creating a saved query with a valid declaration", "...with an unused or undeclared parameter", "Unknown tipo in a saved declaration")
+- [x] 4.4 RED extend: get-by-id for another tenant's id is `404` and the response contains no `sql`/`parametros` (spec "Retrieving another tenant's saved query", regression)
+- [x] 4.5 Modify `src/consultas-guardadas.ts`: schema gains `parametros?` in `properties`/`propertyNames`; run `validarDeclaracion` + `analizarSentencia` (no values) before create; add `parametros: true` to `ConsultaGuardadaCompleta` — satisfies 4.3–4.4
+- [x] 4.6 Checkpoint: `npx prisma validate && npx tsc --noEmit`; `npm test -- src/consultas-guardadas.test.ts` green
 
 ## 5. Console (`src/consola.ts`)
 

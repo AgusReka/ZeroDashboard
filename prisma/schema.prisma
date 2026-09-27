@@ -44,6 +44,10 @@ model Conexion {
   @@index([tenantId])
 }
 
+// CH-11 (DEC-48, DEC-55): `parametros` is the query's parameter declaration, a JSON list
+// of `{nombre, tipo}` read and written whole with the row. Its content is validated in
+// the application (`src/parametros.ts`), not by the database. The `[]` default is what
+// makes the migration additive: every pre-CH-11 row backfills as declaring nothing.
 model ConsultaGuardada {
   id            String   @id @default(uuid())
   tenantId      String
@@ -51,6 +55,7 @@ model ConsultaGuardada {
   nombre        String
   descripcion   String?
   sql           String
+  parametros    Json     @default("[]")
   creadaEn      DateTime @default(now())
   actualizadaEn DateTime @updatedAt
 
