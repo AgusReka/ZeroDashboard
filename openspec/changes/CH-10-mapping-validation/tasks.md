@@ -62,17 +62,17 @@ read (4.5), data exposure via rows/personal columns (4.4, 4.2). The Shell/VCS/PR
 
 ## 3. Validation Module — Pure Logic (`src/validacion-mapeo.ts`)
 
-- [ ] 3.1 RED: `src/validacion-mapeo.test.ts` — OID→category rows: identificador (int2/4/8, uuid, text, varchar, bpchar), numero, texto, booleano, fecha (spec "Postgres Types Classify Into Five Tolerant Semantic Categories")
-- [ ] 3.2 RED: extend — an OID outside the table fails with a category-mismatch diagnostic naming a cast hint (spec "Column type outside the tolerant mapping", DEC-45)
-- [ ] 3.3 RED: extend — verdicts `ok`, `ausente` (fails only when `obligatorio`), `tipo-incorrecto` (fails whatever the obligatoriedad) (spec "Missing Required Column...", "Wrong-Category Column...")
-- [ ] 3.4 RED: extend — `alias-sin-comillas` distinct from `ausente` when a column matches `nombre.toLowerCase()` (spec "Case-Folded Alias Is Diagnosed Distinctly")
-- [ ] 3.5 RED: extend — `duplicada` verdict; extra columns land in `columnasSobrantes`, named (spec "Column Outside the Contract...", DEC-43)
-- [ ] 3.6 RED: extend — applicability: unmapped optional entity → `inaplicable`, reason "entity not mapped", never `bloqueada` (spec "Optional entity unmapped")
-- [ ] 3.7 RED: extend — unmapped/failing required entity or field → `bloqueada`, naming the entity/field (spec "Required entity fails validation")
-- [ ] 3.8 RED: extend — mapped but `no-validado` → `pendiente`
-- [ ] 3.9 RED: extend — an automation both inapplicable and blocked reports `inaplicable` with every reason listed (spec "Automation both inapplicable and blocked", DEC-46)
-- [ ] 3.10 Create `src/validacion-mapeo.ts`: OID table, `diagnosticar()`, `informe()` satisfying 3.1–3.9 (design Interfaces/Contracts)
-- [ ] 3.11 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/validacion-mapeo.test.ts` green
+- [x] 3.1 RED: `src/validacion-mapeo.test.ts` — OID→category rows: identificador (int2/4/8, uuid, text, varchar, bpchar), numero, texto, booleano, fecha (spec "Postgres Types Classify Into Five Tolerant Semantic Categories")
+- [x] 3.2 RED: extend — an OID outside the table fails with a category-mismatch diagnostic naming a cast hint (spec "Column type outside the tolerant mapping", DEC-45)
+- [x] 3.3 RED: extend — verdicts `ok`, `ausente` (fails only when `obligatorio`), `tipo-incorrecto` (fails whatever the obligatoriedad) (spec "Missing Required Column...", "Wrong-Category Column...")
+- [x] 3.4 RED: extend — `alias-sin-comillas` distinct from `ausente` when a column matches `nombre.toLowerCase()` (spec "Case-Folded Alias Is Diagnosed Distinctly")
+- [x] 3.5 RED: extend — `duplicada` verdict; extra columns land in `columnasSobrantes`, named (spec "Column Outside the Contract...", DEC-43)
+- [x] 3.6 RED: extend — applicability: unmapped optional entity → `inaplicable`, reason "entity not mapped", never `bloqueada` (spec "Optional entity unmapped")
+- [x] 3.7 RED: extend — unmapped/failing required entity or field → `bloqueada`, naming the entity/field (spec "Required entity fails validation")
+- [x] 3.8 RED: extend — mapped but `no-validado` → `pendiente`
+- [x] 3.9 RED: extend — an automation both inapplicable and blocked reports `inaplicable` with every reason listed (spec "Automation both inapplicable and blocked", DEC-46)
+- [x] 3.10 Create `src/validacion-mapeo.ts`: OID table, `diagnosticar()`, `informe()` satisfying 3.1–3.9 (design Interfaces/Contracts)
+- [x] 3.11 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/validacion-mapeo.test.ts` green
 
 ## 4. Validation Routes, Wiring, Re-Register Reset
 
