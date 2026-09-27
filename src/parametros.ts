@@ -232,3 +232,121 @@ export function reescribirMarcadores(sql: string, nombres: readonly string[]): R
   }
   return { texto: texto + sql.slice(desde), n: nombres.length };
 }
+
+// --- Declaration and static analysis (DEC-49, DEC-56, DEC-57, DEC-59) ---
+
+/** The parameter type vocabulary (DEC-49), distinct from `TipoSemantico`. */
+export const TIPOS_PARAMETRO = ['texto', 'numero', 'booleano', 'fecha'] as const;
+export type TipoParametro = (typeof TIPOS_PARAMETRO)[number];
+
+/** One declared parameter. Every declared parameter is required (DEC-50). Reused by CH-12 (DEC-52). */
+export interface DeclaracionParametro {
+  nombre: string;
+  tipo: TipoParametro;
+}
+
+/** Why a parameter was rejected. Problems are always listed in this order. */
+export const MOTIVOS_PARAMETRO = [
+  'nombre-invalido',
+  'nombre-duplicado',
+  'tipo-desconocido',
+  'posicional-a-mano', // DEC-59
+  'sin-declarar', // DEC-57
+  'sin-usar', // DEC-56
+  'valor-faltante', // DEC-50
+  'valor-no-declarado', // DEC-58
+  'valor-invalido', // DEC-60
+] as const;
+export type MotivoParametro = (typeof MOTIVOS_PARAMETRO)[number];
+
+/**
+ * One problem, as the route renders it (DEC-51). `parametro` names the parameter, or the
+ * hand-written `$n`, when there is one; `campo` is a JSON pointer into the request body.
+ */
+export interface ProblemaParametro {
+  parametro: string | null;
+  motivo: MotivoParametro;
+  campo: string;
+}
+
+export type Resultado<T> = { ok: true; valor: T } | { ok: false; problemas: ProblemaParametro[] };
+
+/** A parameter name: ASCII, case-sensitive, the same grammar the scanner uses for markers. */
+const NOMBRE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function esObjeto(valor: unknown): valor is Record<string, unknown> {
+  return typeof valor === 'object' && valor !== null && !Array.isArray(valor);
+}
+
+function esTipo(valor: unknown): valor is TipoParametro {
+  return (TIPOS_PARAMETRO as readonly unknown[]).includes(valor);
+}
+
+/** Sorts problems into `MOTIVOS_PARAMETRO` order; the sort is stable within one motivo. */
+function ordenar(problemas: ProblemaParametro[]): ProblemaParametro[] {
+  const rango = (p: ProblemaParametro) => MOTIVOS_PARAMETRO.indexOf(p.motivo);
+  return [...problemas].sort((a, b) => rango(a) - rango(b));
+}
+
+/**
+ * Validates a declaration (DEC-49): a list of `{nombre, tipo}` entries with well-formed,
+ * distinct names and a known `tipo`. `undefined` is the empty declaration. The accepted
+ * value is a copy holding only `nombre` and `tipo`; any other key of an entry is dropped.
+ */
+export function validarDeclaracion(entrada: unknown): Resultado<DeclaracionParametro[]> {
+  if (entrada === undefined) {
+    return { ok: true, valor: [] };
+  }
+  if (!Array.isArray(entrada)) {
+    // The route schemas guarantee a list; this only keeps a stray caller from being read.
+    return { ok: false, problemas: [{ parametro: null, motivo: 'nombre-invalido', campo: '/parametros' }] };
+  }
+  const problemas: ProblemaParametro[] = [];
+  const declaracion: DeclaracionParametro[] = [];
+  const vistos = new Set<string>();
+  entrada.forEach((item: unknown, i) => {
+    const nombre = esObjeto(item) && typeof item.nombre === 'string' ? item.nombre : null;
+    const tipo = esObjeto(item) ? item.tipo : undefined;
+    if (nombre === null || !NOMBRE.test(nombre)) {
+      problemas.push({ parametro: nombre, motivo: 'nombre-invalido', campo: `/parametros/${i}/nombre` });
+    } else if (vistos.has(nombre)) {
+      problemas.push({ parametro: nombre, motivo: 'nombre-duplicado', campo: `/parametros/${i}/nombre` });
+    }
+    if (!esTipo(tipo)) {
+      problemas.push({ parametro: nombre, motivo: 'tipo-desconocido', campo: `/parametros/${i}/tipo` });
+    } else if (nombre !== null) {
+      declaracion.push({ nombre, tipo });
+    }
+    if (nombre !== null) {
+      vistos.add(nombre);
+    }
+  });
+  return problemas.length === 0 ? { ok: true, valor: declaracion } : { ok: false, problemas: ordenar(problemas) };
+}
+
+/**
+ * Checks a statement against a valid declaration, without values — the static checks the
+ * save path runs too. Reports every hand-written `$n` (DEC-59), every undeclared marker
+ * (DEC-57) and every declared name the text never uses (DEC-56), each distinct token once,
+ * already in `MOTIVOS_PARAMETRO` order.
+ */
+export function analizarSentencia(sql: string, declaracion: readonly DeclaracionParametro[]): ProblemaParametro[] {
+  const { marcadores, posicionales } = escanearSentencia(sql);
+  const declarados = new Set(declaracion.map((d) => d.nombre));
+  const usados = new Set(marcadores.map((m) => m.nombre));
+  const problemas: ProblemaParametro[] = [];
+  for (const texto of new Set(posicionales.map((p) => p.texto))) {
+    problemas.push({ parametro: texto, motivo: 'posicional-a-mano', campo: '/sql' });
+  }
+  for (const nombre of usados) {
+    if (!declarados.has(nombre)) {
+      problemas.push({ parametro: nombre, motivo: 'sin-declarar', campo: '/sql' });
+    }
+  }
+  declaracion.forEach(({ nombre }, i) => {
+    if (!usados.has(nombre)) {
+      problemas.push({ parametro: nombre, motivo: 'sin-usar', campo: `/parametros/${i}/nombre` });
+    }
+  });
+  return problemas;
+}

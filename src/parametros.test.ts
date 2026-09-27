@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { escanearSentencia, reescribirMarcadores } from './parametros.js';
+import {
+  analizarSentencia,
+  escanearSentencia,
+  reescribirMarcadores,
+  validarDeclaracion,
+  type DeclaracionParametro,
+  type Resultado,
+} from './parametros.js';
 
 /**
  * Unit cases for CH-11 Phase 1 (DEC-47, DEC-59): the scanner and the `:nombre` → `$k`
@@ -165,5 +172,91 @@ describe('reescribirMarcadores — :nombre to $k (DEC-47)', () => {
 
   test('duplicate declared names are a programming error, not a silent misbinding', () => {
     assert.throws(() => reescribirMarcadores('WHERE a = :x', ['x', 'x']));
+  });
+});
+
+/**
+ * Unit cases for CH-11 Phase 2 (DEC-49, DEC-56, DEC-57, DEC-59): declaration validation
+ * and statement analysis. Each problem is pinned by its `motivo`, its `parametro` and its
+ * `campo`, because the route renders exactly these three fields.
+ */
+
+/** The `motivo`/`parametro` pairs of a result's problems, in order; `[]` when it succeeded. */
+function motivos(r: Resultado<unknown>): Array<[string, string | null]> {
+  return r.ok ? [] : r.problemas.map((p) => [p.motivo, p.parametro]);
+}
+
+describe('validarDeclaracion', () => {
+  test('a valid declaration is accepted as a copy of its {nombre, tipo} entries', () => {
+    const r = validarDeclaracion([{ nombre: 'desde', tipo: 'fecha', extra: 1 }]);
+    assert.deepEqual(r, { ok: true, valor: [{ nombre: 'desde', tipo: 'fecha' }] });
+    assert.deepEqual(validarDeclaracion(undefined), { ok: true, valor: [] });
+  });
+
+  test('an unknown tipo is rejected naming the entry (DEC-49)', () => {
+    const r = validarDeclaracion([
+      { nombre: 'x', tipo: 'numero' },
+      { nombre: 'y', tipo: 'identificador' },
+    ]);
+    assert.deepEqual(r, {
+      ok: false,
+      problemas: [{ parametro: 'y', motivo: 'tipo-desconocido', campo: '/parametros/1/tipo' }],
+    });
+  });
+
+  test('a malformed nombre and a duplicate nombre are each rejected naming the entry', () => {
+    const r = validarDeclaracion([
+      { nombre: '1x', tipo: 'texto' },
+      { nombre: 'x', tipo: 'texto' },
+      { tipo: 'texto' },
+      { nombre: 'x', tipo: 'numero' },
+    ]);
+    assert.ok(!r.ok);
+    assert.deepEqual(r.problemas, [
+      { parametro: '1x', motivo: 'nombre-invalido', campo: '/parametros/0/nombre' },
+      { parametro: null, motivo: 'nombre-invalido', campo: '/parametros/2/nombre' },
+      { parametro: 'x', motivo: 'nombre-duplicado', campo: '/parametros/3/nombre' },
+    ]);
+  });
+
+  test('names are case-sensitive, so x and X are distinct', () => {
+    const r = validarDeclaracion([
+      { nombre: 'x', tipo: 'texto' },
+      { nombre: 'X', tipo: 'texto' },
+    ]);
+    assert.ok(r.ok);
+  });
+
+  test('a container that is not a list is rejected rather than read', () => {
+    assert.deepEqual(motivos(validarDeclaracion({ nombre: 'x', tipo: 'texto' })), [['nombre-invalido', null]]);
+  });
+});
+
+describe('analizarSentencia', () => {
+  const x: DeclaracionParametro[] = [{ nombre: 'x', tipo: 'numero' }];
+
+  test('a declared name with no marker is sin-usar (DEC-56)', () => {
+    assert.deepEqual(analizarSentencia("SELECT ':x' -- :x\n", x), [
+      { parametro: 'x', motivo: 'sin-usar', campo: '/parametros/0/nombre' },
+    ]);
+  });
+
+  test('a marker absent from the declaration is sin-declarar, reported once (DEC-57)', () => {
+    assert.deepEqual(analizarSentencia('WHERE a = :x AND b = :y AND c = :y', x), [
+      { parametro: 'y', motivo: 'sin-declarar', campo: '/sql' },
+    ]);
+  });
+
+  test('a hand-written $n is rejected with or without declared parameters (DEC-59)', () => {
+    assert.deepEqual(analizarSentencia('WHERE id = $1', []), [
+      { parametro: '$1', motivo: 'posicional-a-mano', campo: '/sql' },
+    ]);
+    assert.deepEqual(analizarSentencia('WHERE a = :x AND b = $2', x), [
+      { parametro: '$2', motivo: 'posicional-a-mano', campo: '/sql' },
+    ]);
+  });
+
+  test('a $1 inside a literal, a comment or a dollar quote is not rejected', () => {
+    assert.deepEqual(analizarSentencia("SELECT 'precio: $1', $$ $2 $$ /* $3 */", []), []);
   });
 });

@@ -56,10 +56,10 @@ hijacking `LIMIT` (2.4), `:x` inside a literal/comment/`$$` (1.2), `"10"`/`null`
 
 ## 2. Declaration Validation & `prepararSentencia` (`src/parametros.ts` part 2)
 
-- [ ] 2.1 RED extend `src/parametros.test.ts`: `validarDeclaracion` accepts `[{nombre,tipo}]`; rejects an unknown `tipo` (DEC-49), a malformed `nombre`, and a duplicate `nombre`, each naming the entry (spec "Valid declaration accepted", "Unknown tipo rejected")
-- [ ] 2.2 RED extend: `analizarSentencia` reports `sin-usar` for a declared name with no `:nombre` marker (DEC-56, spec "Unused declaration rejected")
-- [ ] 2.3 RED extend: `analizarSentencia` reports `sin-declarar` for a `:y` marker absent from the declaration (DEC-57, spec "Undeclared marker rejected")
-- [ ] 2.4 RED extend: `analizarSentencia` reports `posicional-a-mano` for a `$1`-shaped token outside literal/comment/dollar-quote, with or without any declared parameter (DEC-59, both spec hand-written-bind scenarios)
+- [x] 2.1 RED extend `src/parametros.test.ts`: `validarDeclaracion` accepts `[{nombre,tipo}]`; rejects an unknown `tipo` (DEC-49), a malformed `nombre`, and a duplicate `nombre`, each naming the entry (spec "Valid declaration accepted", "Unknown tipo rejected")
+- [x] 2.2 RED extend: `analizarSentencia` reports `sin-usar` for a declared name with no `:nombre` marker (DEC-56, spec "Unused declaration rejected")
+- [x] 2.3 RED extend: `analizarSentencia` reports `sin-declarar` for a `:y` marker absent from the declaration (DEC-57, spec "Undeclared marker rejected")
+- [x] 2.4 RED extend: `analizarSentencia` reports `posicional-a-mano` for a `$1`-shaped token outside literal/comment/dollar-quote, with or without any declared parameter (DEC-59, both spec hand-written-bind scenarios)
 - [ ] 2.5 RED extend: `prepararSentencia` reports `valor-no-declarado` for a value-map key absent from the declaration (DEC-58, spec "Extra value rejected")
 - [ ] 2.6 RED extend: `prepararSentencia` reports `valor-faltante` for a declared name with no value key (DEC-50)
 - [ ] 2.7 RED extend: the DEC-60 value-shape table — `texto` string, `numero` finite JSON number only (`"10"` rejected), `booleano` JSON boolean, `fecha` ISO date/date-time regex (`27/09/2026`, `1e400` rejected as `valor-invalido`) (spec "Wrong shape rejected before execution", "Correct shape passed through to Postgres")

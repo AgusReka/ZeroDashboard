@@ -38,6 +38,24 @@ Status: complete. Tasks 1.1–1.8 marked `[x]` in `tasks.md`.
 
 Unit code + tests: 403 lines (234 + 169), plus bookkeeping (`tasks.md`, this file). Slightly above 400; not compressed per the budget rule.
 
+## Work Unit 2a — Declaration + static analysis (branch `ch11/2-validacion-preparacion`)
+
+Status: complete. Tasks 2.1–2.4 `[x]`. Unit 2 as a whole was 405 code+test lines, so it was sliced once: 2a (this commit) and 2b (2.5–2.11).
+
+- `src/parametros.ts`: `TIPOS_PARAMETRO`, `DeclaracionParametro`, `MOTIVOS_PARAMETRO`/`MotivoParametro` (the const array fixes the problem order), `ProblemaParametro {parametro, motivo, campo}` (`campo` is a JSON pointer: `/parametros/i/nombre|tipo`, `/sql`), `Resultado<T>`, `validarDeclaracion`, `analizarSentencia`.
+- `src/parametros.test.ts`: +9 cases (47 total).
+- Choices: `parametro` of `posicional-a-mano` is the token text (`$1`); each distinct token or name is reported once; a non-list declaration is `nombre-invalido` at `/parametros`.
+
+| Evidence | Value |
+|---|---|
+| Focused test | `npx tsx --test src/parametros.test.ts`: 47 pass, 0 fail |
+| Typecheck | `npx tsc --noEmit`: exit 0 |
+| Full suite | `npm test` (live DB on :5434): 375 pass, 0 fail (baseline 366) |
+| Runtime harness | N/A — pure functions, nothing consumes them yet |
+| Rollback boundary | Revert this commit's additions to `src/parametros.ts`/test; the unit 1 scanner is unaffected |
+
+Unit 2b (`ValorParametro`, `SentenciaPreparada`, DEC-60 shapes, `prepararSentencia`, tests 2.5–2.9) is a pure append on 2a. It is written and passed 57/57 and 385/385, and is kept in `git stash` as "CH-11 unit 2b" (`git stash list`).
+
 ## Remaining
 
-Phases 2–6 (tasks 2.1–6.3).
+Tasks 2.5–2.11 (unit 2b), Phases 3–6.
