@@ -100,7 +100,7 @@ hijacking `LIMIT` (2.4), `:x` inside a literal/comment/`$$` (1.2), `"10"`/`null`
 
 - [x] 6.1 Full-suite checkpoint: `npm test` green; `npx tsc --noEmit` clean; `npx prisma validate` clean
 - [x] 6.2 Run `sdd-verify` against `specs/query-parameters/spec.md`, `specs/query-execution/spec.md`, `specs/saved-queries/spec.md`, `specs/query-console/spec.md`; produce the verify report
-- [ ] 6.3 Run `sdd-archive`: drop the "no migration" clause from the `saved-queries` main spec's Purpose statement when merging the delta (spec `saved-queries` "Note on Purpose"); move `openspec/changes/CH-11-query-parameters/` to `openspec/changes/archive/`; record the change in `docs/01-decisiones.md`'s bitácora
+- [x] 6.3 Run `sdd-archive`: drop the "no migration" clause from the `saved-queries` main spec's Purpose statement when merging the delta (spec `saved-queries` "Note on Purpose"); move `openspec/changes/CH-11-query-parameters/` to `openspec/changes/archive/`; record the change in `docs/01-decisiones.md`'s bitácora
 
 ## Key Success-Criteria Traceability
 

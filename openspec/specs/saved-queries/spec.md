@@ -2,21 +2,34 @@
 
 ## Purpose
 
-Persisting a named, optionally described SQL text for the tenant resolved server-side (DEC-10, DEC-11), and retrieving it by list or by id. There is no update or delete route; a saved query is immutable once created and carries no relation to any specific `Conexion` — CH-02's schema is used as-is, with no migration.
+Persisting a named, optionally described SQL text for the tenant resolved server-side (DEC-10, DEC-11), and retrieving it by list or by id. There is no update or delete route; a saved query is immutable once created and carries no relation to any specific `Conexion`. Since CH-11 it also stores its parameter declaration in the `parametros` JSON column (DEC-55, migration `20260927000000_consulta_parametros`).
 
 ## Requirements
 
 ### Requirement: Creating a Saved Query
 
-The system SHALL persist a saved query for the active tenant resolved for the request, never from a client-supplied value, storing `nombre`, `sql`, and an optional `descripcion`. WHEN no active tenant can be resolved, the system SHALL reject the request before creating a row.
-(Previously: the tenant was always resolved via `prisma.tenant.findFirst({ orderBy: { creadoEn: 'asc' } })`, with no active-tenant concept, responding `503 tenant-no-inicializado` when none existed.)
+The system SHALL persist a saved query for the active tenant resolved for the request, never from a client-supplied value, storing `nombre`, `sql`, an optional `descripcion`, and `parametros` — a JSON column holding the `query-parameters` declaration, defaulting to `[]`, validated in the application against the declaration shape and against the `sql` text (unused/undeclared checks apply at create time). WHEN no active tenant can be resolved, the system SHALL reject the request before creating a row.
+(Previously: persisted `nombre`, `sql`, and an optional `descripcion` only, with no parameter declaration and no active-tenant concept before that; the tenant was resolved via `prisma.tenant.findFirst({ orderBy: { creadoEn: 'asc' } })`, responding `503 tenant-no-inicializado` when none existed.)
 
 #### Scenario: Creating a valid saved query
 
 - GIVEN an active, resolvable tenant and a request with a non-empty `nombre` and a non-empty `sql`
 - WHEN the create request is submitted
-- THEN the response SHALL be `201` with the persisted `id`, `nombre`, `descripcion`, `sql`, `creadaEn`, `actualizadaEn`
+- THEN the response SHALL be `201` with the persisted `id`, `nombre`, `descripcion`, `sql`, `parametros`, `creadaEn`, `actualizadaEn`
 - AND the row SHALL be scoped to the active tenant
+
+#### Scenario: Creating a saved query with a valid declaration
+
+- GIVEN a request whose `sql` contains `:desde` and whose `parametros` declares `desde` as `fecha`
+- WHEN the create request is submitted
+- THEN the response SHALL be `201` with `parametros` persisted as submitted
+
+#### Scenario: Creating a saved query with an unused or undeclared parameter
+
+- GIVEN a request whose `parametros` and `sql` markers do not match (per `query-parameters`)
+- WHEN the create request is submitted
+- THEN the response SHALL be `400` naming the offending parameter
+- AND no row SHALL be created
 
 #### Scenario: Saving a query with a name already in use
 
@@ -96,24 +109,35 @@ The system SHALL return every saved query belonging to the active tenant as a li
 
 ### Requirement: Retrieving a Saved Query by Id
 
-The system SHALL return the full saved query for a given id belonging to the active tenant. WHEN no saved query with that id exists for the active tenant — including when the id exists but belongs to a different tenant — the system SHALL respond `404` with a legible error, not a raw driver error.
-(Previously: any existing id resolved regardless of owning tenant, since no tenant filter was applied.)
+The system SHALL return the full saved query for a given id belonging to the active tenant, including `parametros`. WHEN no saved query with that id exists for the active tenant — including when the id exists but belongs to a different tenant — the system SHALL respond `404` with a legible error, not a raw driver error.
+(Previously: returned the full record without `parametros`; any existing id resolved regardless of owning tenant, since no tenant filter was applied.)
 
 #### Scenario: Retrieving an existing saved query
 
-- GIVEN a saved query persisted for the active tenant
+- GIVEN a saved query persisted for the active tenant with a non-empty `parametros`
 - WHEN a get-by-id request is submitted with its `id`
-- THEN the response SHALL be `200` with the full record including `sql`
+- THEN the response SHALL be `200` with the full record including `sql` and `parametros`
 
 #### Scenario: Retrieving another tenant's saved query
 
 - GIVEN tenants A and B, and a saved query belonging to B
 - WHEN A's active tenant requests B's saved query id
 - THEN the response SHALL be `404`
-- AND the response SHALL NOT contain B's `sql` or other fields
+- AND the response SHALL NOT contain B's `sql`, `parametros`, or other fields
 
 #### Scenario: Retrieving an unknown id
 
 - GIVEN no saved query exists with the requested `id`
 - WHEN a get-by-id request is submitted
 - THEN the response SHALL be `404` with a legible error body
+
+### Requirement: Creation Rejects an Invalid Parameter Declaration Shape
+
+WHEN the `parametros` field fails the `query-parameters` declaration-shape check (unknown `tipo`, missing `nombre`, or a malformed entry), the system SHALL respond `400 solicitud-invalida` naming the offending entry and SHALL create no row.
+
+#### Scenario: Unknown tipo in a saved declaration
+
+- GIVEN a create request whose `parametros` entry has `tipo: "identificador"`
+- WHEN the request is submitted
+- THEN the response SHALL be `400` naming the offending entry
+- AND no row SHALL be created
