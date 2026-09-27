@@ -13,15 +13,17 @@ import { ErrorSinTenantActivo, registrarContextoTenant } from './contexto-tenant
 import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
+import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
 
 /**
  * CH-06 tasks 3.2–3.6 — **T2**: "ninguna operación devuelve filas del otro", proven by
  * an automated test rather than by inspection.
  *
- * Two tenants are loaded, each with its own `Conexion` and `ConsultaGuardada`, and
- * every tenant-scoped route is exercised from both sides. The sweep is written as a
- * table over route × tenant on purpose: a route added later that is missing from it is
- * an obvious omission in review, which a hand-written case per route is not.
+ * Two tenants are loaded, each with its own `Conexion`, `ConsultaGuardada` and (CH-09)
+ * `VistaCanonica`, and every tenant-scoped route is exercised from both sides. The
+ * sweep is written as a table over route × tenant on purpose: a route added later that
+ * is missing from it is an obvious omission in review, which a hand-written case per
+ * route is not.
  *
  * The target is the project's own Compose `db` service. `docker-compose.yml` does not
  * publish its port, so either publish it with a local override or point these
@@ -61,6 +63,9 @@ interface Fixture {
   conexionId: string;
   guardadaId: string;
   sqlGuardado: string;
+  /** CH-09: the canonical entity this tenant's connection has a definition for. */
+  entidadVista: string;
+  sqlVista: string;
 }
 
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
@@ -102,6 +107,7 @@ describe(
       registerConexionRoutes(app, aislado);
       registerConsultaRoutes(app, aislado);
       registerConsultaGuardadaRoutes(app, aislado);
+      registerVistaCanonicaRoutes(app, aislado);
       await app.ready();
 
       a = await montarTenant('A');
@@ -113,6 +119,8 @@ describe(
       if (ids.length > 0) {
         // The FK is RESTRICT, so dependent rows go first.
         await db.consultaGuardada.deleteMany({ where: { tenantId: { in: ids } } });
+        // CH-09: `VistaCanonica` references `Conexion` through a RESTRICT FK as well.
+        await db.vistaCanonica.deleteMany({ where: { tenantId: { in: ids } } });
         await db.conexion.deleteMany({ where: { tenantId: { in: ids } } });
         await db.tenant.deleteMany({ where: { id: { in: ids } } });
       }
@@ -161,12 +169,25 @@ describe(
       assert.equal(guardado.statusCode, 201, guardado.body);
       const { consultaGuardada } = guardado.json() as { consultaGuardada: { id: string } };
 
+      // CH-09: one registered canonical view per tenant, on its own connection.
+      const entidadVista = 'producto';
+      const sqlVista = `SELECT '${etiqueta}' AS duenio_vista_ch09`;
+      const vista = await app.inject({
+        method: 'PUT',
+        url: `/conexiones/${conexion.id}/vistas-canonicas/${entidadVista}`,
+        headers,
+        payload: { sql: sqlVista },
+      });
+      assert.equal(vista.statusCode, 201, vista.body);
+
       return {
         tenantId: tenant.id,
         nombre,
         conexionId: conexion.id,
         guardadaId: consultaGuardada.id,
         sqlGuardado,
+        entidadVista,
+        sqlVista,
       };
     }
 
@@ -188,6 +209,16 @@ describe(
 
         assert.equal(conexion?.tenantId, fixture.tenantId, `${fixture.nombre}: conexion`);
         assert.equal(guardada?.tenantId, fixture.tenantId, `${fixture.nombre}: consulta guardada`);
+
+        const vistas = await db.vistaCanonica.findMany({
+          where: { conexionId: fixture.conexionId },
+          select: { tenantId: true, entidad: true },
+        });
+        assert.deepEqual(
+          vistas,
+          [{ tenantId: fixture.tenantId, entidad: fixture.entidadVista }],
+          `${fixture.nombre}: vista canonica`,
+        );
       }
       assert.notEqual(a.tenantId, b.tenantId, 'the two fixtures must be different tenants');
     });
@@ -234,6 +265,43 @@ describe(
           }),
         exitoso: 200,
       },
+      // CH-09: the three canonical-view routes. The owner control of the `PUT`
+      // re-registers the fixture's own statement verbatim, so it is a DEC-34 replace
+      // (`200`, not `201`) that leaves the fixture as the tests below expect it.
+      {
+        nombre: 'PUT /conexiones/:id/vistas-canonicas/:entidad',
+        errorEsperado: 'conexion-no-encontrada',
+        pedir: (llamante: Fixture, duenio: Fixture) =>
+          app.inject({
+            method: 'PUT',
+            url: `/conexiones/${duenio.conexionId}/vistas-canonicas/${duenio.entidadVista}`,
+            headers: cabeceras(llamante),
+            payload: { sql: llamante.sqlVista },
+          }),
+        exitoso: 200,
+      },
+      {
+        nombre: 'GET /conexiones/:id/vistas-canonicas',
+        errorEsperado: 'conexion-no-encontrada',
+        pedir: (llamante: Fixture, duenio: Fixture) =>
+          app.inject({
+            method: 'GET',
+            url: `/conexiones/${duenio.conexionId}/vistas-canonicas`,
+            headers: cabeceras(llamante),
+          }),
+        exitoso: 200,
+      },
+      {
+        nombre: 'GET /conexiones/:id/vistas-canonicas/:entidad',
+        errorEsperado: 'conexion-no-encontrada',
+        pedir: (llamante: Fixture, duenio: Fixture) =>
+          app.inject({
+            method: 'GET',
+            url: `/conexiones/${duenio.conexionId}/vistas-canonicas/${duenio.entidadVista}`,
+            headers: cabeceras(llamante),
+          }),
+        exitoso: 200,
+      },
     ];
 
     for (const ruta of rutas) {
@@ -253,6 +321,7 @@ describe(
           // Nothing of the owner's may leak through the refusal — not the stored
           // statement, not the credential, not the tenant id.
           assert.ok(!respuesta.body.includes(duenio.sqlGuardado));
+          assert.ok(!respuesta.body.includes(duenio.sqlVista));
           assert.ok(!respuesta.body.includes(objetivo.password));
           assert.ok(!respuesta.body.includes(duenio.tenantId));
         }
@@ -322,6 +391,45 @@ describe(
       );
     });
 
+    test("3.3 registering against the other tenant's connection leaves its definition untouched", async () => {
+      // The sweep's `404` is the response-level claim; this is the effect-level one. A
+      // names B's connection and B's already-registered entity: an unscoped ownership
+      // check would turn this into a replace of B's statement, or a row filed under A.
+      const seleccion = { id: true, tenantId: true, sql: true, actualizadaEn: true } as const;
+      const antes = await db.vistaCanonica.findMany({
+        where: { conexionId: b.conexionId },
+        select: seleccion,
+      });
+      assert.equal(antes.length, 1, "B's fixture definition must exist before the attempt");
+      assert.equal(antes[0]?.sql, b.sqlVista);
+
+      const intruso = `SELECT 'A' AS intruso_ch09_${Date.now()}`;
+      const respuesta = await app.inject({
+        method: 'PUT',
+        url: `/conexiones/${b.conexionId}/vistas-canonicas/${b.entidadVista}`,
+        headers: cabeceras(a),
+        payload: { sql: intruso },
+      });
+
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
+      assert.deepEqual(
+        await db.vistaCanonica.findMany({ where: { conexionId: b.conexionId }, select: seleccion }),
+        antes,
+        "B's definition must be unchanged: same row, same statement, same timestamp",
+      );
+      assert.equal(
+        await db.vistaCanonica.count({ where: { sql: intruso } }),
+        0,
+        'the rejected statement must not have been stored anywhere',
+      );
+      assert.equal(
+        await db.vistaCanonica.count({ where: { tenantId: a.tenantId } }),
+        1,
+        'A must still own exactly its fixture definition',
+      );
+    });
+
     // ---- 3.5 rule 2 is unchanged ----------------------------------------------------
 
     test('3.5 a body carrying tenantId is still 400 on both create routes', async () => {
@@ -360,6 +468,29 @@ describe(
         await db.consultaGuardada.count({ where: { tenantId: ajeno } }),
         1,
         "the other tenant must still own exactly its fixture row",
+      );
+    });
+
+    test('3.5 a body carrying tenantId is 400 on the canonical-view registration too', async () => {
+      // CH-09's `PUT` is a create route as well: the header stays the only channel.
+      const respuesta = await app.inject({
+        method: 'PUT',
+        url: `/conexiones/${a.conexionId}/vistas-canonicas/pedido`,
+        headers: cabeceras(a),
+        payload: { sql: 'SELECT 1', tenantId: b.tenantId },
+      });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.ok((respuesta.json() as { campos: string[] }).campos.includes('/tenantId'));
+
+      assert.equal(
+        await db.vistaCanonica.count({ where: { conexionId: a.conexionId, entidad: 'pedido' } }),
+        0,
+        'a rejected registration must not have written anything',
+      );
+      assert.equal(
+        await db.vistaCanonica.count({ where: { tenantId: b.tenantId } }),
+        1,
+        'the other tenant must still own exactly its fixture definition',
       );
     });
 
