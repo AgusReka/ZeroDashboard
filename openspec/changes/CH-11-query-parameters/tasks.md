@@ -45,14 +45,14 @@ hijacking `LIMIT` (2.4), `:x` inside a literal/comment/`$$` (1.2), `"10"`/`null`
 
 ## 1. Parameter Scanner & Rewrite (`src/parametros.ts` part 1)
 
-- [ ] 1.1 RED: `src/parametros.test.ts` — the scanner recognizes `:nombre` in the normal state; `::cast` is unchanged and not treated as a placeholder (spec "Cast operator is not rewritten")
-- [ ] 1.2 RED extend: a colon inside a single-quoted string, an `E'...'` escape string, a double-quoted identifier, a `--` line comment, a nested `/* /* */ */` block comment, and a `$$...$$`/`$tag$...$tag$` dollar-quoted block is never rewritten (spec 4 colon-inside-* scenarios; design Scanner table)
-- [ ] 1.3 RED extend: `a$1` scans as one identifier, not a hand-written bind; `arr[1:2]`'s `:2` reads as a marker (documented limit, design "Documented limits")
-- [ ] 1.4 RED extend: an unterminated string/comment/dollar-quote runs to end-of-text without throwing (design "An unterminated construct...")
-- [ ] 1.5 RED extend: `WHERE a = :x OR b = :x` rewrites both occurrences to the same `$1` (spec "Repeated name bound once")
-- [ ] 1.6 RED extend: zero markers and zero declared parameters leave the text byte-identical, `n === 0` (spec "Zero declared parameters yields n = 0")
-- [ ] 1.7 Implement the scanner state machine (design Scanner table: normal/string/escape-string/quoted-identifier/line-comment/block-comment/dollar-quote) and the marker rewrite that emits `$k` per assigned order in `src/parametros.ts`, satisfying 1.1–1.6
-- [ ] 1.8 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/parametros.test.ts` green
+- [x] 1.1 RED: `src/parametros.test.ts` — the scanner recognizes `:nombre` in the normal state; `::cast` is unchanged and not treated as a placeholder (spec "Cast operator is not rewritten")
+- [x] 1.2 RED extend: a colon inside a single-quoted string, an `E'...'` escape string, a double-quoted identifier, a `--` line comment, a nested `/* /* */ */` block comment, and a `$$...$$`/`$tag$...$tag$` dollar-quoted block is never rewritten (spec 4 colon-inside-* scenarios; design Scanner table)
+- [x] 1.3 RED extend: `a$1` scans as one identifier, not a hand-written bind; `arr[1:2]`'s `:2` reads as a marker (documented limit, design "Documented limits")
+- [x] 1.4 RED extend: an unterminated string/comment/dollar-quote runs to end-of-text without throwing (design "An unterminated construct...")
+- [x] 1.5 RED extend: `WHERE a = :x OR b = :x` rewrites both occurrences to the same `$1` (spec "Repeated name bound once")
+- [x] 1.6 RED extend: zero markers and zero declared parameters leave the text byte-identical, `n === 0` (spec "Zero declared parameters yields n = 0")
+- [x] 1.7 Implement the scanner state machine (design Scanner table: normal/string/escape-string/quoted-identifier/line-comment/block-comment/dollar-quote) and the marker rewrite that emits `$k` per assigned order in `src/parametros.ts`, satisfying 1.1–1.6
+- [x] 1.8 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/parametros.test.ts` green
 
 ## 2. Declaration Validation & `prepararSentencia` (`src/parametros.ts` part 2)
 
