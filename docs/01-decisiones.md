@@ -710,6 +710,150 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-39 — Cada campo del contrato declara un tipo semántico, validado con un mapeo tolerante desde Postgres
+
+**Contexto.** M3 (CH-10) pide que la validación del mapeo falle ante columnas o **tipos** faltantes, pero `CampoCanonico` en `src/contrato.ts` no declara ningún tipo: no hay contra qué comparar el tipo de una columna de la vista. Además, CH-16b/c/d mostraron que esquemas distintos usan tipos distintos para el mismo concepto (identificadores `int`, `uuid` o `text`).
+
+**Opciones.** (a) Un tipo semántico por campo (`texto`, `numero`, `booleano`, `fecha`), con un mapeo documentado y tolerante de tipos Postgres (OID) a esas categorías. (b) Un nombre de tipo Postgres exacto por campo. (c) No validar tipos, solo presencia de columnas, registrando la reducción de alcance de M3.
+
+**Decisión.** (a), con una quinta categoría `identificador` para los campos de identidad y referencia (`id`, `pedidoId`, `productoId`, `insumoId`) y para `pedido.numero`, que acepta enteros, `uuid` y texto.
+
+**Por qué.** Cumple lo que M3 pide sin atar el contrato a los tipos físicos de una plataforma. La tolerancia del mapeo absorbe la heterogeneidad ya observada entre Food Store, Medusa y Saleor. La categoría `identificador` se agregó durante la propuesta de CH-10: los identificadores son `int`, `uuid` o `text` según la plataforma, y declararlos `texto` habría debilitado el significado de esa categoría para el resto de los campos. Durante el diseño se aclaró que `pedido.numero` (el número de pedido legible por la operadora) también es `identificador`: según la plataforma es entero o alfanumérico.
+
+**Se resigna.** Precisión: dos columnas de la misma categoría (por ejemplo, `int4` y `numeric`) se consideran equivalentes, aunque una consulta canónica pueda comportarse distinto con cada una. Se modifica `src/contrato.ts`, que DEC-21 declara central.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante la exploración de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-40 — La validación del mapeo es una acción explícita y su resultado se persiste
+
+**Contexto.** M3 pide validar el mapeo antes de activar automatizaciones y M4 pide ver qué automatizaciones quedan inaplicables. Había que decidir si el resultado se calcula al leer o se guarda. G1 (CH-15) pide además una marca de tiempo de validación.
+
+**Opciones.** (a) Calcular al leer: cada consulta abre la conexión del tenant y valida en vivo, sin guardar nada. (b) Acción explícita "validar" que persiste estado, diagnóstico por campo y fecha; las lecturas sirven el último resultado sin tocar la base del tenant. (c) Híbrido: (b) más validación en vivo forzada por entidad.
+
+**Decisión.** (b).
+
+**Por qué.** Hace de "falla ruidosamente" un estado durable e inspeccionable, da la marca de tiempo que pide G1 y deja el resultado listo para el panel (CH-22) sin depender de conectividad al leer.
+
+**Se resigna.** Frescura: el resultado guardado puede quedar desactualizado si el esquema de origen cambia sin que nadie revalide. Requiere persistencia nueva y su delta en la spec `domain-data-model`.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante la exploración de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-41 — Registrar de nuevo el SQL de una entidad invalida su validación guardada
+
+**Contexto.** DEC-34 hace que registrar de nuevo el mapeo de una entidad reemplace la definición anterior. Con DEC-40, esa entidad puede tener un resultado de validación guardado que corresponde al SQL viejo.
+
+**Opciones.** (a) Cualquier cambio de SQL deja la entidad en "no validado" hasta una nueva validación. (b) El resultado anterior se mantiene hasta la próxima validación explícita, documentado como límite.
+
+**Decisión.** (a).
+
+**Por qué.** Evita que un veredicto de un SQL viejo se aplique en silencio a uno nuevo, el mismo tipo de falla silenciosa que DEC-36 señala.
+
+**Se resigna.** Después de cada corrección del mapeo hay que volver a validar.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante la exploración de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-42 — La validación del mapeo es solo estructural: consulta de cero filas
+
+**Contexto.** La validación puede limitarse a la forma de la vista (columnas y tipos, con `LIMIT 0`) o también leer una muestra de datos. Solo con una muestra se detectaría el caso que DEC-36 deja abierto: un campo obligatorio mapeado pero siempre `NULL`.
+
+**Opciones.** (a) Solo estructural: `LIMIT 0`, sin leer datos del tenant. (b) Estructural más una muestra acotada que advierta `NULL` en campos obligatorios, con su propio presupuesto de filas y timeout sobre DEC-18/19.
+
+**Decisión.** (a).
+
+**Por qué.** No lee datos del tenant (minimización, regla 5) y no suma un presupuesto nuevo sobre DEC-18/19.
+
+**Se resigna.** Una vista con las columnas y tipos correctos pero valores `NULL` en un campo obligatorio pasa la validación. Queda documentado como límite del artefacto.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante la exploración de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-43 — Una vista con columnas que el contrato no define no pasa la validación
+
+**Contexto.** Una vista canónica registrada puede exponer columnas que el contrato no define, entre ellas campos personales que DEC-23 excluyó del contrato. Había que decidir si la validación de CH-10 las mira.
+
+**Opciones.** (a) La entidad queda inválida y el diagnóstico nombra las columnas sobrantes. (b) La entidad puede quedar válida, con las columnas sobrantes listadas como advertencia. (c) Se ignoran, documentado como límite.
+
+**Decisión.** (a).
+
+**Por qué.** Hace cumplir la minimización (regla 5) por estructura en el mapeo, no solo en la definición del contrato, en línea con DEC-23.
+
+**Se resigna.** Una vista con columnas auxiliares inocuas (por ejemplo, para depurar) tiene que quitarlas antes de validar.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante la propuesta de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-44 — El resultado de la validación se guarda en columnas de `VistaCanonica`
+
+**Contexto.** DEC-40 exige persistir el resultado de la validación. Había que decidir dónde.
+
+**Opciones.** (a) Columnas nuevas en `VistaCanonica`: estado, diagnóstico (JSON) y fecha de validación. (b) Un modelo nuevo de resultados, con una fila por validación.
+
+**Decisión.** (a).
+
+**Por qué.** DEC-41 se cumple en el mismo upsert que reemplaza el SQL, y no se suma un modelo aislado nuevo a `MODELOS_AISLADOS` ni a la prueba T2. Las entidades no mapeadas no tienen fila; su estado se deriva del contrato al leer.
+
+**Se resigna.** Historial: solo se guarda la última validación de cada entidad.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante la propuesta de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-45 — Los tipos Postgres fuera de la tabla de categorías no pasan la validación, con una pista de cast
+
+**Contexto.** El mapeo tolerante de DEC-39 cubre los tipos básicos de Postgres. Quedan afuera arrays, `money`, `json`, enums y cualquier OID no incluido; por ejemplo, `order.status` de Medusa es un enum.
+
+**Opciones.** (a) No se aceptan: el campo falla y el diagnóstico sugiere castear la columna en la vista (por ejemplo, `::text`). (b) Clasificarlos por `pg_type.typcategory`, con una consulta extra al catálogo en la conexión del tenant.
+
+**Decisión.** (a).
+
+**Por qué.** La clasificación queda determinista y sin lecturas extra sobre la base del tenant, y el cast queda explícito en el mapeo, donde se lee.
+
+**Se resigna.** Una vista que exponga un enum tiene que castearlo aunque su contenido sea texto legible.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante el diseño de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-46 — Una automatización inaplicable y bloqueada a la vez se informa como inaplicable, con todos los motivos
+
+**Contexto.** El informe de aplicabilidad de CH-10 (M4) puede encontrar una automatización que es inaplicable (una entidad opcional sin mapear) y a la vez está bloqueada (una entidad o campo obligatorio que falla la validación).
+
+**Opciones.** (a) Estado `inaplicable`, listando todos los motivos, incluidos los bloqueos. (b) Estado `bloqueada`, priorizando el error corregible, también con todos los motivos.
+
+**Decisión.** (a).
+
+**Por qué.** Corregir el error no volvería aplicable la automatización: la falta de datos en la plataforma manda. Los bloqueos siguen visibles entre los motivos.
+
+**Se resigna.** Quien mire solo el estado no ve que además hay un error de mapeo; tiene que leer los motivos.
+
+**Decidido por:** el usuario (autor), 2026-09-26, durante el diseño de CH-10 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
