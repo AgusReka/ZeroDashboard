@@ -112,6 +112,18 @@ Tasks 5.1–5.3 and the tenant-switch half of 5.4. `#formulario` gains `#paramet
 | Runtime harness | N/A — the served script runs over the DOM stub; no live server |
 | Rollback boundary | Revert `src/consola.ts` and `src/consola.test.ts`; units 1–4 are unaffected |
 
+## Unit 5b — `ch11/7-consola-errores`
+
+Tasks 5.4 (the `problemas` half), 5.5, 5.6. `MENSAJES_PARAMETRO` (one sentence per motivo) and `mensajeDeSolicitudInvalida(cuerpo, declaracion)`, shared by the execute and save `400` branches: a heading plus one line per `problemas` entry, `Parámetro «nombre»: <sentence>.` (null `parametro` reads `Declaración de parámetros`; an unknown motivo reads `no es válido`); a `campos`-only body maps `/parametros/i/<campo>` to `el <campo> del parámetro «<name sent at i>»`, other paths stay verbatim. Both flows capture the declaration they send in a local, so the mapping uses exactly what was submitted. Only known body fields are read: a `stack` never reaches the page. The banner already had `white-space: pre-wrap`, so the lines render.
+
+| Evidence | Value |
+|---|---|
+| Focused test | `npx tsx --test src/consola.test.ts`: 17 pass, 0 fail (2 new cases RED before the change) |
+| Mutation check | Disabling the index-to-name mapping fails 1 test; restored |
+| Typecheck / full suite | `npx tsc --noEmit`: exit 0. `npm test` (live DB :5434): 406 pass, 0 fail (baseline 404) |
+| Runtime harness | N/A — the served script runs over the DOM stub; no live server |
+| Rollback boundary | Revert this commit's `src/consola.ts`/test hunks; the 400 falls back to the raw `campos` message and 5a is unaffected |
+
 ## Remaining
 
-Slice 5b (above), then phase 6 (`ch11/7-verify-archivo`).
+Phase 6 (full-suite checkpoint, verify, archive) on `ch11/8-verify-archivo`.

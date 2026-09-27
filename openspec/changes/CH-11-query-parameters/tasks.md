@@ -92,9 +92,9 @@ hijacking `LIMIT` (2.4), `:x` inside a literal/comment/`$$` (1.2), `"10"`/`null`
 - [x] 5.1 RED extend `src/consola.test.ts`: declaring `:desde` renders one input labeled `desde` appropriate to its `tipo`; a blank value omits its key rather than sending an empty string (spec "Rendering inputs for a declared parameter", design "A blank value omits the key")
 - [x] 5.2 RED extend: execute submits a name→value map with `numero` sent as `Number()` when finite else the raw string, `booleano` as a JSON boolean, `fecha`/`texto` as strings (spec "Submitting collected parameter values"; design Console value-control table)
 - [x] 5.3 RED extend: save submits the declaration only, never values; load rebuilds rows from a saved query's `parametros` with empty values (spec "Declaration saved with the query", "Declaration loaded with the query", DEC-48)
-- [ ] 5.4 RED extend: switching tenant clears the declaration rows; each `problemas` entry renders as one legible line through `textContent`, never a raw driver error or stack trace (spec "A parameter error is shown legibly") — tenant-switch clearing done in `ch11/6-consola`; the `problemas` lines are pending (slice 5b)
-- [ ] 5.5 Modify `src/consola.ts`: add the declaration editor (`nombre` input, `tipo` select, value control, Quitar/Agregar parámetro buttons) inside `#formulario`; wire save/load/execute/tenant-switch — satisfies 5.1–5.4 (all but the `problemas` mapping done in `ch11/6-consola`)
-- [ ] 5.6 Checkpoint: `npm test -- src/consola.test.ts` green
+- [x] 5.4 RED extend: switching tenant clears the declaration rows; each `problemas` entry renders as one legible line through `textContent`, never a raw driver error or stack trace (spec "A parameter error is shown legibly") — tenant-switch clearing in `ch11/6-consola`; the `problemas` lines in `ch11/7-consola-errores`
+- [x] 5.5 Modify `src/consola.ts`: add the declaration editor (`nombre` input, `tipo` select, value control, Quitar/Agregar parámetro buttons) inside `#formulario`; wire save/load/execute/tenant-switch — satisfies 5.1–5.4 (editor in `ch11/6-consola`; `problemas` mapping in `ch11/7-consola-errores`)
+- [x] 5.6 Checkpoint: `npm test -- src/consola.test.ts` green
 
 ## 6. Full-Suite Checkpoint, Verify & Archive
 

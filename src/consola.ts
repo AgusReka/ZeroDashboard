@@ -209,6 +209,19 @@ var MENSAJES_TENANT = {
   'tenant-desactivado': 'El tenant seleccionado está dado de baja y no admite ninguna operación. Elegí otro.'
 };
 
+// One legible sentence per motivo a parameter problem can carry (CH-11). The line
+// names the parameter; the motivo code itself never reaches the page.
+var MENSAJES_PARAMETRO = {
+  'nombre-invalido': 'el nombre no es válido: debe empezar con una letra o un guion bajo y seguir con letras, dígitos o guiones bajos',
+  'nombre-duplicado': 'está declarado más de una vez',
+  'tipo-desconocido': 'el tipo debe ser texto, numero, booleano o fecha',
+  'posicional-a-mano': 'es un parámetro posicional escrito a mano; use :nombre y declárelo',
+  'sin-declarar': 'aparece en la sentencia pero no está declarado',
+  'sin-usar': 'está declarado pero la sentencia no lo usa',
+  'valor-faltante': 'no tiene valor',
+  'valor-no-declarado': 'recibió un valor pero no está declarado',
+  'valor-invalido': 'el valor no tiene la forma que exige su tipo (numero: un número; fecha: AAAA-MM-DD, opcionalmente con hora)'
+};
 var TIPOS_PARAMETRO = ['texto', 'numero', 'booleano', 'fecha'];
 
 var CLAVE_TENANT = 'zerodashboard.tenantActivo';
@@ -597,6 +610,28 @@ function valoresActuales() {
   return valores;
 }
 
+// A 400 on execute or save. A parameter problem becomes one line naming the parameter;
+// a schema refusal carries only campos (an unknown tipo, for instance), and a
+// /parametros/i/... path is mapped back to the row that was sent at index i. Only
+// known fields of the body are read: nothing else it carries reaches the page.
+function mensajeDeSolicitudInvalida(cuerpo, declaracion) {
+  if (Array.isArray(cuerpo.problemas) && cuerpo.problemas.length > 0) {
+    return 'La solicitud es inválida.\\n' + cuerpo.problemas.map(function (problema) {
+      var motivo = Object.prototype.hasOwnProperty.call(MENSAJES_PARAMETRO, problema.motivo)
+        ? MENSAJES_PARAMETRO[problema.motivo] : 'no es válido';
+      var sujeto = typeof problema.parametro === 'string'
+        ? 'Parámetro «' + problema.parametro + '»' : 'Declaración de parámetros';
+      return sujeto + ': ' + motivo + '.';
+    }).join('\\n');
+  }
+  var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos.map(function (campo) {
+    var partes = String(campo).split('/');
+    var fila = partes[1] === 'parametros' ? declaracion[Number(partes[2])] : undefined;
+    return fila && partes[3] ? 'el ' + partes[3] + ' del parámetro «' + fila.nombre + '»' : String(campo);
+  }).join(', ') : '';
+  return 'La solicitud es inválida. Revise estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.';
+}
+
 async function ejecutar(desplazamiento) {
   ocultarBanner();
   botonEjecutar.disabled = true;
@@ -607,6 +642,7 @@ async function ejecutar(desplazamiento) {
   // second place for it to drift out of step.
   var limite = parseInt(entradaLimite.value, 10);
   if (!(limite >= 1)) { limite = 50; }
+  var declaracion = declaracionActual();
 
   var respuesta;
   try {
@@ -616,7 +652,7 @@ async function ejecutar(desplazamiento) {
       body: JSON.stringify({
         conexionId: entradaConexion.value.trim(),
         sql: entradaSql.value,
-        parametros: declaracionActual(),
+        parametros: declaracion,
         valores: valoresActuales(),
         limite: limite,
         desplazamiento: desplazamiento
@@ -658,9 +694,8 @@ async function ejecutar(desplazamiento) {
     return;
   }
   if (respuesta.status === 400) {
-    var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos.join(', ') : '';
     limpiarResultados();
-    mostrarBanner('La solicitud es inválida. Revise estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.');
+    mostrarBanner(mensajeDeSolicitudInvalida(cuerpo, declaracion));
     return;
   }
   if (respuesta.status !== 200) {
@@ -784,6 +819,7 @@ async function guardar() {
   botonGuardar.disabled = true;
 
   var nombre = entradaNombre.value.trim();
+  var declaracion = declaracionActual();
 
   var respuesta;
   try {
@@ -797,7 +833,7 @@ async function guardar() {
         sql: entradaSql.value,
         // The declaration only: values belong to one execution, never to the saved
         // query (DEC-48).
-        parametros: declaracionActual()
+        parametros: declaracion
       })
     });
   } catch (fallaDeRed) {
@@ -817,8 +853,7 @@ async function guardar() {
     return;
   }
   if (respuesta.status === 400) {
-    var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos.join(', ') : '';
-    mostrarBanner('La solicitud es inválida. Revise estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.');
+    mostrarBanner(mensajeDeSolicitudInvalida(cuerpo, declaracion));
     return;
   }
   if (respuesta.status !== 201) {

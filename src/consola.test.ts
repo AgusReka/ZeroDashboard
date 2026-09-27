@@ -594,4 +594,66 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario);
     assert.equal(filas(escenario).length, 0);
   });
+
+  /** Spec "A parameter error is shown legibly": execute. */
+  test('each parameter problem is one legible line naming the parameter, never a raw error', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    declarar(escenario, 'desde', 'fecha', '27/09/2026');
+    await enviar(
+      escenario,
+      {
+        error: 'solicitud-invalida',
+        campos: ['/valores/desde', '/sql'],
+        problemas: [
+          { parametro: 'desde', motivo: 'valor-invalido', campo: '/valores/desde' },
+          { parametro: 'hasta', motivo: 'sin-declarar', campo: '/sql' },
+        ],
+        stack: 'Error: boom\n    at prepararSentencia',
+      },
+      400,
+    );
+
+    const banner = escenario.nodos.get('banner') as Nodo;
+    const lineas = banner.textContent.split('\n');
+    assert.equal(lineas.length, 3, 'a heading plus one line per problem');
+    assert.match(lineas[1], /«desde»/);
+    assert.match(lineas[2], /«hasta»/);
+    assert.ok(!banner.textContent.includes('valor-invalido'), 'the motivo code is translated');
+    assert.ok(!banner.textContent.includes('sin-declarar'), 'the motivo code is translated');
+    assert.ok(!banner.textContent.includes('prepararSentencia'), 'no stack trace reaches the page');
+
+    // A schema refusal carries only campos (an unknown tipo): it still names the row.
+    await enviar(escenario, { error: 'solicitud-invalida', campos: ['/parametros/0/tipo'] }, 400);
+    assert.match(banner.textContent, /tipo del parámetro «desde»/);
+    assert.ok(!banner.textContent.includes('/parametros/0'), 'the index path is mapped to the name');
+  });
+
+  /** Spec "A parameter error is shown legibly": save answers with the same lines. */
+  test('a save refused for its declaration shows one line per problem', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    declarar(escenario, 'desde', 'fecha');
+    (escenario.nodos.get('nombre') as Nodo).value = 'Ventas';
+    await enviar(
+      escenario,
+      {
+        error: 'solicitud-invalida',
+        campos: ['/parametros', '/parametros/0/nombre'],
+        problemas: [
+          { parametro: null, motivo: 'nombre-invalido', campo: '/parametros' },
+          { parametro: 'desde', motivo: 'sin-usar', campo: '/parametros/0/nombre' },
+        ],
+      },
+      400,
+      'guardar',
+      'click',
+    );
+
+    const lineas = (escenario.nodos.get('banner') as Nodo).textContent.split('\n');
+    assert.equal(lineas.length, 3);
+    assert.match(lineas[1], /^Declaración de parámetros: /);
+    assert.match(lineas[2], /«desde»: está declarado pero la sentencia no lo usa/);
+    assert.ok(!lineas.join('\n').includes('sin-usar'));
+  });
 });
