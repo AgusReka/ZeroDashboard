@@ -69,7 +69,9 @@ export interface DiagnosticoValidacion {
   sondeo: { resultado: 'ok' } | { resultado: 'fallo'; categoria: CategoriaEjecucion; codigo: string | null };
   campos: { campo: string; tipoEsperado: TipoSemantico; columna: string | null;
             veredicto: 'ok' | 'ausente' | 'tipo-incorrecto' | 'alias-sin-comillas' | 'duplicada';
-            oid: number | null; tipoPostgres: string | null }[];
+            oid: number | null; tipoPostgres: string | null;
+            tipoObservado: TipoSemantico | null;          // spec: "expecting X, observing Y"
+            pista: { accion: 'castear-en-la-vista'; sugerencia: string } | null }[];  // DEC-45
   columnasSobrantes: { columna: string; oid: number }[];
 }
 // Report: entidades[5] {entidad, obligatoriedad, estado: EstadoValidacion|'no-mapeada', validadaEn, diagnostico}
