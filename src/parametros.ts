@@ -350,3 +350,96 @@ export function analizarSentencia(sql: string, declaracion: readonly Declaracion
   });
   return problemas;
 }
+
+// --- Values and preparation (DEC-50, DEC-58, DEC-60, rule 4) ---
+
+/** A value that passed the DEC-60 shape check, as handed to the driver. */
+export type ValorParametro = string | number | boolean;
+
+declare const marca: unique symbol;
+
+/**
+ * A statement ready for the driver: `texto` carries only `$1..$n` placeholders and
+ * `valores[k-1]` is the value for `$k`. Only `prepararSentencia` builds one, so nothing
+ * can reach execution without passing the scanner (DEC-59).
+ */
+export interface SentenciaPreparada {
+  readonly texto: string;
+  readonly valores: readonly ValorParametro[];
+  readonly [marca]: true;
+}
+
+/** An ISO 8601 date or date-time (DEC-60). Calendar validity is left to Postgres (DEC-51). */
+const FECHA = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+/** Whether a value has the JSON shape DEC-60 fixes for each `tipo`. Nothing is converted. */
+const FORMA: Record<TipoParametro, (valor: unknown) => boolean> = {
+  texto: (valor) => typeof valor === 'string',
+  numero: (valor) => typeof valor === 'number' && Number.isFinite(valor),
+  booleano: (valor) => typeof valor === 'boolean',
+  fecha: (valor) => typeof valor === 'string' && FECHA.test(valor),
+};
+
+/** `/valores/<nombre>`, escaping the key as a JSON pointer segment (RFC 6901). */
+function campoDeValor(nombre: string): string {
+  return `/valores/${nombre.replace(/~/g, '~0').replace(/\//g, '~1')}`;
+}
+
+/**
+ * Checks a value map against a valid declaration: a value for every declared name
+ * (DEC-50), none for an undeclared one (DEC-58), each with its DEC-60 shape. `undefined`
+ * is the empty map. The map is copied into a `Map` with `Object.entries` and is never
+ * indexed by a user-supplied key. The accepted values follow declaration order.
+ */
+function validarValores(declaracion: readonly DeclaracionParametro[], entrada: unknown): Resultado<ValorParametro[]> {
+  if (entrada !== undefined && !esObjeto(entrada)) {
+    return { ok: false, problemas: [{ parametro: null, motivo: 'valor-invalido', campo: '/valores' }] };
+  }
+  const recibidos = new Map<string, unknown>(Object.entries(entrada ?? {}));
+  const problemas: ProblemaParametro[] = [];
+  const valores: ValorParametro[] = [];
+  for (const { nombre, tipo } of declaracion) {
+    const valor = recibidos.get(nombre);
+    if (!recibidos.has(nombre)) {
+      problemas.push({ parametro: nombre, motivo: 'valor-faltante', campo: campoDeValor(nombre) });
+    } else if (!FORMA[tipo](valor)) {
+      problemas.push({ parametro: nombre, motivo: 'valor-invalido', campo: campoDeValor(nombre) });
+    } else {
+      valores.push(valor as ValorParametro);
+    }
+  }
+  const declarados = new Set(declaracion.map((d) => d.nombre));
+  for (const nombre of recibidos.keys()) {
+    if (!declarados.has(nombre)) {
+      problemas.push({ parametro: nombre, motivo: 'valor-no-declarado', campo: campoDeValor(nombre) });
+    }
+  }
+  return problemas.length === 0 ? { ok: true, valor: valores } : { ok: false, problemas };
+}
+
+/**
+ * Validates a declaration, a statement and a value map together and, when all three
+ * agree, rewrites the markers to `$k` in declaration order (DEC-47, DEC-53). `sql` is
+ * expected already sanitized by the route (`sanearSql`), which this does not repeat.
+ *
+ * Every problem is returned in one list, in `MOTIVOS_PARAMETRO` order. The one exception is
+ * an invalid declaration: it is reported alone, because the statement and the values can
+ * only be read against a declaration that is itself valid.
+ *
+ * Rule 4 holds by construction: the text only ever gains `$k` tokens, and the values
+ * travel apart in `valores`.
+ */
+export function prepararSentencia(sql: string, declaracion: unknown, valores: unknown): Resultado<SentenciaPreparada> {
+  const decl = validarDeclaracion(declaracion);
+  if (!decl.ok) {
+    return decl;
+  }
+  const vals = validarValores(decl.valor, valores);
+  const problemas = [...analizarSentencia(sql, decl.valor), ...(vals.ok ? [] : vals.problemas)];
+  if (!vals.ok || problemas.length > 0) {
+    return { ok: false, problemas: ordenar(problemas) };
+  }
+  const { texto } = reescribirMarcadores(sql, decl.valor.map((d) => d.nombre));
+  const sentencia = { texto, valores: Object.freeze(vals.valor) } as SentenciaPreparada;
+  return { ok: true, valor: Object.freeze(sentencia) };
+}

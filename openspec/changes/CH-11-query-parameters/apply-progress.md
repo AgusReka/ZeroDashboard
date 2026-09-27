@@ -54,8 +54,16 @@ Status: complete. Tasks 2.1–2.4 `[x]`. Unit 2 as a whole was 405 code+test lin
 | Runtime harness | N/A — pure functions, nothing consumes them yet |
 | Rollback boundary | Revert this commit's additions to `src/parametros.ts`/test; the unit 1 scanner is unaffected |
 
-Unit 2b (`ValorParametro`, `SentenciaPreparada`, DEC-60 shapes, `prepararSentencia`, tests 2.5–2.9) is a pure append on 2a. It is written and passed 57/57 and 385/385, and is kept in `git stash` as "CH-11 unit 2b" (`git stash list`).
+## Unit 2b — `ch11/3-valores-preparacion`
+
+Tasks 2.5–2.11: `ValorParametro`, branded `SentenciaPreparada`, DEC-60 value shapes, `validarValores`, `prepararSentencia`. Popped from the stash onto its own branch (the whole of unit 2 was 405 code+test lines). Choices: an invalid declaration is reported alone; a non-object value map is `valor-invalido` at `/valores`.
+
+| Evidence | Value |
+|---|---|
+| Focused test | `npx tsx --test src/parametros.test.ts`: 57 pass, 0 fail |
+| Typecheck | `npx tsc --noEmit`: exit 0 |
+| Full suite | `npm test` (live DB on :5434): 385 pass, 0 fail |
 
 ## Remaining
 
-Tasks 2.5–2.11 (unit 2b), Phases 3–6.
+Phases 3–6. Branches renumbered: `ch11/4-ejecucion`, `ch11/5-persistencia-guardadas`, `ch11/6-consola`, `ch11/7-verify-archivo`.

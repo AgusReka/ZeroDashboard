@@ -60,13 +60,13 @@ hijacking `LIMIT` (2.4), `:x` inside a literal/comment/`$$` (1.2), `"10"`/`null`
 - [x] 2.2 RED extend: `analizarSentencia` reports `sin-usar` for a declared name with no `:nombre` marker (DEC-56, spec "Unused declaration rejected")
 - [x] 2.3 RED extend: `analizarSentencia` reports `sin-declarar` for a `:y` marker absent from the declaration (DEC-57, spec "Undeclared marker rejected")
 - [x] 2.4 RED extend: `analizarSentencia` reports `posicional-a-mano` for a `$1`-shaped token outside literal/comment/dollar-quote, with or without any declared parameter (DEC-59, both spec hand-written-bind scenarios)
-- [ ] 2.5 RED extend: `prepararSentencia` reports `valor-no-declarado` for a value-map key absent from the declaration (DEC-58, spec "Extra value rejected")
-- [ ] 2.6 RED extend: `prepararSentencia` reports `valor-faltante` for a declared name with no value key (DEC-50)
-- [ ] 2.7 RED extend: the DEC-60 value-shape table — `texto` string, `numero` finite JSON number only (`"10"` rejected), `booleano` JSON boolean, `fecha` ISO date/date-time regex (`27/09/2026`, `1e400` rejected as `valor-invalido`) (spec "Wrong shape rejected before execution", "Correct shape passed through to Postgres")
-- [ ] 2.8 RED extend: a value in `SentenciaPreparada.valores` never appears in `.texto`, including for `O'Brien`/`; DROP TABLE` values (spec "Value never appears in generated SQL text", rule 4)
-- [ ] 2.9 RED extend: `prepararSentencia` returns every problem in one fixed-order list, not only the first (design "Error body")
-- [ ] 2.10 Implement `TIPOS_PARAMETRO`, `DeclaracionParametro`, `ValorParametro`, `MotivoParametro`, `ProblemaParametro`, the branded `SentenciaPreparada`, `Resultado<T>`, `validarDeclaracion`, `analizarSentencia`, `prepararSentencia` in `src/parametros.ts`, composing Phase 1's scanner, satisfying 2.1–2.9
-- [ ] 2.11 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/parametros.test.ts` green (full file)
+- [x] 2.5 RED extend: `prepararSentencia` reports `valor-no-declarado` for a value-map key absent from the declaration (DEC-58, spec "Extra value rejected")
+- [x] 2.6 RED extend: `prepararSentencia` reports `valor-faltante` for a declared name with no value key (DEC-50)
+- [x] 2.7 RED extend: the DEC-60 value-shape table — `texto` string, `numero` finite JSON number only (`"10"` rejected), `booleano` JSON boolean, `fecha` ISO date/date-time regex (`27/09/2026`, `1e400` rejected as `valor-invalido`) (spec "Wrong shape rejected before execution", "Correct shape passed through to Postgres")
+- [x] 2.8 RED extend: a value in `SentenciaPreparada.valores` never appears in `.texto`, including for `O'Brien`/`; DROP TABLE` values (spec "Value never appears in generated SQL text", rule 4)
+- [x] 2.9 RED extend: `prepararSentencia` returns every problem in one fixed-order list, not only the first (design "Error body")
+- [x] 2.10 Implement `TIPOS_PARAMETRO`, `DeclaracionParametro`, `ValorParametro`, `MotivoParametro`, `ProblemaParametro`, the branded `SentenciaPreparada`, `Resultado<T>`, `validarDeclaracion`, `analizarSentencia`, `prepararSentencia` in `src/parametros.ts`, composing Phase 1's scanner, satisfying 2.1–2.9
+- [x] 2.11 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/parametros.test.ts` green (full file)
 
 ## 3. Execution Wiring (`src/consulta-ejecucion.ts`, `src/consultas.ts`)
 
