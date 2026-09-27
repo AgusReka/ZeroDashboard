@@ -284,7 +284,8 @@ function categoriaBloqueo(permisos: PermisosRol): CategoriaPermiso | null {
   return null;
 }
 
-interface ContextoTransaccion {
+/** The pagination body's inputs. The session budgets live in `PresupuestosSesion`. */
+interface ContextoPaginacion {
   sqlSaneado: string;
   /** What the caller asked for. Kept only to decide whether the ceiling cut them. */
   limiteSolicitado: number;
@@ -292,13 +293,31 @@ interface ContextoTransaccion {
   limiteEfectivo: number;
   topeFilas: number;
   desplazamiento: number;
-  presupuestoConsultaMs: number;
-  iniciadoEn: number;
 }
 
 /**
+ * The three budgets of one read-only session. None of them is new configuration
+ * (DEC-19, DEC-42): each caller derives them from `loadConfig()`.
+ */
+interface PresupuestosSesion {
+  /** Connect-attempt budget, CH-03's race. */
+  conexionMs: number;
+  /** Server-side `statement_timeout`, applied to every statement of the session. */
+  consultaMs: number;
+  /** This module's own backstop over the whole transaction, connect excluded. */
+  respaldoMs: number;
+}
+
+/**
+ * What runs inside the session, after the privilege check has passed. It receives the
+ * open client and the instant the attempt started, and may throw: a thrown error is
+ * classified by `enSesionSoloLectura`, never by the body.
+ */
+type CuerpoSesion<T> = (cliente: ClientBase, iniciadoEn: number) => Promise<T>;
+
+/**
  * The read-only transaction: `BEGIN TRANSACTION READ ONLY` → server-side timeout →
- * privilege check → the wrapped user statement → `ROLLBACK`, always.
+ * privilege check → the caller's body → `ROLLBACK`, always.
  *
  * Every statement, including the user's, is submitted with a `values` array. Passing
  * any array forces the Parse/Bind/Execute path, where PostgreSQL's own wire protocol
@@ -306,10 +325,12 @@ interface ContextoTransaccion {
  * a driver accident. `ROLLBACK` rather than `COMMIT` because a read-only transaction
  * has nothing to commit, so one close serves both the success and the failure path.
  */
-async function correrTransaccion(
+async function correrTransaccion<T>(
   cliente: ClientBase,
-  ctx: ContextoTransaccion,
-): Promise<ResultadoEjecucion> {
+  presupuestoConsultaMs: number,
+  iniciadoEn: number,
+  cuerpo: CuerpoSesion<T>,
+): Promise<T | EjecucionFallida> {
   try {
     await cliente.query({ text: 'BEGIN TRANSACTION READ ONLY', values: [] });
 
@@ -318,21 +339,119 @@ async function correrTransaccion(
     // `is_local = true` scopes the setting to this transaction.
     await cliente.query({
       text: "SELECT set_config('statement_timeout', $1, true)",
-      values: [String(ctx.presupuestoConsultaMs)],
+      values: [String(presupuestoConsultaMs)],
     });
 
     const bloqueo = categoriaBloqueo(await verificarPermisosRol(cliente));
     if (bloqueo !== null) {
-      // The user statement is never sent when any leg blocks.
+      // The body never runs — no user statement is sent — when any leg blocks.
       return {
         resultado: 'fallo',
         fase: 'permisos',
         categoria: bloqueo,
         codigo: null,
-        duracionMs: Date.now() - ctx.iniciadoEn,
+        duracionMs: Date.now() - iniciadoEn,
       };
     }
 
+    return await cuerpo(cliente, iniciadoEn);
+  } finally {
+    // Issued on every path, including the failing ones. Its own outcome is discarded
+    // unread so a failed `ROLLBACK` can never mask the error that caused it.
+    await cliente.query({ text: 'ROLLBACK', values: [] }).then(
+      () => undefined,
+      () => undefined,
+    );
+  }
+}
+
+/**
+ * One read-only session against a target: the connect race, the backstop timer, the
+ * transaction of `correrTransaccion` around `cuerpo`, and the close. Never throws: the
+ * raw driver error is contained in this module and never reaches the caller, so no
+ * credential can ride out on it.
+ *
+ * Module-private on purpose (CH-10 design, "Reuse of `correrTransaccion`"). Every body
+ * that reaches a tenant database goes through here, so none of them can run outside
+ * `READ ONLY` or skip the DEC-08 check: the exported entry points are the only callers.
+ *
+ * Two budgets apply, and neither is ever inferred from a measured duration. The
+ * connect phase reuses CH-03's race. The execution phase is bounded twice over: the
+ * server aborts each statement itself at `statement_timeout` and reports `57014`, and
+ * this module's own timer is a backstop for the case the server-side timer cannot
+ * cover — a connection that stops answering at all, where `57014` would never arrive.
+ * `duracionMs` is reported to the caller and consulted by nothing.
+ */
+async function enSesionSoloLectura<T>(
+  destino: DestinoPostgres,
+  presupuestos: PresupuestosSesion,
+  cuerpo: CuerpoSesion<T>,
+): Promise<T | EjecucionFallida> {
+  const { cliente, conectado, cancelarTemporizador } = iniciarConexion(
+    destino,
+    presupuestos.conexionMs,
+  );
+  const iniciadoEn = Date.now();
+
+  try {
+    await conectado;
+    cancelarTemporizador();
+  } catch (error) {
+    const duracionMs = Date.now() - iniciadoEn;
+    cancelarTemporizador();
+    const presupuestoAgotado = error === PRESUPUESTO_AGOTADO;
+    await cerrarCliente(cliente, !presupuestoAgotado);
+    if (presupuestoAgotado) {
+      return {
+        resultado: 'fallo',
+        fase: 'conexion',
+        categoria: 'tiempo-agotado',
+        codigo: null,
+        duracionMs,
+      };
+    }
+    const { categoria, codigo } = classifyConnectionError(error);
+    return { resultado: 'fallo', fase: 'conexion', categoria, codigo, duracionMs };
+  }
+
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  const vencimiento = new Promise<never>((_, rechazar) => {
+    temporizador = setTimeout(() => rechazar(PRESUPUESTO_AGOTADO), presupuestos.respaldoMs);
+  });
+
+  let presupuestoAgotado = false;
+  try {
+    return await Promise.race([
+      correrTransaccion(cliente, presupuestos.consultaMs, iniciadoEn, cuerpo),
+      vencimiento,
+    ]);
+  } catch (error) {
+    const duracionMs = Date.now() - iniciadoEn;
+    if (error === PRESUPUESTO_AGOTADO) {
+      // The backstop won: the attempt exhausted its budget as a fact of who won the
+      // race, not as an inference drawn from reading a clock. Design table row 1.
+      presupuestoAgotado = true;
+      return {
+        resultado: 'fallo',
+        fase: 'ejecucion',
+        categoria: 'tiempo-agotado',
+        codigo: null,
+        duracionMs,
+      };
+    }
+    const { categoria, codigo } = classifyExecutionError(error);
+    return { resultado: 'fallo', fase: 'ejecucion', categoria, codigo, duracionMs };
+  } finally {
+    clearTimeout(temporizador);
+    // A client whose backstop won may still be waiting on a server that stopped
+    // answering, so `end()` is issued but not awaited on that path.
+    await cerrarCliente(cliente, !presupuestoAgotado);
+  }
+}
+
+/** The pagination body of `ejecutarConsulta`, unchanged by CH-10. */
+function paginar(ctx: ContextoPaginacion): CuerpoSesion<EjecucionExitosa> {
+  return async (cliente, iniciadoEn) => {
     // `limiteEfectivo + 1` is bound so the extra row answers "is there a next page?"
     // without a second `count(*)` pass over the tenant's live replica. The same single
     // `LIMIT` carries both the caller's page and the deployment's ceiling (DEC-19):
@@ -363,105 +482,151 @@ async function correrTransaccion(
         siguienteDesplazamiento: hayMas ? ctx.desplazamiento + ctx.limiteEfectivo : null,
         topeFilas: ctx.topeFilas,
       },
-      duracionMs: Date.now() - ctx.iniciadoEn,
+      duracionMs: Date.now() - iniciadoEn,
     };
-  } finally {
-    // Issued on every path, including the failing ones. Its own outcome is discarded
-    // unread so a failed `ROLLBACK` can never mask the error that caused it.
-    await cliente.query({ text: 'ROLLBACK', values: [] }).then(
-      () => undefined,
-      () => undefined,
-    );
-  }
+  };
 }
 
 /**
  * Executes one user-authored statement against a target and returns a sanitized
- * verdict. Never throws: the raw driver error is contained in this module and never
- * reaches the caller, so no credential can ride out on it.
- *
- * Two budgets apply, and neither is ever inferred from a measured duration. The
- * connect phase reuses CH-03's race. The execution phase is bounded twice over: the
- * server aborts the statement itself at `statement_timeout` and reports `57014`, and
- * this module's own timer is a backstop for the case the server-side timer cannot
- * cover — a connection that stops answering at all, where `57014` would never arrive.
- * `duracionMs` is reported to the caller and consulted by nothing.
+ * verdict. Never throws (see `enSesionSoloLectura`, which owns both budgets).
  */
 export async function ejecutarConsulta(peticion: PeticionEjecucion): Promise<ResultadoEjecucion> {
   const config = loadConfig();
   const presupuestoConsultaMs = peticion.timeoutMs ?? config.queryTimeoutMs;
-  const presupuestoConexionMs = peticion.connectTimeoutMs ?? config.connectionTestTimeoutMs;
   const topeFilas = peticion.topeFilas ?? config.maxFilasPorConsulta;
 
-  const { cliente, conectado, cancelarTemporizador } = iniciarConexion(
+  return enSesionSoloLectura(
     peticion,
-    presupuestoConexionMs,
+    {
+      conexionMs: peticion.connectTimeoutMs ?? config.connectionTestTimeoutMs,
+      consultaMs: presupuestoConsultaMs,
+      respaldoMs: presupuestoConsultaMs + MARGEN_RESPALDO_EJECUCION_MS,
+    },
+    paginar({
+      sqlSaneado: sanearSql(peticion.sql),
+      limiteSolicitado: peticion.limite,
+      limiteEfectivo: limiteEfectivoDe(peticion.limite, topeFilas),
+      topeFilas,
+      desplazamiento: peticion.desplazamiento,
+    }),
   );
-  const iniciadoEn = Date.now();
+}
 
-  try {
-    await conectado;
-    cancelarTemporizador();
-  } catch (error) {
-    const duracionMs = Date.now() - iniciadoEn;
-    cancelarTemporizador();
-    const presupuestoAgotado = error === PRESUPUESTO_AGOTADO;
-    await cerrarCliente(cliente, !presupuestoAgotado);
-    if (presupuestoAgotado) {
-      return {
-        resultado: 'fallo',
-        fase: 'conexion',
-        categoria: 'tiempo-agotado',
-        codigo: null,
-        duracionMs,
-      };
+// ---- CH-10: the zero-row structural probe (DEC-40, DEC-42) -----------------------
+
+/** One registered canonical view to probe: the entity it maps and its stored SQL. */
+export interface EntidadASondear {
+  entidad: string;
+  sql: string;
+}
+
+/** A column the probe reported: its output name and the type OID the server sent. */
+export interface ColumnaSondeada {
+  nombre: string;
+  oid: number;
+}
+
+/**
+ * One entity's probe outcome. A failure here is a fact about the *mapping* (its SQL
+ * names a missing table, is not a read, …), so the caller persists it. It never aborts
+ * the sibling entities, which each run behind their own savepoint.
+ */
+export type SondeoEntidad =
+  | { entidad: string; resultado: 'ok'; columnas: ColumnaSondeada[] }
+  | {
+      entidad: string;
+      resultado: 'fallo';
+      categoria: CategoriaEjecucion;
+      codigo: string | null;
+    };
+
+export interface SondeoExitoso {
+  resultado: 'ok';
+  fase: 'ejecucion';
+  /** One entry per requested entity, in the order they were requested. */
+  entidades: SondeoEntidad[];
+  duracionMs: number;
+}
+
+/**
+ * The probe's verdict. `EjecucionFallida` here means the *session* failed — no
+ * connection, a blocked role, the backstop — which is a fact about the connection, not
+ * about any mapping, so the caller persists nothing for it.
+ */
+export type ResultadoSondeo = SondeoExitoso | EjecucionFallida;
+
+/**
+ * The probe body: per entity, `SAVEPOINT` → `LIMIT 0` wrapper → `fields` only.
+ *
+ * The wrapper has **no bind parameter** because there is no runtime value to bind
+ * (regla 4): `LIMIT 0` is part of the fixed text, as are the savepoint statements, and
+ * every statement still travels with `values: []` so the extended protocol keeps
+ * rejecting multi-statement text. `LIMIT 0` returns zero rows by construction
+ * (regla 5, DEC-42): only the row description is read, and a view that would fail on
+ * its data (`1/(id-id)`) is never evaluated row by row.
+ *
+ * `ROLLBACK TO SAVEPOINT` after a failed probe is what keeps one broken entity from
+ * aborting the transaction for the others: savepoints are permitted inside `READ ONLY`.
+ * If the rollback itself fails, the connection is gone, and the error propagates to
+ * `enSesionSoloLectura` as a session failure.
+ */
+function sondear(entidades: readonly EntidadASondear[]): CuerpoSesion<SondeoExitoso> {
+  return async (cliente, iniciadoEn) => {
+    const sondeos: SondeoEntidad[] = [];
+    for (const { entidad, sql } of entidades) {
+      await cliente.query({ text: 'SAVEPOINT sondeo', values: [] });
+      try {
+        const resultado = await cliente.query({
+          text: `SELECT * FROM (${sanearSql(sql)}) AS _validacion LIMIT 0`,
+          values: [],
+        });
+        sondeos.push({
+          entidad,
+          resultado: 'ok',
+          columnas: resultado.fields.map((campo) => ({
+            nombre: campo.name,
+            oid: campo.dataTypeID,
+          })),
+        });
+      } catch (error) {
+        await cliente.query({ text: 'ROLLBACK TO SAVEPOINT sondeo', values: [] });
+        const { categoria, codigo } = classifyExecutionError(error);
+        sondeos.push({ entidad, resultado: 'fallo', categoria, codigo });
+      }
+      await cliente.query({ text: 'RELEASE SAVEPOINT sondeo', values: [] });
     }
-    const { categoria, codigo } = classifyConnectionError(error);
-    return { resultado: 'fallo', fase: 'conexion', categoria, codigo, duracionMs };
-  }
+    return {
+      resultado: 'ok',
+      fase: 'ejecucion',
+      entidades: sondeos,
+      duracionMs: Date.now() - iniciadoEn,
+    };
+  };
+}
 
-  let temporizador: ReturnType<typeof setTimeout> | undefined;
-  const vencimiento = new Promise<never>((_, rechazar) => {
-    temporizador = setTimeout(
-      () => rechazar(PRESUPUESTO_AGOTADO),
-      presupuestoConsultaMs + MARGEN_RESPALDO_EJECUCION_MS,
-    );
-  });
-
-  let presupuestoAgotado = false;
-  try {
-    return await Promise.race([
-      correrTransaccion(cliente, {
-        sqlSaneado: sanearSql(peticion.sql),
-        limiteSolicitado: peticion.limite,
-        limiteEfectivo: limiteEfectivoDe(peticion.limite, topeFilas),
-        topeFilas,
-        desplazamiento: peticion.desplazamiento,
-        presupuestoConsultaMs,
-        iniciadoEn,
-      }),
-      vencimiento,
-    ]);
-  } catch (error) {
-    const duracionMs = Date.now() - iniciadoEn;
-    if (error === PRESUPUESTO_AGOTADO) {
-      // The backstop won: the attempt exhausted its budget as a fact of who won the
-      // race, not as an inference drawn from reading a clock. Design table row 1.
-      presupuestoAgotado = true;
-      return {
-        resultado: 'fallo',
-        fase: 'ejecucion',
-        categoria: 'tiempo-agotado',
-        codigo: null,
-        duracionMs,
-      };
-    }
-    const { categoria, codigo } = classifyExecutionError(error);
-    return { resultado: 'fallo', fase: 'ejecucion', categoria, codigo, duracionMs };
-  } finally {
-    clearTimeout(temporizador);
-    // A client whose backstop won may still be waiting on a server that stopped
-    // answering, so `end()` is issued but not awaited on that path.
-    await cerrarCliente(cliente, !presupuestoAgotado);
-  }
+/**
+ * Probes the structure of each registered canonical view in one read-only session:
+ * one dial, one DEC-08 check before any probe, then one `LIMIT 0` statement per entity
+ * (CH-10 design). Never throws.
+ *
+ * No new budget (DEC-19, DEC-42): `statement_timeout` is the configured query budget
+ * per statement, and the backstop covers the whole session — one budget per probe
+ * plus one for the privilege check, plus the usual margin.
+ */
+export async function sondearEstructura(
+  destino: DestinoPostgres,
+  entidades: readonly EntidadASondear[],
+): Promise<ResultadoSondeo> {
+  const config = loadConfig();
+  return enSesionSoloLectura(
+    destino,
+    {
+      conexionMs: config.connectionTestTimeoutMs,
+      consultaMs: config.queryTimeoutMs,
+      respaldoMs:
+        config.queryTimeoutMs * (entidades.length + 1) + MARGEN_RESPALDO_EJECUCION_MS,
+    },
+    sondear(entidades),
+  );
 }
