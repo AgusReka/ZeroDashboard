@@ -7,6 +7,7 @@ import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
+import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 import { registerConsolaRoute } from './consola.js';
 import { registerContratoRoutes } from './contrato-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
@@ -31,6 +32,7 @@ registerConexionRoutes(app, prisma);
 registerConsultaRoutes(app, prisma);
 registerConsultaGuardadaRoutes(app, prisma);
 registerVistaCanonicaRoutes(app, prisma);
+registerValidacionMapeoRoutes(app, prisma);
 registerConsolaRoute(app);
 // No client argument, like the console above it and unlike the four registrars before:
 // the catalog is static and identical for every tenant, so this route has no database to

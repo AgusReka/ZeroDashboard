@@ -292,6 +292,51 @@ describe(
       assert.equal(filas[0]?.sql, 'SELECT 2', 'only the new statement may survive');
     });
 
+    // ---- CH-10 4.12 re-registering resets the persisted validation (DEC-41) -------------
+
+    test('CH-10 4.12 a re-registration resets a persisted validation to no-validado', async () => {
+      const conexionId = await nuevaConexion();
+      const primera = await registrarOk(conexionId, 'producto', 'SELECT 1 AS id');
+
+      // A persisted valid result, written out of band: this suite dials no target, and
+      // the reset is a property of the PUT alone, whatever wrote the verdict.
+      await prisma.vistaCanonica.update({
+        where: { id: primera.id },
+        data: {
+          estadoValidacion: 'valida',
+          diagnosticoValidacion: { version: 1, marca: 'ch10' },
+          validadaEn: new Date(),
+        },
+      });
+
+      // Identical SQL on purpose: every replace resets, no text comparison is made.
+      for (const sql of ['SELECT 2 AS id', 'SELECT 2 AS id']) {
+        await registrarOk(conexionId, 'producto', sql, 200);
+        const fila = await prisma.vistaCanonica.findUnique({ where: { id: primera.id } });
+        assert.equal(fila?.sql, sql);
+        assert.equal(fila?.estadoValidacion, 'no-validado');
+        assert.equal(fila?.diagnosticoValidacion, null, 'the diagnostic must be SQL NULL');
+        assert.equal(fila?.validadaEn, null);
+
+        // Validated again before the next replace, so its reset is not vacuous.
+        await prisma.vistaCanonica.update({
+          where: { id: primera.id },
+          data: { estadoValidacion: 'invalida', diagnosticoValidacion: {}, validadaEn: new Date() },
+        });
+      }
+    });
+
+    test('CH-10 4.12 a first registration starts no-validado, with no diagnostic and no timestamp', async () => {
+      const conexionId = await nuevaConexion();
+      const vista = await registrarOk(conexionId, 'pedido', 'SELECT 1 AS id');
+      const fila = await prisma.vistaCanonica.findUnique({ where: { id: vista.id } });
+      assert.equal(fila?.estadoValidacion, 'no-validado');
+      assert.equal(fila?.diagnosticoValidacion, null);
+      assert.equal(fila?.validadaEn, null);
+      // CH-09's projections are unchanged: the state is read only through the report.
+      assert.deepEqual(Object.keys(vista).sort(), ['actualizadaEn', 'creadaEn', 'entidad', 'id', 'sql']);
+    });
+
     // ---- 2.3 entity validated against the contract only (DEC-32) ------------------------
 
     test('2.3 an entity outside the canonical contract is rejected and creates no row', async () => {

@@ -115,11 +115,23 @@ export function registerVistaCanonicaRoutes(app: FastifyInstance, prisma: Prisma
     });
   }
 
-  /** Replaces the statement of an existing row, by id; `update` gets the tenant too. */
+  /**
+   * Replaces the statement of an existing row, by id; `update` gets the tenant too.
+   *
+   * The same write resets the row's validation state (CH-10, DEC-41): a verdict about
+   * the previous statement must never be read as a verdict about this one. Every
+   * replace resets it, even with identical SQL, so no text comparison is needed.
+   * `Prisma.DbNull` stores SQL `NULL` in the JSON column, not the JSON literal `null`.
+   */
   function reemplazar(id: string, sql: string) {
     return prisma.vistaCanonica.update({
       where: { id },
-      data: { sql },
+      data: {
+        sql,
+        estadoValidacion: 'no-validado',
+        diagnosticoValidacion: Prisma.DbNull,
+        validadaEn: null,
+      },
       select: VistaCanonicaCompleta,
     });
   }
