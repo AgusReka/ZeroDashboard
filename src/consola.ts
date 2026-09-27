@@ -19,7 +19,9 @@ import type { FastifyInstance } from 'fastify';
  * and `descripcion` are operator-authored rather than third-party, but they are
  * *persisted and replayed later*, which is a stored-input surface whichever hand typed
  * them — so they are rendered through `textContent` too, and a loaded statement
- * reaches the editor as `textarea.value`, never as markup.
+ * reaches the editor as `textarea.value`, never as markup. A loaded parameter
+ * declaration (CH-11) follows the same rule: each `nombre` reaches its row as an input
+ * `value` and its label as `textContent`.
  *
  * The inline script uses string concatenation rather than JS template literals so the
  * document can live inside this TypeScript template literal without escaping.
@@ -70,6 +72,9 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   #guardadas { list-style: none; padding: 0; margin: .75rem 0 0; }
   #guardadas li { display: flex; align-items: baseline; gap: .6rem; padding: .4rem 0; border-bottom: 1px solid rgba(128,128,128,.25); }
   #guardadas li .ayuda { margin: 0; }
+  .parametro { display: flex; align-items: flex-end; gap: .6rem; }
+  .parametro label { flex: 1; }
+  select { font: inherit; padding: .4rem .5rem; }
 </style>
 </head>
 <body>
@@ -94,6 +99,15 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 
   <label for="sql">Sentencia SQL</label>
   <textarea id="sql" rows="8" spellcheck="false" required>SELECT 1</textarea>
+
+  <!--
+    CH-11: one row per :nombre the statement uses (DEC-48). The page does no scanning:
+    the server names an undeclared or unused parameter, and this page shows that answer.
+    Every button here is type="button" so none of them submits the form.
+  -->
+  <p class="ayuda">Parámetros: declare cada :nombre que use la sentencia. Un valor vacío no se envía.</p>
+  <div id="parametros"></div>
+  <button id="agregar-parametro" type="button">Agregar parámetro</button>
 
   <div class="controles">
     <div>
@@ -195,6 +209,8 @@ var MENSAJES_TENANT = {
   'tenant-desactivado': 'El tenant seleccionado está dado de baja y no admite ninguna operación. Elegí otro.'
 };
 
+var TIPOS_PARAMETRO = ['texto', 'numero', 'booleano', 'fecha'];
+
 var CLAVE_TENANT = 'zerodashboard.tenantActivo';
 
 var selectorTenant = document.getElementById('tenant');
@@ -202,6 +218,8 @@ var indicadorTenant = document.getElementById('tenant-activo');
 var formulario = document.getElementById('formulario');
 var entradaConexion = document.getElementById('conexion');
 var entradaSql = document.getElementById('sql');
+var contenedorParametros = document.getElementById('parametros');
+var botonAgregarParametro = document.getElementById('agregar-parametro');
 var entradaLimite = document.getElementById('limite');
 var botonEjecutar = document.getElementById('ejecutar');
 var botonAnterior = document.getElementById('anterior');
@@ -220,6 +238,9 @@ var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, co
 // The selected tenant lives here and nowhere else (DEC-15: explicit per request, no
 // server session). Every call reads it through pedir() below.
 var tenantActivo = null;
+
+// The declaration rows, in the order they are sent: the server binds $k by that order.
+var filasParametros = [];
 
 // One alert region for the whole page, deliberately not one per section: a save
 // failure and an execution failure overwrite each other, which is simpler than two
@@ -459,6 +480,123 @@ function manejarFalloDeTenant(cuerpo) {
   return true;
 }
 
+// --- Parameters (CH-11) --------------------------------------------------------
+// The declaration is edited as rows and sent as data. Values leave the page with the
+// JSON type their tipo requires (DEC-60), because the server coerces nothing: a numero
+// typed into a text box has to be sent as a number.
+
+function rotular(texto, control) {
+  var rotulo = document.createElement('label');
+  var leyenda = document.createElement('span');
+  leyenda.textContent = texto;
+  rotulo.appendChild(leyenda);
+  rotulo.appendChild(control);
+  return rotulo;
+}
+
+function controlDeValor(tipo) {
+  var control;
+  if (tipo === 'booleano') {
+    control = document.createElement('select');
+    ['', 'true', 'false'].forEach(function (valor) {
+      var opcion = document.createElement('option');
+      opcion.value = valor;
+      opcion.textContent = valor === '' ? '(sin valor)' : valor;
+      control.appendChild(opcion);
+    });
+  } else {
+    // A text input for numero too: a number input would hand back '' for anything it
+    // cannot parse, and the server could no longer name what was wrong.
+    control = document.createElement('input');
+    control.type = 'text';
+    control.autocomplete = 'off';
+    if (tipo === 'fecha') { control.placeholder = 'AAAA-MM-DD o AAAA-MM-DDTHH:MM:SS'; }
+  }
+  control.className = 'parametro-valor';
+  return control;
+}
+
+function agregarFilaParametro(nombre, tipo) {
+  var fila = {
+    nodo: document.createElement('div'),
+    nombre: document.createElement('input'),
+    tipo: document.createElement('select'),
+    valor: controlDeValor(tipo)
+  };
+  fila.nodo.className = 'parametro';
+  fila.nombre.type = 'text';
+  fila.nombre.autocomplete = 'off';
+  fila.nombre.className = 'parametro-nombre';
+  fila.nombre.value = nombre;
+  TIPOS_PARAMETRO.forEach(function (opcionTipo) {
+    var opcion = document.createElement('option');
+    opcion.value = opcionTipo;
+    opcion.textContent = opcionTipo;
+    fila.tipo.appendChild(opcion);
+  });
+  fila.tipo.className = 'parametro-tipo';
+  fila.tipo.value = tipo;
+
+  // The value control is labeled with the nombre it fills, and follows it as typed.
+  var rotuloValor = rotular(nombre === '' ? 'Valor' : nombre, fila.valor);
+  var leyenda = rotuloValor.firstChild;
+  leyenda.className = 'parametro-leyenda';
+  fila.nombre.addEventListener('input', function () {
+    var escrito = fila.nombre.value.trim();
+    leyenda.textContent = escrito === '' ? 'Valor' : escrito;
+  });
+  // A new tipo brings its own control; a value typed for the old one is dropped.
+  fila.tipo.addEventListener('change', function () {
+    rotuloValor.removeChild(fila.valor);
+    fila.valor = controlDeValor(fila.tipo.value);
+    rotuloValor.appendChild(fila.valor);
+  });
+
+  var quitar = document.createElement('button');
+  quitar.type = 'button';
+  quitar.textContent = 'Quitar';
+  quitar.addEventListener('click', function () {
+    contenedorParametros.removeChild(fila.nodo);
+    filasParametros.splice(filasParametros.indexOf(fila), 1);
+  });
+
+  fila.nodo.appendChild(rotular('Nombre', fila.nombre));
+  fila.nodo.appendChild(rotular('Tipo', fila.tipo));
+  fila.nodo.appendChild(rotuloValor);
+  fila.nodo.appendChild(quitar);
+  contenedorParametros.appendChild(fila.nodo);
+  filasParametros.push(fila);
+}
+
+function limpiarParametros() {
+  vaciar(contenedorParametros);
+  filasParametros = [];
+}
+
+function declaracionActual() {
+  return filasParametros.map(function (fila) {
+    return { nombre: fila.nombre.value.trim(), tipo: fila.tipo.value };
+  });
+}
+
+// A blank control sends no key at all, so the server answers valor-faltante naming the
+// parameter instead of receiving an empty string it would have to interpret.
+function valoresActuales() {
+  // No prototype: a parameter may legally be called __proto__, and it must stay a key.
+  var valores = Object.create(null);
+  filasParametros.forEach(function (fila) {
+    var tipo = fila.tipo.value;
+    var crudo = tipo === 'texto' ? fila.valor.value : fila.valor.value.trim();
+    if (crudo === '') { return; }
+    var valor = crudo;
+    if (tipo === 'booleano') { valor = crudo === 'true'; }
+    // Not a finite number: the raw text is sent, and the server names the problem.
+    if (tipo === 'numero' && Number.isFinite(Number(crudo))) { valor = Number(crudo); }
+    valores[fila.nombre.value.trim()] = valor;
+  });
+  return valores;
+}
+
 async function ejecutar(desplazamiento) {
   ocultarBanner();
   botonEjecutar.disabled = true;
@@ -478,6 +616,8 @@ async function ejecutar(desplazamiento) {
       body: JSON.stringify({
         conexionId: entradaConexion.value.trim(),
         sql: entradaSql.value,
+        parametros: declaracionActual(),
+        valores: valoresActuales(),
         limite: limite,
         desplazamiento: desplazamiento
       })
@@ -654,7 +794,10 @@ async function guardar() {
         nombre: nombre,
         descripcion: entradaDescripcion.value,
         // Sent verbatim: the API stores the operator's statement as written.
-        sql: entradaSql.value
+        sql: entradaSql.value,
+        // The declaration only: values belong to one execution, never to the saved
+        // query (DEC-48).
+        parametros: declaracionActual()
       })
     });
   } catch (fallaDeRed) {
@@ -722,6 +865,12 @@ async function cargarGuardada(id) {
 
   // A plain value assignment on the textarea: the statement is data, not markup.
   entradaSql.value = cuerpo.consultaGuardada.sql;
+  // The saved declaration replaces the rows, with empty values: values are never saved.
+  limpiarParametros();
+  var parametros = cuerpo.consultaGuardada.parametros;
+  (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
+    agregarFilaParametro(String(parametro.nombre), String(parametro.tipo));
+  });
   entradaSql.focus();
   // #conexion is deliberately left as it is: nothing binds a saved query to a
   // connection, so the operator chooses which target to run it against.
@@ -735,6 +884,7 @@ selectorTenant.addEventListener('change', function () {
   ocultarBanner();
   limpiarResultados();
   vaciar(listaGuardadas);
+  limpiarParametros();
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
   if (tenantActivo !== null) { listarGuardadas(); }
 });
@@ -746,6 +896,10 @@ formulario.addEventListener('submit', function (evento) {
 
 botonGuardar.addEventListener('click', function () {
   guardar();
+});
+
+botonAgregarParametro.addEventListener('click', function () {
+  agregarFilaParametro('', 'texto');
 });
 
 botonSiguiente.addEventListener('click', function () {

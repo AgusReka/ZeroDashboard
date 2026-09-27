@@ -98,6 +98,20 @@ Tasks 4.1–4.6. `ConsultaGuardada.parametros Json @default("[]")`; migration `2
 | Runtime harness | `app.inject()` against live PostgreSQL 16 (5 CH-11 route cases) |
 | Rollback boundary | Revert `src/consultas-guardadas.ts`/test and the schema line; `ALTER TABLE "ConsultaGuardada" DROP COLUMN "parametros";` then delete the migration directory |
 
+## Unit 5a — `ch11/6-consola`
+
+Tasks 5.1–5.3 and the tenant-switch half of 5.4. `#formulario` gains `#parametros` rows (nombre input, tipo select, value control labeled with the nombre, Quitar) and `#agregar-parametro`. Execute sends `parametros` + `valores` (DEC-60 JSON types: `numero` as `Number()` when finite else the raw text, `booleano` as boolean, `fecha` trimmed, `texto` verbatim; a blank omits the key; the map has no prototype so `__proto__` stays a key). Save sends the declaration only (DEC-48); load rebuilds the rows with empty values; switching tenant clears them.
+
+- Sliced once: the whole phase was 396 code+test lines before bookkeeping. Deferred to 5b (~85 lines): a `MENSAJES_PARAMETRO` map and a shared `mensajeDeSolicitudInvalida(cuerpo, declaracionEnviada)` for execute and save — one `textContent` line per `problemas` entry, `«nombre»: <sentence>` (null `parametro` reads "Declaración de parámetros"), and a `campos`-only schema 400 mapping `/parametros/i/<campo>` to the name sent at index i (the newline escape must be written doubled in the TS source, since the document is a template literal). Until then a 400 shows the existing `campos` message, which carries `/valores/<nombre>`.
+
+| Evidence | Value |
+|---|---|
+| Focused test | `npx tsx --test src/consola.test.ts`: 15 pass, 0 fail (4 new cases RED before the change) |
+| Mutation check | Sending `numero` as raw text fails 1 test; restored |
+| Typecheck / full suite | `npx tsc --noEmit`: exit 0. `npm test` (live DB :5434): 404 pass, 0 fail (baseline 400) |
+| Runtime harness | N/A — the served script runs over the DOM stub; no live server |
+| Rollback boundary | Revert `src/consola.ts` and `src/consola.test.ts`; units 1–4 are unaffected |
+
 ## Remaining
 
-Phases 5–6. Branches: `ch11/6-consola`, `ch11/7-verify-archivo`.
+Slice 5b (above), then phase 6 (`ch11/7-verify-archivo`).
