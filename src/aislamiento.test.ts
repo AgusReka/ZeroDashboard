@@ -14,13 +14,15 @@ import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
+import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 
 /**
  * CH-06 tasks 3.2–3.6 — **T2**: "ninguna operación devuelve filas del otro", proven by
  * an automated test rather than by inspection.
  *
  * Two tenants are loaded, each with its own `Conexion`, `ConsultaGuardada` and (CH-09)
- * `VistaCanonica`, and every tenant-scoped route is exercised from both sides. The
+ * `VistaCanonica`, whose mapping each validates (CH-10), and every tenant-scoped route
+ * is exercised from both sides. The
  * sweep is written as a table over route × tenant on purpose: a route added later that
  * is missing from it is an obvious omission in review, which a hand-written case per
  * route is not.
@@ -66,6 +68,12 @@ interface Fixture {
   /** CH-09: the canonical entity this tenant's connection has a definition for. */
   entidadVista: string;
   sqlVista: string;
+  /**
+   * CH-10: the verdict of this tenant's own validate action. The fixture dials as the
+   * superuser, so it is the DEC-08 refusal (`fase: 'permisos'`) — which is exactly the
+   * owner control the sweep needs: the route was reached and ran its session.
+   */
+  validacion: { resultado: string; fase: string };
 }
 
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
@@ -108,6 +116,7 @@ describe(
       registerConsultaRoutes(app, aislado);
       registerConsultaGuardadaRoutes(app, aislado);
       registerVistaCanonicaRoutes(app, aislado);
+      registerValidacionMapeoRoutes(app, aislado);
       await app.ready();
 
       a = await montarTenant('A');
@@ -180,6 +189,15 @@ describe(
       });
       assert.equal(vista.statusCode, 201, vista.body);
 
+      // CH-10: each tenant validates its own mapping.
+      const validacion = await app.inject({
+        method: 'POST',
+        url: `/conexiones/${conexion.id}/validacion-mapeo`,
+        headers,
+      });
+      assert.equal(validacion.statusCode, 200, validacion.body);
+      const { resultado, fase } = validacion.json() as { resultado: string; fase: string };
+
       return {
         tenantId: tenant.id,
         nombre,
@@ -188,6 +206,7 @@ describe(
         sqlGuardado,
         entidadVista,
         sqlVista,
+        validacion: { resultado, fase },
       };
     }
 
@@ -298,6 +317,31 @@ describe(
           app.inject({
             method: 'GET',
             url: `/conexiones/${duenio.conexionId}/vistas-canonicas/${duenio.entidadVista}`,
+            headers: cabeceras(llamante),
+          }),
+        exitoso: 200,
+      },
+      // CH-10: the validate action and the validation read. One `GET` serves both the
+      // per-entity validation state and the applicability report, so it is one row.
+      // The owner control of the `POST` is the superuser fixture's `200 fase permisos`.
+      {
+        nombre: 'POST /conexiones/:id/validacion-mapeo',
+        errorEsperado: 'conexion-no-encontrada',
+        pedir: (llamante: Fixture, duenio: Fixture) =>
+          app.inject({
+            method: 'POST',
+            url: `/conexiones/${duenio.conexionId}/validacion-mapeo`,
+            headers: cabeceras(llamante),
+          }),
+        exitoso: 200,
+      },
+      {
+        nombre: 'GET /conexiones/:id/validacion-mapeo',
+        errorEsperado: 'conexion-no-encontrada',
+        pedir: (llamante: Fixture, duenio: Fixture) =>
+          app.inject({
+            method: 'GET',
+            url: `/conexiones/${duenio.conexionId}/validacion-mapeo`,
             headers: cabeceras(llamante),
           }),
         exitoso: 200,
@@ -427,6 +471,67 @@ describe(
         await db.vistaCanonica.count({ where: { tenantId: a.tenantId } }),
         1,
         'A must still own exactly its fixture definition',
+      );
+    });
+
+    // ---- CH-10 5.1 / 5.3 the validate action ----------------------------------------
+
+    test('CH-10 5.1 each tenant validated its own mapping: the session ran and was refused by DEC-08', () => {
+      for (const fixture of [a, b]) {
+        assert.deepEqual(
+          fixture.validacion,
+          { resultado: 'fallo', fase: 'permisos' },
+          `${fixture.nombre}: the owner's validate action must reach its own target`,
+        );
+      }
+    });
+
+    test("CH-10 5.3 validating the other tenant's connection leaves its validation state untouched", async () => {
+      // B's row is given a persisted verdict first, so "unchanged" cannot be vacuous. An
+      // unscoped lookup would dial B's target and overwrite it, or file a row under A.
+      await db.vistaCanonica.updateMany({
+        where: { conexionId: b.conexionId },
+        data: {
+          estadoValidacion: 'valida',
+          diagnosticoValidacion: { version: 1, marca: 'ch10-t2' },
+          validadaEn: new Date('2026-01-01T00:00:00Z'),
+        },
+      });
+      const seleccion = {
+        id: true,
+        tenantId: true,
+        sql: true,
+        estadoValidacion: true,
+        diagnosticoValidacion: true,
+        validadaEn: true,
+        actualizadaEn: true,
+      } as const;
+      const antesB = await db.vistaCanonica.findMany({
+        where: { conexionId: b.conexionId },
+        select: seleccion,
+      });
+      const antesA = await db.vistaCanonica.findMany({
+        where: { tenantId: a.tenantId },
+        select: seleccion,
+      });
+
+      const respuesta = await app.inject({
+        method: 'POST',
+        url: `/conexiones/${b.conexionId}/validacion-mapeo`,
+        headers: cabeceras(a),
+      });
+
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
+      assert.deepEqual(
+        await db.vistaCanonica.findMany({ where: { conexionId: b.conexionId }, select: seleccion }),
+        antesB,
+        "B's validation columns must be unchanged",
+      );
+      assert.deepEqual(
+        await db.vistaCanonica.findMany({ where: { tenantId: a.tenantId }, select: seleccion }),
+        antesA,
+        'nothing may have been written for A either',
       );
     });
 
