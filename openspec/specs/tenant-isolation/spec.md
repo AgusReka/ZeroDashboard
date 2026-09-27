@@ -54,14 +54,14 @@ The system SHALL filter every read and write on `Conexion`, `ConsultaGuardada`, 
 
 ### Requirement: Cross-Tenant Isolation Is Proven by an Automated Test (T2)
 
-The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention.
-(Previously: the sweep's rows were limited to `Conexion` and `ConsultaGuardada`.)
+The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes: triggering validation, reading a validation result, and reading the automation-applicability report.
 
 #### Scenario: Full two-tenant route sweep
 
-- GIVEN two tenants, each with its own `Conexion`, `ConsultaGuardada`, and schema-mapping definition rows
-- WHEN every tenant-scoped route is exercised from both tenants, including the schema-mapping registration, listing, and read routes
-- THEN no response SHALL contain, confirm the existence of, or act upon the other tenant's row
+- GIVEN two tenants, each with its own `Conexion`, `ConsultaGuardada`, schema-mapping definition, and validation result
+- WHEN every tenant-scoped route is exercised from both tenants, including validate, validation-read, and applicability-report routes
+- THEN no response SHALL contain, confirm the existence of, trigger validation against, or act upon the other tenant's row
+- AND a cross-tenant request naming another tenant's connection or entity SHALL receive `404`
 
 #### Scenario: Database unreachable
 

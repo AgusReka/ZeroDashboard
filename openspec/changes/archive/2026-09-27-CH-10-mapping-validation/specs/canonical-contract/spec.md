@@ -69,3 +69,8 @@ The system SHALL expose `GET /contrato`, returning every canonical entity with i
 - **THEN** the response SHALL list all five entities (`producto`, `pedido`, `item_pedido`, `insumo`, `receta_componente`)
 - **AND** each entity SHALL be marked required or optional
 - **AND** each entity's fields SHALL each be marked required or optional, SHALL each carry an automation label, and SHALL each carry a semantic type
+
+## RENAMED Requirements
+
+- FROM: `Each Field Is Marked Required or Optional and Names Its Automation`
+  TO: `Each Field Is Marked Required or Optional, Names Its Automation, and Declares a Semantic Type`
