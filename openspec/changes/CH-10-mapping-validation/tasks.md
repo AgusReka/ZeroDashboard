@@ -78,18 +78,18 @@ read (4.5), data exposure via rows/personal columns (4.4, 4.2). The Shell/VCS/PR
 
 - [x] 4.1 RED: `src/validacion-mapeo-rutas.test.ts` — `POST /conexiones/:id/validacion-mapeo` probes every mapped entity `LIMIT 0` inside `READ ONLY`, DEC-08 check runs first, no row read (spec "Validate Action Runs a Zero-Row Structural Probe Per Entity")
 - [x] 4.2 RED: extend — missing, wrong-type, extra, and case-folded-alias columns against a live view each produce their diagnosed verdict
-- [ ] 4.3 RED: extend — `42P01` on one entity leaves a sibling entity `valida` (per-entity `SAVEPOINT` isolation)
-- [ ] 4.4 RED: extend — `1/(id-id)` over populated rows still resolves `valida` (proves zero rows are read, rule 5)
-- [ ] 4.5 RED: extend — a data-modifying CTE gives `no-es-lectura`, target table unchanged
-- [ ] 4.6 RED: extend — superuser role and closed-port target both answer `200` with `fase` `permisos`/`conexion`, nothing persisted (design "Session failure")
-- [ ] 4.7 RED: extend — `GET` still `200`s with the host unreachable (no `pg` connection); the stale-write `updateMany` guard writes nothing when the SQL changed mid-probe (spec "Reading Validation State Never Opens a Tenant Connection")
+- [x] 4.3 RED: extend — `42P01` on one entity leaves a sibling entity `valida` (per-entity `SAVEPOINT` isolation)
+- [x] 4.4 RED: extend — `1/(id-id)` over populated rows still resolves `valida` (proves zero rows are read, rule 5)
+- [x] 4.5 RED: extend — a data-modifying CTE gives `no-es-lectura`, target table unchanged
+- [x] 4.6 RED: extend — superuser role and closed-port target both answer `200` with `fase` `permisos`/`conexion`, nothing persisted (design "Session failure")
+- [x] 4.7 RED: extend — `GET` still `200`s with the host unreachable (no `pg` connection); the stale-write `updateMany` guard writes nothing when the SQL changed mid-probe (spec "Reading Validation State Never Opens a Tenant Connection")
 - [x] 4.8 RED: extend — a `POST` body carrying `tenantId` or any other property is `400 solicitud-invalida` (spec "Request body carrying a tenant id")
 - [x] 4.9 RED: extend — `POST`/`GET` naming a foreign `conexionId` is `404`, no probe runs (spec "Validating another tenant's connection")
 - [x] 4.10 Create `src/validacion-mapeo-rutas.ts`: `registerValidacionMapeoRoutes(app, prisma)` — `POST`/`GET /conexiones/:id/validacion-mapeo`, empty-body schema (`propertyNames` rejects `tenantId`), `updateMany({id, sql})` stale guard, `informe()` on `GET` — satisfies 4.1–4.9
 - [x] 4.11 Modify `src/server.ts`: import and register `registerValidacionMapeoRoutes(app, prisma)` after `registerVistaCanonicaRoutes`
 - [x] 4.12 RED: `src/vistas-canonicas.test.ts` — re-`PUT` after a persisted validation resets `estadoValidacion`/`diagnosticoValidacion`/`validadaEn` (spec `tenant-schema-mapping` "Re-registering resets a previously validated entity", DEC-41)
 - [x] 4.13 Modify `src/vistas-canonicas.ts`: `reemplazar()` resets the three columns (`'no-validado'`, `Prisma.DbNull`, `null`) in the same `update`
-- [ ] 4.14 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/validacion-mapeo-rutas.test.ts src/vistas-canonicas.test.ts` green
+- [x] 4.14 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/validacion-mapeo-rutas.test.ts src/vistas-canonicas.test.ts` green
 
 ## 5. Tenant Isolation Sweep & Full-Suite Checkpoint (`src/aislamiento.test.ts`)
 

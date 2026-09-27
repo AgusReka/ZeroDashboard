@@ -131,6 +131,18 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
   });
 }
 
+/** A port nothing listens on: bound, read, released. */
+function puertoCerrado(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const servidor = net.createServer();
+    servidor.once('error', reject);
+    servidor.listen(0, '127.0.0.1', () => {
+      const { port } = servidor.address() as net.AddressInfo;
+      servidor.close(() => resolve(port));
+    });
+  });
+}
+
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip: string | false = alcanzable
   ? false
@@ -505,6 +517,140 @@ describe(
         assert.equal(respuesta.statusCode, 404, respuesta.body);
         assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
       }
+    });
+
+    // ---- 4.3 – 4.6 the engine-level edge cases -------------------------------------------
+
+    test('4.3 a 42P01 on one entity leaves its sibling valida (per-entity savepoint)', async () => {
+      const conexionId = await nuevaConexion(LECTOR);
+      await registrar(conexionId, 'producto', PRODUCTO_OK);
+      await registrar(conexionId, 'insumo', `SELECT * FROM ${ESQUEMA}.no_existe`);
+
+      const informe = await validarOk(conexionId);
+      assert.equal(entidadDe(informe, 'producto').estado, 'valida');
+      const insumo = entidadDe(informe, 'insumo');
+      assert.equal(insumo.estado, 'invalida');
+      assert.deepEqual(insumo.diagnostico?.sondeo, {
+        resultado: 'fallo',
+        categoria: 'error-sintaxis',
+        codigo: '42P01',
+      });
+    });
+
+    test('4.4 a view dividing by zero on every row still resolves valida: zero rows are read', async () => {
+      const sql =
+        `SELECT id, nombre, (1 / (id - id))::numeric AS "stockDisponible", sku, activo ` +
+        `FROM ${ESQUEMA}.producto`;
+      // Control: reading a single row of this view fails with a division by zero.
+      await assert.rejects(admin.query(`${sql} LIMIT 1`), { code: '22012' });
+
+      const conexionId = await nuevaConexion(LECTOR);
+      await registrar(conexionId, 'producto', sql);
+      const informe = await validarOk(conexionId);
+      assert.equal(entidadDe(informe, 'producto').estado, 'valida');
+    });
+
+    test('4.5 a data-modifying CTE is no-es-lectura, and the target table is unchanged', async () => {
+      const conexionId = await nuevaConexion(LECTOR);
+      await registrar(
+        conexionId,
+        'producto',
+        `WITH borrado AS (DELETE FROM ${ESQUEMA}.producto RETURNING *) ` +
+          `SELECT id, nombre, stock AS "stockDisponible", sku, activo FROM borrado`,
+      );
+
+      const informe = await validarOk(conexionId);
+      const producto = entidadDe(informe, 'producto');
+      assert.equal(producto.estado, 'invalida');
+      assert.equal(producto.diagnostico?.sondeo.categoria, 'no-es-lectura');
+      const { rows } = await admin.query(`SELECT count(*)::int AS n FROM ${ESQUEMA}.producto`);
+      assert.equal(rows[0].n, 3);
+    });
+
+    test('4.6 a superuser role is refused before any probe; nothing is persisted', async () => {
+      const conexionId = await nuevaConexion({
+        ...LECTOR,
+        usuarioDb: 'ch10_super',
+        credencial: CLAVES.superusuario,
+      });
+      const producto = await registrar(conexionId, 'producto', PRODUCTO_OK);
+      await sembrarValidada(producto);
+      const antes = await estadoPersistido(producto);
+
+      const respuesta = await validar(conexionId);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const cuerpo = respuesta.json() as { resultado: string; fase: string; categoria: string };
+      assert.deepEqual(
+        { resultado: cuerpo.resultado, fase: cuerpo.fase, categoria: cuerpo.categoria },
+        { resultado: 'fallo', fase: 'permisos', categoria: 'rol-superusuario' },
+      );
+      assert.deepEqual(await estadoPersistido(producto), antes, 'the prior verdict must stand');
+    });
+
+    test('4.6 a closed port answers fase conexion; nothing is persisted', async () => {
+      const conexionId = await nuevaConexion({
+        ...LECTOR,
+        host: '127.0.0.1',
+        puerto: await puertoCerrado(),
+      });
+      const producto = await registrar(conexionId, 'producto', PRODUCTO_OK);
+      await sembrarValidada(producto);
+      const antes = await estadoPersistido(producto);
+
+      const respuesta = await validar(conexionId);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const cuerpo = respuesta.json() as { resultado: string; fase: string };
+      assert.deepEqual({ resultado: cuerpo.resultado, fase: cuerpo.fase }, { resultado: 'fallo', fase: 'conexion' });
+      assert.deepEqual(await estadoPersistido(producto), antes, 'the prior verdict must stand');
+    });
+
+    // ---- 4.7 the stale-write guard --------------------------------------------------------
+
+    /**
+     * The race DEC-41 guards against, forced deterministically: the probe is held on a
+     * lock this suite owns, the SQL is re-registered while it waits, and only then is the
+     * lock released. The verdict about the old statement must land nowhere.
+     */
+    test('4.7 a re-registration during the probe wins: the stale verdict is not written', async () => {
+      const conexionId = await nuevaConexion(LECTOR);
+      const producto = await registrar(conexionId, 'producto', PRODUCTO_OK);
+      const nuevaSql = `${PRODUCTO_OK} WHERE activo`;
+
+      const bloqueo = new pg.Client({ ...objetivo });
+      await bloqueo.connect();
+      try {
+        await bloqueo.query('BEGIN');
+        await bloqueo.query(`LOCK TABLE ${ESQUEMA}.producto IN ACCESS EXCLUSIVE MODE`);
+
+        const enCurso = validar(conexionId);
+        const limite = Date.now() + 4000;
+        for (;;) {
+          const { rows } = await admin.query(
+            "SELECT count(*)::int AS n FROM pg_stat_activity WHERE usename = 'ch10_lector' AND wait_event_type = 'Lock'",
+          );
+          if (rows[0].n > 0) {
+            break;
+          }
+          assert.ok(Date.now() < limite, 'the probe never reached the lock');
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+
+        await registrar(conexionId, 'producto', nuevaSql);
+        await bloqueo.query('ROLLBACK');
+
+        const respuesta = await enCurso;
+        assert.equal(respuesta.statusCode, 200, respuesta.body);
+        const informe = (respuesta.json() as { validacionMapeo: Informe }).validacionMapeo;
+        assert.equal(entidadDe(informe, 'producto').estado, 'no-validado');
+      } finally {
+        await bloqueo.end();
+      }
+
+      const fila = await estadoPersistido(producto);
+      assert.equal(fila.sql, nuevaSql);
+      assert.equal(fila.estadoValidacion, 'no-validado');
+      assert.equal(fila.diagnosticoValidacion, null);
+      assert.equal(fila.validadaEn, null);
     });
   },
 );
