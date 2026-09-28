@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
@@ -27,7 +28,7 @@ export const PlantillaResumen = {
   toleranciaFrescuraMinutos: true,
 } as const;
 
-/** Every column: create and get-by-id. */
+/** Every column: create, get-by-id and replace. */
 export const PlantillaCompleta = {
   ...PlantillaResumen,
   sql: true,
@@ -117,7 +118,7 @@ function valoresRechazados(validation: unknown, cuerpo: unknown): unknown[] {
 }
 
 /**
- * The save-time checks shared by create and (in unit 4) replace: AJV, then a statement
+ * The save-time checks shared by create and replace: AJV, then a statement
  * that is blank once trimmed, then the CH-11 parameter rules (DEC-56/57/59). Returns the
  * `400` envelope, or `null` when the body may be written.
  */
@@ -161,6 +162,11 @@ export function datosDePlantilla(cuerpo: RegistroPlantillaBody) {
     formato: cuerpo.formato,
     toleranciaFrescuraMinutos: cuerpo.toleranciaFrescuraMinutos,
   };
+}
+
+/** `P2025` is Prisma's "no row to update"; here only an unknown `id` can raise it. */
+function esPlantillaInexistente(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
 }
 
 export function registerPlantillaRoutes(
@@ -210,4 +216,34 @@ export function registerPlantillaRoutes(
     }
     return reply.code(200).send({ plantilla });
   });
+
+  /**
+   * Replace in place by id (DEC-68): the same body and save-time checks as create, then
+   * one `update` of every column. There is no version history and no delete, so the row
+   * keeps its id and is the only row the write touches. `update`-and-catch is enough here,
+   * unlike `/tenants/:id/baja`: a template has no state to tell apart from "unknown".
+   */
+  app.put<{ Params: PlantillaParams; Body: RegistroPlantillaBody }>(
+    '/plantillas/:id',
+    { schema: { body: registroPlantillaSchema }, attachValidation: true },
+    async (request, reply) => {
+      const rechazo = rechazoDePlantilla(request.validationError, request.body);
+      if (rechazo !== null) {
+        return reply.code(400).send(rechazo);
+      }
+      try {
+        const plantilla = await plantillas.update({
+          where: { id: request.params.id },
+          data: datosDePlantilla(request.body),
+          select: PlantillaCompleta,
+        });
+        return reply.code(200).send({ plantilla });
+      } catch (error) {
+        if (esPlantillaInexistente(error)) {
+          return reply.code(404).send({ error: 'plantilla-no-encontrada' });
+        }
+        throw error;
+      }
+    },
+  );
 }

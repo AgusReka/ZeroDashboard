@@ -32,9 +32,13 @@
 
 /**
  * The automations each field traces to. An object rather than inline string literals
- * (DEC-22): the labels are free text until CH-12's real `Plantilla` rows exist, so
- * deriving the type from this one object is what turns a typo into a compile error and
- * makes CH-12's reconciliation a single-object edit instead of a repository-wide grep.
+ * (DEC-22), so deriving the type from this one object turns a typo into a compile error.
+ *
+ * DEC-22 left these labels as free text to be reconciled once a real `Plantilla` existed;
+ * DEC-67 (CH-12) closes it. This object is now the single source of `Plantilla.automatizacion`:
+ * `src/plantillas.ts` derives `VALORES_AUTOMATIZACION` from it, and the catalog routes
+ * validate that field as an `enum` of those values. A new label is therefore an edit here,
+ * and every label a field names is, by construction, a value a template may carry.
  */
 export const AUTOMATIZACIONES = {
   STOCK_FISICO: 'stock-fisico',
