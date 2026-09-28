@@ -2,16 +2,19 @@ import assert from 'node:assert/strict';
 import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
+import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
+import { cifrarCredencial } from './cripto-credencial.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 
 /**
  * CH-12 unit 5a: the test route's checks, every one of which answers before anything is
- * executed (tasks 5.1–5.3, 5.5; design "Data Flow — Test Route"). Execution itself, and
- * the rule-4 cases that need it, are unit 5b.
+ * executed (tasks 5.1–5.3, 5.5; design "Data Flow — Test Route"). Unit 5b: the value
+ * and credential checks that still answer before a dial (5.6), and execution itself over
+ * the composed views, with the rule-4 cases that need a live target (5.4).
  */
 
 const RUTA = '/plantillas/:id/prueba';
@@ -99,6 +102,12 @@ const databaseUrl =
   `postgresql://${encodeURIComponent(objetivo.user)}:${encodeURIComponent(objetivo.password)}` +
   `@${objetivo.host}:${objetivo.port}/${objetivo.database}`;
 
+// `loadConfig()` runs on every execution and `destinoDeConexion` needs a master key
+// (DEC-17): the same fixture values every suite that boots an executing route supplies.
+process.env.APP_PORT ??= '3000';
+process.env.DATABASE_URL ??= databaseUrl;
+process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
+
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
 function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -130,7 +139,7 @@ const motivoSkip: string | false = (await esAlcanzable(objetivo.host, objetivo.p
   ? false
   : `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — set TEST_DB_*`;
 
-describe('plantilla test route — lookups and view gate (CH-12 5.2, 5.3, 5.5)', { skip: motivoSkip }, () => {
+describe('plantilla test route — lookups, view gate and pre-dial checks (CH-12 5.2, 5.3, 5.5, 5.6)', { skip: motivoSkip }, () => {
   let app!: FastifyInstance;
   /** The raw client: fixtures and cleanup only. The app gets the extended one. */
   let prisma!: PrismaClient;
@@ -181,12 +190,16 @@ describe('plantilla test route — lookups and view gate (CH-12 5.2, 5.3, 5.5)',
     return fila.id;
   }
 
-  async function plantilla(entidades: string[]): Promise<string> {
+  async function plantilla(
+    entidades: string[],
+    sql = 'SELECT * FROM v_producto',
+    parametros: { nombre: string; tipo: string }[] = [],
+  ): Promise<string> {
     const fila = await prisma.plantilla.create({
       data: {
         nombre: `${marca} plantilla`,
-        sql: 'SELECT * FROM v_producto',
-        parametros: [],
+        sql,
+        parametros,
         entidades,
         automatizacion: 'stock-fisico',
         formato: 'correo-html',
@@ -196,12 +209,12 @@ describe('plantilla test route — lookups and view gate (CH-12 5.2, 5.3, 5.5)',
     return fila.id;
   }
 
-  function probar(plantillaId: string, conexionId: string, tenantId = tenantA) {
+  function probar(plantillaId: string, conexionId: string, tenantId = tenantA, valores?: object) {
     return app.inject({
       method: 'POST',
       url: `/plantillas/${encodeURIComponent(plantillaId)}/prueba`,
       headers: { 'x-tenant-id': tenantId },
-      payload: { conexionId },
+      payload: valores === undefined ? { conexionId } : { conexionId, valores },
     });
   }
 
@@ -280,5 +293,179 @@ describe('plantilla test route — lookups and view gate (CH-12 5.2, 5.3, 5.5)',
     assert.equal(await esAlcanzable('127.0.0.1', fila.puerto, 500), false, 'the fixture port must be closed');
     // A dial would have produced a `200 fallo conexion` verdict, not this rejection.
     assert.deepEqual(await rechazoDeLaCompuerta(id, propia), [{ entidad: 'receta_componente', estado: 'invalida' }]);
+  });
+
+  test('5.6 a value the stored declaration rejects answers 400 naming it, before the credential', async () => {
+    // The gate passes, but this connection's credential cannot be opened and its port is
+    // closed: a 400 proves the values were checked before `destinoDeConexion` and a dial.
+    const sql = 'SELECT *, :eco AS eco FROM v_producto';
+    const id = await plantilla(['producto'], sql, [{ nombre: 'eco', tipo: 'texto' }]);
+    const propia = await conexion(tenantA);
+    await vista(propia, 'producto', 'valida');
+    const casos: [object, { parametro: string; motivo: string; campo: string }[]][] = [
+      [{}, [{ parametro: 'eco', motivo: 'valor-faltante', campo: '/valores/eco' }]],
+      [{ eco: 7 }, [{ parametro: 'eco', motivo: 'valor-invalido', campo: '/valores/eco' }]],
+      [{ eco: 'x', otro: 'y' }, [{ parametro: 'otro', motivo: 'valor-no-declarado', campo: '/valores/otro' }]],
+    ];
+    for (const [valores, problemas] of casos) {
+      const respuesta = await probar(id, propia, tenantA, valores);
+      assert.equal(respuesta.statusCode, 400, `${JSON.stringify(valores)}: ${respuesta.body}`);
+      assert.deepEqual(respuesta.json(), {
+        error: 'solicitud-invalida',
+        campos: problemas.map((problema) => problema.campo),
+        problemas,
+      });
+    }
+  });
+
+  test('5.6 a stored credential that cannot be opened answers 409 credencial-ilegible', async () => {
+    const id = await plantilla(['producto']);
+    const propia = await conexion(tenantA);
+    await vista(propia, 'producto', 'valida');
+    const respuesta = await probar(id, propia);
+    assert.equal(respuesta.statusCode, 409, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'credencial-ilegible' });
+  });
+});
+
+// ---- 5.4 execution over the composed views, against a live PostgreSQL --------------------
+
+/** A plain login role: no table grant, no schema CREATE, no superuser, so DEC-08 lets it read. */
+const ROL_LECTOR = 'ch12_lector';
+const CLAVE_LECTOR = 'ch12-clave-lector';
+
+/** Drops the fixture role. Safe to run before creation and after teardown. */
+const SQL_LIMPIEZA = `
+DO $limpieza$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '${ROL_LECTOR}') THEN
+    EXECUTE format('DROP OWNED BY %I', '${ROL_LECTOR}');
+    EXECUTE format('DROP ROLE %I', '${ROL_LECTOR}');
+  END IF;
+END
+$limpieza$;`;
+
+/** The two verdict shapes of the existing execution contract, as far as these cases read them. */
+type Veredicto =
+  | { resultado: 'ok'; columnas: string[]; filas: unknown[][] }
+  | { resultado: 'fallo'; fase: string; categoria: string; codigo: string | null };
+
+describe('plantilla test route — execution over the composed views (CH-12 5.4)', { skip: motivoSkip }, () => {
+  let app!: FastifyInstance;
+  let prisma!: PrismaClient;
+  let admin!: pg.Client;
+  const marca = `CH-12 u5b ${Date.now()}`;
+  let tenantId!: string;
+  let conexionId!: string;
+
+  before(async () => {
+    admin = new pg.Client({ ...objetivo });
+    await admin.connect();
+    await admin.query(SQL_LIMPIEZA);
+    await admin.query(`CREATE ROLE ${ROL_LECTOR} LOGIN PASSWORD '${CLAVE_LECTOR}'`);
+
+    prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    tenantId = (await prisma.tenant.create({ data: { nombre: `${marca} tenant` } })).id;
+    conexionId = (
+      await prisma.conexion.create({
+        data: {
+          tenantId,
+          nombre: `${marca} conexion`,
+          motor: 'postgres',
+          host: objetivo.host,
+          puerto: objetivo.port,
+          baseDeDatos: objetivo.database,
+          usuarioDb: ROL_LECTOR,
+          credencial: cifrarCredencial(CLAVE_LECTOR),
+        },
+      })
+    ).id;
+    // Both views read literal rows, so the lector role needs no table grant at all.
+    const vistas: [string, string][] = [
+      ['producto', "SELECT id, nombre FROM (VALUES (1, 'uno'), (2, 'dos')) AS t(id, nombre)"],
+      ['insumo', 'SELECT id, cantidad FROM (VALUES (1, 10), (2, 20)) AS t(id, cantidad)'],
+    ];
+    for (const [entidad, sql] of vistas) {
+      await prisma.vistaCanonica.create({
+        data: { tenantId, conexionId, entidad, sql, estadoValidacion: 'valida' },
+      });
+    }
+
+    app = Fastify({ logger: false });
+    const aislado = extenderConAislamiento(prisma);
+    registrarContextoTenant(app, aislado);
+    registerPlantillaPruebaRoute(app, aislado);
+    await app.ready();
+  });
+
+  after(async () => {
+    if (tenantId !== undefined) {
+      await prisma.vistaCanonica.deleteMany({ where: { tenantId } });
+      await prisma.conexion.deleteMany({ where: { tenantId } });
+      await prisma.tenant.delete({ where: { id: tenantId } });
+    }
+    await prisma.plantilla.deleteMany({ where: { nombre: { startsWith: marca } } });
+    await prisma.$disconnect();
+    await app.close();
+    await admin.query(SQL_LIMPIEZA);
+    await admin.end();
+  });
+
+  async function plantilla(entidades: string[], sql: string, parametros: { nombre: string; tipo: string }[] = []) {
+    const fila = await prisma.plantilla.create({
+      data: {
+        nombre: `${marca} plantilla`,
+        sql,
+        parametros,
+        entidades,
+        automatizacion: 'stock-fisico',
+        formato: 'correo-html',
+        toleranciaFrescuraMinutos: 30,
+      },
+    });
+    return fila.id;
+  }
+
+  async function veredicto(plantillaId: string, valores: object = {}): Promise<Veredicto> {
+    const respuesta = await app.inject({
+      method: 'POST',
+      url: `/plantillas/${plantillaId}/prueba`,
+      headers: { 'x-tenant-id': tenantId },
+      payload: { conexionId, valores },
+    });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    return respuesta.json() as Veredicto;
+  }
+
+  test('5.4 rows come back over the composed views; a hostile value comes back as data', async () => {
+    // Declared out of contract order: composition follows the contract (DEC-70).
+    const sql =
+      'SELECT p.id, p.nombre, i.cantidad, :eco AS eco ' +
+      'FROM v_producto p JOIN v_insumo i ON i.id = p.id ORDER BY p.id';
+    const id = await plantilla(['insumo', 'producto'], sql, [{ nombre: 'eco', tipo: 'texto' }]);
+    for (const eco of ["O'Brien", `x'; DROP TABLE "Plantilla"; --`]) {
+      const cuerpo = await veredicto(id, { eco });
+      assert.ok(cuerpo.resultado === 'ok', JSON.stringify(cuerpo));
+      // Spliced into the text, the first value would be a syntax error and the second a
+      // DROP: returned verbatim in every row, each was bound as a driver parameter only.
+      assert.deepEqual(cuerpo.columnas, ['id', 'nombre', 'cantidad', 'eco']);
+      assert.deepEqual(cuerpo.filas, [
+        [1, 'uno', 10, eco],
+        [2, 'dos', 20, eco],
+      ]);
+    }
+    assert.equal(await prisma.plantilla.count({ where: { id } }), 1, 'the catalog must be intact');
+  });
+
+  test('5.4 a template reading a view it did not declare runs and answers 200 fallo 42P01', async () => {
+    // `insumo` has a passing view on this connection, but only declared entities are
+    // composed: `v_insumo` is an undefined relation, reported by the existing contract.
+    const id = await plantilla(['producto'], 'SELECT * FROM v_producto CROSS JOIN v_insumo');
+    const cuerpo = await veredicto(id);
+    assert.ok(cuerpo.resultado === 'fallo', JSON.stringify(cuerpo));
+    assert.deepEqual(
+      [cuerpo.fase, cuerpo.categoria, cuerpo.codigo],
+      ['ejecucion', 'error-sintaxis', '42P01'],
+    );
   });
 });
