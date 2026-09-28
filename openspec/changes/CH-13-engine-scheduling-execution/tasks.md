@@ -50,15 +50,15 @@ CH-12's verify-then-archive close).
 
 ## 1. Schema, Isolation, Config & Dependency (`prisma/schema.prisma`, migration, `src/aislamiento-prisma.ts`, `src/config.ts`, `.env.example`, `package.json`)
 
-- [ ] 1.1 Run `npm view cron-parser version` and confirm the installed/pinned API is `CronExpressionParser.parse(expr, { currentDate, tz }).next().toDate()`; pin the exact version (`5.10.1` per orchestrator note) in `package.json`, no caret (DEC-76 design resolution)
-- [ ] 1.2 Modify `prisma/schema.prisma`: add `model Automatizacion` (`tenantId`, `plantillaId`, `conexionId` FKs RESTRICT; `valores Json @default("{}")`; `cron String`; `activo Boolean @default(true)`; `creadaEn`; `@@index([tenantId])`) and `model Ejecucion` (`tenantId`, `automatizacionId` FKs; `estado`; `iniciadaEn`; `finalizadaEn`; `duracionMs`; `filas`; `corte`; `fase`; `error`; `codigoError`; `@@index([tenantId])`, `@@index([automatizacionId, iniciadaEn])`) (DEC-74; spec `domain-data-model` "Inspecting the schema after this change")
-- [ ] 1.3 Create `prisma/migrations/20260928000000_automatizacion_ejecucion/migration.sql`: additive `CREATE TABLE` for both, FKs, indexes
-- [ ] 1.4 RED extend `src/aislamiento.test.ts`: `Automatizacion` and `Ejecucion` reads/writes with no active tenant throw `ErrorSinTenantActivo` (spec `tenant-isolation` "Every Scoped Query Is Filtered by the Active Tenant")
-- [ ] 1.5 GREEN: modify `src/aislamiento-prisma.ts` — add `Automatizacion` and `Ejecucion` to `MODELOS_AISLADOS` — satisfies 1.4
-- [ ] 1.6 Modify `src/contexto-tenant.ts`: update the `conTenantActivo` doc comment noting the scheduler as a second production entry (design-level resolution under DEC-13/DEC-14, already registered in `docs/01-decisiones.md` — comment update only, no new decision)
-- [ ] 1.7 RED extend `src/config.test.ts`: `ZONA_HORARIA_AUTOMATIZACIONES` unset defaults to `UTC`; an invalid IANA zone (checked via `Intl.DateTimeFormat`) stops the process at boot (spec `project-environment` "Unset timezone falls back to the documented default")
-- [ ] 1.8 Implement `zonaHoraria` in `src/config.ts` — satisfies 1.7; add `ZONA_HORARIA_AUTOMATIZACIONES=UTC` placeholder to `.env.example` (spec "Inspecting the example file")
-- [ ] 1.9 Checkpoint: `npx prisma validate`; `npx tsc --noEmit` clean; `npm test -- src/aislamiento.test.ts src/config.test.ts` green
+- [x] 1.1 Run `npm view cron-parser version` and confirm the installed/pinned API is `CronExpressionParser.parse(expr, { currentDate, tz }).next().toDate()`; pin the exact version (`5.10.1` per orchestrator note) in `package.json`, no caret (DEC-76 design resolution)
+- [x] 1.2 Modify `prisma/schema.prisma`: add `model Automatizacion` (`tenantId`, `plantillaId`, `conexionId` FKs RESTRICT; `valores Json @default("{}")`; `cron String`; `activo Boolean @default(true)`; `creadaEn`; `@@index([tenantId])`) and `model Ejecucion` (`tenantId`, `automatizacionId` FKs; `estado`; `iniciadaEn`; `finalizadaEn`; `duracionMs`; `filas`; `corte`; `fase`; `error`; `codigoError`; `@@index([tenantId])`, `@@index([automatizacionId, iniciadaEn])`) (DEC-74; spec `domain-data-model` "Inspecting the schema after this change")
+- [x] 1.3 Create `prisma/migrations/20260928000000_automatizacion_ejecucion/migration.sql`: additive `CREATE TABLE` for both, FKs, indexes
+- [x] 1.4 RED extend `src/aislamiento.test.ts`: `Automatizacion` and `Ejecucion` reads/writes with no active tenant throw `ErrorSinTenantActivo` (spec `tenant-isolation` "Every Scoped Query Is Filtered by the Active Tenant")
+- [x] 1.5 GREEN: modify `src/aislamiento-prisma.ts` — add `Automatizacion` and `Ejecucion` to `MODELOS_AISLADOS` — satisfies 1.4
+- [x] 1.6 Modify `src/contexto-tenant.ts`: update the `conTenantActivo` doc comment noting the scheduler as a second production entry (design-level resolution under DEC-13/DEC-14, already registered in `docs/01-decisiones.md` — comment update only, no new decision)
+- [x] 1.7 RED extend `src/config.test.ts`: `ZONA_HORARIA_AUTOMATIZACIONES` unset defaults to `UTC`; an invalid IANA zone (checked via `Intl.DateTimeFormat`) stops the process at boot (spec `project-environment` "Unset timezone falls back to the documented default")
+- [x] 1.8 Implement `zonaHoraria` in `src/config.ts` — satisfies 1.7; add `ZONA_HORARIA_AUTOMATIZACIONES=UTC` placeholder to `.env.example` (spec "Inspecting the example file")
+- [x] 1.9 Checkpoint: `npx prisma validate`; `npx tsc --noEmit` clean; `npm test -- src/aislamiento.test.ts src/config.test.ts` green
 
 ## 2. Pure Scheduling Module (`src/automatizaciones.ts`)
 
