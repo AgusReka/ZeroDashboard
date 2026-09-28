@@ -41,12 +41,12 @@ verify-report-then-archive pair on one branch).
 
 ## 1. Schema, Migration, Exemption & Pass-Through (`prisma/schema.prisma`, migration, `src/contexto-tenant.ts`)
 
-- [ ] 1.1 Modify `prisma/schema.prisma`: add `model Plantilla` — `nombre`, `sql`, `parametros Json @default("[]")`, `entidades Json`, `automatizacion String`, `formato String`, `toleranciaFrescuraMinutos Int`; no `tenantId`, no relations (DEC-61, DEC-73; spec `domain-data-model` "Plantilla carries no tenant reference")
-- [ ] 1.2 Create `prisma/migrations/20260927100000_plantilla/migration.sql`: additive `CREATE TABLE "Plantilla"`, no FK, no index beyond the PK
-- [ ] 1.3 RED extend `src/aislamiento.test.ts`: `Plantilla` reads/writes pass through with no active tenant and no filter applied (spec `domain-data-model` "Inspecting the schema after this change"; `tenant-isolation` "Catalog routes work without any tenant header")
-- [ ] 1.4 RED extend `src/contexto-tenant.test.ts`: exact rows `GET`/`POST /plantillas` and `GET`/`PUT /plantillas/:id` pass; `DELETE`/`PATCH /plantillas/:id` and `/plantillas-falsas` are rejected `400`; `POST /plantillas/:id/prueba` is rejected `400 tenant-no-indicado` (Threat Matrix "DELETE/PATCH /plantillas/:id, /plantillas-falsas"; spec `tenant-isolation` "Test route still requires a resolvable active tenant")
-- [ ] 1.5 GREEN: modify `src/contexto-tenant.ts` `esExenta` — add the four exact rows; update the doc comment — satisfies 1.4
-- [ ] 1.6 Checkpoint: `npx prisma validate`; `npx tsc --noEmit` clean; `npm test -- src/aislamiento.test.ts src/contexto-tenant.test.ts` green
+- [x] 1.1 Modify `prisma/schema.prisma`: add `model Plantilla` — `nombre`, `sql`, `parametros Json @default("[]")`, `entidades Json`, `automatizacion String`, `formato String`, `toleranciaFrescuraMinutos Int`; no `tenantId`, no relations (DEC-61, DEC-73; spec `domain-data-model` "Plantilla carries no tenant reference")
+- [x] 1.2 Create `prisma/migrations/20260927100000_plantilla/migration.sql`: additive `CREATE TABLE "Plantilla"`, no FK, no index beyond the PK
+- [x] 1.3 RED extend `src/aislamiento.test.ts`: `Plantilla` reads/writes pass through with no active tenant and no filter applied (spec `domain-data-model` "Inspecting the schema after this change"; `tenant-isolation` "Catalog routes work without any tenant header")
+- [x] 1.4 RED extend `src/contexto-tenant.test.ts`: exact rows `GET`/`POST /plantillas` and `GET`/`PUT /plantillas/:id` pass; `DELETE`/`PATCH /plantillas/:id` and `/plantillas-falsas` are rejected `400`; `POST /plantillas/:id/prueba` is rejected `400 tenant-no-indicado` (Threat Matrix "DELETE/PATCH /plantillas/:id, /plantillas-falsas"; spec `tenant-isolation` "Test route still requires a resolvable active tenant")
+- [x] 1.5 GREEN: modify `src/contexto-tenant.ts` `esExenta` — add the four exact rows; update the doc comment — satisfies 1.4
+- [x] 1.6 Checkpoint: `npx prisma validate`; `npx tsc --noEmit` clean; `npm test -- src/aislamiento.test.ts src/contexto-tenant.test.ts` green
 
 ## 2. Pure Composition Module (`src/plantillas.ts`)
 

@@ -91,7 +91,23 @@ export function conTenantActivo<T>(tenant: TenantActivo, fn: () => Promise<T>): 
  * no scoped model it could leak even if a later edit tried to reach for one. That
  * structural absence, not a promise about the handler's body, is what makes exempting it
  * safe.
+ *
+ * The template catalog joins under DEC-61 with four exact rows, each one a method paired
+ * with a route pattern: `GET`/`POST /plantillas` and `GET`/`PUT /plantillas/:id`. A
+ * template is a global catalog entry, not tenant data, and its registrar is handed the
+ * `plantilla` delegate alone, so an exempt handler has no scoped model within reach.
+ * The rows are exact on purpose, and a `/plantillas/` prefix would be wrong: it would
+ * also exempt `POST /plantillas/:id/prueba`, which resolves a tenant-owned `Conexion`
+ * and must stay scoped (DEC-62). `DELETE` and `PATCH` are not listed because a template
+ * is replaced in place and never deleted (DEC-68).
  */
+const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
+  'GET /plantillas',
+  'POST /plantillas',
+  'GET /plantillas/:id',
+  'PUT /plantillas/:id',
+]);
+
 function esExenta(metodo: string, patron: string | undefined): boolean {
   if (patron === undefined) {
     return false;
@@ -104,6 +120,10 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
     metodo === 'GET' &&
     (patron === '/health' || patron === '/consola' || patron === '/contrato')
   ) {
+    return true;
+  }
+  // The template catalog is shared by every tenant (DEC-61); see PLANTILLAS_EXENTAS.
+  if (PLANTILLAS_EXENTAS.has(`${metodo} ${patron}`)) {
     return true;
   }
   // Bootstrap: requiring a tenant in order to create the first tenant is unsatisfiable.

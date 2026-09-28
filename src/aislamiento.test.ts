@@ -3,13 +3,17 @@ import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from './generated/prisma/client.js';
+import { Prisma, PrismaClient } from './generated/prisma/client.js';
 import {
   ErrorAislamientoNoSoportado,
   aplicarAlcance,
   extenderConAislamiento,
 } from './aislamiento-prisma.js';
-import { ErrorSinTenantActivo, registrarContextoTenant } from './contexto-tenant.js';
+import {
+  ErrorSinTenantActivo,
+  conTenantActivo,
+  registrarContextoTenant,
+} from './contexto-tenant.js';
 import { registerConexionRoutes } from './conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
@@ -634,6 +638,85 @@ describe(
       const tenant = await aislado.tenant.findUnique({ where: { id: a.tenantId } });
       assert.equal(tenant?.id, a.tenantId);
     });
+
+    // ---- CH-12 1.3 Plantilla is a global catalog, outside the filter (DEC-61) --------
+
+    test('CH-12 1.3 Plantilla reads and writes pass through with no active tenant', async () => {
+      // The same claim 3.6 makes for `Tenant`, now for the first global model with data
+      // of its own: it is absent from MODELOS_AISLADOS, so the extension hands every
+      // operation straight to Prisma. Outside any context a scoped model throws
+      // ErrorSinTenantActivo (see above); this one must not.
+      const aislado = extenderConAislamiento(db);
+      const marca = `CH-12 plantilla global ${Date.now()}`;
+
+      const creada = await aislado.plantilla.create({
+        data: {
+          nombre: marca,
+          sql: 'SELECT * FROM v_producto',
+          entidades: ['producto'],
+          automatizacion: 'stock-fisico',
+          formato: 'correo-html',
+          toleranciaFrescuraMinutos: 30,
+        },
+      });
+      try {
+        // DEC-73: `parametros` is a JSON column whose `[]` default declares nothing,
+        // exactly like `ConsultaGuardada.parametros`.
+        assert.deepEqual(creada.parametros, []);
+        assert.deepEqual(creada.entidades, ['producto']);
+        // No `tenantId` was injected, because the model has no such column at all.
+        assert.ok(!('tenantId' in creada), 'Plantilla must carry no tenantId column');
+
+        const leida = await aislado.plantilla.findUnique({ where: { id: creada.id } });
+        assert.equal(leida?.nombre, marca);
+
+        const reemplazada = await aislado.plantilla.update({
+          where: { id: creada.id },
+          data: { sql: 'SELECT * FROM v_insumo', entidades: ['insumo'] },
+        });
+        assert.equal(reemplazada.id, creada.id);
+        assert.equal(reemplazada.sql, 'SELECT * FROM v_insumo');
+
+        const listadas = await aislado.plantilla.findMany({ where: { nombre: marca } });
+        assert.equal(listadas.length, 1);
+      } finally {
+        await db.plantilla.delete({ where: { id: creada.id } });
+      }
+    });
+
+    test('CH-12 1.3 Plantilla is not filtered by an active tenant either', async () => {
+      // The other side of "no filter applied": inside a tenant's context the row is
+      // still visible, and visible identically to both tenants. A scoped model would
+      // show it to neither (the injected `tenantId` would match no row) — so seeing it
+      // from A and from B is what proves nothing was conjoined.
+      const aislado = extenderConAislamiento(db);
+      const marca = `CH-12 plantilla sin filtro ${Date.now()}`;
+      const fila = await db.plantilla.create({
+        data: {
+          nombre: marca,
+          sql: 'SELECT * FROM v_producto',
+          entidades: ['producto'],
+          automatizacion: 'stock-producible',
+          formato: 'correo-html',
+          toleranciaFrescuraMinutos: 0,
+        },
+      });
+      try {
+        for (const fixture of [a, b]) {
+          const vistas = await conTenantActivo(
+            { id: fixture.tenantId, nombre: fixture.nombre },
+            () => aislado.plantilla.findMany({ where: { nombre: marca } }),
+          );
+          assert.deepEqual(
+            vistas.map((p) => p.id),
+            [fila.id],
+            `tenant ${fixture.nombre} must see the global template unfiltered`,
+          );
+        }
+      } finally {
+        await db.plantilla.delete({ where: { id: fila.id } });
+      }
+    });
   },
 );
 
@@ -726,5 +809,38 @@ describe('aplicarAlcance — the closed operation map', () => {
     const original = { where: { nombre: 'x' } };
     aplicarAlcance('findMany', original, TENANT);
     assert.deepEqual(original, { where: { nombre: 'x' } });
+  });
+});
+
+// ---- CH-12 1.3 the schema itself, read from the generated client -------------------
+
+describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61)', () => {
+  test('the model list is exactly the four tenant models plus Plantilla', () => {
+    // Read from the generated client rather than by grepping `schema.prisma`: this is
+    // the model list the extension actually sees at runtime. It also pins the
+    // out-of-release entities out — no `Usuario`, `Ejecucion` or `Automatizacion`.
+    assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
+      'Conexion',
+      'ConsultaGuardada',
+      'Plantilla',
+      'Tenant',
+      'VistaCanonica',
+    ]);
+  });
+
+  test('Plantilla carries no tenantId column, unlike every scoped model', () => {
+    const columnas = Object.values(Prisma.PlantillaScalarFieldEnum);
+    assert.deepEqual(columnas.sort(), [
+      'automatizacion',
+      'entidades',
+      'formato',
+      'id',
+      'nombre',
+      'parametros',
+      'sql',
+      'toleranciaFrescuraMinutos',
+    ]);
+    // The control: a scoped model does carry it, so the absence above is meaningful.
+    assert.ok(Object.values(Prisma.ConsultaGuardadaScalarFieldEnum).includes('tenantId'));
   });
 });
