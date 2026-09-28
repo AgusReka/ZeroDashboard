@@ -73,6 +73,9 @@ class Nodo {
     return this.hijos.filter((hijo) => hijo.tagName === 'option');
   }
 
+  /** Loading a saved query focuses the editor; there is no focus to model here. */
+  focus(): void {}
+
   appendChild(hijo: Nodo): Nodo {
     this.hijos.push(hijo);
     return hijo;
@@ -117,6 +120,8 @@ const IDS = [
   'formulario',
   'conexion',
   'sql',
+  'parametros',
+  'agregar-parametro',
   'limite',
   'ejecutar',
   'anterior',
@@ -274,23 +279,64 @@ describe('the console document, served by the real route', () => {
     return escenario;
   }
 
+  /** Selects the tenant; switching reloads the saved-query list, one more request. */
+  async function elegirTenant(escenario: Escenario, guardadas: unknown[] = []): Promise<void> {
+    const selector = escenario.nodos.get('tenant') as Nodo;
+    selector.value = 't-1';
+    escenario.respuestas.push({ status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } });
+    selector.disparar('change');
+    await new Promise((resolver) => setImmediate(resolver));
+  }
+
+  /** Fires `evento` on `id` with `cuerpo` queued as the response, and lets it settle. */
+  async function enviar(
+    escenario: Escenario,
+    cuerpo: unknown,
+    status = 200,
+    id = 'formulario',
+    evento = 'submit',
+  ): Promise<void> {
+    escenario.respuestas.push({ status, cuerpo });
+    (escenario.nodos.get(id) as Nodo).disparar(evento);
+    await new Promise((resolver) => setImmediate(resolver));
+    await new Promise((resolver) => setImmediate(resolver));
+  }
+
   /** Selects the tenant and submits the form with `cuerpo` queued as the response. */
   async function ejecutarCon(
     escenario: Escenario,
     cuerpo: unknown,
     status = 200,
   ): Promise<void> {
-    const selector = escenario.nodos.get('tenant') as Nodo;
-    selector.value = 't-1';
-    // Switching tenants reloads the saved-query list, which is one more request.
-    escenario.respuestas.push({ status: 200, cuerpo: { consultasGuardadas: [], truncado: false } });
-    selector.disparar('change');
-    await new Promise((resolver) => setImmediate(resolver));
+    await elegirTenant(escenario);
+    await enviar(escenario, cuerpo, status);
+  }
 
-    escenario.respuestas.push({ status, cuerpo });
-    (escenario.nodos.get('formulario') as Nodo).disparar('submit');
-    await new Promise((resolver) => setImmediate(resolver));
-    await new Promise((resolver) => setImmediate(resolver));
+  /** The declaration rows currently on the page. */
+  function filas(escenario: Escenario): Nodo[] {
+    return (escenario.nodos.get('parametros') as Nodo).porClase('parametro');
+  }
+
+  /** Nodes of one class inside a row: nombre, tipo, value control or its label. */
+  function en(fila: Nodo, clase: string): Nodo {
+    return fila.porClase(clase)[0];
+  }
+
+  /** Adds a row the way the operator does: Agregar, type the name, pick the tipo, fill. */
+  function declarar(escenario: Escenario, nombre: string, tipo: string, valor = ''): Nodo {
+    (escenario.nodos.get('agregar-parametro') as Nodo).disparar('click');
+    const fila = filas(escenario).at(-1) as Nodo;
+    en(fila, 'parametro-nombre').value = nombre;
+    en(fila, 'parametro-nombre').disparar('input');
+    en(fila, 'parametro-tipo').value = tipo;
+    en(fila, 'parametro-tipo').disparar('change');
+    en(fila, 'parametro-valor').value = valor;
+    return fila;
+  }
+
+  /** The body of the last request sent. */
+  function ultimoCuerpo(escenario: Escenario): Record<string, unknown> {
+    return escenario.peticiones[escenario.peticiones.length - 1].cuerpo as Record<string, unknown>;
   }
 
   test('the console boots with a tenant and sends the header on a scoped call', async () => {
@@ -447,5 +493,105 @@ describe('the console document, served by the real route', () => {
     const ejecucion = escenario.peticiones[escenario.peticiones.length - 1];
     assert.equal(ejecucion.url, '/consultas/ejecutar');
     assert.equal((ejecucion.cuerpo as { limite: number }).limite, 5000);
+  });
+
+  // ---- CH-11: query parameters (spec `query-console`, DEC-48, DEC-60) ----------------
+
+  /** Spec "Rendering inputs for a declared parameter"; design "A blank value omits the key". */
+  test('a declared parameter renders one control labeled with its nombre, and a blank is omitted', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    const fecha = declarar(escenario, 'desde', 'fecha');
+    const booleano = declarar(escenario, 'activo', 'booleano');
+
+    assert.equal(filas(escenario).length, 2);
+    assert.equal(en(fecha, 'parametro-leyenda').textContent, 'desde');
+    assert.equal(en(fecha, 'parametro-valor').tagName, 'input');
+    assert.match(String((en(fecha, 'parametro-valor') as unknown as { placeholder: string }).placeholder), /AAAA-MM-DD/);
+    assert.deepEqual(
+      en(booleano, 'parametro-valor').options.map((opcion) => opcion.value),
+      ['', 'true', 'false'],
+    );
+
+    await enviar(escenario, respuestaOk());
+    const cuerpo = ultimoCuerpo(escenario);
+    assert.deepEqual(cuerpo.parametros, [
+      { nombre: 'desde', tipo: 'fecha' },
+      { nombre: 'activo', tipo: 'booleano' },
+    ]);
+    assert.deepEqual(cuerpo.valores, {}, 'a blank control sends no key, never an empty string');
+  });
+
+  /** Spec "Submitting collected parameter values"; design Console value-control table. */
+  test('execute sends each value with the JSON type its tipo requires', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    declarar(escenario, 'n', 'numero', ' 10 ');
+    declarar(escenario, 'b', 'booleano', 'false');
+    declarar(escenario, 'f', 'fecha', '2026-09-01');
+    declarar(escenario, 't', 'texto', "O'Brien ");
+    declarar(escenario, 'x', 'numero', 'diez');
+
+    await enviar(escenario, respuestaOk());
+    assert.deepEqual(ultimoCuerpo(escenario).valores, {
+      n: 10,
+      b: false,
+      f: '2026-09-01',
+      t: "O'Brien ",
+      x: 'diez',
+    });
+  });
+
+  /** Spec "Declaration saved with the query" and "Declaration loaded with the query". */
+  test('save sends the declaration only, and loading rebuilds the rows with empty values', async () => {
+    const escenario = await arrancar();
+    const guardada = { id: 'g-1', nombre: 'Ventas', descripcion: null, creadaEn: '2026-09-27' };
+    await elegirTenant(escenario, [guardada]);
+    declarar(escenario, 'desde', 'fecha', '2026-01-01');
+    (escenario.nodos.get('nombre') as Nodo).value = 'Ventas';
+
+    // The 201 is followed by the list refresh the save triggers.
+    escenario.respuestas.push({ status: 201, cuerpo: { consultaGuardada: guardada } });
+    await enviar(escenario, { consultasGuardadas: [guardada], truncado: false }, 200, 'guardar', 'click');
+    const guardado = escenario.peticiones[escenario.peticiones.length - 2];
+    assert.equal(guardado.url, '/consultas-guardadas');
+    assert.deepEqual((guardado.cuerpo as Record<string, unknown>).parametros, [{ nombre: 'desde', tipo: 'fecha' }]);
+    assert.ok(!('valores' in (guardado.cuerpo as object)), 'values are never saved (DEC-48)');
+
+    const cargar = (escenario.nodos.get('guardadas') as Nodo).hijos[0].hijos.find((hijo) => hijo.tagName === 'button');
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        consultaGuardada: {
+          sql: 'SELECT :a, :b',
+          parametros: [
+            { nombre: 'a', tipo: 'numero' },
+            { nombre: 'b', tipo: 'booleano' },
+          ],
+        },
+      },
+    });
+    (cargar as Nodo).disparar('click');
+    await new Promise((resolver) => setImmediate(resolver));
+    await new Promise((resolver) => setImmediate(resolver));
+
+    const cargadas = filas(escenario);
+    assert.equal(cargadas.length, 2, 'the loaded declaration replaces the rows on the page');
+    assert.deepEqual(
+      cargadas.map((fila) => [en(fila, 'parametro-nombre').value, en(fila, 'parametro-tipo').value]),
+      [
+        ['a', 'numero'],
+        ['b', 'booleano'],
+      ],
+    );
+    assert.deepEqual(cargadas.map((fila) => en(fila, 'parametro-valor').value), ['', '']);
+  });
+
+  test('switching tenant clears the declaration rows', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    declarar(escenario, 'desde', 'fecha', '2026-01-01');
+    await elegirTenant(escenario);
+    assert.equal(filas(escenario).length, 0);
   });
 });
