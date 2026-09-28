@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import {
   analizarSentencia,
   escanearSentencia,
+  prepararSentencia,
   reescribirMarcadores,
   validarDeclaracion,
   type DeclaracionParametro,
@@ -176,9 +177,9 @@ describe('reescribirMarcadores — :nombre to $k (DEC-47)', () => {
 });
 
 /**
- * Unit cases for CH-11 Phase 2 (DEC-49, DEC-56, DEC-57, DEC-59): declaration validation
- * and statement analysis. Each problem is pinned by its `motivo`, its `parametro` and its
- * `campo`, because the route renders exactly these three fields.
+ * Unit cases for CH-11 Phase 2 (DEC-49, DEC-50, DEC-56..DEC-60): declaration validation,
+ * statement analysis and `prepararSentencia`. Each problem is pinned by its `motivo`,
+ * its `parametro` and its `campo`, because the route renders exactly these three fields.
  */
 
 /** The `motivo`/`parametro` pairs of a result's problems, in order; `[]` when it succeeded. */
@@ -258,5 +259,106 @@ describe('analizarSentencia', () => {
 
   test('a $1 inside a literal, a comment or a dollar quote is not rejected', () => {
     assert.deepEqual(analizarSentencia("SELECT 'precio: $1', $$ $2 $$ /* $3 */", []), []);
+  });
+});
+
+describe('prepararSentencia', () => {
+  const decl = [
+    { nombre: 'desde', tipo: 'fecha' },
+    { nombre: 'n', tipo: 'numero' },
+  ];
+  const sql = 'SELECT * FROM t WHERE creado >= :desde AND total > :n AND alta >= :desde';
+
+  test('a valid request binds values in declaration order at $1..$n', () => {
+    const r = prepararSentencia(sql, decl, { n: 10, desde: '2026-09-27' });
+    assert.ok(r.ok);
+    assert.equal(r.valor.texto, 'SELECT * FROM t WHERE creado >= $1 AND total > $2 AND alta >= $1');
+    assert.deepEqual(r.valor.valores, ['2026-09-27', 10]);
+  });
+
+  test('zero parameters leave the text byte-identical and bind nothing', () => {
+    const r = prepararSentencia("SELECT 'a:b'::text", undefined, undefined);
+    assert.ok(r.ok);
+    assert.deepEqual([r.valor.texto, r.valor.valores], ["SELECT 'a:b'::text", []]);
+  });
+
+  test('a value for an undeclared name is valor-no-declarado (DEC-58)', () => {
+    const r = prepararSentencia('WHERE a = :x', [{ nombre: 'x', tipo: 'numero' }], { x: 1, z: 2 });
+    assert.ok(!r.ok);
+    assert.deepEqual(r.problemas, [{ parametro: 'z', motivo: 'valor-no-declarado', campo: '/valores/z' }]);
+  });
+
+  test('a declared name with no value is valor-faltante (DEC-50)', () => {
+    assert.deepEqual(motivos(prepararSentencia(sql, decl, { n: 1 })), [['valor-faltante', 'desde']]);
+  });
+
+  test('value shapes follow DEC-60: one JSON type per tipo, no implicit conversions', () => {
+    const casos: Array<[string, unknown, boolean]> = [
+      ['texto', 'hola', true],
+      ['texto', 10, false],
+      ['numero', 10, true],
+      ['numero', -1.5, true],
+      ['numero', '10', false],
+      ['numero', null, false],
+      ['numero', JSON.parse('1e400'), false],
+      ['booleano', false, true],
+      ['booleano', 'true', false],
+      ['fecha', '2026-09-27', true],
+      ['fecha', '2026-09-27T10:00:00Z', true],
+      ['fecha', '2026-09-27T10:00:00.123456-03:00', true],
+      ['fecha', '2026-02-30', true], // calendar validity is left to Postgres (DEC-51)
+      ['fecha', '27/09/2026', false],
+      ['fecha', JSON.parse('1e400'), false],
+    ];
+    for (const [tipo, valor, aceptado] of casos) {
+      const r = prepararSentencia('WHERE a = :v', [{ nombre: 'v', tipo }], { v: valor });
+      assert.deepEqual(motivos(r), aceptado ? [] : [['valor-invalido', 'v']], `${tipo} ${String(valor)}`);
+    }
+  });
+
+  test('a value map that is not an object is rejected rather than read', () => {
+    assert.deepEqual(motivos(prepararSentencia(sql, decl, ['2026-09-27', 1])), [['valor-invalido', null]]);
+  });
+
+  test('a value never appears in the prepared text, only in valores (rule 4)', () => {
+    const declaracion = [{ nombre: 'x', tipo: 'texto' }];
+    for (const valor of ["O'Brien", "'; DROP TABLE t; --", '$1', ':x']) {
+      const r = prepararSentencia('SELECT * FROM t WHERE nombre = :x', declaracion, { x: valor });
+      assert.ok(r.ok);
+      assert.equal(r.valor.texto, 'SELECT * FROM t WHERE nombre = $1');
+      assert.deepEqual(r.valor.valores, [valor]);
+    }
+  });
+
+  test('every problem is returned in one fixed-order list, not only the first', () => {
+    const r = prepararSentencia(
+      'WHERE a = :x AND b = :y AND c = $1',
+      [
+        { nombre: 'x', tipo: 'numero' },
+        { nombre: 'u', tipo: 'texto' },
+        { nombre: 'f', tipo: 'fecha' },
+      ],
+      { x: '1', w: true, u: 'ok' },
+    );
+    assert.deepEqual(motivos(r), [
+      ['posicional-a-mano', '$1'],
+      ['sin-declarar', 'y'],
+      ['sin-usar', 'u'],
+      ['sin-usar', 'f'],
+      ['valor-faltante', 'f'],
+      ['valor-no-declarado', 'w'],
+      ['valor-invalido', 'x'],
+    ]);
+  });
+
+  test('an invalid declaration is reported alone; the statement is not read against it', () => {
+    const r = prepararSentencia('WHERE a = :x AND b = $1', [{ nombre: 'x', tipo: 'fecha ' }], {});
+    assert.deepEqual(motivos(r), [['tipo-desconocido', 'x']]);
+  });
+
+  test('a value-map key is escaped as a JSON pointer in campo', () => {
+    const r = prepararSentencia('SELECT 1', [], { 'a/b~c': 1 });
+    assert.ok(!r.ok);
+    assert.equal(r.problemas[0].campo, '/valores/a~1b~0c');
   });
 });
