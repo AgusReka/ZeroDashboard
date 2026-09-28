@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
+import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { TIPOS_PARAMETRO } from './parametros.js';
 import { FORMATOS, VALORES_AUTOMATIZACION, problemasDePlantilla } from './plantillas.js';
 import { ENTIDADES_CANONICAS } from './vistas-canonicas.js';
@@ -13,13 +14,22 @@ import { ENTIDADES_CANONICAS } from './vistas-canonicas.js';
  * structural argument). The test route, which does need a tenant, lives in its own file.
  */
 
-/** Every column: what create echoes back. */
-export const PlantillaCompleta = {
+/**
+ * The list projection. `sql`, `parametros` and `entidades` stay out for the reason
+ * `ConsultaGuardadaResumen` leaves `sql` out: a list renders names, and loading a
+ * template is a second, explicit get-by-id call.
+ */
+export const PlantillaResumen = {
   id: true,
   nombre: true,
   automatizacion: true,
   formato: true,
   toleranciaFrescuraMinutos: true,
+} as const;
+
+/** Every column: create and get-by-id. */
+export const PlantillaCompleta = {
+  ...PlantillaResumen,
   sql: true,
   parametros: true,
   entidades: true,
@@ -34,6 +44,10 @@ export interface RegistroPlantillaBody {
   automatizacion: string;
   formato: string;
   toleranciaFrescuraMinutos: number;
+}
+
+interface PlantillaParams {
+  id: string;
 }
 
 /**
@@ -168,4 +182,32 @@ export function registerPlantillaRoutes(
       return reply.code(201).send({ plantilla });
     },
   );
+
+  app.get('/plantillas', async (_request, reply) => {
+    // `LIMITE_LISTADO + 1` decides the page and `truncado` in one query. There is no
+    // delete (DEC-68), so the table only grows. `Plantilla` has no timestamp, so the order
+    // is by name, with `id` as the tiebreaker that makes it total.
+    const filas = await plantillas.findMany({
+      select: PlantillaResumen,
+      orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
+      take: LIMITE_LISTADO + 1,
+    });
+    const truncado = filas.length > LIMITE_LISTADO;
+    return reply.code(200).send({
+      plantillas: truncado ? filas.slice(0, LIMITE_LISTADO) : filas,
+      truncado,
+    });
+  });
+
+  // `Plantilla.id` is `text`, so a malformed id cannot throw: it is simply not found.
+  app.get<{ Params: PlantillaParams }>('/plantillas/:id', async (request, reply) => {
+    const plantilla = await plantillas.findUnique({
+      where: { id: request.params.id },
+      select: PlantillaCompleta,
+    });
+    if (plantilla === null) {
+      return reply.code(404).send({ error: 'plantilla-no-encontrada' });
+    }
+    return reply.code(200).send({ plantilla });
+  });
 }

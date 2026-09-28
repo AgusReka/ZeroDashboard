@@ -62,9 +62,9 @@ verify-report-then-archive pair on one branch).
 
 - [x] 3.1 RED `src/plantillas-rutas.test.ts`: `POST /plantillas` with no `x-tenant-id` persists, `201`; `nombre`/`sql` required; `entidades` `minItems:1`/`uniqueItems`/enum of `CONTRATO_CANONICO` names; `automatizacion` enum of `AUTOMATIZACIONES`; `formato` enum `['correo-html']`; `toleranciaFrescuraMinutos` integer `minimum:0` — each violation `400` naming it (spec "Creating a template without a tenant header", "Unknown entity rejected", "Invalid automatizacion rejected", "Valid automatizacion accepted", "Unsupported formato rejected")
 - [x] 3.2 RED extend: `sql` containing `WHERE id = $1` is rejected `400` regardless of `parametros`; a declared-but-unused parameter is rejected naming it (spec "Hand-written positional bind always rejected", "Declared parameter unused in sql")
-- [ ] 3.3 RED extend: `GET /plantillas` lists with no tenant header, capped at `LIMITE_LISTADO + 1` plus `truncado`, summary omitting `sql`/`parametros`/`entidades`; `GET /plantillas/:id` returns full fields; unknown id is `404` (spec "Round-trip create, get, replace", "Unknown id")
-- [ ] 3.4 Implement `registerPlantillaRoutes(app, plantillas: PrismaAislado['plantilla'])` in `src/plantillas-rutas.ts`: strict AJV schema with `propertyNames`, `sanearSql` → `problemasDePlantilla` → `create`; `findMany` with the list cap; `findUnique` — satisfies 3.1–3.3
-- [ ] 3.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/plantillas-rutas.test.ts` green
+- [x] 3.3 RED extend: `GET /plantillas` lists with no tenant header, capped at `LIMITE_LISTADO + 1` plus `truncado`, summary omitting `sql`/`parametros`/`entidades`; `GET /plantillas/:id` returns full fields; unknown id is `404` (spec "Round-trip create, get, replace", "Unknown id")
+- [x] 3.4 Implement `registerPlantillaRoutes(app, plantillas: PrismaAislado['plantilla'])` in `src/plantillas-rutas.ts`: strict AJV schema with `propertyNames`, `sanearSql` → `problemasDePlantilla` → `create`; `findMany` with the list cap; `findUnique` — satisfies 3.1–3.3
+- [x] 3.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/plantillas-rutas.test.ts` green
 
 ## 4. Replace + `contrato.ts` Comment (`src/plantillas-rutas.ts`, `src/contrato.ts`, `src/server.ts`)
 

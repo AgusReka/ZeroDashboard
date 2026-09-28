@@ -6,10 +6,11 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
+import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 
 /**
- * CH-12 unit 3a: the template catalog's create (tasks 3.1, 3.2). No request
+ * CH-12 unit 3: the template catalog's create, list and get (tasks 3.1–3.3). No request
  * here carries `x-tenant-id`: the catalog is global (DEC-61) and its routes are exempt by
  * exact row, so every case below is also a proof of that exemption.
  */
@@ -136,7 +137,7 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2)', () => {
   });
 });
 
-// ---- 3.1 create against a live PostgreSQL ----------------------------------------
+// ---- 3.1/3.3 create, list and get against a live PostgreSQL ----------------------
 
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -168,7 +169,7 @@ const motivoSkip: string | false = (await esAlcanzable(objetivo.host, objetivo.p
   ? false
   : `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — set TEST_DB_*`;
 
-describe('plantilla catalog — create (CH-12 3.1)', { skip: motivoSkip }, () => {
+describe('plantilla catalog — create, list, get (CH-12 3.1, 3.3)', { skip: motivoSkip }, () => {
   let app!: FastifyInstance;
   /** The raw client: fixtures and cleanup only. The app gets the extended one. */
   let prisma!: PrismaClient;
@@ -207,6 +208,61 @@ describe('plantilla catalog — create (CH-12 3.1)', { skip: motivoSkip }, () =>
   test('3.1 every AUTOMATIZACIONES value is accepted', async () => {
     for (const automatizacion of ['stock-fisico', 'stock-producible', 'reporte-diario']) {
       assert.equal((await crear({ automatizacion })).automatizacion, automatizacion);
+    }
+  });
+
+  test('3.3 a headerless get-by-id returns exactly what create echoed', async () => {
+    const creada = await crear({ nombre: `${marca} consulta` });
+    const respuesta = await app.inject({ method: 'GET', url: `/plantillas/${String(creada.id)}` });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    assert.deepEqual(respuesta.json(), { plantilla: creada });
+  });
+
+  test('3.3 the headerless list is a summary ordered by nombre, then id', async () => {
+    const b = await crear({ nombre: `${marca} orden b`, sql: 'SELECT 1 AS marca_u3_b', parametros: [] });
+    const a = await crear({ nombre: `${marca} orden a` });
+    const respuesta = await app.inject({ method: 'GET', url: '/plantillas' });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const { plantillas, truncado } = respuesta.json() as {
+      plantillas: { id: string }[];
+      truncado: boolean;
+    };
+    assert.equal(truncado, false);
+    const ids = plantillas.map((p) => p.id);
+    assert.ok(ids.indexOf(String(a.id)) >= 0 && ids.indexOf(String(a.id)) < ids.indexOf(String(b.id)));
+    assert.deepEqual(Object.keys(plantillas[ids.indexOf(String(a.id))]).sort(), [
+      'automatizacion',
+      'formato',
+      'id',
+      'nombre',
+      'toleranciaFrescuraMinutos',
+    ]);
+    assert.ok(!respuesta.body.includes('marca_u3_b'), 'no stored sql may reach the list payload');
+  });
+
+  test(`3.3 the list is capped at ${LIMITE_LISTADO} rows and says so with truncado`, async () => {
+    const prefijo = `${marca} tope `;
+    try {
+      await prisma.plantilla.createMany({
+        data: Array.from({ length: LIMITE_LISTADO + 1 }, (_, i) => ({
+          ...VALIDA,
+          nombre: `${prefijo}${String(i).padStart(4, '0')}`,
+        })),
+      });
+      const respuesta = await app.inject({ method: 'GET', url: '/plantillas' });
+      const cuerpo = respuesta.json() as { plantillas: unknown[]; truncado: boolean };
+      assert.equal(cuerpo.plantillas.length, LIMITE_LISTADO);
+      assert.equal(cuerpo.truncado, true);
+    } finally {
+      await prisma.plantilla.deleteMany({ where: { nombre: { startsWith: prefijo } } });
+    }
+  });
+
+  test('3.3 an unknown or malformed id answers 404 plantilla-no-encontrada', async () => {
+    for (const id of ['11111111-2222-3333-4444-555555555555', 'no-es-un-uuid']) {
+      const respuesta = await app.inject({ method: 'GET', url: `/plantillas/${id}` });
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'plantilla-no-encontrada' });
     }
   });
 });
