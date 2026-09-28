@@ -4,6 +4,7 @@ import {
   DEFAULT_CONNECTION_TEST_TIMEOUT_MS,
   DEFAULT_MAX_FILAS_CONSULTA,
   DEFAULT_QUERY_TIMEOUT_MS,
+  DEFAULT_ZONA_HORARIA,
   loadConfig,
 } from './config.js';
 import { VARIABLE_CLAVE_MAESTRA } from './cripto-credencial.js';
@@ -28,6 +29,7 @@ const VARIABLES = [
   'CONNECTION_TEST_TIMEOUT_MS',
   'QUERY_TIMEOUT_MS',
   'MAX_FILAS_CONSULTA',
+  'ZONA_HORARIA_AUTOMATIZACIONES',
 ] as const;
 
 /** A minimal environment in which `loadConfig()` is expected to succeed. */
@@ -153,6 +155,34 @@ describe('loadConfig — the row cap is configuration, not a source literal (DEC
     test(`MAX_FILAS_CONSULTA=${valor} is a configuration error, not a silent fallback`, () => {
       process.env.MAX_FILAS_CONSULTA = valor;
       assert.throws(() => loadConfig(), /MAX_FILAS_CONSULTA/);
+    });
+  }
+});
+
+describe('loadConfig — one deployment-wide timezone for automation schedules (DEC-77)', () => {
+  test('zonaHoraria defaults to UTC when ZONA_HORARIA_AUTOMATIZACIONES is unset', () => {
+    // Same optional-with-default shape as the DEC-19 row cap: an untouched deployment
+    // boots with no error and interprets every cron schedule in UTC.
+    assert.equal(loadConfig().zonaHoraria, DEFAULT_ZONA_HORARIA);
+    assert.equal(DEFAULT_ZONA_HORARIA, 'UTC');
+  });
+
+  test('an empty ZONA_HORARIA_AUTOMATIZACIONES falls back to the default', () => {
+    process.env.ZONA_HORARIA_AUTOMATIZACIONES = '';
+    assert.equal(loadConfig().zonaHoraria, 'UTC');
+  });
+
+  test('a valid IANA zone is read from the environment without a source change', () => {
+    process.env.ZONA_HORARIA_AUTOMATIZACIONES = 'America/Argentina/Buenos_Aires';
+    assert.equal(loadConfig().zonaHoraria, 'America/Argentina/Buenos_Aires');
+  });
+
+  for (const valor of ['Marte/Olympus_Mons', 'GMT+99', 'no es una zona']) {
+    test(`ZONA_HORARIA_AUTOMATIZACIONES=${valor} stops the boot, not a silent fallback`, () => {
+      // Fails closed like DEC-17: a typo in the zone would otherwise shift every
+      // automation's fire time with no error anywhere.
+      process.env.ZONA_HORARIA_AUTOMATIZACIONES = valor;
+      assert.throws(() => loadConfig(), /ZONA_HORARIA_AUTOMATIZACIONES/);
     });
   }
 });
