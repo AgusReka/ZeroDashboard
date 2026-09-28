@@ -68,11 +68,11 @@ verify-report-then-archive pair on one branch).
 
 ## 4. Replace + `contrato.ts` Comment (`src/plantillas-rutas.ts`, `src/contrato.ts`, `src/server.ts`)
 
-- [ ] 4.1 RED extend `src/plantillas-rutas.test.ts`: `PUT /plantillas/:id` replaces `sql`/fields in place, `200` with the same id and new `sql`, exactly one row persisted; unknown id is `404` (`P2025`); no tenant header required (spec "Round-trip create, get, replace")
-- [ ] 4.2 Implement the `PUT /plantillas/:id` handler in `src/plantillas-rutas.ts`: same body schema and save-time checks as create; `update` catching `P2025` → 404 — satisfies 4.1
-- [ ] 4.3 Modify `src/contrato.ts`: update the doc comment noting DEC-22 is closed by DEC-67 (spec `canonical-contract` "Every catalog label is a valid template value")
+- [x] 4.1 RED extend `src/plantillas-rutas.test.ts`: `PUT /plantillas/:id` replaces `sql`/fields in place, `200` with the same id and new `sql`, exactly one row persisted; unknown id is `404` (`P2025`); no tenant header required (spec "Round-trip create, get, replace")
+- [x] 4.2 Implement the `PUT /plantillas/:id` handler in `src/plantillas-rutas.ts`: same body schema and save-time checks as create; `update` catching `P2025` → 404 — satisfies 4.1
+- [x] 4.3 Modify `src/contrato.ts`: update the doc comment noting DEC-22 is closed by DEC-67 (spec `canonical-contract` "Every catalog label is a valid template value")
 - [x] 4.4 Modify `src/server.ts`: register `registerPlantillaRoutes` after `registrarContextoTenant` (done in unit 3, with the create/list/get routes)
-- [ ] 4.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/plantillas-rutas.test.ts` green
+- [x] 4.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/plantillas-rutas.test.ts` green
 
 ## 5. Test Route (`src/plantilla-prueba.ts`)
 

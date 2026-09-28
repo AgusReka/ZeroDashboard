@@ -10,9 +10,10 @@ import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 
 /**
- * CH-12 unit 3: the template catalog's create, list and get (tasks 3.1–3.3). No request
- * here carries `x-tenant-id`: the catalog is global (DEC-61) and its routes are exempt by
- * exact row, so every case below is also a proof of that exemption.
+ * CH-12 units 3 and 4: the template catalog's create, list, get (tasks 3.1–3.3) and
+ * in-place replace (task 4.1, DEC-68). No request here carries `x-tenant-id`: the catalog
+ * is global (DEC-61) and its routes are exempt by exact row, so every case below is also
+ * a proof of that exemption.
  */
 
 /** A body that passes every save-time check; each case overrides one field. */
@@ -43,7 +44,7 @@ export function firmaSoloDelegado(app: FastifyInstance, cliente: PrismaAislado):
   registerPlantillaRoutes(app, cliente);
 }
 
-// ---- 3.1/3.2 every rejection happens before any write, with no database at all ----
+// ---- 3.1/3.2/4.1 every rejection happens before any write, with no database at all
 
 /** Every method throws: a rejected body that reached the table fails the case loudly. */
 const plantillasQueNuncaDebenEscribirse = new Proxy({}, {
@@ -52,7 +53,7 @@ const plantillasQueNuncaDebenEscribirse = new Proxy({}, {
   },
 }) as PrismaAislado['plantilla'];
 
-describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2)', () => {
+describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () => {
   let app!: FastifyInstance;
 
   before(async () => {
@@ -135,9 +136,23 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2)', () => {
     const cuerpo = await rechazar({ parametros: [...VALIDA.parametros, { nombre: 'x', tipo: 'numero' }] });
     assert.deepEqual(cuerpo.problemas?.map((p) => [p.parametro, p.motivo]), [['x', 'sin-usar']]);
   });
+
+  test('4.1 a replace runs the same save-time checks before any write', async () => {
+    const reemplazar = async (payload: Record<string, unknown>): Promise<CuerpoRechazo> => {
+      const respuesta = await app.inject({ method: 'PUT', url: '/plantillas/cualquiera', payload });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      return respuesta.json() as CuerpoRechazo;
+    };
+    assert.deepEqual((await reemplazar({ ...VALIDA, tenantId: 'otro' })).campos, ['/tenantId']);
+    const enumerado = await reemplazar({ ...VALIDA, automatizacion: 'envio-abandonado' });
+    assert.deepEqual(enumerado.rechazados, ['envio-abandonado']);
+    assert.deepEqual((await reemplazar({ ...VALIDA, sql: '  ' })).campos, ['/sql']);
+    const posicional = await reemplazar({ ...VALIDA, sql: 'SELECT * FROM v_producto WHERE id = $1' });
+    assert.ok(posicional.problemas?.some((p) => p.motivo === 'posicional-a-mano'), JSON.stringify(posicional));
+  });
 });
 
-// ---- 3.1/3.3 create, list and get against a live PostgreSQL ----------------------
+// ---- 3.1/3.3/4.1 create, list, get and replace against a live PostgreSQL -----------
 
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -169,7 +184,7 @@ const motivoSkip: string | false = (await esAlcanzable(objetivo.host, objetivo.p
   ? false
   : `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — set TEST_DB_*`;
 
-describe('plantilla catalog — create, list, get (CH-12 3.1, 3.3)', { skip: motivoSkip }, () => {
+describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)', { skip: motivoSkip }, () => {
   let app!: FastifyInstance;
   /** The raw client: fixtures and cleanup only. The app gets the extended one. */
   let prisma!: PrismaClient;
@@ -264,5 +279,47 @@ describe('plantilla catalog — create, list, get (CH-12 3.1, 3.3)', { skip: mot
       assert.equal(respuesta.statusCode, 404, respuesta.body);
       assert.deepEqual(respuesta.json(), { error: 'plantilla-no-encontrada' });
     }
+  });
+
+  test('4.1 round-trip: get returns the original, a headerless PUT replaces it in place', async () => {
+    const prefijo = `${marca} reemplazo`;
+    const creada = await crear({ nombre: `${prefijo} v1` });
+    const url = `/plantillas/${String(creada.id)}`;
+
+    const leida = await app.inject({ method: 'GET', url });
+    assert.deepEqual(leida.json(), { plantilla: creada });
+
+    const nueva = {
+      ...VALIDA,
+      nombre: `${prefijo} v2`,
+      sql: 'SELECT i.nombre FROM v_insumo i JOIN v_producto p ON true WHERE i."stockDisponible" < :minimo',
+      parametros: [{ nombre: 'minimo', tipo: 'numero' }],
+      entidades: ['producto', 'insumo'],
+      automatizacion: 'stock-producible',
+      toleranciaFrescuraMinutos: 0,
+    };
+    const respuesta = await app.inject({ method: 'PUT', url, payload: nueva });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const { plantilla } = respuesta.json() as { plantilla: Record<string, unknown> };
+    assert.deepEqual(plantilla, { id: creada.id, ...nueva });
+
+    // In place: the same row now holds the new fields, and no second row was written.
+    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: String(creada.id) } }), plantilla);
+    assert.equal(await prisma.plantilla.count({ where: { nombre: { startsWith: prefijo } } }), 1);
+    assert.deepEqual((await app.inject({ method: 'GET', url })).json(), { plantilla });
+  });
+
+  test('4.1 a PUT naming no row answers 404 and writes nothing', async () => {
+    const prefijo = `${marca} fantasma`;
+    for (const id of ['11111111-2222-3333-4444-555555555555', 'no-es-un-uuid']) {
+      const respuesta = await app.inject({
+        method: 'PUT',
+        url: `/plantillas/${id}`,
+        payload: { ...VALIDA, nombre: prefijo },
+      });
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'plantilla-no-encontrada' });
+    }
+    assert.equal(await prisma.plantilla.count({ where: { nombre: { startsWith: prefijo } } }), 0);
   });
 });
