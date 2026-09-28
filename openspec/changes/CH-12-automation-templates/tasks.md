@@ -50,13 +50,13 @@ verify-report-then-archive pair on one branch).
 
 ## 2. Pure Composition Module (`src/plantillas.ts`)
 
-- [ ] 2.1 RED `src/plantillas.test.ts`: `evaluarVistas` returns `ok:true` with vistas in contract order when every entity is `valida`; returns `ok:false` listing every failing entity (`no-mapeada`/`no-validado`/`invalida`) when any fails (DEC-71; spec "Missing registered view", "Registered but failing validation")
-- [ ] 2.2 RED extend: a stored `entidades` name outside `CONTRATO_CANONICO` makes `evaluarVistas` throw (design "Stored JSON on read"; Threat Matrix "Stored entidades corrupted into x) ; DROP")
-- [ ] 2.3 RED extend: `componerSentencia` opens `WITH v_<entidad> AS (...)` per entity in contract order, aliasing from `CONTRATO_CANONICO` (never the stored string), and nests the template `sql` as an outer subquery so its own `WITH` stays usable (DEC-70; spec "Two entities compose as CTEs")
-- [ ] 2.4 RED extend: `componerSentencia` applies `sanearSql` exactly once to each stored piece and wraps each body in newlines, so a trailing `-- comment` in a view or template cannot swallow the next clause (design "Piece sanitizing")
-- [ ] 2.5 RED extend: `problemasDePlantilla` reuses CH-11 rules — a declared-but-unused parameter, an undeclared `:marker`, and a hand-written `$n` are each rejected (DEC-56/57/59; spec `query-parameters` "Undeclared marker rejected at template save time")
-- [ ] 2.6 Implement `FORMATOS`, `VALORES_AUTOMATIZACION`, `FilaVista`, `VistaAComponer`, `EstadoNoAprobado`, `Compuerta`, `evaluarVistas`, `componerSentencia`, `problemasDePlantilla` in `src/plantillas.ts` (pure — no Fastify, no Prisma, no pg) — satisfies 2.1–2.5
-- [ ] 2.7 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/plantillas.test.ts` green
+- [x] 2.1 RED `src/plantillas.test.ts`: `evaluarVistas` returns `ok:true` with vistas in contract order when every entity is `valida`; returns `ok:false` listing every failing entity (`no-mapeada`/`no-validado`/`invalida`) when any fails (DEC-71; spec "Missing registered view", "Registered but failing validation")
+- [x] 2.2 RED extend: a stored `entidades` name outside `CONTRATO_CANONICO` makes `evaluarVistas` throw (design "Stored JSON on read"; Threat Matrix "Stored entidades corrupted into x) ; DROP")
+- [x] 2.3 RED extend: `componerSentencia` opens `WITH v_<entidad> AS (...)` per entity in contract order, aliasing from `CONTRATO_CANONICO` (never the stored string), and nests the template `sql` as an outer subquery so its own `WITH` stays usable (DEC-70; spec "Two entities compose as CTEs")
+- [x] 2.4 RED extend: `componerSentencia` applies `sanearSql` exactly once to each stored piece and wraps each body in newlines, so a trailing `-- comment` in a view or template cannot swallow the next clause (design "Piece sanitizing")
+- [x] 2.5 RED extend: `problemasDePlantilla` reuses CH-11 rules — a declared-but-unused parameter, an undeclared `:marker`, and a hand-written `$n` are each rejected (DEC-56/57/59; spec `query-parameters` "Undeclared marker rejected at template save time")
+- [x] 2.6 Implement `FORMATOS`, `VALORES_AUTOMATIZACION`, `FilaVista`, `VistaAComponer`, `EstadoNoAprobado`, `Compuerta`, `evaluarVistas`, `componerSentencia`, `problemasDePlantilla` in `src/plantillas.ts` (pure — no Fastify, no Prisma, no pg) — satisfies 2.1–2.5
+- [x] 2.7 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/plantillas.test.ts` green
 
 ## 3. Catalog Routes — Create, List, Get (`src/plantillas-rutas.ts`)
 
