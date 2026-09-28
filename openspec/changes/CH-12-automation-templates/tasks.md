@@ -89,7 +89,7 @@ verify-report-then-archive pair on one branch).
 
 ## 6. Full-Suite Checkpoint, Verify & Archive
 
-- [ ] 6.1 Full-suite checkpoint: `npm test` green; `npx tsc --noEmit` clean; `npx prisma validate` clean
+- [x] 6.1 Full-suite checkpoint: `npm test` green; `npx tsc --noEmit` clean; `npx prisma validate` clean (471/471, tsc clean, prisma valid — 2026-09-28)
 - [ ] 6.2 Run `sdd-verify` against `specs/automation-templates/spec.md`, `specs/domain-data-model/spec.md`, `specs/tenant-isolation/spec.md`, `specs/canonical-contract/spec.md`, `specs/tenant-schema-mapping/spec.md`, `specs/query-parameters/spec.md`; produce the verify report
 - [ ] 6.3 Run `sdd-archive`: merge each delta spec into its main spec; move `openspec/changes/CH-12-automation-templates/` to `openspec/changes/archive/`; add `docs/bitacora/CH-12-plantillas-de-automatizacion.md` (mirroring CH-11's bitácora) and record the change in `docs/01-decisiones.md`'s bitácora
 
