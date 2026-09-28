@@ -20,8 +20,19 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  * surface of the single point of failure DEC-13 knowingly accepted.
  * `src/consulta-ejecucion.ts` is outside this boundary altogether — it talks to the
  * *tenant's* replica through `pg`, which is a different database.
+ *
+ * CH-13 adds `Automatizacion` and `Ejecucion` (DEC-74, X2). Both are tenant data with a
+ * direct `tenantId`, and the scheduler reaches them only through this same extension,
+ * inside a context entered from the tenant's own `Tenant` row — it never writes
+ * `tenantId` into a `where` itself.
  */
-const MODELOS_AISLADOS = new Set(['Conexion', 'ConsultaGuardada', 'VistaCanonica']);
+const MODELOS_AISLADOS = new Set([
+  'Conexion',
+  'ConsultaGuardada',
+  'VistaCanonica',
+  'Automatizacion',
+  'Ejecucion',
+]);
 
 /**
  * Operations whose `where` is a filter. The injected predicate is **conjoined**, never
