@@ -854,6 +854,258 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-47 — Los parámetros se escriben con nombre (`:nombre`) y se reescriben a `$n` al ejecutar
+
+**Contexto.** CH-11 (B3) introduce parámetros en las consultas. Hoy el SQL del usuario no tiene ningún concepto de parámetro; los únicos parámetros del driver son los de la paginación.
+
+**Opciones.** (a) Marcadores con nombre `:nombre`, reescritos a posicionales `$n` con una transformación de texto plano (sin analizador de SQL, en línea con DEC-09). (b) Posicionales `$1, $2…` escritos a mano, más una lista declarada en el mismo orden. (c) Otra convención, como `{{nombre}}`.
+
+**Decisión.** (a).
+
+**Por qué.** La identidad del parámetro es el nombre: puede repetirse en la consulta y el orden de la declaración no importa. Con (b), un desfase entre la lista y el SQL asigna un valor equivocado sin error; (c) se parece a un motor de plantillas.
+
+**Se resigna.** Una transformación por texto tiene casos borde que un analizador absorbería (`::tipo`, `:` dentro de cadenas, bloques `$$…$$`); se enumeran y se prueban. La sustitución sigue siendo siempre por parámetros del driver (regla 4).
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-48 — Los parámetros se declaran en la consulta guardada y en la ejecución suelta
+
+**Contexto.** Hay dos superficies que ejecutan consultas: `ConsultaGuardada` (DEC-10) y `POST /consultas/ejecutar` con SQL suelto.
+
+**Opciones.** (a) Solo en `ConsultaGuardada`. (b) En `ConsultaGuardada` (persistida) y en la ejecución suelta (declaración y valores en la misma petición, sin persistir). (c) Un modelo nuevo, separado de `ConsultaGuardada`.
+
+**Decisión.** (b).
+
+**Por qué.** B1 y B2 ya tratan ambas superficies como dos entradas a la misma operación de ejecución; B3 extiende esa operación, no solo la entidad guardada.
+
+**Se resigna.** La misma lógica de reescritura y validación corre sobre dos fuentes de declaración. Como `ConsultaGuardada` no tiene ruta de edición (DEC-10), corregir una declaración guardada implica guardar una consulta nueva.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-49 — Los parámetros tienen un vocabulario de tipos propio: texto, numero, booleano, fecha
+
+**Contexto.** Un parámetro declarado necesita un tipo. `TipoSemantico` (DEC-39) ya existe, pero clasifica columnas leídas de una vista, no valores que alguien ingresa.
+
+**Opciones.** (a) Reusar `TipoSemantico` completo, con `identificador`. (b) Un conjunto propio sin `identificador`. (c) Sin tipo declarado.
+
+**Decisión.** (b).
+
+**Por qué.** `identificador` describe la tolerancia de una columna (`int`/`uuid`/`text`), no un valor de entrada. Sin tipo declarado, B3 pierde el "declarado".
+
+**Se resigna.** Conviven dos vocabularios parecidos pero distintos; `src/contrato.ts` no se toca.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-50 — Todo parámetro declarado es obligatorio; no hay valores por defecto
+
+**Contexto.** Un parámetro podría ser opcional y tomar un valor por defecto.
+
+**Opciones.** (a) Todos obligatorios, sin valores por defecto. (b) Opcionales con valor por defecto. (c) Sin control propio: el error lo da Postgres.
+
+**Decisión.** (a).
+
+**Por qué.** Es la lectura literal de B3 y ninguna historia de R1 pide valores por defecto. Si una plantilla los necesita, se decide en CH-12.
+
+**Se resigna.** Quien ejecuta tiene que mandar siempre todos los valores.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-51 — El valor de un parámetro se valida en dos capas: forma en la aplicación, tipo final en Postgres
+
+**Contexto.** Un valor enviado puede no coincidir con el tipo declarado.
+
+**Opciones.** (a) Solo la aplicación, antes de ejecutar. (b) Solo Postgres, clasificado por `classifyExecutionError`. (c) Ambas.
+
+**Decisión.** (c).
+
+**Por qué.** La aplicación falla temprano y con un mensaje que nombra el parámetro (mismo criterio que DEC-08, DEC-09 y DEC-39); Postgres sigue siendo el árbitro final de la conversión.
+
+**Se resigna.** Más código: un control de forma por tipo, además de la clasificación de errores existente.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-52 — La declaración de parámetros y la sustitución segura quedan reutilizables por la plantilla de CH-12
+
+**Contexto.** La `Plantilla` de CH-12 (D1) incluye "consulta + parámetros".
+
+**Opciones.** (a) CH-11 deja la forma de declaración y la función de sustitución como primitiva reutilizable, sin campos propios de CH-12. (b) CH-12 define su propio mecanismo.
+
+**Decisión.** (a).
+
+**Por qué.** Evita resolver el mismo problema dos veces. CH-11 no agrega condición, formato ni frescura, ni decide dónde viven los valores de una ejecución automática (X1–X3, D2).
+
+**Se resigna.** La forma elegida condiciona a CH-12 antes de explorarlo.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-53 — Los parámetros declarados ocupan `$1…$n`; la paginación usa `$(n+1)` y `$(n+2)`
+
+**Contexto.** La envoltura de paginación usa hoy `LIMIT $1 OFFSET $2`. CH-11 es el primer cambio que pone otra clase de parámetros del driver en la misma sentencia.
+
+**Opciones.** (a) Declarados primero, paginación después, numerado en cada ejecución. (b) Paginación fija en `$1`/`$2`, declarados desde `$3`. (c) Paginación sin parámetros del driver.
+
+**Decisión.** (a).
+
+**Por qué.** Se deriva de la cantidad real de parámetros en cada ejecución, en vez de fijar una numeración que puede desincronizarse. (c) viola la regla 4.
+
+**Se resigna.** La construcción de la sentencia final necesita conocer la cantidad de parámetros antes de armar el texto.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-54 — CH-11 no agrega parámetros a las vistas canónicas
+
+**Contexto.** Las vistas registradas en CH-09 (`VistaCanonica`) se componen con `WITH` en CH-12 (DEC-31).
+
+**Opciones.** (a) Las vistas siguen sin parámetros. (b) Las vistas también declaran parámetros.
+
+**Decisión.** (a).
+
+**Por qué.** B3 es una historia de consulta, no de mapeo; la composición con `WITH` ya está asignada a CH-12, y DEC-30 a DEC-35 cerraron el alcance del mapeo.
+
+**Se resigna.** Si CH-12 necesita parámetros dentro de una vista compuesta, se decide ahí.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-55 — La declaración de parámetros de una consulta guardada es una columna JSON en `ConsultaGuardada`
+
+**Contexto.** DEC-48 persiste la declaración en la consulta guardada, pero no dice cómo. En CH-10, elegir entre columnas y un modelo nuevo quedó registrado como DEC-44.
+
+**Opciones.** (a) Columna JSON `parametros` en `ConsultaGuardada`, por defecto `[]`, validada en la aplicación. (b) Modelo hijo `ParametroConsulta` (consulta, nombre, tipo, orden) con clave foránea y nombre único por consulta.
+
+**Decisión.** (a).
+
+**Por qué.** La declaración se lee y se escribe entera junto con la fila, que no se edita (DEC-10), y CH-12 puede reusar la misma forma (DEC-52).
+
+**Se resigna.** La base no garantiza la integridad del contenido; la garantiza la validación de la aplicación.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-56 — Un parámetro declarado que el SQL no usa se rechaza
+
+**Contexto.** La declaración y el SQL pueden desalinearse.
+
+**Opciones.** (a) Rechazo 400 que nombra el parámetro. (b) Se acepta y se ignora.
+
+**Decisión.** (a).
+
+**Por qué.** Suele ser una declaración vieja; falla ruidosamente en vez de exigir un valor que no se usa.
+
+**Se resigna.** Hay que borrar la declaración al quitar el marcador del SQL.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-57 — Un marcador `:x` sin declarar en el SQL se rechaza
+
+**Contexto.** El SQL puede usar un marcador que no figura en la declaración.
+
+**Opciones.** (a) Rechazo 400. (b) Declararlo solo, con tipo `texto`.
+
+**Decisión.** (a).
+
+**Por qué.** Un parámetro sin declarar contradice B3 ("parámetros declarados") y DEC-49.
+
+**Se resigna.** Nada relevante: la declaración se escribe explícita.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-58 — Un valor enviado para un nombre no declarado se rechaza
+
+**Contexto.** La petición de ejecución puede traer valores de más.
+
+**Opciones.** (a) Rechazo 400. (b) Se ignoran.
+
+**Decisión.** (a).
+
+**Por qué.** Un valor de más suele ser un error de tipeo en el nombre; ignorarlo lo esconde.
+
+**Se resigna.** Quien ejecuta tiene que mandar exactamente los nombres declarados.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-59 — Un `$n` escrito a mano en el SQL del usuario se rechaza siempre
+
+**Contexto.** Hoy un `$1` suelto en el SQL del usuario tomaría el valor del `LIMIT` de la envoltura de paginación. Con DEC-53, además chocaría con los parámetros declarados.
+
+**Opciones.** (a) Rechazo 400 siempre que aparezca fuera de cadenas y comentarios. (b) Rechazo solo cuando la consulta declara parámetros.
+
+**Decisión.** (a).
+
+**Por qué.** Los parámetros del driver los numera solo la aplicación; un `$n` del usuario nunca tiene un significado correcto.
+
+**Se resigna.** Cambia el comportamiento de consultas sin parámetros que usaran `$n` (hoy devuelven un valor sin sentido o un error).
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-60 — Formato de valor por tipo de parámetro
+
+**Contexto.** El control de forma de DEC-51 necesita saber qué valor JSON acepta cada tipo de DEC-49.
+
+**Opciones.** (a) `numero`: solo número JSON; `fecha`: cadena ISO 8601, fecha (`2026-09-27`) o fecha y hora (`2026-09-27T10:00:00Z`). (b) Como (a), pero `numero` acepta también cadena numérica. (c) Como (a), pero `fecha` solo sin hora. En todos los casos `texto` es cadena JSON y `booleano` es booleano JSON.
+
+**Decisión.** (a).
+
+**Por qué.** Un tipo JSON por tipo declarado, sin conversiones implícitas; la fecha admite hora porque los filtros por instante son comunes.
+
+**Se resigna.** Un cliente que mande números como texto recibe un rechazo.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-11 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
