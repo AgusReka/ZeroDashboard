@@ -1340,6 +1340,144 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-74 — La asociación plantilla-tenant para el motor vive en una entidad mínima nueva
+
+**Contexto.** X1 y X2 (CH-13, R1) necesitan saber, por tenant, qué plantilla corre, con qué conexión, con qué valores de parámetros y en qué horario. La instanciación completa de plantillas (D2) está asignada a CH-21, en R2. DEC-61 deja `Plantilla` agnóstica de tenant.
+
+**Opciones.** (a) CH-13 crea una entidad mínima por tenant (ej. `Automatizacion`) con solo lo que X1 y X2 necesitan, sin la experiencia de instanciación de CH-21. (b) Guardar horario, conexión y valores sobre `Plantilla`. (c) Reordenar el mapa: traer D2 a CH-13 o postergar CH-13 hasta CH-21.
+
+**Decisión.** (a).
+
+**Por qué.** Respeta DEC-61 y no adelanta el alcance de CH-21: CH-21 construye la instanciación sobre esta entidad en lugar de crearla.
+
+**Se resigna.** La supersesión explícita de la prohibición de tablas `Ejecucion`/`Automatizacion` en la spec de modelo de datos; y hasta CH-21 la entidad se da de alta sin la experiencia completa de D2.
+
+**Decidido por:** el usuario (autor), 2026-09-28, durante la exploración de CH-13 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-75 — El planificador corre dentro del proceso de la aplicación
+
+**Contexto.** El motor necesita disparar ejecuciones por horario. La aplicación es hoy un único proceso (`src/server.ts`) en un único servicio de Compose.
+
+**Opciones.** (a) Temporizador dentro del proceso existente. (b) Proceso o servicio de Compose aparte para el motor.
+
+**Decisión.** (a).
+
+**Por qué.** No agrega infraestructura y es coherente con DEC-02 (sin orquestador externo). Alcanza para el volumen de R1.
+
+**Se resigna.** Si el proceso cae, no hay ejecuciones; las ejecuciones interrumpidas, los solapamientos y los reintentos se tratan en CH-17. Escalar horizontalmente exigiría coordinar el planificador.
+
+**Decidido por:** el usuario (autor), 2026-09-28, durante la exploración de CH-13 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-76 — El horario se expresa en cron estándar con una librería de cálculo de próximo disparo
+
+**Contexto.** Hay que representar el horario de cada automatización.
+
+**Opciones.** (a) Cron estándar, calculado con una librería chica que solo resuelve el próximo disparo (nueva dependencia). (b) Subconjunto propio (diario HH:mm o cada N minutos) implementado a mano, sin dependencias.
+
+**Decisión.** (a).
+
+**Por qué.** Cron es un formato conocido y expresivo; delegar el cálculo evita reimplementar un parser con casos borde de calendario.
+
+**Se resigna.** Una dependencia de terceros nueva y superficie ajena al proyecto; la librería debe limitarse al cálculo del próximo disparo, no a ejecutar tareas.
+
+**Decidido por:** el usuario (autor), 2026-09-28, durante la exploración de CH-13 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-77 — Los horarios se interpretan en una zona horaria global configurada por variable de entorno
+
+**Contexto.** Una expresión cron necesita una zona horaria para resolverse.
+
+**Opciones.** (a) Solo UTC. (b) Una zona horaria global por variable de entorno, con el mismo precedente que DEC-19. (c) Zona horaria por tenant (nueva columna en `Tenant`).
+
+**Decisión.** (b).
+
+**Por qué.** Los tenants de R1 comparten zona; sigue el precedente de configuración por entorno y evita pedirle al operador que traduzca horarios a UTC.
+
+**Se resigna.** Tenants en zonas distintas no se soportan hasta que se decida lo contrario.
+
+**Decidido por:** el usuario (autor), 2026-09-28, durante la exploración de CH-13 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-78 — Las automatizaciones se crean por API con alcance de tenant y una consola mínima
+
+**Contexto.** DEC-74 crea la entidad `Automatizacion` pero deja la experiencia completa de instanciación (D2) para CH-21. Hacía falta definir cómo se da de alta una automatización hasta entonces.
+
+**Opciones.** (a) API con alcance de tenant para crear, listar y obtener. (b) Solo seed o script, sin API. (c) La API más una interfaz mínima en la consola.
+
+**Decisión.** (c).
+
+**Por qué.** Da un camino real desde el producto para configurar una automatización en R1, sin depender de scripts.
+
+**Se resigna.** Es el alcance más grande de las tres opciones: cambia la consola y todas las rutas nuevas entran en el barrido de aislamiento T2. La interfaz es mínima; la experiencia de instanciación de CH-21 no se adelanta.
+
+**Decidido por:** el usuario (autor), 2026-09-28, durante la propuesta de CH-13 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-79 — Una automatización se detiene con un flag de activo
+
+**Contexto.** Sin un mecanismo propio, la única forma de detener una automatización sería desactivar el tenant entero, que no tiene vuelta atrás (DEC-14).
+
+**Opciones.** (a) Sin mecanismo. (b) Flag de activo con una acción de desactivar. (c) Reemplazo en el lugar por id, como las plantillas (DEC-68). (d) Borrado.
+
+**Decisión.** (b).
+
+**Por qué.** Permite frenar una automatización sin perder su registro de ejecuciones ni afectar al resto del tenant.
+
+**Se resigna.** No hay edición ni borrado en CH-13: para cambiar horario, conexión o valores se desactiva y se crea otra.
+
+**Decidido por:** el usuario (autor), 2026-09-28, durante la propuesta de CH-13 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-80 — El registro de ejecuciones se lee por API con alcance de tenant y una vista en la consola
+
+**Contexto.** X2 exige registrar cada ejecución; hacía falta definir cómo se consulta ese registro.
+
+**Opciones.** (a) API con alcance de tenant que lista las ejecuciones de una automatización. (b) Solo persistido, inspeccionado en la base. (c) La API más una vista en la consola.
+
+**Decisión.** (c).
+
+**Por qué.** El operador ve si las automatizaciones corren sin acceder a la base.
+
+**Se resigna.** Más superficie de rutas y de consola, que entra en el barrido de aislamiento T2.
+
+**Decidido por:** el usuario (autor), 2026-09-28, durante la propuesta de CH-13 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### Resoluciones de nivel diseño bajo DEC-13, DEC-14 y DEC-71 (CH-13)
+
+No son decisiones nuevas ni abren compuertas: son la mecánica interna de decisiones ya firmes, resuelta en `openspec/changes/CH-13-engine-scheduling-execution/design.md` y registrada acá, con el mismo criterio que las resoluciones de CH-06.
+
+**1. El planificador es un camino de producción hacia el contexto de tenant (bajo DEC-13 y DEC-14).** `conTenantActivo`, hasta ahora usado solo en tests y seed, pasa a ser la entrada del planificador. El planificador lee las filas de `Tenant` activas de la base propia (no filtradas por tenant) y entra al contexto de cada una antes de tocar cualquier dato con alcance de tenant. El identificador de tenant sale solo de la base propia, nunca de una petición (regla 2), y la extensión de Prisma que falla cerrada sigue siendo el único filtro. Los tenants desactivados no corren (DEC-14).
+
+**2. La compuerta de validación de DEC-71 se aplica también a las ejecuciones programadas.** DEC-71 nombra solo el endpoint de prueba, pero su motivo (una vista sin validar puede filtrar campos personales, regla 5) vale igual para una ejecución programada. Cada ejecución programada exige validación aprobada de cada vista compuesta antes de conectarse a la base del tenant; si falta, la ejecución se registra como fallida con una categoría clasificada.
+
+**Estado:** aplicadas en CH-13.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
