@@ -58,15 +58,21 @@ The own database SHALL have a `ConsultaGuardada` table, storing at minimum a nam
 
 ### Requirement: No Premature Modeling of Out-of-Release Entities
 
-The schema introduced by this change SHALL NOT include tables for `usuario`, `ejecucion`, `plantilla`, or `automatizacion`. It MAY include exactly one additional model representing a tenant's registered schema-mapping definition, scoped to a `Conexion` and a canonical entity name (DEC-30 through DEC-34).
-(Previously: also forbade a `mapeo` table; the model list was pinned to exactly `Tenant`, `Conexion`, `ConsultaGuardada`.)
+The schema introduced by this change SHALL NOT include tables for `usuario`, `ejecucion`, or `automatizacion`. It MAY include exactly one additional tenant-scoped model representing a tenant's registered schema-mapping definition, scoped to a `Conexion` and a canonical entity name (DEC-30 through DEC-34). It MAY additionally include exactly one global model, `Plantilla`, carrying no `tenantId` column and no foreign key to `Tenant` (DEC-61).
+(Previously: also forbade a `plantilla` table; the model list was pinned to `Tenant`, `Conexion`, `ConsultaGuardada`, and the one schema-mapping model, all tenant-scoped.)
 
 #### Scenario: Inspecting the schema after this change
 
 - **GIVEN** `prisma/schema.prisma` after this change is applied
 - **WHEN** the model list is inspected
-- **THEN** it SHALL contain `Tenant`, `Conexion`, `ConsultaGuardada`, and exactly one additional model for the schema-mapping definition
-- **AND** it SHALL NOT contain any of `Usuario`, `Ejecucion`, `Plantilla`, or `Automatizacion`
+- **THEN** it SHALL contain `Tenant`, `Conexion`, `ConsultaGuardada`, the schema-mapping definition model, and `Plantilla`
+- **AND** it SHALL NOT contain any of `Usuario`, `Ejecucion`, or `Automatizacion`
+
+#### Scenario: Plantilla carries no tenant reference
+
+- **GIVEN** the `Plantilla` model
+- **WHEN** its columns are inspected
+- **THEN** it SHALL have no `tenantId` column and no foreign key to `Tenant`
 ### Requirement: Schema-Mapping Definitions Persist a Validation Result (DEC-40, DEC-44)
 
 The schema-mapping definition model (added by CH-09) SHALL carry three additional columns: a validation status, a per-field diagnostic (JSON), and a validation timestamp. A row with no validation performed yet SHALL have these columns unset. An entity with no registered mapping SHALL have no row at all; its validation state SHALL be derived by the `mapping-validation` capability from the canonical contract at read time, not stored. No new model SHALL be introduced; the model list stays exactly `Tenant`, `Conexion`, `ConsultaGuardada`, and the one schema-mapping definition model, now carrying these columns.

@@ -111,3 +111,12 @@ The system SHALL expose `GET /contrato`, returning every canonical entity with i
 - **WHEN** a client sends `GET /contrato` with an `x-tenant-id` header naming a nonexistent tenant
 - **THEN** the request SHALL succeed identically to the no-header case
 - **AND** no tenant lookup SHALL gate the response
+### Requirement: Automation Labels Correspond to Real Plantilla Values (Closes DEC-22)
+
+Every automation label used across the catalog SHALL be one of the values enumerated by `AUTOMATIZACIONES`, and the `automation-templates` capability SHALL validate a `Plantilla`'s `automatizacion` field against that same enumeration. This reconciles the free-text labels DEC-22 left unattached to any real entity: they now correspond to persisted `Plantilla` rows through a single shared source (`AUTOMATIZACIONES`), not by convention.
+
+#### Scenario: Every catalog label is a valid template value
+
+- GIVEN the catalog module and the `automation-templates` validation for `automatizacion`
+- WHEN every automation label used across all catalog fields is compared against `AUTOMATIZACIONES`
+- THEN each SHALL be a value that `automation-templates` also accepts for `Plantilla.automatizacion`
