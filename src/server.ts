@@ -11,6 +11,7 @@ import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 import { registerConsolaRoute } from './consola.js';
 import { registerContratoRoutes } from './contrato-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
+import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 
@@ -38,6 +39,9 @@ registerConsolaRoute(app);
 // the catalog is static and identical for every tenant, so this route has no database to
 // reach (DEC-21) — which is exactly what makes its header exemption safe (DEC-24).
 registerContratoRoutes(app);
+// The template catalog is global (DEC-61) and exempt by exact row, so it receives the
+// `plantilla` delegate alone: no scoped model is within reach of an exempt handler.
+registerPlantillaRoutes(app, prisma.plantilla);
 
 app
   .listen({ port: config.port, host: '0.0.0.0' })
