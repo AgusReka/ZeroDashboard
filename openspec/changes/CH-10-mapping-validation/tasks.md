@@ -54,11 +54,11 @@ read (4.5), data exposure via rows/personal columns (4.4, 4.2). The Shell/VCS/PR
 
 ## 2. Read-Only Session Primitive & Domain Model (`prisma/`, `src/consulta-ejecucion.ts`)
 
-- [ ] 2.1 Modify `prisma/schema.prisma`: add `estadoValidacion String @default("no-validado")`, `diagnosticoValidacion Json?`, `validadaEn DateTime?` to `VistaCanonica` (spec `domain-data-model` "Persists a Validation Result", DEC-44)
-- [ ] 2.2 Generate additive migration `prisma/migrations/20260926000000_validacion_mapeo`; verify it is `ALTER TABLE ADD COLUMN` only, existing rows keep `sql` unchanged with new columns unset
-- [ ] 2.3 Refactor `src/consulta-ejecucion.ts`: extract module-private `enSesionSoloLectura(destino, presupuestos, cuerpo)` from `correrTransaccion` (connect race, backstop, `BEGIN READ ONLY`, `set_config`, DEC-08, `ROLLBACK`, close); `ejecutarConsulta` passes today's pagination body unchanged (design "Reuse of `correrTransaccion`")
-- [ ] 2.4 Add exported `sondearEstructura(destino, entidades)`: one transaction, per entity `SAVEPOINT sondeo` → `SELECT * FROM (<sanearSql(sql)>) AS _validacion LIMIT 0` (`values: []`, `fields` only) → `ROLLBACK TO SAVEPOINT sondeo` on error, classified via `classifyExecutionError`
-- [ ] 2.5 Checkpoint: `npx prisma validate && npx tsc --noEmit`; `npm test -- src/consulta-ejecucion.test.ts src/consultas.test.ts` green, both files unedited (regression)
+- [x] 2.1 Modify `prisma/schema.prisma`: add `estadoValidacion String @default("no-validado")`, `diagnosticoValidacion Json?`, `validadaEn DateTime?` to `VistaCanonica` (spec `domain-data-model` "Persists a Validation Result", DEC-44)
+- [x] 2.2 Generate additive migration `prisma/migrations/20260926000000_validacion_mapeo`; verify it is `ALTER TABLE ADD COLUMN` only, existing rows keep `sql` unchanged with new columns unset
+- [x] 2.3 Refactor `src/consulta-ejecucion.ts`: extract module-private `enSesionSoloLectura(destino, presupuestos, cuerpo)` from `correrTransaccion` (connect race, backstop, `BEGIN READ ONLY`, `set_config`, DEC-08, `ROLLBACK`, close); `ejecutarConsulta` passes today's pagination body unchanged (design "Reuse of `correrTransaccion`")
+- [x] 2.4 Add exported `sondearEstructura(destino, entidades)`: one transaction, per entity `SAVEPOINT sondeo` → `SELECT * FROM (<sanearSql(sql)>) AS _validacion LIMIT 0` (`values: []`, `fields` only) → `ROLLBACK TO SAVEPOINT sondeo` on error, classified via `classifyExecutionError`
+- [x] 2.5 Checkpoint: `npx prisma validate && npx tsc --noEmit`; `npm test -- src/consulta-ejecucion.test.ts src/consultas.test.ts` green, both files unedited (regression)
 
 ## 3. Validation Module — Pure Logic (`src/validacion-mapeo.ts`)
 

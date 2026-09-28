@@ -69,16 +69,25 @@ model ConsultaGuardada {
 // extension can scope this model like `Conexion` and `ConsultaGuardada` (DEC-13,
 // DEC-33); the cross-tenant `conexionId` case is closed by a scoped lookup in the
 // route, not by a composite FK (DEC-35).
+//
+// CH-10 (DEC-40, DEC-41, DEC-44): the latest structural validation result lives on the
+// row itself, never in a history model. `estadoValidacion` is plain TEXT for the same
+// reason `entidad` is ('no-validado' | 'valida' | 'invalida', checked in
+// `src/validacion-mapeo.ts`). Its default is what makes the migration additive: every
+// pre-CH-10 row backfills as never validated. Re-registering the SQL resets all three.
 model VistaCanonica {
-  id            String   @id @default(uuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  conexionId    String
-  conexion      Conexion @relation(fields: [conexionId], references: [id])
-  entidad       String
-  sql           String
-  creadaEn      DateTime @default(now())
-  actualizadaEn DateTime @updatedAt
+  id                    String    @id @default(uuid())
+  tenantId              String
+  tenant                Tenant    @relation(fields: [tenantId], references: [id])
+  conexionId            String
+  conexion              Conexion  @relation(fields: [conexionId], references: [id])
+  entidad               String
+  sql                   String
+  creadaEn              DateTime  @default(now())
+  actualizadaEn         DateTime  @updatedAt
+  estadoValidacion      String    @default("no-validado")
+  diagnosticoValidacion Json?
+  validadaEn            DateTime?
 
   @@unique([conexionId, entidad])
   @@index([tenantId])
