@@ -76,13 +76,13 @@ verify-report-then-archive pair on one branch).
 
 ## 5. Test Route (`src/plantilla-prueba.ts`)
 
-- [ ] 5.1 RED `src/plantilla-prueba.test.ts`: `POST /plantillas/:id/prueba` with no `x-tenant-id` is `400 tenant-no-indicado`, nothing executes (spec "Test endpoint without a tenant header is rejected")
-- [ ] 5.2 RED extend: unknown `id` → `404 plantilla-no-encontrada`; a `conexionId` outside the active tenant → `404`, nothing dialed (spec "Naming another tenant's connection")
-- [ ] 5.3 RED extend: an entity with no registered mapping, or a registered mapping whose validation is not `valida`, → `4xx` naming the entity, nothing executes; every failing entity listed in contract order (DEC-71; spec "Missing registered view", "Registered but failing validation")
+- [x] 5.1 RED `src/plantilla-prueba.test.ts`: `POST /plantillas/:id/prueba` with no `x-tenant-id` is `400 tenant-no-indicado`, nothing executes (spec "Test endpoint without a tenant header is rejected")
+- [x] 5.2 RED extend: unknown `id` → `404 plantilla-no-encontrada`; a `conexionId` outside the active tenant → `404`, nothing dialed (spec "Naming another tenant's connection")
+- [x] 5.3 RED extend: an entity with no registered mapping, or a registered mapping whose validation is not `valida`, → `4xx` naming the entity, nothing executes; every failing entity listed in contract order (DEC-71; spec "Missing registered view", "Registered but failing validation")
 - [ ] 5.4 RED extend: rows return over the composed views; an `O'Brien`/`; DROP` value comes back as data, never spliced into SQL text; a template referencing an undeclared `v_x` executes and returns `200 fallo error-sintaxis 42P01` (spec "Successful test execution", "Template references an undeclared alias"; Threat Matrix "A request value reaching the SQL text")
-- [ ] 5.5 RED extend: a closed-port connection still returns its `4xx` — proof nothing was dialed before every check passed (design "Data Flow — Test Route")
-- [ ] 5.6 Implement `src/plantilla-prueba.ts`: AJV body `{conexionId, valores={}, limite=50, desplazamiento=0}`; `plantilla.findUnique` → `conexion.findUnique` [+tenantId] → `vistaCanonica.findMany` [+tenantId] → `evaluarVistas` → `componerSentencia` → `prepararSentencia` → `destinoDeConexion` → `ejecutarConsulta` — satisfies 5.1–5.5
-- [ ] 5.7 Modify `src/server.ts`: register the test route
+- [x] 5.5 RED extend: a closed-port connection still returns its `4xx` — proof nothing was dialed before every check passed (design "Data Flow — Test Route")
+- [ ] 5.6 Implement `src/plantilla-prueba.ts`: AJV body `{conexionId, valores={}, limite=50, desplazamiento=0}`; `plantilla.findUnique` → `conexion.findUnique` [+tenantId] → `vistaCanonica.findMany` [+tenantId] → `evaluarVistas` → `componerSentencia` → `prepararSentencia` → `destinoDeConexion` → `ejecutarConsulta` — satisfies 5.1–5.5 (5a: gate part done — body schema, template lookup, tenant-scoped connection lookup, view lookup, DEC-71 gate `409`; composition, preparation, destination and execution remain for 5b behind the `ejecutarPrueba` seam, which answers `501` until then)
+- [x] 5.7 Modify `src/server.ts`: register the test route
 - [ ] 5.8 RED/GREEN extend `src/aislamiento.test.ts` (T2): tenant B cannot compose tenant A's views through the test route — 404, nothing read (Threat Matrix "Tenant B composing tenant A's views")
 - [ ] 5.9 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/plantilla-prueba.test.ts src/aislamiento.test.ts` green
 - [ ] 5.10 Contingency: if this phase exceeds the 400-line budget, split at the RED/GREEN boundary before 5.4 into `5a` (5.1–5.3: gate and 4xx checks) and `5b` (5.4–5.9: execution and rule-4 tests), per design "Migration / Rollout"
