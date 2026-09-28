@@ -93,10 +93,10 @@ read (4.5), data exposure via rows/personal columns (4.4, 4.2). The Shell/VCS/PR
 
 ## 5. Tenant Isolation Sweep & Full-Suite Checkpoint (`src/aislamiento.test.ts`)
 
-- [ ] 5.1 RED: extend `montarTenant()` — each tenant validates its mapped entity via `POST`, storing the result on `Fixture`
-- [ ] 5.2 RED: extend the `rutas` sweep — `POST`/`GET` validation, `GET` applicability report, each against the other tenant's `conexionId`; `404` both ways (spec `tenant-isolation` "Full two-tenant route sweep")
-- [ ] 5.3 RED: extend — A's `POST` naming B's `conexionId` leaves B's validation columns unchanged, writes nothing for A
-- [ ] 5.4 Full-suite checkpoint: `npm test` green across the full suite; `npx tsc --noEmit` clean
+- [x] 5.1 RED: extend `montarTenant()` — each tenant validates its mapped entity via `POST`, storing the result on `Fixture`
+- [x] 5.2 RED: extend the `rutas` sweep — `POST`/`GET` validation, `GET` applicability report, each against the other tenant's `conexionId`; `404` both ways (spec `tenant-isolation` "Full two-tenant route sweep")
+- [x] 5.3 RED: extend — A's `POST` naming B's `conexionId` leaves B's validation columns unchanged, writes nothing for A
+- [x] 5.4 Full-suite checkpoint: `npm test` green across the full suite; `npx tsc --noEmit` clean
 
 ## Key Success-Criteria Traceability
 
