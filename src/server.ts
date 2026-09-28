@@ -12,6 +12,7 @@ import { registerConsolaRoute } from './consola.js';
 import { registerContratoRoutes } from './contrato-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
+import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 
@@ -42,6 +43,9 @@ registerContratoRoutes(app);
 // The template catalog is global (DEC-61) and exempt by exact row, so it receives the
 // `plantilla` delegate alone: no scoped model is within reach of an exempt handler.
 registerPlantillaRoutes(app, prisma.plantilla);
+// The template test route is NOT exempt (DEC-62): it resolves a tenant-owned connection,
+// so it gets the full scoped client, like the tenant-scoped registrars above.
+registerPlantillaPruebaRoute(app, prisma);
 
 app
   .listen({ port: config.port, host: '0.0.0.0' })
