@@ -1,4 +1,13 @@
 import { CronExpressionParser } from 'cron-parser';
+import type {
+  CorteEjecucion,
+  EjecucionFallida,
+  FaseEjecucion,
+  ResultadoEjecucion,
+} from './consulta-ejecucion.js';
+import { CONTRATO_CANONICO } from './contrato.js';
+import { codigoPublicable } from './pg-error.js';
+import type { EstadoNoAprobado } from './plantillas.js';
 
 /**
  * CH-13: the pure half of the scheduler (X1, X2). Three things live here and nothing
@@ -92,4 +101,132 @@ export function estaVencida(cron: string, desde: Date, hasta: Date, zona: string
     .next()
     .toDate();
   return siguiente.getTime() <= hasta.getTime();
+}
+
+// ---- closing a run (X2) -------------------------------------------------------------
+
+/** Why a run stopped before anything was dialed. Nothing reached the tenant connection. */
+export type CategoriaPreparacion =
+  | 'vista-canonica-no-aprobada'
+  | 'valores-invalidos'
+  | 'conexion-no-encontrada'
+  | 'credencial-ilegible';
+
+/**
+ * A pre-dial refusal. The DEC-71 gate refusal carries the entities it did not approve,
+ * in the shape `evaluarVistas` returns them; every other refusal carries nothing.
+ */
+export type RechazoPreparacion =
+  | {
+      resultado: 'rechazo';
+      categoria: 'vista-canonica-no-aprobada';
+      entidades: readonly { entidad: string; estado: EstadoNoAprobado }[];
+    }
+  | {
+      resultado: 'rechazo';
+      categoria: Exclude<CategoriaPreparacion, 'vista-canonica-no-aprobada'>;
+    };
+
+/**
+ * A throw nobody classified. The thrown value is carried only so the caller has one
+ * shape to hand in; this module never reads it — not its message, stack, or code.
+ */
+export interface FalloInesperado {
+  resultado: 'excepcion';
+  error: unknown;
+}
+
+/** Every way a scheduled run can end: the execution verdict, or a stop before it. */
+export type ResultadoCorrida = ResultadoEjecucion | RechazoPreparacion | FalloInesperado;
+
+/** `Ejecucion.fase`: a pre-dial stop, or the phase `ejecutarConsulta` reports. */
+export type FaseCierre = 'preparacion' | FaseEjecucion;
+
+/** `Ejecucion.error`: a closed category, never driver or thrown text. */
+export type CategoriaCierre =
+  | CategoriaPreparacion
+  | EjecucionFallida['categoria']
+  | 'error-interno';
+
+/**
+ * The outcome columns of one `Ejecucion` row. Timestamps and duration are not here: the
+ * scheduler takes them from its injected clock, so tests control time.
+ *
+ * `codigoError` is the publishable detail of `error`: the SQLSTATE or Node code for an
+ * execution failure (re-gated by `codigoPublicable`), or the comma-joined names of the
+ * ungated entities for a DEC-71 refusal, taken only from the closed canonical contract.
+ * Neither can carry free text.
+ */
+export type CierreEjecucion =
+  | {
+      estado: 'ok';
+      filas: number;
+      corte: CorteEjecucion | null;
+      fase: 'ejecucion';
+      error: null;
+      codigoError: null;
+    }
+  | {
+      estado: 'fallo';
+      filas: null;
+      corte: null;
+      fase: FaseCierre | null;
+      error: CategoriaCierre;
+      codigoError: string | null;
+    };
+
+/** The closed contract's entity names: the only text a gate refusal can record. */
+const NOMBRES_CONTRATO: ReadonlySet<string> = new Set(CONTRATO_CANONICO.map((e) => e.nombre));
+
+/**
+ * Maps a run's outcome to its `Ejecucion` columns (X2). Every branch builds a fresh value
+ * from named fields and never spreads its input, so a stray `message`, `stack`, or any
+ * other property on the value handed in cannot reach the row. The rows a successful run
+ * read are reduced to their count (minimization, D-1 leaning) and then dropped.
+ */
+export function cierreDeResultado(r: ResultadoCorrida): CierreEjecucion {
+  switch (r.resultado) {
+    case 'ok':
+      return {
+        estado: 'ok',
+        filas: r.filas.length,
+        corte: r.corte,
+        fase: 'ejecucion',
+        error: null,
+        codigoError: null,
+      };
+    case 'fallo':
+      return {
+        estado: 'fallo',
+        filas: null,
+        corte: null,
+        fase: r.fase,
+        error: r.categoria,
+        codigoError: codigoPublicable(r.codigo),
+      };
+    case 'rechazo': {
+      const nombres =
+        r.categoria === 'vista-canonica-no-aprobada'
+          ? r.entidades.map((e) => e.entidad).filter((nombre) => NOMBRES_CONTRATO.has(nombre))
+          : [];
+      return {
+        estado: 'fallo',
+        filas: null,
+        corte: null,
+        fase: 'preparacion',
+        error: r.categoria,
+        codigoError: nombres.length > 0 ? nombres.join(',') : null,
+      };
+    }
+    case 'excepcion':
+      // The phase is unknown: the throw may come from any step, including the row writes.
+      return {
+        estado: 'fallo',
+        filas: null,
+        corte: null,
+        fase: null,
+        error: 'error-interno',
+        codigoError: null,
+      };
+  }
 }
