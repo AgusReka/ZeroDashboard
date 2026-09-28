@@ -1,7 +1,12 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
+import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
-import { evaluarVistas, type VistaAComponer } from './plantillas.js';
+import { destinoDeConexion } from './conexion-destino.js';
+import { ejecutarConsulta } from './consulta-ejecucion.js';
+import { ErrorCredencialIlegible } from './cripto-credencial.js';
+import { prepararSentencia } from './parametros.js';
+import { componerSentencia, evaluarVistas, type VistaAComponer } from './plantillas.js';
 
 /**
  * CH-12: `POST /plantillas/:id/prueba`, the template test route (DEC-62). Unlike the
@@ -16,7 +21,7 @@ interface PruebaParams {
 
 interface PruebaBody {
   conexionId: string;
-  /** Checked against the stored declaration by `prepararSentencia` (unit 5b). */
+  /** Checked against the stored declaration by `prepararSentencia`. */
   valores: Record<string, unknown>;
   limite: number;
   desplazamiento: number;
@@ -53,12 +58,75 @@ interface PruebaAprobada {
 }
 
 /**
- * Where execution goes once every check has passed. Unit 5b replaces this body with
- * `componerSentencia` → `prepararSentencia` → `destinoDeConexion` → `ejecutarConsulta`.
- * Until then it answers `501` rather than pretend a result: nothing is dialed.
+ * Execution, once every check has passed: `componerSentencia` → `prepararSentencia` →
+ * `destinoDeConexion` → `ejecutarConsulta` (design "Data Flow — Test Route"). The composed
+ * text is built from stored operator SQL only (DEC-70) and the whole of it goes through the
+ * scanner a saved query goes through, so a request value reaches the driver as a bind and
+ * never as text (rule 4). Every 4xx below still answers before anything is dialed.
  */
-function ejecutarPrueba(reply: FastifyReply, _aprobada: PruebaAprobada) {
-  return reply.code(501).send({ error: 'ejecucion-no-implementada' });
+async function ejecutarPrueba(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  reply: FastifyReply,
+  { plantilla, vistas, cuerpo }: PruebaAprobada,
+) {
+  // The stored declaration is re-checked here, not trusted (DEC-73), and the values are
+  // checked against it: the same `400 {campos, problemas}` as `/consultas/ejecutar`.
+  const sql = componerSentencia(plantilla.sql, vistas);
+  const preparada = prepararSentencia(sql, plantilla.parametros, cuerpo.valores);
+  if (!preparada.ok) {
+    return reply.code(400).send({
+      error: 'solicitud-invalida',
+      campos: [...new Set(preparada.problemas.map((problema) => problema.campo))],
+      problemas: preparada.problemas,
+    });
+  }
+
+  // The one read that names `credencial` (CH-07), made only now that nothing is left to
+  // reject. It is tenant-scoped like the ownership check above (DEC-13).
+  let destino;
+  try {
+    destino = await destinoDeConexion(prisma, cuerpo.conexionId);
+  } catch (error) {
+    if (error instanceof ErrorCredencialIlegible) {
+      // As on `/consultas/ejecutar`: the row exists but cannot be read under the current
+      // key (DEC-20), and nothing about the envelope or the key reaches the body.
+      return reply.code(409).send({ error: 'credencial-ilegible' });
+    }
+    throw error;
+  }
+  if (destino === null) {
+    // Only reachable if the row was deleted after the ownership check.
+    return reply.code(404).send({ error: 'conexion-no-encontrada' });
+  }
+
+  const ejecucion = await ejecutarConsulta({
+    host: destino.host,
+    port: destino.port,
+    database: destino.database,
+    user: destino.user,
+    password: destino.password,
+    sentencia: preparada.valor,
+    limite: cuerpo.limite,
+    desplazamiento: cuerpo.desplazamiento,
+    topeFilas: loadConfig().maxFilasPorConsulta,
+  });
+  if (ejecucion.resultado === 'fallo') {
+    // Sanitized summary only, for the reason `/consultas/ejecutar` gives: the driver error
+    // carries the plaintext password. Values are never logged either (rule 5).
+    app.log.warn(
+      {
+        conexionId: destino.id,
+        fase: ejecucion.fase,
+        categoria: ejecucion.categoria,
+        codigo: ejecucion.codigo,
+        durationMs: ejecucion.duracionMs,
+      },
+      'template test execution failed',
+    );
+  }
+  // A completed attempt is `200` whatever its verdict (the CH-04 contract).
+  return reply.code(200).send(ejecucion);
 }
 
 export function registerPlantillaPruebaRoute(app: FastifyInstance, prisma: PrismaAislado): void {
@@ -107,7 +175,11 @@ export function registerPlantillaPruebaRoute(app: FastifyInstance, prisma: Prism
           .send({ error: 'vista-canonica-no-aprobada', entidades: compuerta.entidades });
       }
 
-      return ejecutarPrueba(reply, { plantilla, vistas: compuerta.vistas, cuerpo: request.body });
+      return ejecutarPrueba(app, prisma, reply, {
+        plantilla,
+        vistas: compuerta.vistas,
+        cuerpo: request.body,
+      });
     },
   );
 }

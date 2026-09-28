@@ -19,6 +19,7 @@ import { registerConsultaRoutes } from './consultas.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
 import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
+import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 
 /**
  * CH-06 tasks 3.2–3.6 — **T2**: "ninguna operación devuelve filas del otro", proven by
@@ -121,6 +122,7 @@ describe(
       registerConsultaGuardadaRoutes(app, aislado);
       registerVistaCanonicaRoutes(app, aislado);
       registerValidacionMapeoRoutes(app, aislado);
+      registerPlantillaPruebaRoute(app, aislado);
       await app.ready();
 
       a = await montarTenant('A');
@@ -715,6 +717,58 @@ describe(
         }
       } finally {
         await db.plantilla.delete({ where: { id: fila.id } });
+      }
+    });
+
+    // ---- CH-12 5.8 T2 through the template test route ---------------------------------
+
+    test("CH-12 5.8 composing the other tenant's views through the test route is 404, nothing read", async () => {
+      // Every fixture view is given a passing verdict first, so the DEC-71 gate would let
+      // a leaked connection through to execution: a 404 can then only come from the
+      // scoped ownership check, which runs before any view row is read or any dial.
+      await db.vistaCanonica.updateMany({
+        where: { tenantId: { in: [a.tenantId, b.tenantId] } },
+        data: { estadoValidacion: 'valida' },
+      });
+      const plantilla = await db.plantilla.create({
+        data: {
+          nombre: `CH-12 T2 ${Date.now()}`,
+          sql: 'SELECT * FROM v_producto',
+          entidades: ['producto'],
+          automatizacion: 'stock-fisico',
+          formato: 'correo-html',
+          toleranciaFrescuraMinutos: 30,
+        },
+      });
+      const probar = (llamante: Fixture, duenio: Fixture) =>
+        app.inject({
+          method: 'POST',
+          url: `/plantillas/${plantilla.id}/prueba`,
+          headers: cabeceras(llamante),
+          payload: { conexionId: duenio.conexionId },
+        });
+      try {
+        for (const [llamante, duenio] of [
+          [a, b],
+          [b, a],
+        ] as const) {
+          const respuesta = await probar(llamante, duenio);
+          assert.equal(respuesta.statusCode, 404, `${llamante.nombre} reached ${duenio.nombre}: ${respuesta.body}`);
+          assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
+          assert.ok(!respuesta.body.includes(duenio.sqlVista));
+          assert.ok(!respuesta.body.includes(duenio.tenantId));
+        }
+        // Owner control: the same request against the caller's own connection passes the
+        // gate, composes and reaches its target, where the superuser fixture is refused
+        // by DEC-08. Without it, the 404s above would also pass on a broken route.
+        for (const fixture of [a, b]) {
+          const respuesta = await probar(fixture, fixture);
+          assert.equal(respuesta.statusCode, 200, respuesta.body);
+          const { resultado, fase } = respuesta.json() as { resultado: string; fase: string };
+          assert.deepEqual({ resultado, fase }, { resultado: 'fallo', fase: 'permisos' });
+        }
+      } finally {
+        await db.plantilla.delete({ where: { id: plantilla.id } });
       }
     });
   },
