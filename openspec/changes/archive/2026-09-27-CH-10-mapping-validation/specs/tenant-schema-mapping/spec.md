@@ -39,3 +39,10 @@ WHEN a registration request names a `Conexion`/entity pair that already has a pe
 - WHEN a new registration request is submitted for the same connection and entity with different SQL text
 - THEN the response SHALL be `200`
 - AND the entity's persisted validation state SHALL become not-validated, with no diagnostic and no validation timestamp
+
+## RENAMED Requirements
+
+- FROM: `Registered SQL Is Never Executed`
+  TO: `Registered SQL Is Not Executed at Register, List, or Read Time`
+- FROM: `Re-registering an Entity Replaces the Previous Definition (DEC-34)`
+  TO: `Re-registering an Entity Replaces the Previous Definition and Resets Its Validation (DEC-34, DEC-41)`
