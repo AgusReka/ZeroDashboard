@@ -62,11 +62,11 @@ CH-12's verify-then-archive close).
 
 ## 2. Pure Scheduling Module (`src/automatizaciones.ts`)
 
-- [ ] 2.1 RED `src/automatizaciones.test.ts`: `cronValido` accepts exactly 5 fields, rejects `@daily`/aliases/a seconds field/malformed input (spec `automation-scheduling` "Invalid cron expression rejected")
-- [ ] 2.2 RED extend: `estaVencida(cron, desde, hasta, zona)` — window edges (`<=` boundary), the `creadaEn` lower bound never fires before creation, and a timezone offset changes the computed next fire (spec "Next fire time follows the configured timezone")
-- [ ] 2.3 RED extend: `cierreDeResultado` maps every `ResultadoEjecucion` category (ok, gate refusal, `valores-invalidos`, execution failure, unexpected throw) to a closed category and a publishable `codigoError`, never a raw driver message or stack trace (spec `execution-log` "A failed run's error is sanitized"; Threat Matrix "Driver or error text reaching Ejecucion")
-- [ ] 2.4 Implement `cronValido`, `estaVencida`, `cierreDeResultado` in `src/automatizaciones.ts` (pure — no Fastify, no Prisma, no pg) — satisfies 2.1–2.3
-- [ ] 2.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/automatizaciones.test.ts` green
+- [x] 2.1 RED `src/automatizaciones.test.ts`: `cronValido` accepts exactly 5 fields, rejects `@daily`/aliases/a seconds field/malformed input (spec `automation-scheduling` "Invalid cron expression rejected")
+- [x] 2.2 RED extend: `estaVencida(cron, desde, hasta, zona)` — window edges (`<=` boundary), the `creadaEn` lower bound never fires before creation, and a timezone offset changes the computed next fire (spec "Next fire time follows the configured timezone")
+- [x] 2.3 RED extend: `cierreDeResultado` maps every `ResultadoEjecucion` category (ok, gate refusal, `valores-invalidos`, execution failure, unexpected throw) to a closed category and a publishable `codigoError`, never a raw driver message or stack trace (spec `execution-log` "A failed run's error is sanitized"; Threat Matrix "Driver or error text reaching Ejecucion")
+- [x] 2.4 Implement `cronValido`, `estaVencida`, `cierreDeResultado` in `src/automatizaciones.ts` (pure — no Fastify, no Prisma, no pg) — satisfies 2.1–2.3
+- [x] 2.5 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/automatizaciones.test.ts` green
 
 ## 3. Automation Routes — Create, List, Get, Deactivate (`src/automatizaciones-rutas.ts`)
 
