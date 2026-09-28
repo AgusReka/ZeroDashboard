@@ -44,6 +44,7 @@ const MARGEN_MS = 4000;
 
 const ESQUEMA = 'ch04_pruebas';
 const TABLA = `${ESQUEMA}.articulo`;
+const EVENTOS = `${ESQUEMA}.evento`;
 
 /** One password per role, all distinct, so a leak assertion names the guilty one. */
 const CLAVES = {
@@ -172,7 +173,14 @@ GRANT CREATE ON SCHEMA ${ESQUEMA} TO ch04_creador;
 -- Decision 2: the write privilege is reachable only through role membership.
 GRANT INSERT ON ${TABLA} TO ch04_grupo_escritor;
 GRANT ch04_grupo_escritor TO ch04_miembro_inherit;
-GRANT ch04_grupo_escritor TO ch04_miembro_noinherit;`;
+GRANT ch04_grupo_escritor TO ch04_miembro_noinherit;
+
+-- CH-11: one column per parameter tipo, read only by the clean control role.
+CREATE TABLE ${EVENTOS} (id integer PRIMARY KEY, nombre text NOT NULL, activo boolean NOT NULL,
+  fecha date NOT NULL);
+INSERT INTO ${EVENTOS} VALUES (1, 'Alta', true, '2026-09-01'), (2, 'Baja', false, '2026-09-15'),
+  (3, 'O''Brien', true, '2026-09-27');
+GRANT SELECT ON ${EVENTOS} TO ch04_lector;`;
 
 describe(
   'consulta routes — integration against a live PostgreSQL target',
@@ -803,6 +811,176 @@ describe(
 
       assert.equal(respuesta.statusCode, 400, respuesta.body);
       assert.equal((respuesta.json() as { error: string }).error, 'solicitud-invalida');
+    });
+
+    // ---- CH-11: declared parameters, bound only as driver parameters -----------------
+
+    interface CuerpoProblemas {
+      error: string;
+      campos: string[];
+      problemas: { parametro: string | null; motivo: string; campo: string }[];
+    }
+
+    /** Submits a statement with an inline declaration and value map (DEC-48). */
+    async function ejecutarCon(
+      conexionId: string,
+      sql: string,
+      parametros: unknown,
+      valores: unknown,
+      paginacion: { limite?: number; desplazamiento?: number } = {},
+    ) {
+      return app.inject({
+        method: 'POST',
+        url: '/consultas/ejecutar',
+        headers: cabeceras(),
+        payload: { conexionId, sql, parametros, valores, ...paginacion },
+      });
+    }
+
+    async function filasCon(id: string, sql: string, parametros: unknown, valores: unknown) {
+      const respuesta = await ejecutarCon(id, sql, parametros, valores);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const cuerpo = respuesta.json() as CuerpoEjecucion;
+      assert.equal(cuerpo.resultado, 'ok', respuesta.body);
+      return (cuerpo as CuerpoOk).filas;
+    }
+
+    test('CH-11 each tipo filters its live column through a driver bind', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const sql = (condicion: string) => `SELECT id FROM ${EVENTOS} WHERE ${condicion} ORDER BY id`;
+
+      assert.deepEqual(
+        await filasCon(id, sql('nombre = :n'), [{ nombre: 'n', tipo: 'texto' }], { n: "O'Brien" }),
+        [[3]],
+      );
+      assert.deepEqual(
+        await filasCon(id, sql('id = :id'), [{ nombre: 'id', tipo: 'numero' }], { id: 2 }),
+        [[2]],
+      );
+      assert.deepEqual(
+        await filasCon(id, sql('activo = :a'), [{ nombre: 'a', tipo: 'booleano' }], { a: false }),
+        [[2]],
+      );
+      assert.deepEqual(
+        await filasCon(id, sql('fecha >= :desde'), [{ nombre: 'desde', tipo: 'fecha' }], {
+          desde: '2026-09-15',
+        }),
+        [[2], [3]],
+      );
+    });
+
+    test('CH-11 page 2 with two parameters binds the page at $3/$4', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const parametros = [
+        { nombre: 'minimo', tipo: 'numero' },
+        { nombre: 'excluido', tipo: 'texto' },
+      ];
+      const sql = `SELECT id FROM ${TABLA} WHERE id >= :minimo AND nombre <> :excluido ORDER BY id`;
+      const valores = { minimo: 1, excluido: 'Té' };
+
+      const primera = await ejecutarCon(id, sql, parametros, valores, { limite: 1 });
+      const segunda = await ejecutarCon(id, sql, parametros, valores, { limite: 1, desplazamiento: 1 });
+
+      const uno = primera.json() as CuerpoOk;
+      const dos = segunda.json() as CuerpoOk;
+      assert.deepEqual([uno.filas, uno.paginacion.hayMas], [[[1]], true], primera.body);
+      assert.deepEqual([dos.filas, dos.paginacion.hayMas], [[[3]], false], segunda.body);
+    });
+
+    test('CH-11 SQL metacharacters in a value come back as data; the table is intact', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const antes = await contarArticulos();
+      for (const valor of ["O'Brien", `x'; DROP TABLE ${TABLA}; --`]) {
+        assert.deepEqual(
+          await filasCon(id, 'SELECT :v AS v', [{ nombre: 'v', tipo: 'texto' }], { v: valor }),
+          [[valor]],
+        );
+      }
+      assert.equal(await contarArticulos(), antes);
+    });
+
+    test('CH-11 a :x inside a literal is returned verbatim, not read as a marker', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      assert.deepEqual(await filasCon(id, "SELECT ':x' AS v", [], {}), [[':x']]);
+    });
+
+    test('CH-11 a well-shaped value Postgres cannot convert is 200 fallo error-datos', async () => {
+      const id = await registrar('ch04_lector', CLAVES.lector);
+      const casos = [
+        { sql: `SELECT id FROM ${EVENTOS} WHERE fecha = :f`, tipo: 'fecha', valor: '2026-02-30' },
+        { sql: `SELECT id FROM ${EVENTOS} WHERE id = :f`, tipo: 'numero', valor: 1.5 },
+      ];
+      for (const { sql, tipo, valor } of casos) {
+        const respuesta = await ejecutarCon(id, sql, [{ nombre: 'f', tipo }], { f: valor });
+        assert.equal(respuesta.statusCode, 200, respuesta.body);
+        const fallo = respuesta.json() as CuerpoFallo;
+        assert.deepEqual([fallo.resultado, fallo.categoria], ['fallo', 'error-datos'], respuesta.body);
+      }
+    });
+
+    /**
+     * The row's credential is unreadable, so a lookup would answer `409` and a dial would
+     * answer `200 fallo`. A `400` proves the parameter check ran first and nothing else.
+     */
+    test('CH-11 every parameter failure is 400 naming the parameter, before any lookup', async () => {
+      const id = await sembrarCredencialCruda(CLAVES.lector);
+      const numero = [{ nombre: 'x', tipo: 'numero' }];
+      const casos: [string, unknown, unknown, string, string][] = [
+        ['SELECT :x', numero, { x: '10' }, 'x', 'valor-invalido'],
+        ['SELECT :x', [{ nombre: 'x', tipo: 'texto' }], { x: null }, 'x', 'valor-invalido'],
+        ['SELECT :x', numero, {}, 'x', 'valor-faltante'],
+        ['SELECT :x', numero, { x: 1, z: 2 }, 'z', 'valor-no-declarado'],
+        ['SELECT :y', [], {}, 'y', 'sin-declarar'],
+        ['SELECT 1', numero, { x: 1 }, 'x', 'sin-usar'],
+        ['SELECT $1', [], {}, '$1', 'posicional-a-mano'],
+      ];
+      for (const [sql, parametros, valores, parametro, motivo] of casos) {
+        const respuesta = await ejecutarCon(id, sql, parametros, valores);
+        assert.equal(respuesta.statusCode, 400, `${sql}: ${respuesta.body}`);
+        const cuerpo = respuesta.json() as CuerpoProblemas;
+        assert.equal(cuerpo.error, 'solicitud-invalida');
+        assert.ok(
+          cuerpo.problemas.some((p) => p.parametro === parametro && p.motivo === motivo),
+          `${sql}: ${respuesta.body}`,
+        );
+        assert.ok(cuerpo.campos.length > 0);
+      }
+    });
+
+    test('CH-11 an unknown tipo is refused by the schema, naming the entry', async () => {
+      const id = await sembrarCredencialCruda(CLAVES.lector);
+      const respuesta = await ejecutarCon(id, 'SELECT :x', [{ nombre: 'x', tipo: 'identificador' }], {
+        x: 'a',
+      });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual((respuesta.json() as { campos: string[] }).campos, ['/parametros/0/tipo']);
+    });
+
+    test("CH-11 a parametrized request naming another tenant's connection is 404", async () => {
+      const ajeno = await prisma.tenant.create({ data: { nombre: `CH-11 ajeno ${Date.now()}` } });
+      try {
+        const fila = await prisma.conexion.create({
+          data: {
+            nombre: `CH-11 ajena ${Date.now()}`,
+            motor: 'postgres',
+            host: objetivo.host,
+            puerto: objetivo.port,
+            baseDeDatos: objetivo.database,
+            usuarioDb: 'ch04_lector',
+            credencial: cifrarCredencial(CLAVES.lector),
+            tenantId: ajeno.id,
+          },
+          select: { id: true },
+        });
+        const respuesta = await ejecutarCon(fila.id, 'SELECT :x', [{ nombre: 'x', tipo: 'numero' }], {
+          x: 1,
+        });
+        assert.equal(respuesta.statusCode, 404, respuesta.body);
+        assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
+      } finally {
+        await prisma.conexion.deleteMany({ where: { tenantId: ajeno.id } });
+        await prisma.tenant.delete({ where: { id: ajeno.id } });
+      }
     });
   },
 );

@@ -8,6 +8,7 @@ import {
   type CategoriaFallo,
   type DestinoPostgres,
 } from './db-probe.js';
+import type { SentenciaPreparada, ValorParametro } from './parametros.js';
 import { codigoPublicable, leerCodigoCrudo } from './pg-error.js';
 
 /**
@@ -72,7 +73,12 @@ export interface PermisosRol {
 
 /** One execution request: where to run, what to run, and which page to return. */
 export interface PeticionEjecucion extends DestinoPostgres {
-  sql: string;
+  /**
+   * The statement, already sanitized by the caller and prepared by `prepararSentencia`.
+   * The brand is what makes every execution pass through the scanner (DEC-59): there is
+   * no raw `sql` field left to hand in.
+   */
+  sentencia: SentenciaPreparada;
   limite: number;
   desplazamiento: number;
   /** Query-runtime budget. Defaults to `loadConfig().queryTimeoutMs`. */
@@ -286,7 +292,7 @@ function categoriaBloqueo(permisos: PermisosRol): CategoriaPermiso | null {
 
 /** The pagination body's inputs. The session budgets live in `PresupuestosSesion`. */
 interface ContextoPaginacion {
-  sqlSaneado: string;
+  sentencia: SentenciaPreparada;
   /** What the caller asked for. Kept only to decide whether the ceiling cut them. */
   limiteSolicitado: number;
   /** What is actually served: the requested page clamped by `topeFilas`. */
@@ -449,6 +455,24 @@ async function enSesionSoloLectura<T>(
   }
 }
 
+/**
+ * The wrapped statement the pagination body sends (DEC-53). The declared parameters own
+ * `$1..$n`, so `LIMIT` and `OFFSET` bind at `$(n+1)` and `$(n+2)`; with no declared
+ * parameter this is exactly the pre-CH-11 `LIMIT $1 OFFSET $2`. Only placeholders are
+ * written into the text: every value, the user's and the page's, travels in `values`.
+ */
+export function sentenciaPaginada(
+  sentencia: SentenciaPreparada,
+  limiteEfectivo: number,
+  desplazamiento: number,
+): { text: string; values: (ValorParametro | number)[] } {
+  const n = sentencia.valores.length;
+  return {
+    text: `SELECT * FROM (${sentencia.texto}) AS _consulta_usuario LIMIT $${n + 1} OFFSET $${n + 2}`,
+    values: [...sentencia.valores, limiteEfectivo + 1, desplazamiento],
+  };
+}
+
 /** The pagination body of `ejecutarConsulta`, unchanged by CH-10. */
 function paginar(ctx: ContextoPaginacion): CuerpoSesion<EjecucionExitosa> {
   return async (cliente, iniciadoEn) => {
@@ -460,8 +484,7 @@ function paginar(ctx: ContextoPaginacion): CuerpoSesion<EjecucionExitosa> {
     // statement text (regla 4). `rowMode: 'array'` keeps duplicate output column names
     // (`SELECT 1 AS a, 2 AS a`) from collapsing.
     const resultado = await cliente.query({
-      text: `SELECT * FROM (${ctx.sqlSaneado}) AS _consulta_usuario LIMIT $1 OFFSET $2`,
-      values: [ctx.limiteEfectivo + 1, ctx.desplazamiento],
+      ...sentenciaPaginada(ctx.sentencia, ctx.limiteEfectivo, ctx.desplazamiento),
       rowMode: 'array',
     });
 
@@ -490,6 +513,9 @@ function paginar(ctx: ContextoPaginacion): CuerpoSesion<EjecucionExitosa> {
 /**
  * Executes one user-authored statement against a target and returns a sanitized
  * verdict. Never throws (see `enSesionSoloLectura`, which owns both budgets).
+ *
+ * It does not call `sanearSql`: the route sanitizes once, before preparing, because
+ * `sanearSql` is not idempotent (`SELECT 1;;`).
  */
 export async function ejecutarConsulta(peticion: PeticionEjecucion): Promise<ResultadoEjecucion> {
   const config = loadConfig();
@@ -504,7 +530,7 @@ export async function ejecutarConsulta(peticion: PeticionEjecucion): Promise<Res
       respaldoMs: presupuestoConsultaMs + MARGEN_RESPALDO_EJECUCION_MS,
     },
     paginar({
-      sqlSaneado: sanearSql(peticion.sql),
+      sentencia: peticion.sentencia,
       limiteSolicitado: peticion.limite,
       limiteEfectivo: limiteEfectivoDe(peticion.limite, topeFilas),
       topeFilas,

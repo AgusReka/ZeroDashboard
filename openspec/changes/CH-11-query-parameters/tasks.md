@@ -70,13 +70,13 @@ hijacking `LIMIT` (2.4), `:x` inside a literal/comment/`$$` (1.2), `"10"`/`null`
 
 ## 3. Execution Wiring (`src/consulta-ejecucion.ts`, `src/consultas.ts`)
 
-- [ ] 3.1 RED extend `src/consulta-ejecucion.test.ts`: a zero-parameter `SentenciaPreparada` produces byte-identical wrapped SQL, binding `LIMIT $1 OFFSET $2` (spec `query-execution` "Zero-parameter query is byte-identical to prior behavior")
-- [ ] 3.2 RED extend: two declared parameters bind at `$1`/`$2`, pagination binds at `$3`/`$4` (DEC-53, spec "Declared parameters bind before pagination's own binds")
-- [ ] 3.3 Modify `src/consulta-ejecucion.ts`: `PeticionEjecucion.sentencia: SentenciaPreparada` replaces `sql`; `paginar` numbers `LIMIT $(n+1) OFFSET $(n+2)` from `sentencia.valores.length`, binding `[...sentencia.valores, limiteEfectivo+1, desplazamiento]` — satisfies 3.1–3.2
-- [ ] 3.4 RED extend `src/consultas.test.ts`: `POST /consultas/ejecutar` accepts `parametros?`/`valores?` (default `[]`/`{}`); a malformed value returns `400 solicitud-invalida` naming the parameter before `destinoDeConexion` runs (spec "Validation failure executes nothing", "Ad hoc execution with inline parameters"; design "Check order")
-- [ ] 3.5 RED extend: each `tipo` filters correctly against a live column; page 2 with two parameters lands at `$3`/`$4`; `O'Brien`/`; DROP TABLE` values return as data with the table intact; `:x` inside a literal returns verbatim; `2026-02-30`/`1.5` against an int column return `200 fallo error-datos`; a `400` against a closed-port target proves nothing was dialed; a foreign `conexionId` returns `404` (spec integration scenarios; Threat Matrix)
-- [ ] 3.6 Modify `src/consultas.ts`: schema gains `parametros`/`valores`; run `sanearSql` then `prepararSentencia` before `destinoDeConexion`; pass `sentencia` to `ejecutarConsulta`; render problems as `400 {error:'solicitud-invalida', campos, problemas}` — satisfies 3.4–3.5
-- [ ] 3.7 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/consulta-ejecucion.test.ts src/consultas.test.ts` green
+- [x] 3.1 RED extend `src/consulta-ejecucion.test.ts`: a zero-parameter `SentenciaPreparada` produces byte-identical wrapped SQL, binding `LIMIT $1 OFFSET $2` (spec `query-execution` "Zero-parameter query is byte-identical to prior behavior")
+- [x] 3.2 RED extend: two declared parameters bind at `$1`/`$2`, pagination binds at `$3`/`$4` (DEC-53, spec "Declared parameters bind before pagination's own binds")
+- [x] 3.3 Modify `src/consulta-ejecucion.ts`: `PeticionEjecucion.sentencia: SentenciaPreparada` replaces `sql`; `paginar` numbers `LIMIT $(n+1) OFFSET $(n+2)` from `sentencia.valores.length`, binding `[...sentencia.valores, limiteEfectivo+1, desplazamiento]` — satisfies 3.1–3.2
+- [x] 3.4 RED extend `src/consultas.test.ts`: `POST /consultas/ejecutar` accepts `parametros?`/`valores?` (default `[]`/`{}`); a malformed value returns `400 solicitud-invalida` naming the parameter before `destinoDeConexion` runs (spec "Validation failure executes nothing", "Ad hoc execution with inline parameters"; design "Check order")
+- [x] 3.5 RED extend: each `tipo` filters correctly against a live column; page 2 with two parameters lands at `$3`/`$4`; `O'Brien`/`; DROP TABLE` values return as data with the table intact; `:x` inside a literal returns verbatim; `2026-02-30`/`1.5` against an int column return `200 fallo error-datos`; a `400` against a closed-port target proves nothing was dialed; a foreign `conexionId` returns `404` (spec integration scenarios; Threat Matrix)
+- [x] 3.6 Modify `src/consultas.ts`: schema gains `parametros`/`valores`; run `sanearSql` then `prepararSentencia` before `destinoDeConexion`; pass `sentencia` to `ejecutarConsulta`; render problems as `400 {error:'solicitud-invalida', campos, problemas}` — satisfies 3.4–3.5
+- [x] 3.7 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/consulta-ejecucion.test.ts src/consultas.test.ts` green
 
 ## 4. Saved-Query Persistence (`prisma/schema.prisma`, migration, `src/consultas-guardadas.ts`)
 

@@ -5,12 +5,16 @@ import { camposInvalidos } from './conexiones.js';
 import { destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta, sanearSql } from './consulta-ejecucion.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
+import { prepararSentencia, TIPOS_PARAMETRO } from './parametros.js';
 
 interface EjecucionBody {
   conexionId: string;
   sql: string;
   limite: number;
   desplazamiento: number;
+  /** The inline declaration (DEC-48). Its content is checked by `prepararSentencia`. */
+  parametros: unknown[];
+  valores: Record<string, unknown>;
 }
 
 /**
@@ -24,6 +28,11 @@ interface EjecucionBody {
  * produced. The ceiling now lives in `MAX_FILAS_CONSULTA` (DEC-19) and is applied by
  * `ejecutarConsulta`, which reports what it did. `minimum: 1` and `default: 50` stay:
  * they are statements about the request's shape, not about the deployment's limits.
+ *
+ * CH-11: `parametros` and `valores` are typed as containers and keys only. `nombre` and
+ * every value carry no `type`, and `tipo` is an `enum` with no `type`, because Fastify's
+ * AJV coerces scalars (`true` → `"true"`, `null` → `""`) wherever a `type` is declared,
+ * which would defeat DEC-60. The shapes themselves are `prepararSentencia`'s job.
  */
 const ejecucionSchema = {
   type: 'object',
@@ -34,6 +43,17 @@ const ejecucionSchema = {
     sql: { type: 'string', minLength: 1 },
     limite: { type: 'integer', minimum: 1, default: 50 },
     desplazamiento: { type: 'integer', minimum: 0, default: 0 },
+    parametros: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['nombre', 'tipo'],
+        properties: { nombre: {}, tipo: { enum: TIPOS_PARAMETRO } },
+      },
+    },
+    valores: { type: 'object', default: {} },
   },
 } as const;
 
@@ -50,10 +70,24 @@ export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAisla
       }
 
       const body = request.body;
-      // A statement that is empty once trimmed is a failure of the request's shape,
-      // not a verdict about the tenant's database, so it never reaches the engine.
-      if (sanearSql(body.sql) === '') {
+      // Sanitized exactly once, here: `sanearSql` is not idempotent (`SELECT 1;;`), so
+      // the engine no longer repeats it. A statement that is empty once trimmed is a
+      // failure of the request's shape, not a verdict about the tenant's database.
+      const sql = sanearSql(body.sql);
+      if (sql === '') {
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/sql'] });
+      }
+
+      // Parameters are checked before the connection is even looked up, like the empty
+      // statement above: a request that cannot run dials nothing and executes nothing.
+      // Values are never logged (rule 5) and only ever reach the driver as binds.
+      const preparada = prepararSentencia(sql, body.parametros, body.valores);
+      if (!preparada.ok) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: [...new Set(preparada.problemas.map((problema) => problema.campo))],
+          problemas: preparada.problemas,
+        });
       }
 
       // Since CH-07 this route does not name `credencial` at all: `destinoDeConexion()`
@@ -85,7 +119,7 @@ export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAisla
         database: conexion.database,
         user: conexion.user,
         password: conexion.password,
-        sql: body.sql,
+        sentencia: preparada.valor,
         limite: body.limite,
         desplazamiento: body.desplazamiento,
         // The ceiling is global and read from the environment on every call (DEC-19),

@@ -64,6 +64,23 @@ Tasks 2.5–2.11: `ValorParametro`, branded `SentenciaPreparada`, DEC-60 value s
 | Typecheck | `npx tsc --noEmit`: exit 0 |
 | Full suite | `npm test` (live DB on :5434): 385 pass, 0 fail |
 
+## Unit 3 — `ch11/4-ejecucion`
+
+Tasks 3.1–3.7. `PeticionEjecucion.sentencia: SentenciaPreparada` replaces `sql`; exported pure `sentenciaPaginada` numbers `LIMIT $(n+1) OFFSET $(n+2)` (DEC-53); `ejecutarConsulta` no longer calls `sanearSql`. The route sanitizes once, runs `prepararSentencia` before `destinoDeConexion`, and answers `400 {error, campos (deduplicated), problemas}`. Schema: `parametros` items `{nombre: {}, tipo: {enum}}`, `valores: object`, defaults `[]`/`{}`.
+
+- "Nothing dialed" is proven with an unreadable-credential row (a lookup would answer `409`), not a closed port: stronger, since not even the lookup runs.
+- Unknown `tipo` is refused by the schema enum (`campos: ['/parametros/0/tipo']`, no `problemas`), per design.
+- Test fixture gains `ch04_pruebas.evento` (one column per `tipo`); existing cases unedited.
+
+| Evidence | Value |
+|---|---|
+| Focused test | `npx tsx --test src/consulta-ejecucion.test.ts src/consultas.test.ts` (live DB :5434): 74 pass, 0 fail |
+| Mutation check | Hard-coding `LIMIT $1 OFFSET $2` fails 5 tests (1 unit, 4 integration); restored |
+| Typecheck | `npx tsc --noEmit`: exit 0 |
+| Full suite | `npm test` (live DB :5434): 395 pass, 0 fail (baseline 385) |
+| Runtime harness | `app.inject()` against live PostgreSQL 16 (8 CH-11 route cases) |
+| Rollback boundary | Revert `src/consulta-ejecucion.ts`, `src/consultas.ts` and their tests; `src/parametros.ts` stays correct unconsumed |
+
 ## Remaining
 
-Phases 3–6. Branches renumbered: `ch11/4-ejecucion`, `ch11/5-persistencia-guardadas`, `ch11/6-consola`, `ch11/7-verify-archivo`.
+Phases 4–6. Branches: `ch11/5-persistencia-guardadas`, `ch11/6-consola`, `ch11/7-verify-archivo`.
