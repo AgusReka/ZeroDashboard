@@ -97,3 +97,28 @@ model VistaCanonica {
   @@unique([conexionId, entidad])
   @@index([tenantId])
 }
+
+// CH-12 (DEC-61): an automation template is a GLOBAL catalog entry, not tenant data.
+// It has no `tenantId` column and no relation to `Tenant`, and it is deliberately
+// absent from `MODELOS_AISLADOS` in `src/aislamiento-prisma.ts`, so the isolation
+// extension passes it through exactly as it passes `Tenant` through. A template becomes
+// tenant-bound only when a tenant instantiates it as an automation, which is CH-21's
+// job, not this model's.
+//
+// `parametros` (the CH-11 declaration shape) and `entidades` (the canonical entities the
+// template composes, DEC-63) are JSON columns validated in the application, the same
+// choice as `ConsultaGuardada.parametros` (DEC-73). `automatizacion` and `formato` are
+// plain TEXT for the reason `VistaCanonica.entidad` is: their allowed values live in
+// code (`AUTOMATIZACIONES`, DEC-67; `correo-html`, DEC-65), so a DB enum would be a
+// second source of truth. `toleranciaFrescuraMinutos` is stored and not yet enforced
+// (DEC-66). A template is replaced in place by id and never deleted (DEC-68).
+model Plantilla {
+  id                        String @id @default(uuid())
+  nombre                    String
+  sql                       String
+  parametros                Json   @default("[]")
+  entidades                 Json
+  automatizacion            String
+  formato                   String
+  toleranciaFrescuraMinutos Int
+}

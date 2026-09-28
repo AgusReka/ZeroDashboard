@@ -1106,6 +1106,240 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ---
 
+### DEC-61 — La plantilla es un catálogo global persistido
+
+**Contexto.** D1 pide una plantilla reutilizable. `docs/00-contexto.md` §8 separa `plantilla` de `automatizacion` (instancia de plantilla en un tenant), y D2/CH-21 da de alta automatizaciones eligiendo una plantilla de un catálogo.
+
+**Opciones.** (a) Por tenant, con `tenantId`, como `ConsultaGuardada` y `VistaCanonica`. (b) Catálogo global persistido, sin `tenantId`, sus rutas exentas de `x-tenant-id` como `/contrato` (DEC-24). (c) Global y solo en código, como `contrato.ts`.
+
+**Decisión.** (b).
+
+**Por qué.** Respeta la separación plantilla/automatización del modelo de dominio y deja a CH-21 elegir de un catálogo compartido. Se persiste porque P1 la escribe por API, no con un despliegue.
+
+**Se resigna.** Es el primer modelo con datos en la base fuera de `Tenant` que no pasa por el aislamiento por tenant; la lista cerrada de `MODELOS_AISLADOS` y la de rutas exentas crecen.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-62 — CH-12 incluye composición `WITH` y un endpoint de prueba
+
+**Contexto.** DEC-31 asigna a CH-12 el armado de los `WITH` de vistas canónicas en tiempo de ejecución. El planificador llega recién en CH-13.
+
+**Opciones.** (a) Solo función pura de composición, sin abrir conexión. (b) Función pura más un endpoint que prueba la plantilla contra una conexión del tenant, reutilizando `ejecutarConsulta` (solo lectura). (c) Ejecución completa al estilo del planificador.
+
+**Decisión.** (b).
+
+**Por qué.** P1 puede verificar que la plantilla corre sobre las vistas de un tenant antes de que exista el planificador, sin duplicar CH-13.
+
+**Se resigna.** Una superficie más de ejecución; la prueba corre con el tenant de la petición y por el mismo pipeline de solo lectura.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-63 — La plantilla declara explícitamente sus entidades canónicas
+
+**Contexto.** La composición necesita saber qué vistas canónicas anteponer como `WITH`.
+
+**Opciones.** (a) Lista explícita `entidades`, validada contra el contrato canónico. (b) Inferirla del texto del SQL. (c) Componer siempre las cinco entidades.
+
+**Decisión.** (a).
+
+**Por qué.** Auditable y sin una segunda superficie de escaneo de texto; coherente con "registrado, no generado" (DEC-30) y con la validación explícita de entidad de DEC-32.
+
+**Se resigna.** Quien escribe la plantilla mantiene la lista a mano.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-64 — "Condición" no agrega campo en CH-12
+
+**Contexto.** D1 menciona una condición. Ya existen el `WHERE` parametrizado de CH-11 y la regla "sin filas no se envía" de X3/CH-14.
+
+**Opciones.** (a) Nada nuevo: la condición es el `WHERE` parametrizado más la regla de CH-14. (b) Campo estructurado `{campo, operador, valor}` que evalúa CH-14. (c) Texto libre documental.
+
+**Decisión.** (a).
+
+**Por qué.** No prediseña el consumidor de CH-14 antes de explorarlo; el umbral ya es un parámetro declarado.
+
+**Se resigna.** No hay condiciones evaluadas por fuera del SQL.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-65 — "Formato" es un enum con un único valor: `correo-html`
+
+**Contexto.** N1/N2 (CH-14) envían correo HTML; N3 (CH-21, R2) hace el formato configurable por plantilla.
+
+**Opciones.** (a) Sin campo, se decide en CH-14. (b) Enum fijo con un único valor hoy, `correo-html`. (c) Plantillas de correo configurables ya.
+
+**Decisión.** (b).
+
+**Por qué.** Cumple el texto de D1 sin adelantar N3.
+
+**Se resigna.** El campo no tiene efecto hasta CH-14.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-66 — Tolerancia de frescura: minutos, guardada y no aplicada
+
+**Contexto.** F1/F2 (CH-24, R2) aplican la frescura.
+
+**Opciones.** (a) Escalar `toleranciaFrescuraMinutos`, persistido y sin aplicar hasta CH-24. (b) Sin campo. (c) Duración ISO-8601.
+
+**Decisión.** (a).
+
+**Por qué.** Declarar ahora y aplicar después, como DEC-40; valor plano como `QUERY_TIMEOUT_MS`.
+
+**Se resigna.** Hasta CH-24 el valor no cambia ninguna ejecución.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-67 — La plantilla se vincula a `AUTOMATIZACIONES` (cierra DEC-22)
+
+**Contexto.** DEC-22 dejó pendiente reconciliar las etiquetas de `AUTOMATIZACIONES` en `contrato.ts` con la plantilla.
+
+**Opciones.** (a) Campo enum cuyos valores salen de `AUTOMATIZACIONES`. (b) Sin vínculo; se reconcilia en CH-21. (c) Catálogo cerrado: exactamente una plantilla por etiqueta.
+
+**Decisión.** (a).
+
+**Por qué.** Cierra un pendiente documentado con un cambio chico, sin la rigidez de (c).
+
+**Se resigna.** Una etiqueta nueva requiere tocar `contrato.ts`.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-68 — La plantilla se reemplaza en el lugar por id
+
+**Contexto.** `ConsultaGuardada` no se edita (DEC-10); `VistaCanonica` se reemplaza en el lugar (DEC-34).
+
+**Opciones.** (a) Sin edición. (b) Reemplazo en el lugar por id. (c) Altas, bajas y modificaciones completas, con borrado.
+
+**Decisión.** (b).
+
+**Por qué.** La plantilla es una definición curada por el operador que se itera durante la puesta a punto, más cerca de `VistaCanonica` que de una consulta personal.
+
+**Se resigna.** Sin historial de versiones ni borrado.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-69 — CH-12 no escribe la consulta canónica de `reporte-diario`
+
+**Contexto.** DEC-29: `reporte-diario` no tiene implementación en el repositorio.
+
+**Opciones.** (a) Fuera de alcance; el catálogo inicial es de D3/CH-21. (b) Dentro de alcance.
+
+**Decisión.** (a).
+
+**Por qué.** CH-12 construye el mecanismo; `stock-fisico` y `stock-producible` alcanzan para probarlo.
+
+**Se resigna.** El tercer caso validado sigue sin consulta canónica hasta CH-21.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la exploración de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-70 — Alias de cada vista compuesta: `v_<entidad>`
+
+**Contexto.** La composición de DEC-62 antepone cada vista canónica declarada (DEC-63) como un `WITH`. El nombre fija cómo se escriben las plantillas; DEC-31 solo dice que esos nombres quedan reservados.
+
+**Opciones.** (a) `v_<entidad>` (`v_producto`, `v_insumo`…), como el SQL del experimento CH-16d. (b) El nombre del contrato (`producto`, `insumo`…).
+
+**Decisión.** (a).
+
+**Por qué.** Si una plantilla usa una entidad que no declaró, la consulta falla con un error legible en vez de leer en silencio una tabla nativa del cliente con el mismo nombre.
+
+**Se resigna.** Las plantillas se escriben con el prefijo `v_`.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-71 — El endpoint de prueba exige validación aprobada de cada vista
+
+**Contexto.** El endpoint de prueba de DEC-62 compone las vistas canónicas de una conexión. CH-10 guarda el resultado de la validación de cada vista (DEC-40/44).
+
+**Opciones.** (a) Exigir que cada vista compuesta tenga una validación guardada aprobada; si no, rechazo 4xx que nombra la entidad. (b) Ejecutar igual e informar el estado de validación en la respuesta.
+
+**Decisión.** (a).
+
+**Por qué.** La validación rechaza columnas fuera del contrato (DEC-43), así que exigirla impide que una vista sin validar filtre campos personales (regla 5).
+
+**Se resigna.** Durante la puesta a punto hay que validar cada vista antes de probar la plantilla.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-72 — La excepción de campos personales de M5 se posterga
+
+**Contexto.** DEC-23 dejó para CH-12 el mecanismo de M5 "salvo que una plantilla lo requiera". Ninguna de las automatizaciones validadas usa domicilio, teléfono ni correo.
+
+**Opciones.** (a) Postergar y documentarlo como límite hasta que una plantilla real lo necesite. (b) Construirlo ahora: la plantilla declara campos personales permitidos, que se suman al contrato, y se flexibiliza DEC-43.
+
+**Decisión.** (a).
+
+**Por qué.** Sin un caso que lo pruebe, construirlo amplía el alcance y la exposición de datos personales; respeta el anti-alcance y la regla 5.
+
+**Se resigna.** Una plantilla no puede usar campos personales hasta que se decida el mecanismo.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-73 — `parametros` y `entidades` de la plantilla se guardan como JSON
+
+**Contexto.** `Plantilla` guarda la declaración de parámetros de CH-11 y la lista de entidades de DEC-63.
+
+**Opciones.** (a) Columnas JSON validadas en la aplicación, como `ConsultaGuardada.parametros` (DEC-55). (b) `entidades` como `text[]` de Postgres y `parametros` como JSON. (c) Tablas hijas `PlantillaEntidad` y `PlantillaParametro`.
+
+**Decisión.** (a).
+
+**Por qué.** Reutiliza la validación de CH-11 y mantiene un solo estilo; el reemplazo en el lugar (DEC-68) sigue siendo una sola escritura.
+
+**Se resigna.** La base no tipa el contenido; la validación vive en la aplicación.
+
+**Decidido por:** el usuario (autor), 2026-09-27, durante la propuesta de CH-12 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

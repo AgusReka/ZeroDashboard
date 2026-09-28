@@ -214,6 +214,91 @@ describe('contexto de tenant — GET /contrato es exento del encabezado (CH-08, 
   });
 });
 
+// ---- CH-12 1.4 the /plantillas exemption rows, still with no database in sight ----
+
+/**
+ * DEC-61 exempts the template catalog, and only the catalog, by exact method and route
+ * pattern. What is under test here is `esExenta` itself, so the routes below are stubs
+ * whose handlers answer a fixed body: registering them is what gives each request a
+ * `routeOptions.url` for the allowlist to match. An unregistered URL has no pattern at
+ * all and would be refused trivially, which proves nothing about the rows.
+ *
+ * The client handed to the hooks is the same throwing stub the `/contrato` block uses:
+ * an exempt row never resolves a tenant, and a refused one is refused before it could.
+ */
+describe('contexto de tenant — /plantillas exemption rows (CH-12, DEC-61)', () => {
+  let app!: FastifyInstance;
+  const alcanzada = async (): Promise<{ alcanzada: true }> => ({ alcanzada: true });
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    app.get('/plantillas', alcanzada);
+    app.post('/plantillas', alcanzada);
+    app.get('/plantillas/:id', alcanzada);
+    app.put('/plantillas/:id', alcanzada);
+    // Not exempt, registered anyway so each carries a real pattern to be refused on.
+    app.delete('/plantillas/:id', alcanzada);
+    app.patch('/plantillas/:id', alcanzada);
+    app.post('/plantillas/:id/prueba', alcanzada);
+    app.get('/plantillas-falsas', alcanzada);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  const exentas = [
+    { method: 'GET', url: '/plantillas' },
+    { method: 'POST', url: '/plantillas' },
+    { method: 'GET', url: '/plantillas/una-plantilla' },
+    { method: 'PUT', url: '/plantillas/una-plantilla' },
+  ] as const;
+
+  for (const { method, url } of exentas) {
+    test(`1.4 ${method} ${url} reaches its handler with no header`, async () => {
+      const respuesta = await app.inject({ method, url });
+
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.deepEqual(respuesta.json(), { alcanzada: true });
+    });
+
+    test(`1.4 ${method} ${url} never looks up a header naming a nonexistent tenant`, async () => {
+      // A scoped route would answer `404 tenant-no-encontrado` here. The throwing stub
+      // is what proves the lookup did not happen rather than merely succeeded.
+      const respuesta = await app.inject({
+        method,
+        url,
+        headers: { 'x-tenant-id': '11111111-2222-3333-4444-555555555555' },
+      });
+
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+    });
+  }
+
+  const rechazadas = [
+    // DEC-68: a template is never deleted, and there is no partial edit either. Neither
+    // method inherits the exemption its path shares with `GET`/`PUT`.
+    { method: 'DELETE', url: '/plantillas/una-plantilla' },
+    { method: 'PATCH', url: '/plantillas/una-plantilla' },
+    // A name that merely starts with `/plantillas` is scoped like everything else.
+    { method: 'GET', url: '/plantillas-falsas' },
+    // DEC-62: the test route resolves a tenant-owned `Conexion`, so it is scoped. A
+    // `/plantillas/` prefix match is exactly what would have let it through.
+    { method: 'POST', url: '/plantillas/una-plantilla/prueba' },
+  ] as const;
+
+  for (const { method, url } of rechazadas) {
+    test(`1.4 ${method} ${url} with no header is refused 400 tenant-no-indicado`, async () => {
+      const respuesta = await app.inject({ method, url });
+
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    });
+  }
+});
+
 // ---- 2.1 the two onRequest hooks, against a live database -------------------------
 
 describe(
