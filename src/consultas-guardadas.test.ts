@@ -83,6 +83,7 @@ interface ResumenGuardada {
 
 interface CompletaGuardada extends ResumenGuardada {
   sql: string;
+  parametros: { nombre: string; tipo: string }[];
 }
 
 interface CuerpoListado {
@@ -93,6 +94,7 @@ interface CuerpoListado {
 interface CuerpoRechazo {
   error: string;
   campos: string[];
+  problemas?: { parametro: string | null; motivo: string; campo: string }[];
 }
 
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
@@ -610,6 +612,117 @@ describe(
         !ejecucion.body.includes(CLAVE_LECTOR),
         'the execution response must not echo the credential',
       );
+    });
+
+    // ---- CH-11 4.3 the parameter declaration (DEC-48, DEC-55) ---------------------------
+
+    test('CH-11 4.3 a valid declaration is persisted as submitted and returned by get-by-id', async () => {
+      const parametros = [
+        { nombre: 'desde', tipo: 'fecha' },
+        { nombre: 'minimo', tipo: 'numero' },
+      ];
+      const creada = await guardar({
+        nombre: `CH-11 declarada ${Date.now()}`,
+        sql: 'SELECT * FROM ventas WHERE fecha >= :desde AND total > :minimo',
+        parametros,
+      });
+
+      assert.deepEqual(creada.parametros, parametros, 'create must echo the declaration');
+      assert.deepEqual((await obtener(creada.id)).parametros, parametros);
+
+      // The list stays metadata-only (CH-05 2.6 pins its keys): no declaration there.
+      const { cuerpo } = await listar();
+      const fila = cuerpo.consultasGuardadas.find((f) => f.id === creada.id);
+      assert.ok(fila !== undefined && !('parametros' in fila), 'a list row must carry no parametros');
+    });
+
+    test('CH-11 4.3 an omitted declaration is stored as []', async () => {
+      const creada = await guardar({ nombre: `CH-11 sin declaracion ${Date.now()}` });
+
+      assert.deepEqual(creada.parametros, []);
+      assert.deepEqual((await obtener(creada.id)).parametros, []);
+      const fila = await prisma.consultaGuardada.findUnique({
+        where: { id: creada.id },
+        select: { parametros: true },
+      });
+      assert.deepEqual(fila?.parametros, [], 'the stored column must hold [], not NULL');
+    });
+
+    test('CH-11 4.3 an unknown tipo is rejected naming the entry and creates no row', async () => {
+      const nombre = `CH-11 tipo desconocido ${Date.now()}`;
+      const cuerpo = await rechazar({
+        nombre,
+        sql: 'SELECT * FROM t WHERE id = :id',
+        parametros: [{ nombre: 'id', tipo: 'identificador' }],
+      });
+
+      assert.ok(
+        cuerpo.campos.includes('/parametros/0/tipo'),
+        `the rejection must name the entry, got ${JSON.stringify(cuerpo.campos)}`,
+      );
+      assert.equal(await prisma.consultaGuardada.count({ where: { nombre } }), 0);
+    });
+
+    test('CH-11 4.3 a declaration that does not match the statement is rejected and creates no row', async () => {
+      const casos = [
+        // DEC-56: declared, never used.
+        {
+          sql: 'SELECT 1',
+          parametros: [{ nombre: 'desde', tipo: 'fecha' }],
+          esperado: { parametro: 'desde', motivo: 'sin-usar', campo: '/parametros/0/nombre' },
+        },
+        // DEC-57: used, never declared.
+        {
+          sql: 'SELECT * FROM t WHERE id = :y',
+          parametros: [],
+          esperado: { parametro: 'y', motivo: 'sin-declarar', campo: '/sql' },
+        },
+        // DEC-59: a hand-written positional bind, even with nothing declared.
+        {
+          sql: 'SELECT * FROM t WHERE id = $1',
+          parametros: undefined,
+          esperado: { parametro: '$1', motivo: 'posicional-a-mano', campo: '/sql' },
+        },
+      ];
+      for (const { sql, parametros, esperado } of casos) {
+        const nombre = `CH-11 desajuste ${esperado.motivo} ${Date.now()}`;
+        const cuerpo = await rechazar({ nombre, sql, ...(parametros && { parametros }) });
+
+        assert.deepEqual(cuerpo.problemas, [esperado], `${sql} must be rejected naming the parameter`);
+        assert.deepEqual(cuerpo.campos, [esperado.campo]);
+        assert.equal(await prisma.consultaGuardada.count({ where: { nombre } }), 0);
+      }
+    });
+
+    // ---- CH-11 4.4 another tenant's saved query (regression) -----------------------------
+
+    test("CH-11 4.4 another tenant's saved query answers 404 and leaks none of its fields", async () => {
+      const ajeno = await prisma.tenant.create({ data: { nombre: `CH-11 ajeno ${Date.now()}` } });
+      const marca = `SELECT * FROM secreto_ch11_${Date.now()} WHERE id = :clave_ajena`;
+      try {
+        const fila = await prisma.consultaGuardada.create({
+          data: {
+            tenantId: ajeno.id,
+            nombre: 'CH-11 ajena',
+            sql: marca,
+            parametros: [{ nombre: 'clave_ajena', tipo: 'texto' }],
+          },
+        });
+
+        const respuesta = await app.inject({
+          method: 'GET',
+          url: `/consultas-guardadas/${fila.id}`,
+          headers: cabeceras(),
+        });
+
+        assert.equal(respuesta.statusCode, 404, respuesta.body);
+        assert.deepEqual(respuesta.json(), { error: 'consulta-guardada-no-encontrada' });
+        assert.ok(!respuesta.body.includes(marca), "B's sql must not reach A");
+        assert.ok(!respuesta.body.includes('clave_ajena'), "B's parametros must not reach A");
+      } finally {
+        await prisma.consultaGuardada.deleteMany({ where: { tenantId: ajeno.id } });
+        await prisma.tenant.delete({ where: { id: ajeno.id } });
+      }
     });
   },
 );

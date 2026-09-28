@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
+import { analizarSentencia, TIPOS_PARAMETRO, validarDeclaracion } from './parametros.js';
 
 /**
  * The metadata projection every list row is built from. Unlike `ConexionPublica`,
@@ -22,10 +24,15 @@ export const ConsultaGuardadaResumen = {
   actualizadaEn: true,
 } as const;
 
-/** The metadata projection plus the stored statement: create and get-by-id only. */
+/**
+ * The metadata projection plus the stored statement and its parameter declaration
+ * (CH-11, DEC-55): create and get-by-id only. The declaration belongs with `sql`, since
+ * neither means anything without the other, so it stays out of the list as well.
+ */
 export const ConsultaGuardadaCompleta = {
   ...ConsultaGuardadaResumen,
   sql: true,
+  parametros: true,
 } as const;
 
 /**
@@ -41,6 +48,8 @@ interface RegistroConsultaGuardadaBody {
   nombre: string;
   descripcion?: string | null;
   sql: string;
+  /** The declaration (DEC-48). Its content is checked by `validarDeclaracion`. */
+  parametros: unknown[];
 }
 
 interface ConsultaGuardadaParams {
@@ -67,16 +76,31 @@ interface ConsultaGuardadaParams {
  *
  * There is no `maxLength` anywhere, matching `conexiones.ts`: Fastify's default
  * 1 MiB `bodyLimit` already rejects an oversized body.
+ *
+ * CH-11: `parametros` has the same shape as on `/consultas/ejecutar` — containers and
+ * keys only, `nombre` untyped and `tipo` an `enum` — for the same reason: a declared
+ * `type` would let AJV coerce the scalar before `validarDeclaracion` could name it. There
+ * is no `valores`: a saved query stores its declaration, never values (DEC-48).
  */
 const registroConsultaGuardadaSchema = {
   type: 'object',
   additionalProperties: false,
-  propertyNames: { enum: ['nombre', 'descripcion', 'sql'] },
+  propertyNames: { enum: ['nombre', 'descripcion', 'sql', 'parametros'] },
   required: ['nombre', 'sql'],
   properties: {
     nombre: { type: 'string', minLength: 1 },
     descripcion: { type: ['string', 'null'] },
     sql: { type: 'string', minLength: 1 },
+    parametros: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['nombre', 'tipo'],
+        properties: { nombre: {}, tipo: { enum: TIPOS_PARAMETRO } },
+      },
+    },
   },
 } as const;
 
@@ -99,8 +123,23 @@ export function registerConsultaGuardadaRoutes(
       // `sanearSql` is used here **as a predicate only**, the same guard
       // `src/consultas.ts` applies before execution: a statement that is empty once
       // trimmed could never execute, so it can never be saved either.
-      if (sanearSql(body.sql) === '') {
+      const sql = sanearSql(body.sql);
+      if (sql === '') {
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/sql'] });
+      }
+
+      // The static half of the parameter checks (DEC-49, DEC-56, DEC-57, DEC-59): the
+      // declaration's shape, then its fit with the statement. There are no values to
+      // check here, so a query that could never be prepared is refused at save time
+      // instead of on every later execution.
+      const declaracion = validarDeclaracion(body.parametros);
+      const problemas = declaracion.ok ? analizarSentencia(sql, declaracion.valor) : declaracion.problemas;
+      if (!declaracion.ok || problemas.length > 0) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: [...new Set(problemas.map((problema) => problema.campo))],
+          problemas,
+        });
       }
 
       // No tenant resolution here any more. The active tenant was validated by the
@@ -123,6 +162,9 @@ export function registerConsultaGuardadaRoutes(
           // would silently rewrite the operator's statement in the database. The
           // stored text is re-sanitized at execution time instead.
           sql: body.sql,
+          // The validated copy: only `nombre` and `tipo` of each entry, in order. The cast
+          // is only because an interface carries no index signature; the value is plain JSON.
+          parametros: declaracion.valor as unknown as Prisma.InputJsonValue,
         }),
         select: ConsultaGuardadaCompleta,
       });
