@@ -1,0 +1,6 @@
+4|Hamburguesa Picante|15|Jalapeños|30|12
+2|Hamburguesa BBQ Bacon|20|Bacon|40|7
+3|Hamburguesa Doble|40|Carne vacuna|80|2
+1|Hamburguesa Clásica|50|Lechuga|50|3
+6|Aros de Cebolla|70|Cebolla|70|5
+5|Papas Fritas|250|Papas|250|13

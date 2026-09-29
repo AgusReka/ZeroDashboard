@@ -1,0 +1,4 @@
+stop 2026-09-29T13:06:22-03:00
+zd-odoo-db-1
+zd-odoo-db-1 Exited (0) Less than a second ago
+ch16-medusa-pg Exited (0) 2 minutes ago

@@ -1,0 +1,3 @@
+cmp esperado/foodstore_modificado.txt p4_foodstore/datos/v2_corrida1.txt: identicas
+cmp esperado/foodstore_modificado.txt p4_foodstore/datos/v2_corrida2.txt: identicas
+cmp esperado/foodstore_modificado.txt p4_foodstore/datos/v2_corrida3.txt: identicas
