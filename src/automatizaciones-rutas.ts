@@ -4,6 +4,7 @@ import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js'
 import { cronValido } from './automatizaciones.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
+import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { prepararSentencia } from './parametros.js';
 
 /**
@@ -36,6 +37,10 @@ interface RegistroAutomatizacionBody {
   /** Checked against the template's stored declaration by `prepararSentencia`. */
   valores: Record<string, unknown>;
   cron: string;
+}
+
+interface AutomatizacionParams {
+  id: string;
 }
 
 /**
@@ -132,6 +137,61 @@ export function registerAutomatizacionRoutes(
         select: AutomatizacionCompleta,
       });
       return reply.code(201).send({ automatizacion });
+    },
+  );
+
+  app.get('/automatizaciones', async (_request, reply) => {
+    // Deactivated rows are listed too (DEC-79): their past runs stay reachable. Newest
+    // first, as saved queries are; `LIMITE_LISTADO + 1` decides the page and `truncado`
+    // in one query.
+    const filas = await prisma.automatizacion.findMany({
+      select: AutomatizacionResumen,
+      orderBy: [{ creadaEn: 'desc' }, { id: 'asc' }],
+      take: LIMITE_LISTADO + 1,
+    });
+    const truncado = filas.length > LIMITE_LISTADO;
+    return reply.code(200).send({
+      automatizaciones: truncado ? filas.slice(0, LIMITE_LISTADO) : filas,
+      truncado,
+    });
+  });
+
+  // Scoped by the extension: another tenant's id is `null`, the same as an unknown one.
+  app.get<{ Params: AutomatizacionParams }>('/automatizaciones/:id', async (request, reply) => {
+    const automatizacion = await prisma.automatizacion.findUnique({
+      where: { id: request.params.id },
+      select: AutomatizacionCompleta,
+    });
+    if (automatizacion === null) {
+      return reply.code(404).send({ error: 'automatizacion-no-encontrada' });
+    }
+    return reply.code(200).send({ automatizacion });
+  });
+
+  /**
+   * The same shape as `/tenants/:id/baja`: read first, because an already-inactive row
+   * has to be told apart from an unknown one and `update` reports both as P2025. There
+   * is no mirror-image route; nothing in this module ever writes `activo: true` (DEC-79).
+   */
+  app.post<{ Params: AutomatizacionParams }>(
+    '/automatizaciones/:id/desactivar',
+    async (request, reply) => {
+      const actual = await prisma.automatizacion.findUnique({
+        where: { id: request.params.id },
+        select: { activo: true },
+      });
+      if (actual === null) {
+        return reply.code(404).send({ error: 'automatizacion-no-encontrada' });
+      }
+      if (!actual.activo) {
+        return reply.code(409).send({ error: 'automatizacion-desactivada' });
+      }
+      const automatizacion = await prisma.automatizacion.update({
+        where: { id: request.params.id },
+        data: { activo: false },
+        select: AutomatizacionCompleta,
+      });
+      return reply.code(200).send({ automatizacion });
     },
   );
 }

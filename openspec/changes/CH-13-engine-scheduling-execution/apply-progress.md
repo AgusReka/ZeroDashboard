@@ -9,12 +9,13 @@ Mode: Standard (strict_tdd: false), RED/GREEN order from tasks.md followed. Deli
 | 1 Schema, isolation, config, dependency | 1.1–1.9 | `ch13/1-esquema-aislamiento-config` (base `master`) | `c12912f`, `c928e9a`, `bbc9100` |
 | 2a Pure module: cron validity, due window | 2.1, 2.2, 2.4–2.5 (that half) | `ch13/2a-cron-ventana` (base unit 1) | `85e4b87` |
 | 2b Pure module: close-of-run mapping | 2.3, 2.4–2.5 (that half) | `ch13/2b-cierre-ejecucion` (base unit 2a) | `b6f7f42`, `52e1e8b` |
-| 3a Automation create route + registration | 3.1, 3.2, 3.3, 3.7; 3.6 create half | `ch13/3-rutas-automatizacion` (base unit 2b) | see `git log ch13/2b-cierre-ejecucion..ch13/3-rutas-automatizacion` |
+| 3a Automation create route + registration | 3.1, 3.2, 3.3, 3.7; 3.6 create half | `ch13/3a-alta-automatizacion` (base unit 2b; renamed from `ch13/3-rutas-automatizacion`) | `9d1f0b1` |
+| 3b Automation list, get, `desactivar` | 3.4, 3.5, 3.8; 3.6 list/get/`desactivar` half | `ch13/3b-consulta-desactivar` (base unit 3a) | see `git log 9d1f0b1..ch13/3b-consulta-desactivar` |
 
 Unit 2 was one apply batch, split afterwards by the orchestrator into 2a and 2b with identical
-final code. Unit 3 was cut to 3a to fit the 400-line budget (the whole phase measured 520).
+final code. Unit 3 was cut into 3a and 3b to fit the 400-line budget (the whole phase measured 520).
 
-Remaining: 3b (3.4, 3.5, the list/get/`desactivar` half of 3.6, 3.8), then Phases 4–7.
+Remaining: Phases 4–7.
 
 ## Unit 1 Evidence
 
@@ -62,7 +63,26 @@ Remaining: 3b (3.4, 3.5, the list/get/`desactivar` half of 3.6, 3.8), then Phase
 - Create order: strict AJV (`propertyNames`; `tenantId` or `activo` in the body is `400`) → `cronValido` (`400 campos ['/cron']`, before any read) → global `plantilla.findUnique` (`404 plantilla-no-encontrada`) → scoped `conexion.findUnique` (`404 conexion-no-encontrada`) → `prepararSentencia(sanearSql(plantilla.sql), plantilla.parametros, valores)` (`400 {campos, problemas}`, the test route's envelope) → `create` with `conTenantInyectado`; `activo` is left to the schema default.
 - `valores` is cast to `Prisma.InputJsonObject` on create; sound because `prepararSentencia` has just accepted every key as declared and every value as a string, finite number or boolean.
 - `AutomatizacionResumen` (no `valores`) and `AutomatizacionCompleta` are already exported for 3b's list and get/`desactivar`.
-- 3b plan, already written and passing once in this batch before the cut: `GET /automatizaciones` (`Resumen`, `creadaEn desc, id asc`, `LIMITE_LISTADO + 1` for `truncado`, deactivated rows included); `GET /automatizaciones/:id` (`404 automatizacion-no-encontrada`); `POST /automatizaciones/:id/desactivar` mirroring `/tenants/:id/baja` (read first, `404`, `409 automatizacion-desactivada`, `update {activo: false}`); tests asserting a foreign id is `404` for B and that no PUT/PATCH/DELETE or reactivation route exists (`hasRoute`); extend the 3.1 no-header test to the three new routes.
+- 3b plan (delivered in unit 3b below): list, get and `desactivar`, taken from the batch that had written and passed them once before the cut.
+
+## Unit 3b Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/automatizaciones-rutas.test.ts`: 7 tests, 7 pass, 0 fail, 0 skipped |
+| RED observed | With the tests extended and the handlers absent: 3 fail, 4 pass — `hasRoute` false for `GET /automatizaciones`; `GET /automatizaciones/:id` answered Fastify's `404 Route ... not found` instead of `200` / `404 automatizacion-no-encontrada` |
+| Typecheck | `npx tsc --noEmit`: clean |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 511 tests, 511 pass, 0 fail (baseline 509 + 2 new tests; the 3.1 no-header test was extended in place), runs 1 and 3. Run 2 reported 501/501: the pre-existing 1000 ms TCP probe timed out under load and skipped the two CH-12 `plantilla-prueba` live describes (`# no PostgreSQL server at localhost:5434`), not this file |
+| Runtime harness | `app.inject()` against the live test PostgreSQL on port 5434: two tenants, one template, one connection per tenant; create, get, deactivate twice, list from A and from B, foreign and unknown ids from B |
+| Rollback boundary | Remove the three handlers, `AutomatizacionParams` and the `LIMITE_LISTADO` import from `src/automatizaciones-rutas.ts`, and the two 3.4/3.5 tests plus the three extra 3.1 rows from its test; the create route and its registration stay |
+
+### Unit 3b implementation notes
+
+- `GET /automatizaciones`: `AutomatizacionResumen` (no `valores`), `orderBy [creadaEn desc, id asc]`, `take LIMITE_LISTADO + 1` to decide `truncado` in one query; deactivated rows included (DEC-79).
+- `GET /automatizaciones/:id`: `AutomatizacionCompleta`; scoped `findUnique`, so a foreign id is `404 automatizacion-no-encontrada`, the same as an unknown one.
+- `POST /automatizaciones/:id/desactivar`: mirrors `/tenants/:id/baja` — read first (`404`), `409 automatizacion-desactivada` when already inactive, then `update {activo: false}` returning `AutomatizacionCompleta`. No route writes `activo: true`.
+- Tests assert, via `hasRoute`, that all four routes exist and that no `PUT`/`PATCH`/`DELETE /automatizaciones/:id` or `POST /automatizaciones/:id/activar` exists; a foreign id is `404` for tenant B on get and `desactivar` and A's row stays active.
+- No deviation from design; no new architecture decision.
 
 ## Notes for later units
 

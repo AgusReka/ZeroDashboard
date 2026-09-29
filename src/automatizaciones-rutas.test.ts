@@ -9,9 +9,9 @@ import { registrarContextoTenant } from './contexto-tenant.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 
 /**
- * CH-13 unit 3a: creating an automation (tasks 3.1–3.3). Every check that answers
- * before a database read runs against a client that throws on any read; the rest run
- * against a live PostgreSQL and skip when none is reachable.
+ * CH-13 unit 3: create, list, get and deactivate an automation (tasks 3.1–3.5). Every
+ * check that answers before a database read runs against a client that throws on any
+ * read; the rest run against a live PostgreSQL and skip when none is reachable.
  */
 
 /** A client on which every model method throws, except the tenant lookup the hooks make. */
@@ -43,11 +43,19 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
     await sinLecturas.close();
   });
 
-  test('3.1 the create route exists and, with no x-tenant-id, answers 400 tenant-no-indicado', async () => {
-    assert.equal(sinLecturas.hasRoute({ method: 'POST', url: '/automatizaciones' }), true);
-    const respuesta = await sinLecturas.inject({ method: 'POST', url: '/automatizaciones', payload: {} });
-    assert.equal(respuesta.statusCode, 400, respuesta.body);
-    assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+  test('3.1 every automation route exists and, with no x-tenant-id, answers 400 tenant-no-indicado', async () => {
+    const rutas: ['GET' | 'POST', string, string][] = [
+      ['POST', '/automatizaciones', '/automatizaciones'],
+      ['GET', '/automatizaciones', '/automatizaciones'],
+      ['GET', '/automatizaciones/:id', '/automatizaciones/cualquiera'],
+      ['POST', '/automatizaciones/:id/desactivar', '/automatizaciones/cualquiera/desactivar'],
+    ];
+    for (const [method, patron, url] of rutas) {
+      assert.equal(sinLecturas.hasRoute({ method, url: patron }), true, `${method} ${patron}`);
+      const respuesta = await sinLecturas.inject({ method, url, payload: method === 'POST' ? {} : undefined });
+      assert.equal(respuesta.statusCode, 400, `${method} ${url}: ${respuesta.body}`);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    }
   });
 
   test('3.1/3.3 a malformed body or an invalid cron is rejected naming the field, before any read', async () => {
@@ -104,7 +112,7 @@ const motivoSkip: string | false = (await esAlcanzable(objetivo.host, objetivo.p
   ? false
   : `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — set TEST_DB_*`;
 
-describe('automation routes — create against a live PostgreSQL (CH-13 3.2)', { skip: motivoSkip }, () => {
+describe('automation routes — create, list, get, deactivate (CH-13 3.2, 3.4, 3.5)', { skip: motivoSkip }, () => {
   let app!: FastifyInstance;
   /** The raw client: fixtures and cleanup only. The app gets the extended one. */
   let prisma!: PrismaClient;
@@ -173,6 +181,10 @@ describe('automation routes — create against a live PostgreSQL (CH-13 3.2)', {
     return app.inject({ method: 'POST', url: '/automatizaciones', headers: { 'x-tenant-id': tenantId }, payload });
   }
 
+  function pedir(method: 'GET' | 'POST', url: string, tenantId = tenantA) {
+    return app.inject({ method, url, headers: { 'x-tenant-id': tenantId } });
+  }
+
   const cuerpo = () => ({ plantillaId, conexionId: conexionA, valores: { nombre: 'x' }, cron: '0 8 * * 1-5' });
 
   test('3.2 a valid create persists activo: true, scoped to the header tenant', async () => {
@@ -207,5 +219,49 @@ describe('automation routes — create against a live PostgreSQL (CH-13 3.2)', {
     assert.equal(sinPlantilla.statusCode, 404, sinPlantilla.body);
     assert.deepEqual(sinPlantilla.json(), { error: 'plantilla-no-encontrada' });
     assert.equal(await prisma.automatizacion.count({ where: { tenantId: tenantA } }), antes);
+  });
+
+  test('3.4/3.5 list, get, deactivate once, and the deactivated row stays listed', async () => {
+    const id = (await crear(cuerpo())).json().automatizacion.id as string;
+
+    const obtenida = await pedir('GET', `/automatizaciones/${id}`);
+    assert.equal(obtenida.statusCode, 200, obtenida.body);
+    assert.equal(obtenida.json().automatizacion.plantillaId, plantillaId);
+    assert.equal(obtenida.json().automatizacion.conexionId, conexionA);
+    assert.deepEqual(obtenida.json().automatizacion.valores, { nombre: 'x' });
+
+    const baja = await pedir('POST', `/automatizaciones/${id}/desactivar`);
+    assert.equal(baja.statusCode, 200, baja.body);
+    assert.equal(baja.json().automatizacion.activo, false);
+    const repetida = await pedir('POST', `/automatizaciones/${id}/desactivar`);
+    assert.equal(repetida.statusCode, 409, repetida.body);
+    assert.deepEqual(repetida.json(), { error: 'automatizacion-desactivada' });
+
+    const listado = await pedir('GET', '/automatizaciones');
+    assert.equal(listado.statusCode, 200, listado.body);
+    const fila = listado.json().automatizaciones.find((a: { id: string }) => a.id === id);
+    assert.equal(fila?.activo, false);
+    assert.equal('valores' in fila, false);
+    assert.equal(listado.json().truncado, false);
+    assert.deepEqual((await pedir('GET', '/automatizaciones', tenantB)).json().automatizaciones, []);
+  });
+
+  test('3.4/3.5 an unknown or foreign id is 404; no route edits, deletes or reactivates', async () => {
+    const deA = (await crear(cuerpo())).json().automatizacion.id as string;
+    for (const [method, url] of [
+      ['GET', `/automatizaciones/${deA}`],
+      ['POST', `/automatizaciones/${deA}/desactivar`],
+      ['GET', '/automatizaciones/no-existe'],
+      ['POST', '/automatizaciones/no-existe/desactivar'],
+    ] as const) {
+      const respuesta = await pedir(method, url, tenantB);
+      assert.equal(respuesta.statusCode, 404, `${method} ${url}: ${respuesta.body}`);
+      assert.deepEqual(respuesta.json(), { error: 'automatizacion-no-encontrada' });
+    }
+    assert.equal((await prisma.automatizacion.findUniqueOrThrow({ where: { id: deA } })).activo, true);
+    for (const method of ['PUT', 'PATCH', 'DELETE'] as const) {
+      assert.equal(app.hasRoute({ method, url: '/automatizaciones/:id' }), false);
+    }
+    assert.equal(app.hasRoute({ method: 'POST', url: '/automatizaciones/:id/activar' }), false);
   });
 });
