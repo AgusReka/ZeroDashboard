@@ -132,6 +132,11 @@ const IDS = [
   'guardadas',
   'banner',
   'estado',
+  'auto-plantilla',
+  'auto-valores',
+  'auto-conexion',
+  'auto-cron',
+  'auto-crear',
   'auto-lista',
   'auto-ejecuciones',
 ] as const;
@@ -268,7 +273,7 @@ describe('the console document, served by the real route', () => {
   async function arrancar(tenants = [{ id: 't-1', nombre: 'Food Store' }]): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
-      const nodo = new Nodo(id === 'tenant' ? 'select' : 'div');
+      const nodo = new Nodo(id === 'tenant' || id === 'auto-plantilla' ? 'select' : 'div');
       nodo.id = id;
       nodos.set(id, nodo);
     }
@@ -287,8 +292,8 @@ describe('the console document, served by the real route', () => {
   }
 
   /**
-   * Selects the tenant. Switching reloads the saved-query list and then the automations
-   * list (CH-13), two more requests.
+   * Selects the tenant. Switching reloads the saved-query list, the template catalog and
+   * the automations list (CH-13), in that request order.
    */
   async function elegirTenant(
     escenario: Escenario,
@@ -300,6 +305,7 @@ describe('the console document, served by the real route', () => {
     selector.value = id;
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } },
+      { status: 200, cuerpo: { plantillas: [{ id: 'p-1', nombre: 'Stock diario' }], truncado: false } },
       { status: 200, cuerpo: { automatizaciones, truncado: false } },
     );
     selector.disparar('change');
@@ -712,7 +718,7 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario, [], [automatizacion()]);
 
     const [fila] = filasDe(escenario, 'auto-lista', 'automatizacion');
-    for (const texto of ['p-1', 'c-1', '0 6 * * *', 'activa']) {
+    for (const texto of ['Stock diario', 'c-1', '0 6 * * *', 'activa']) {
       assert.ok(fila.textContent.includes(texto), texto);
     }
     // DEC-79: the only state change offered is deactivation; no edit, delete or reactivate.
@@ -731,6 +737,46 @@ describe('the console document, served by the real route', () => {
     const [desactivada] = filasDe(escenario, 'auto-lista', 'automatizacion');
     assert.ok(desactivada.textContent.includes('desactivada'));
     assert.deepEqual(botones(desactivada).map((nodo) => nodo.textContent), ['Ver ejecuciones']);
+  });
+
+  /** Spec "Creating an automation from the console"; design: values reuse controlDeValor. */
+  test('create builds value controls from the template and submits scoped to the active tenant', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+
+    const plantilla = escenario.nodos.get('auto-plantilla') as Nodo;
+    plantilla.value = 'p-1';
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: { plantilla: { parametros: [{ nombre: 'desde', tipo: 'fecha' }, { nombre: 'n', tipo: 'numero' }] } },
+    });
+    plantilla.disparar('change');
+    await asentar();
+
+    const controles = (escenario.nodos.get('auto-valores') as Nodo).porClase('parametro-valor');
+    assert.equal(controles.length, 2, 'one control per declared parameter');
+    controles[0].value = '2026-01-01';
+    controles[1].value = ' 10 ';
+    (escenario.nodos.get('auto-conexion') as Nodo).value = 'c-2';
+    (escenario.nodos.get('auto-cron') as Nodo).value = '30 7 * * 1';
+
+    const nueva = automatizacion({ id: 'a-2', conexionId: 'c-2', cron: '30 7 * * 1' });
+    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: nueva } });
+    await enviar(escenario, { automatizaciones: [nueva, automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+
+    const alta = escenario.peticiones[escenario.peticiones.length - 2];
+    assert.equal(alta.url, '/automatizaciones');
+    assert.equal(alta.tenant, 't-1');
+    // No tenantId in the body: the header names the tenant (rule 2).
+    assert.deepEqual(alta.cuerpo, {
+      plantillaId: 'p-1',
+      conexionId: 'c-2',
+      valores: { desde: '2026-01-01', n: 10 },
+      cron: '30 7 * * 1',
+    });
+    const filas = filasDe(escenario, 'auto-lista', 'automatizacion');
+    assert.equal(filas.length, 2);
+    assert.ok(filas[0].textContent.includes('30 7 * * 1'), 'the new automation is listed');
   });
 
   /** Spec "Viewing an automation's runs"; X2: only closed categories reach the page. */
