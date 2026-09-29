@@ -47,7 +47,8 @@ CH-12's verify-then-archive close).
 | 3b | Automation routes: list, get, `desactivar` (3.4, 3.5, rest of 3.6, 3.8) | `ch13/3b-consulta-desactivar` (base unit 3a) | `npm test -- src/automatizaciones-rutas.test.ts` | `app.inject()` against live PostgreSQL, skipped when unreachable | Revert the list/get/`desactivar` handlers and their tests; the create route stays |
 | 4 | Scheduler loop + server wiring (`src/planificador.ts`) | `ch13/4-planificador` (base unit 3; fallback `4a`/`4b`) | `npm test -- src/planificador.test.ts` | Fake `Reloj` + live PostgreSQL, skipped when unreachable | Remove the `iniciar()` call in `server.ts` and revert `src/planificador.ts`/test; routes stay correct unconsumed |
 | 5 | Runs route (`GET .../ejecuciones`) + T2 sweep extension | `ch13/5-rutas-ejecuciones-t2` (base unit 4) | `npm test -- src/automatizaciones-rutas.test.ts src/aislamiento.test.ts` | `app.inject()` against live PostgreSQL, skipped when unreachable | Revert the runs handler and T2 additions; prior units unaffected |
-| 6 | Console "Automatizaciones" section | `ch13/6-consola` (base unit 5) | `npm test -- src/consola.test.ts` | Manual: load console, create/deactivate an automation, view runs | Revert `src/consola.ts`/test section; API stays usable without it |
+| 6a | Console "Automatizaciones" section: list, deactivate, runs, tenant switch | `ch13/6a-consola-lectura` (base unit 5) | `npm test -- src/consola.test.ts` | Manual: load console, deactivate an automation, view runs | Revert `src/consola.ts`/test section; API stays usable without it |
+| 6b | Console "Automatizaciones" section: create form | `ch13/6b-consola-alta` (base unit 6a) | `npm test -- src/consola.test.ts` | Manual: load console, create an automation | Revert the create form and `valoresDe`; the list, deactivate and runs views stay |
 | 7 | Full-suite checkpoint, verify report, archive, bitácora | `ch13/7-verify-archivo` (base unit 6) | `npm test` (full suite) | N/A — docs/verification only | Revert the archive move and bitácora entry |
 
 ## 1. Schema, Isolation, Config & Dependency (`prisma/schema.prisma`, migration, `src/aislamiento-prisma.ts`, `src/config.ts`, `.env.example`, `package.json`)
@@ -104,12 +105,12 @@ CH-12's verify-then-archive close).
 
 ## 6. Minimal Console (`src/consola.ts`)
 
-- [ ] 6.1 (list half done in 6a; create half pending, unit 6b) RED extend `src/consola.test.ts`: the automations view lists plantilla, connection, schedule, and `activo` state for the active tenant; a create control reuses `controlDeValor` for parameter values and submits scoped to the active tenant; on success the new row appears in the list (spec `query-console` "Viewing the automations list", "Creating an automation from the console")
+- [x] 6.1 (list half done in unit 6a; create half done in unit 6b) RED extend `src/consola.test.ts`: the automations view lists plantilla, connection, schedule, and `activo` state for the active tenant; a create control reuses `controlDeValor` for parameter values and submits scoped to the active tenant; on success the new row appears in the list (spec `query-console` "Viewing the automations list", "Creating an automation from the console")
 - [x] 6.2 RED extend: a deactivate control submits the deactivate action and the list reflects `activo: false`, with no edit/delete control present (spec "Deactivating from the console")
 - [x] 6.3 RED extend: a runs view shows start, end, duration, row count, status, and a classified error for failed runs (spec "Viewing an automation's runs")
 - [x] 6.4 RED extend: switching the active-tenant selector refreshes the automations view to the newly selected tenant, every call going through `pedir()` (spec "Switching tenant updates the automations view"; T4, DEC-15)
-- [ ] 6.5 Implement the "Automatizaciones" section in `src/consola.ts`: create form, list table, deactivate action, runs table — satisfies 6.1–6.4 (unit 6a: list, deactivate, runs, tenant switch; unit 6b: create form)
-- [ ] 6.6 (passed for 6a; rerun after 6b) Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/consola.test.ts` green
+- [x] 6.5 Implement the "Automatizaciones" section in `src/consola.ts`: create form, list table, deactivate action, runs table — satisfies 6.1–6.4 (unit 6a: list, deactivate, runs, tenant switch; unit 6b: create form)
+- [x] 6.6 (passed for 6a; rerun and passed after 6b) Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/consola.test.ts` green
 
 ## 7. Full-Suite Checkpoint, Verify & Archive
 

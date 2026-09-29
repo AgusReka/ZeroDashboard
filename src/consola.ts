@@ -158,6 +158,20 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   <h2>Automatizaciones</h2>
   <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. No se puede editar ni reactivar una automatización: para corregirla, se desactiva y se crea otra.</p>
 
+  <label for="auto-plantilla">Plantilla</label>
+  <select id="auto-plantilla"></select>
+  <div id="auto-valores"></div>
+
+  <label for="auto-conexion">Identificador de la conexión registrada</label>
+  <input id="auto-conexion" type="text" autocomplete="off" spellcheck="false">
+
+  <label for="auto-cron">Horario (minuto hora día-del-mes mes día-de-la-semana)</label>
+  <input id="auto-cron" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *">
+
+  <div class="controles">
+    <button id="auto-crear" type="button">Crear automatización</button>
+  </div>
+
   <div class="tabla-contenedor"><table id="auto-lista"></table></div>
   <h2>Ejecuciones</h2>
   <div class="tabla-contenedor"><table id="auto-ejecuciones"></table></div>
@@ -240,6 +254,8 @@ var TIPOS_PARAMETRO = ['texto', 'numero', 'booleano', 'fecha'];
 
 // CH-13: the error codes the automation routes answer with, one sentence each.
 var MENSAJES_AUTOMATIZACION = {
+  'plantilla-no-encontrada': 'La plantilla elegida ya no existe en el catálogo.',
+  'conexion-no-encontrada': 'No existe una conexión registrada con ese identificador para el tenant activo.',
   'automatizacion-no-encontrada': 'Esa automatización ya no existe para el tenant activo. Se actualizó la lista.',
   'automatizacion-desactivada': 'Esa automatización ya estaba desactivada. Se actualizó la lista.'
 };
@@ -275,8 +291,18 @@ var banner = document.getElementById('banner');
 var estado = document.getElementById('estado');
 var encabezado = document.querySelector('#resultados thead');
 var cuerpoTabla = document.querySelector('#resultados tbody');
+var selectorPlantilla = document.getElementById('auto-plantilla');
+var contenedorValoresAuto = document.getElementById('auto-valores');
+var entradaConexionAuto = document.getElementById('auto-conexion');
+var entradaCron = document.getElementById('auto-cron');
+var botonCrearAuto = document.getElementById('auto-crear');
 var tablaAutomatizaciones = document.getElementById('auto-lista');
 var tablaEjecuciones = document.getElementById('auto-ejecuciones');
+
+// The template catalog by id, for naming each automation's plantilla in the list, and
+// the value controls of the template chosen in the create form.
+var nombresPlantilla = Object.create(null);
+var filasValoresAuto = [];
 
 var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
 
@@ -626,21 +652,29 @@ function declaracionActual() {
 }
 
 // A blank control sends no key at all, so the server answers valor-faltante naming the
-// parameter instead of receiving an empty string it would have to interpret.
-function valoresActuales() {
+// parameter instead of receiving an empty string it would have to interpret. Shared by
+// the query editor and the automation form (CH-13): each entry is {nombre, tipo, valor}
+// with valor the control itself.
+function valoresDe(entradas) {
   // No prototype: a parameter may legally be called __proto__, and it must stay a key.
   var valores = Object.create(null);
-  filasParametros.forEach(function (fila) {
-    var tipo = fila.tipo.value;
-    var crudo = tipo === 'texto' ? fila.valor.value : fila.valor.value.trim();
+  entradas.forEach(function (entrada) {
+    var tipo = entrada.tipo;
+    var crudo = tipo === 'texto' ? entrada.valor.value : entrada.valor.value.trim();
     if (crudo === '') { return; }
     var valor = crudo;
     if (tipo === 'booleano') { valor = crudo === 'true'; }
     // Not a finite number: the raw text is sent, and the server names the problem.
     if (tipo === 'numero' && Number.isFinite(Number(crudo))) { valor = Number(crudo); }
-    valores[fila.nombre.value.trim()] = valor;
+    valores[entrada.nombre] = valor;
   });
   return valores;
+}
+
+function valoresActuales() {
+  return valoresDe(filasParametros.map(function (fila) {
+    return { nombre: fila.nombre.value.trim(), tipo: fila.tipo.value, valor: fila.valor };
+  }));
 }
 
 // A 400 on execute or save. A parameter problem becomes one line naming the parameter;
@@ -945,8 +979,9 @@ async function cargarGuardada(id) {
 }
 
 // --- Automations (CH-13) -------------------------------------------------------
-// Every call goes through pedir(), and every value below reaches the page through
-// textContent, as everywhere else. The list names each plantilla by its id.
+// Every call goes through pedir(), the template catalog included although it is
+// exempt: the section belongs to the active tenant and has nothing to show without one.
+// Every value below reaches the page through textContent, as everywhere else.
 
 // One header row, one row per entry. A cell is a string, set as text, or a node (the
 // action buttons). An aviso, when given, is one last row announcing the list cut.
@@ -986,6 +1021,10 @@ function renderizarTabla(tabla, columnas, filas, claseFila, aviso) {
 function limpiarAutomatizaciones() {
   vaciar(tablaAutomatizaciones);
   vaciar(tablaEjecuciones);
+  vaciar(contenedorValoresAuto);
+  vaciar(selectorPlantilla);
+  filasValoresAuto = [];
+  nombresPlantilla = Object.create(null);
 }
 
 // The shared head of every automations call: null when the page has already said why,
@@ -1028,6 +1067,44 @@ function textoOpcional(valor) {
   return valor === null || valor === undefined ? '—' : String(valor);
 }
 
+async function cargarCatalogoPlantillas() {
+  var resultado = await pedirAutomatizacion('/plantillas');
+  if (resultado === null) { return; }
+  if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
+  vaciar(selectorPlantilla);
+  var vacia = document.createElement('option');
+  vacia.value = '';
+  vacia.textContent = 'Elegí una plantilla';
+  selectorPlantilla.appendChild(vacia);
+  nombresPlantilla = Object.create(null);
+  (Array.isArray(resultado.cuerpo.plantillas) ? resultado.cuerpo.plantillas : []).forEach(function (fila) {
+    nombresPlantilla[fila.id] = String(fila.nombre);
+    var opcion = document.createElement('option');
+    opcion.value = String(fila.id);
+    opcion.textContent = String(fila.nombre);
+    selectorPlantilla.appendChild(opcion);
+  });
+}
+
+// The chosen template's declaration becomes one value control per parameter, built by
+// controlDeValor exactly as the query editor builds them.
+async function elegirPlantilla() {
+  var id = selectorPlantilla.value;
+  vaciar(contenedorValoresAuto);
+  filasValoresAuto = [];
+  if (id === '') { return; }
+  var resultado = await pedirAutomatizacion('/plantillas/' + encodeURIComponent(id));
+  // A later choice made while this one was in flight wins.
+  if (resultado === null || selectorPlantilla.value !== id) { return; }
+  if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
+  var parametros = resultado.cuerpo.plantilla.parametros;
+  (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
+    var entrada = { nombre: String(parametro.nombre), tipo: String(parametro.tipo), valor: controlDeValor(String(parametro.tipo)) };
+    contenedorValoresAuto.appendChild(rotular(entrada.nombre, entrada.valor));
+    filasValoresAuto.push(entrada);
+  });
+}
+
 async function listarAutomatizaciones() {
   var resultado = await pedirAutomatizacion('/automatizaciones');
   if (resultado === null) { return; }
@@ -1043,12 +1120,46 @@ async function listarAutomatizaciones() {
       if (fila.activo === true) {
         acciones.appendChild(boton('Desactivar', 'desactivar', function () { desactivar(fila.id); }));
       }
-      return [String(fila.plantillaId), String(fila.conexionId),
+      var nombre = nombresPlantilla[fila.plantillaId];
+      return [nombre === undefined ? String(fila.plantillaId) : nombre, String(fila.conexionId),
         String(fila.cron), fila.activo === true ? 'activa' : 'desactivada', String(fila.creadaEn), acciones];
     }),
     'automatizacion',
     resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' automatizaciones más recientes.' : null
   );
+}
+
+async function cargarAutomatizaciones() {
+  await cargarCatalogoPlantillas();
+  await listarAutomatizaciones();
+}
+
+async function crearAutomatizacion() {
+  ocultarBanner();
+  botonCrearAuto.disabled = true;
+  var resultado = await pedirAutomatizacion('/automatizaciones', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // No tenant here: the header names it (DEC-15), and the route refuses one in the body.
+    body: JSON.stringify({
+      plantillaId: selectorPlantilla.value,
+      conexionId: entradaConexionAuto.value.trim(),
+      valores: valoresDe(filasValoresAuto),
+      cron: entradaCron.value.trim()
+    })
+  });
+  botonCrearAuto.disabled = false;
+  if (resultado === null) { return; }
+  if (resultado.status === 400) {
+    var campos = Array.isArray(resultado.cuerpo.campos) ? resultado.cuerpo.campos : [];
+    mostrarBanner(campos.indexOf('/cron') !== -1
+      ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
+      : mensajeDeSolicitudInvalida(resultado.cuerpo, []));
+    return;
+  }
+  if (resultado.status !== 201) { mostrarRechazo(resultado); return; }
+  mostrarConfirmacion('Se creó la automatización y ya aparece en la lista.');
+  await listarAutomatizaciones();
 }
 
 async function desactivar(id) {
@@ -1110,8 +1221,16 @@ selectorTenant.addEventListener('change', function () {
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
   if (tenantActivo !== null) {
     listarGuardadas();
-    listarAutomatizaciones();
+    cargarAutomatizaciones();
   }
+});
+
+selectorPlantilla.addEventListener('change', function () {
+  elegirPlantilla();
+});
+
+botonCrearAuto.addEventListener('click', function () {
+  crearAutomatizacion();
 });
 
 formulario.addEventListener('submit', function (evento) {
@@ -1140,7 +1259,7 @@ botonAnterior.addEventListener('click', function () {
 cargarTenants().then(function () {
   if (tenantActivo !== null) {
     listarGuardadas();
-    listarAutomatizaciones();
+    cargarAutomatizaciones();
   }
 });
 </script>

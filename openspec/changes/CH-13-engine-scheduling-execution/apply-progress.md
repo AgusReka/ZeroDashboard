@@ -14,12 +14,13 @@ Mode: Standard (strict_tdd: false), RED/GREEN order from tasks.md followed. Deli
 | 4a Scheduler tick: due check, tenant context, gate | 4.1–4.4; 4.8 `Reloj`/`ejecutarTick`/run-pipeline half | `ch13/4a-planificador` (base unit 3b) | `42ab413` |
 | 4b Timer, per-run catch, run log, server wiring | 4.5–4.7, 4.9, 4.10; 4.8 rest | `ch13/4b-planificador-ciclo` (base unit 4a) | see `git log 42ab413..ch13/4b-planificador-ciclo` |
 | 5 Runs route + T2 sweep extension | 5.1–5.4 | `ch13/5-rutas-ejecuciones-t2` (base unit 4b, `4c6a60f`) | `253a11a` (unit 4b bookkeeping, moved out of the 4b slice to keep it under budget), then the unit 5 commit |
-| 6a Console: list, deactivate, runs, tenant switch | 6.2–6.4; 6.1 list half; 6.5 all but the create form | `ch13/6-consola` (base unit 5, `91c2ca8`) | see `git log 91c2ca8..ch13/6-consola` |
+| 6a Console: list, deactivate, runs, tenant switch | 6.2–6.4; 6.1 list half; 6.5 all but the create form | `ch13/6a-consola-lectura` (base unit 5, `91c2ca8`; renamed from `ch13/6-consola`) | `fa4ffde` |
+| 6b Console: create form | 6.1 create half; 6.5 create form; 6.6 | `ch13/6b-consola-alta` (base unit 6a, `fa4ffde`) | see `git log fa4ffde..ch13/6b-consola-alta` |
 
 Unit 2 was one apply batch, split afterwards by the orchestrator into 2a and 2b with identical
 final code. Unit 3 was cut into 3a and 3b to fit the 400-line budget (the whole phase measured 520).
 
-Remaining: unit 6b (6.1 create half, 6.5 create form, 6.6), then Phase 7.
+Remaining: Phase 7.
 
 ## Unit 1 Evidence
 
@@ -166,8 +167,28 @@ Remaining: unit 6b (6.1 create half, 6.5 create form, 6.6), then Phase 7.
 - Every call goes through `pedir()` via `pedirAutomatizacion`, which reuses `manejarFalloDeTenant`. The list shows `plantillaId`, `conexionId`, `cron`, `activa`/`desactivada`, `creadaEn`; the only buttons are "Ver ejecuciones" and, while active, "Desactivar" (DEC-79). Deactivate and a `404`/`409` both reload the list.
 - Runs: start, end, duration, rows (plus the row-cap cut), `estado`, error. A failed run's error is the `MENSAJES` sentence for `fase:error`, else a `MENSAJES_CORRIDA` sentence for the pre-dial categories, plus `(SQLSTATE …)`; a gate refusal names the entities from `codigoError`. Category codes never reach the page as text.
 - Switching tenant wipes both tables before reloading; a stale-tenant refusal wipes them too.
-- 6b plan: plantilla `<select>` from `GET /plantillas` (also names each plantilla in the list), value controls from `GET /plantillas/:id` built with `controlDeValor`, a connection-id text input (no connection-listing route exists, as with `#conexion`), a cron input, and `POST /automatizaciones`; `valoresActuales` is generalised to `valoresDe(entradas)` for both forms. A `400` naming `/cron` gets its own sentence.
+- 6b plan (delivered in unit 6b below): plantilla `<select>` from `GET /plantillas` (also names each plantilla in the list), value controls from `GET /plantillas/:id` built with `controlDeValor`, a connection-id text input (no connection-listing route exists, as with `#conexion`), a cron input, and `POST /automatizaciones`; `valoresActuales` is generalised to `valoresDe(entradas)` for both forms. A `400` naming `/cron` gets its own sentence.
 - Deviation: design says "connection select"; there is no route listing connections, so 6b uses a text input like the query editor's.
+
+## Unit 6b Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/consola.test.ts`: 21 tests, 21 pass, 0 fail |
+| RED observed | Test changes against the 6a `src/consola.ts`: 12 fail, 9 pass — no `/plantillas` request, so every queued response after the saved-query list shifted by one; no `#auto-plantilla` value controls and no `POST /automatizaciones` |
+| Typecheck / build | `npx tsc --noEmit`: clean; `npm run build`: exit 0 |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 536 tests, 536 pass, 0 fail, 0 skipped (baseline 535 + 1) |
+| Runtime harness | The served `/consola` document's inline script run over the stub DOM with a stubbed `fetch` recording each call's `X-Tenant-Id`: choose a template, fill its value controls, connection id and cron, submit, and see the new row listed. Manual browser check not run |
+| Rollback boundary | Revert the create-form markup, `selectorPlantilla`…`botonCrearAuto`, `nombresPlantilla`/`filasValoresAuto`, `cargarCatalogoPlantillas`, `elegirPlantilla`, `cargarAutomatizaciones`, `crearAutomatizacion`, their listeners and the two extra `MENSAJES_AUTOMATIZACION` entries in `src/consola.ts`; restore `valoresActuales` as the sole values reader; revert the create test and the catalog response in `elegirTenant`. The 6a list, deactivate and runs views stay |
+| Review budget | 195 changed lines of code and tests vs `fa4ffde`, plus these artifact updates |
+
+### Unit 6b implementation notes
+
+- Switching tenant (and first load) now calls `cargarAutomatizaciones`: `GET /plantillas` fills `#auto-plantilla` and `nombresPlantilla`, then `GET /automatizaciones`; the list shows the template name, falling back to its id. The catalog is global but still requested through `pedir()`: the section has nothing to show without a tenant.
+- Choosing a template calls `GET /plantillas/:id` and builds one control per declared parameter with `controlDeValor`, labelled by `rotular`; a later choice made while a request is in flight wins.
+- `valoresActuales` is generalised to `valoresDe(entradas)` (`{nombre, tipo, valor}` with `valor` the control) and shared by the query editor and the create form; editor behaviour is unchanged (every earlier editor test still passes).
+- `POST /automatizaciones` body is `{plantillaId, conexionId, valores, cron}` with no `tenantId`; the tenant travels only in the header (rule 2, DEC-15). A `400` whose `campos` includes `/cron` gets its own sentence; other `400`s reuse `mensajeDeSolicitudInvalida`; `404 plantilla-no-encontrada`/`conexion-no-encontrada` have sentences in `MENSAJES_AUTOMATIZACION`. Success shows a confirmation and reloads the list.
+- Deviation from design: the design names a connection select, but no route lists connections, so the connection is a free-text id input (`#auto-conexion`), the same as the query editor's `#conexion`. Adding a connection-listing route would widen the API beyond this change; not done, no new architecture decision.
 
 ## Notes for later units
 
