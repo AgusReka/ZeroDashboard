@@ -14,11 +14,12 @@ Mode: Standard (strict_tdd: false), RED/GREEN order from tasks.md followed. Deli
 | 4a Scheduler tick: due check, tenant context, gate | 4.1–4.4; 4.8 `Reloj`/`ejecutarTick`/run-pipeline half | `ch13/4a-planificador` (base unit 3b) | `42ab413` |
 | 4b Timer, per-run catch, run log, server wiring | 4.5–4.7, 4.9, 4.10; 4.8 rest | `ch13/4b-planificador-ciclo` (base unit 4a) | see `git log 42ab413..ch13/4b-planificador-ciclo` |
 | 5 Runs route + T2 sweep extension | 5.1–5.4 | `ch13/5-rutas-ejecuciones-t2` (base unit 4b, `4c6a60f`) | `253a11a` (unit 4b bookkeeping, moved out of the 4b slice to keep it under budget), then the unit 5 commit |
+| 6a Console: list, deactivate, runs, tenant switch | 6.2–6.4; 6.1 list half; 6.5 all but the create form | `ch13/6-consola` (base unit 5, `91c2ca8`) | see `git log 91c2ca8..ch13/6-consola` |
 
 Unit 2 was one apply batch, split afterwards by the orchestrator into 2a and 2b with identical
 final code. Unit 3 was cut into 3a and 3b to fit the 400-line budget (the whole phase measured 520).
 
-Remaining: Phases 6–7.
+Remaining: unit 6b (6.1 create half, 6.5 create form, 6.6), then Phase 7.
 
 ## Unit 1 Evidence
 
@@ -147,6 +148,26 @@ Remaining: Phases 6–7.
 - The tick test dates its automations 2019 and ticks a 2019 window, before every other suite's 2020 scheduler fixtures, so it runs only its own two. A parallel 2021 tick from `planificador.test.ts` may run them while active; the test counts only rows started at its own instant, checks the owner on every row, and deactivates both automations in `finally`. The template names `pedido`, which has no fixture view, so the gate refuses without a dial.
 - The "scoped read outside the context throws" row of the design's T2 line is already covered by the CH-13 1.4 tests and 3.6 in the same file; not duplicated.
 - No deviation from design; no new architecture decision.
+
+## Unit 6a Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/consola.test.ts`: 20 tests, 20 pass, 0 fail |
+| RED observed | New tests against the base `src/consola.ts`: all fail (no `#auto-lista` rows, no automations request) |
+| Typecheck / build | `npx tsc --noEmit`: clean; `npm run build`: exit 0 |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 535 tests, 535 pass, 0 fail, 0 skipped (baseline 532 + 3) |
+| Runtime harness | The served `/consola` document's inline script run over the stub DOM with a stubbed `fetch` that records the `X-Tenant-Id` of every call. Manual browser check not run |
+| Rollback boundary | Revert the `#automatizaciones` section, `MENSAJES_AUTOMATIZACION`/`MENSAJES_CORRIDA`, the automations block, and the `limpiarAutomatizaciones`/`listarAutomatizaciones` calls in `src/consola.ts`, plus the CH-13 tests and fetch-stub header capture in its test |
+| Review budget | Full phase 6 measured 530 changed lines before bookkeeping, so it was cut: 6a is 351 lines of code and tests vs `91c2ca8`, plus these artifact updates |
+
+### Unit 6a implementation notes
+
+- Every call goes through `pedir()` via `pedirAutomatizacion`, which reuses `manejarFalloDeTenant`. The list shows `plantillaId`, `conexionId`, `cron`, `activa`/`desactivada`, `creadaEn`; the only buttons are "Ver ejecuciones" and, while active, "Desactivar" (DEC-79). Deactivate and a `404`/`409` both reload the list.
+- Runs: start, end, duration, rows (plus the row-cap cut), `estado`, error. A failed run's error is the `MENSAJES` sentence for `fase:error`, else a `MENSAJES_CORRIDA` sentence for the pre-dial categories, plus `(SQLSTATE …)`; a gate refusal names the entities from `codigoError`. Category codes never reach the page as text.
+- Switching tenant wipes both tables before reloading; a stale-tenant refusal wipes them too.
+- 6b plan: plantilla `<select>` from `GET /plantillas` (also names each plantilla in the list), value controls from `GET /plantillas/:id` built with `controlDeValor`, a connection-id text input (no connection-listing route exists, as with `#conexion`), a cron input, and `POST /automatizaciones`; `valoresActuales` is generalised to `valoresDe(entradas)` for both forms. A `400` naming `/cron` gets its own sentence.
+- Deviation: design says "connection select"; there is no route listing connections, so 6b uses a text input like the query editor's.
 
 ## Notes for later units
 

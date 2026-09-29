@@ -149,6 +149,20 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   <ul id="guardadas"></ul>
 </section>
 
+<!--
+  CH-13 (DEC-78, DEC-79, DEC-80): outside #formulario for the reason saved queries are,
+  and every button is type="button". There is no edit, delete or reactivate control on
+  purpose: a mistaken automation is deactivated and created again.
+-->
+<section id="automatizaciones">
+  <h2>Automatizaciones</h2>
+  <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. No se puede editar ni reactivar una automatización: para corregirla, se desactiva y se crea otra.</p>
+
+  <div class="tabla-contenedor"><table id="auto-lista"></table></div>
+  <h2>Ejecuciones</h2>
+  <div class="tabla-contenedor"><table id="auto-ejecuciones"></table></div>
+</section>
+
 <p id="banner" class="banner" role="alert" hidden></p>
 <p id="estado" class="estado" hidden></p>
 
@@ -224,6 +238,22 @@ var MENSAJES_PARAMETRO = {
 };
 var TIPOS_PARAMETRO = ['texto', 'numero', 'booleano', 'fecha'];
 
+// CH-13: the error codes the automation routes answer with, one sentence each.
+var MENSAJES_AUTOMATIZACION = {
+  'automatizacion-no-encontrada': 'Esa automatización ya no existe para el tenant activo. Se actualizó la lista.',
+  'automatizacion-desactivada': 'Esa automatización ya estaba desactivada. Se actualizó la lista.'
+};
+
+// A run closed before dialing carries one of these closed categories instead of a
+// {fase, categoria} pair from MENSAJES. The row never holds driver text (X2).
+var MENSAJES_CORRIDA = {
+  'vista-canonica-no-aprobada': 'La corrida se frenó antes de conectar. Entidades sin una validación de vista canónica aprobada:',
+  'valores-invalidos': 'Los valores guardados ya no cumplen la declaración actual de la plantilla. No se conectó con el destino.',
+  'conexion-no-encontrada': 'La conexión de la automatización ya no existe. No se conectó con el destino.',
+  'credencial-ilegible': 'La credencial guardada de la conexión no se pudo descifrar. No se conectó con el destino.',
+  'error-interno': 'La corrida falló por un error interno de la aplicación.'
+};
+
 var CLAVE_TENANT = 'zerodashboard.tenantActivo';
 
 var selectorTenant = document.getElementById('tenant');
@@ -245,6 +275,8 @@ var banner = document.getElementById('banner');
 var estado = document.getElementById('estado');
 var encabezado = document.querySelector('#resultados thead');
 var cuerpoTabla = document.querySelector('#resultados tbody');
+var tablaAutomatizaciones = document.getElementById('auto-lista');
+var tablaEjecuciones = document.getElementById('auto-ejecuciones');
 
 var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
 
@@ -488,6 +520,7 @@ function manejarFalloDeTenant(cuerpo) {
   if (cuerpo.error === 'tenant-no-encontrado' || cuerpo.error === 'tenant-desactivado') {
     limpiarResultados();
     vaciar(listaGuardadas);
+    limpiarAutomatizaciones();
     cargarTenants();
   }
   return true;
@@ -911,6 +944,159 @@ async function cargarGuardada(id) {
   // connection, so the operator chooses which target to run it against.
 }
 
+// --- Automations (CH-13) -------------------------------------------------------
+// Every call goes through pedir(), and every value below reaches the page through
+// textContent, as everywhere else. The list names each plantilla by its id.
+
+// One header row, one row per entry. A cell is a string, set as text, or a node (the
+// action buttons). An aviso, when given, is one last row announcing the list cut.
+function renderizarTabla(tabla, columnas, filas, claseFila, aviso) {
+  vaciar(tabla);
+  var cabeza = document.createElement('thead');
+  var filaCabeza = document.createElement('tr');
+  columnas.forEach(function (nombre) {
+    var th = document.createElement('th');
+    th.textContent = nombre;
+    filaCabeza.appendChild(th);
+  });
+  cabeza.appendChild(filaCabeza);
+  tabla.appendChild(cabeza);
+  var cuerpo = document.createElement('tbody');
+  filas.forEach(function (celdas) {
+    var tr = document.createElement('tr');
+    tr.className = claseFila;
+    celdas.forEach(function (celda) {
+      var td = document.createElement('td');
+      if (typeof celda === 'string') { td.textContent = celda; } else { td.appendChild(celda); }
+      tr.appendChild(td);
+    });
+    cuerpo.appendChild(tr);
+  });
+  if (aviso) {
+    var trAviso = document.createElement('tr');
+    var tdAviso = document.createElement('td');
+    tdAviso.className = 'ayuda';
+    tdAviso.textContent = aviso;
+    trAviso.appendChild(tdAviso);
+    cuerpo.appendChild(trAviso);
+  }
+  tabla.appendChild(cuerpo);
+}
+
+function limpiarAutomatizaciones() {
+  vaciar(tablaAutomatizaciones);
+  vaciar(tablaEjecuciones);
+}
+
+// The shared head of every automations call: null when the page has already said why,
+// otherwise the status and the parsed body for the caller to judge.
+async function pedirAutomatizacion(url, opciones) {
+  var respuesta;
+  try {
+    respuesta = await pedir(url, opciones);
+  } catch (fallaDeRed) {
+    mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    return null;
+  }
+  if (respuesta === null) { return null; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return null; }
+  if (cuerpo === null) {
+    mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    return null;
+  }
+  return { status: respuesta.status, cuerpo: cuerpo };
+}
+
+function mostrarRechazo(resultado) {
+  var error = resultado.cuerpo.error;
+  mostrarBanner(Object.prototype.hasOwnProperty.call(MENSAJES_AUTOMATIZACION, error)
+    ? MENSAJES_AUTOMATIZACION[error] : 'La aplicación respondió HTTP ' + resultado.status + '.');
+}
+
+function boton(texto, clase, accion) {
+  var nodo = document.createElement('button');
+  nodo.type = 'button';
+  nodo.className = clase;
+  nodo.textContent = texto;
+  nodo.addEventListener('click', accion);
+  return nodo;
+}
+
+function textoOpcional(valor) {
+  return valor === null || valor === undefined ? '—' : String(valor);
+}
+
+async function listarAutomatizaciones() {
+  var resultado = await pedirAutomatizacion('/automatizaciones');
+  if (resultado === null) { return; }
+  if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
+  var filas = Array.isArray(resultado.cuerpo.automatizaciones) ? resultado.cuerpo.automatizaciones : [];
+  renderizarTabla(
+    tablaAutomatizaciones,
+    ['Plantilla', 'Conexión', 'Horario', 'Estado', 'Creada', 'Acciones'],
+    filas.map(function (fila) {
+      var acciones = document.createElement('span');
+      acciones.appendChild(boton('Ver ejecuciones', 'ver-ejecuciones', function () { verEjecuciones(fila.id); }));
+      // The only state change offered, and only while it can still happen (DEC-79).
+      if (fila.activo === true) {
+        acciones.appendChild(boton('Desactivar', 'desactivar', function () { desactivar(fila.id); }));
+      }
+      return [String(fila.plantillaId), String(fila.conexionId),
+        String(fila.cron), fila.activo === true ? 'activa' : 'desactivada', String(fila.creadaEn), acciones];
+    }),
+    'automatizacion',
+    resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' automatizaciones más recientes.' : null
+  );
+}
+
+async function desactivar(id) {
+  ocultarBanner();
+  var resultado = await pedirAutomatizacion('/automatizaciones/' + encodeURIComponent(id) + '/desactivar', { method: 'POST' });
+  if (resultado === null) { return; }
+  if (resultado.status === 200) {
+    mostrarConfirmacion('Se desactivó la automatización. Sus ejecuciones pasadas siguen disponibles.');
+  } else {
+    mostrarRechazo(resultado);
+  }
+  await listarAutomatizaciones();
+}
+
+// One legible sentence per closed category; a SQLSTATE only when the row carries one.
+function errorDeCorrida(fila) {
+  if (fila.error === null || fila.error === undefined) { return ''; }
+  var error = String(fila.error);
+  var clave = String(fila.fase) + ':' + error;
+  // A gate refusal names the ungated entities in codigoError (closed contract names).
+  if (error === 'vista-canonica-no-aprobada') {
+    return MENSAJES_CORRIDA[error] + ' ' + textoOpcional(fila.codigoError) + '.';
+  }
+  var texto = Object.prototype.hasOwnProperty.call(MENSAJES, clave) ? MENSAJES[clave]
+    : Object.prototype.hasOwnProperty.call(MENSAJES_CORRIDA, error) ? MENSAJES_CORRIDA[error] : MENSAJE_GENERICO;
+  return fila.codigoError ? texto + ' (SQLSTATE ' + fila.codigoError + ')' : texto;
+}
+
+async function verEjecuciones(id) {
+  ocultarBanner();
+  var resultado = await pedirAutomatizacion('/automatizaciones/' + encodeURIComponent(id) + '/ejecuciones');
+  if (resultado === null) { return; }
+  if (resultado.status !== 200) { mostrarRechazo(resultado); await listarAutomatizaciones(); return; }
+  var filas = Array.isArray(resultado.cuerpo.ejecuciones) ? resultado.cuerpo.ejecuciones : [];
+  renderizarTabla(
+    tablaEjecuciones,
+    ['Inicio', 'Fin', 'Duración (ms)', 'Filas', 'Estado', 'Error'],
+    filas.map(function (fila) {
+      var cantidad = textoOpcional(fila.filas) + (fila.corte === 'tope-de-filas' ? ' (cortado en el tope)' : '');
+      return [String(fila.iniciadaEn), textoOpcional(fila.finalizadaEn), textoOpcional(fila.duracionMs),
+        cantidad, String(fila.estado), errorDeCorrida(fila)];
+    }),
+    'ejecucion',
+    filas.length === 0 ? 'Esta automatización todavía no tiene ejecuciones.'
+      : resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' ejecuciones más recientes.' : null
+  );
+}
+
 // Switching tenants wipes the screen before anything else happens. This is the visual
 // half of the isolation guarantee: rows and saved-query names belonging to the tenant
 // the operator just left must not stay on the page next to the new tenant's name.
@@ -920,8 +1106,12 @@ selectorTenant.addEventListener('change', function () {
   limpiarResultados();
   vaciar(listaGuardadas);
   limpiarParametros();
+  limpiarAutomatizaciones();
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
-  if (tenantActivo !== null) { listarGuardadas(); }
+  if (tenantActivo !== null) {
+    listarGuardadas();
+    listarAutomatizaciones();
+  }
 });
 
 formulario.addEventListener('submit', function (evento) {
@@ -948,7 +1138,10 @@ botonAnterior.addEventListener('click', function () {
 // The tenant list comes first: nothing else on this page can be asked for until the
 // console knows which tenant it is operating as.
 cargarTenants().then(function () {
-  if (tenantActivo !== null) { listarGuardadas(); }
+  if (tenantActivo !== null) {
+    listarGuardadas();
+    listarAutomatizaciones();
+  }
 });
 </script>
 </body>

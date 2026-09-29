@@ -132,6 +132,8 @@ const IDS = [
   'guardadas',
   'banner',
   'estado',
+  'auto-lista',
+  'auto-ejecuciones',
 ] as const;
 
 interface Escenario {
@@ -140,7 +142,8 @@ interface Escenario {
   cuerpoTabla: Nodo;
   /** Queued responses, consumed in order by the stubbed `fetch`. */
   respuestas: Array<{ status: number; cuerpo: unknown }>;
-  peticiones: Array<{ url: string; cuerpo: unknown }>;
+  /** `tenant` is the `X-Tenant-Id` header the request carried, `null` when none. */
+  peticiones: Array<{ url: string; cuerpo: unknown; tenant: string | null }>;
 }
 
 /**
@@ -172,10 +175,14 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
     },
   };
 
-  const fetchFalso = async (url: string, opciones?: { body?: string }): Promise<unknown> => {
+  const fetchFalso = async (
+    url: string,
+    opciones?: { body?: string; headers?: Record<string, string> },
+  ): Promise<unknown> => {
     escenario.peticiones.push({
       url,
       cuerpo: opciones?.body === undefined ? null : JSON.parse(opciones.body),
+      tenant: opciones?.headers?.['X-Tenant-Id'] ?? null,
     });
     const siguiente = escenario.respuestas.shift();
     if (siguiente === undefined) {
@@ -257,8 +264,8 @@ describe('the console document, served by the real route', () => {
 
   // ---- behavioural cases: the script is run, not grepped ----------------------------
 
-  /** Boots the console with one tenant already selectable, then returns the scenario. */
-  async function arrancar(): Promise<Escenario> {
+  /** Boots the console with the tenants already selectable, then returns the scenario. */
+  async function arrancar(tenants = [{ id: 't-1', nombre: 'Food Store' }]): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
       const nodo = new Nodo(id === 'tenant' ? 'select' : 'div');
@@ -269,7 +276,7 @@ describe('the console document, served by the real route', () => {
       nodos,
       encabezado: new Nodo('thead'),
       cuerpoTabla: new Nodo('tbody'),
-      respuestas: [{ status: 200, cuerpo: { tenants: [{ id: 't-1', nombre: 'Food Store' }] } }],
+      respuestas: [{ status: 200, cuerpo: { tenants } }],
       peticiones: [],
     };
 
@@ -279,11 +286,22 @@ describe('the console document, served by the real route', () => {
     return escenario;
   }
 
-  /** Selects the tenant; switching reloads the saved-query list, one more request. */
-  async function elegirTenant(escenario: Escenario, guardadas: unknown[] = []): Promise<void> {
+  /**
+   * Selects the tenant. Switching reloads the saved-query list and then the automations
+   * list (CH-13), two more requests.
+   */
+  async function elegirTenant(
+    escenario: Escenario,
+    guardadas: unknown[] = [],
+    automatizaciones: unknown[] = [],
+    id = 't-1',
+  ): Promise<void> {
     const selector = escenario.nodos.get('tenant') as Nodo;
-    selector.value = 't-1';
-    escenario.respuestas.push({ status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } });
+    selector.value = id;
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } },
+      { status: 200, cuerpo: { automatizaciones, truncado: false } },
+    );
     selector.disparar('change');
     await new Promise((resolver) => setImmediate(resolver));
   }
@@ -655,5 +673,123 @@ describe('the console document, served by the real route', () => {
     assert.match(lineas[1], /^Declaración de parámetros: /);
     assert.match(lineas[2], /«desde»: está declarado pero la sentencia no lo usa/);
     assert.ok(!lineas.join('\n').includes('sin-usar'));
+  });
+
+  // ---- CH-13: automations (spec `query-console`, DEC-78, DEC-79, DEC-80, T4) --------
+
+  /** One `AutomatizacionResumen` row as `GET /automatizaciones` lists it. */
+  function automatizacion(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'a-1',
+      plantillaId: 'p-1',
+      conexionId: 'c-1',
+      cron: '0 6 * * *',
+      activo: true,
+      creadaEn: '2026-09-28T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  /** The rows of one automations table, by the class the console gives them. */
+  function filasDe(escenario: Escenario, id: string, clase: string): Nodo[] {
+    return (escenario.nodos.get(id) as Nodo).porClase(clase);
+  }
+
+  /** Every button inside `nodo`, in document order. */
+  function botones(nodo: Nodo): Nodo[] {
+    return nodo.hijos.flatMap((hijo) => (hijo.tagName === 'button' ? [hijo] : botones(hijo)));
+  }
+
+  /** Lets an action that chains two requests settle. */
+  async function asentar(): Promise<void> {
+    await new Promise((resolver) => setImmediate(resolver));
+    await new Promise((resolver) => setImmediate(resolver));
+  }
+
+  /** Spec "Viewing the automations list" and "Deactivating from the console". */
+  test('the list shows plantilla, connection, schedule and state; deactivating reloads it', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+
+    const [fila] = filasDe(escenario, 'auto-lista', 'automatizacion');
+    for (const texto of ['p-1', 'c-1', '0 6 * * *', 'activa']) {
+      assert.ok(fila.textContent.includes(texto), texto);
+    }
+    // DEC-79: the only state change offered is deactivation; no edit, delete or reactivate.
+    assert.deepEqual(botones(fila).map((nodo) => nodo.textContent), ['Ver ejecuciones', 'Desactivar']);
+
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { automatizacion: automatizacion({ activo: false }) } },
+      { status: 200, cuerpo: { automatizaciones: [automatizacion({ activo: false })], truncado: false } },
+    );
+    fila.porClase('desactivar')[0].disparar('click');
+    await asentar();
+
+    const baja = escenario.peticiones[escenario.peticiones.length - 2];
+    assert.equal(baja.url, '/automatizaciones/a-1/desactivar');
+    assert.equal(baja.tenant, 't-1');
+    const [desactivada] = filasDe(escenario, 'auto-lista', 'automatizacion');
+    assert.ok(desactivada.textContent.includes('desactivada'));
+    assert.deepEqual(botones(desactivada).map((nodo) => nodo.textContent), ['Ver ejecuciones']);
+  });
+
+  /** Spec "Viewing an automation's runs"; X2: only closed categories reach the page. */
+  test('the runs view shows each run and a classified error for a failed one', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+
+    const base = { corte: null, codigoError: null, error: null };
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', estado: 'ok', iniciadaEn: '2026-09-28T06:00:01.000Z', finalizadaEn: '2026-09-28T06:00:02.000Z', duracionMs: 850, filas: 42, fase: 'ejecucion' },
+          { ...base, id: 'e-2', estado: 'fallo', iniciadaEn: 'i2', finalizadaEn: 'f2', duracionMs: 30000, filas: null, fase: 'ejecucion', error: 'tiempo-agotado', codigoError: '57014' },
+          { ...base, id: 'e-3', estado: 'fallo', iniciadaEn: 'i3', finalizadaEn: 'f3', duracionMs: 4, filas: null, fase: 'preparacion', error: 'vista-canonica-no-aprobada', codigoError: 'pedido,cliente' },
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+
+    const pedido = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(pedido.url, '/automatizaciones/a-1/ejecuciones');
+    assert.equal(pedido.tenant, 't-1');
+    const corridas = filasDe(escenario, 'auto-ejecuciones', 'ejecucion');
+    assert.equal(corridas.length, 3);
+    assert.deepEqual(
+      corridas[0].hijos.map((celda) => celda.textContent),
+      ['2026-09-28T06:00:01.000Z', '2026-09-28T06:00:02.000Z', '850', '42', 'ok', ''],
+    );
+    assert.match(corridas[1].textContent, /superó el tiempo máximo de ejecución.*\(SQLSTATE 57014\)/);
+    assert.ok(!corridas[1].textContent.includes('tiempo-agotado'), 'the category code is translated');
+    assert.match(corridas[2].textContent, /antes de conectar.*pedido,cliente/);
+  });
+
+  /** Spec "Switching tenant updates the automations view" (T4, DEC-15). */
+  test('switching tenant clears the runs and reloads the list for the new tenant only', async () => {
+    const escenario = await arrancar([
+      { id: 't-1', nombre: 'Food Store' },
+      { id: 't-2', nombre: 'Otra tienda' },
+    ]);
+    await elegirTenant(escenario, [], [automatizacion({ conexionId: 'c-A' })], 't-1');
+    escenario.respuestas.push({ status: 200, cuerpo: { ejecuciones: [{ id: 'e-1', estado: 'ok' }], truncado: false } });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+    assert.equal(filasDe(escenario, 'auto-ejecuciones', 'ejecucion').length, 1);
+
+    await elegirTenant(escenario, [], [automatizacion({ id: 'b-1', conexionId: 'c-B' })], 't-2');
+
+    const filas = filasDe(escenario, 'auto-lista', 'automatizacion');
+    assert.equal(filas.length, 1);
+    assert.ok(filas[0].textContent.includes('c-B'));
+    assert.ok(!filas[0].textContent.includes('c-A'), 'the previous tenant row is gone');
+    assert.equal((escenario.nodos.get('auto-ejecuciones') as Nodo).hijos.length, 0, 'the old runs are wiped');
+    // Every call went through pedir(): each carries the tenant that was active when sent.
+    const llamadas = escenario.peticiones.filter((peticion) => peticion.url !== '/tenants');
+    assert.ok(llamadas.every((peticion) => peticion.tenant !== null));
+    assert.equal(llamadas[llamadas.length - 1].url, '/automatizaciones');
+    assert.equal(llamadas[llamadas.length - 1].tenant, 't-2');
   });
 });
