@@ -313,3 +313,11 @@ Horas del host en −03:00. Entre paréntesis, la hora del servidor en UTC, cuan
 | 13:06:22 | `docker stop zd-odoo-db-1` |
 
 El hash del commit que contiene esta bitácora se anota en un commit posterior, porque un commit no puede contener su propio hash.
+
+## Commits
+
+| Commit | Contenido |
+|---|---|
+| `5c00e1c581e7e06ae2a013df4cdd6dcafde4563f` | Preregistro: V2, manuales, huellas, scripts, criterios |
+| `0443104` | Corridas base (paso 3), modificación de Odoo, corrección I-1 y `ESPERADO_FOODSTORE.md` |
+| `748e64a` | Modificación de Food Store, comparaciones con lo esperado y esta bitácora |
