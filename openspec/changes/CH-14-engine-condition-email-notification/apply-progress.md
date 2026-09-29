@@ -10,10 +10,11 @@ container `zd-ch09-testdb` on `localhost:5434`).
 |---|---|---|---|
 | 1 Planning, schema, migration, `smtpTimeoutMs`, pin, compose, `.env.example` | 1.1–1.9 | `ch14/1-esquema-config` (base `master` `a4d78db`) | `ce5bea5` (planning, docs only), `b208e00`, `975c7aa`, `6c4e046`, `c1130c2`, `b05d60e`, `f40d93c` (bookkeeping) |
 | 2a Pure helpers: `direccionValida`, `textoDeCelda`, `escaparHtml`, `asuntoCorreo` | 2.1, 2.2 (cell rules), 2.3 (`escaparHtml`), 2.5 (subject) | `ch14/2a-correo-auxiliares` (base `ch14/1-esquema-config` `f40d93c`) | `3b1043b` |
-| 2b Composition: `componerCorreo`, HTML/text parts, notices, accent, date | 2.2 (in-message), 2.3 (in-message), 2.4, 2.5 (accent), 2.6, 2.7, 2.8 | `ch14/2b-correo-composicion` (base `ch14/2a-correo-auxiliares`) | `b45c111`, then the bookkeeping commit for this file |
+| 2b Composition: `componerCorreo`, HTML/text parts, notices, accent, date | 2.2 (in-message), 2.3 (in-message), 2.4, 2.5 (accent), 2.6, 2.7, 2.8 | `ch14/2b-correo-composicion` (base `ch14/2a-correo-auxiliares`) | `b45c111`, `2a3dca8` (bookkeeping) |
+| 3 Outcome mapping: `decidirNotificacion`, `cierreConNotificacion`, close-type widening | 3.1–3.6 | `ch14/3-mapeo-notificacion` (base `ch14/2b-correo-composicion` `2a3dca8`) | `568a6eb` (3.1), `6ac0ea8` (3.2–3.5); this bookkeeping is uncommitted (see "Unit 3 budget") |
 
-Remaining: Phases 3–7 (units 3, 4, 5a, 5b, 6, 7). Unit 3 (`ch14/3-mapeo-notificacion`) now stacks on
-`ch14/2b-correo-composicion`.
+Remaining: Phases 4–7 (units 4, 5a, 5b, 6, 7). Unit 4 (`ch14/4-notificador`) stacks on
+`ch14/3-mapeo-notificacion`.
 
 ## Task 1.2 Findings (for the PR body)
 
@@ -126,6 +127,56 @@ consumer yet.
 6. **Subject cap.** 200 code points; the name is cut (with `…`) so the `({n}{+})` count always
    survives. Control characters, including U+2028/U+2029, become one space.
 
+## Unit 3 Evidence
+
+| Evidence | Value |
+|---|---|
+| Diff | `git diff --shortstat ch14/2b-correo-composicion..HEAD`: 2 files, 372 insertions, 9 deletions (381 changed; code and tests only). `568a6eb` 110 lines, `6ac0ea8` 271 lines |
+| Focused test command | `npx tsx --test src/automatizaciones.test.ts`: 38 tests, 38 pass, 0 fail (24 before) |
+| Full suite | `TEST_DB_PORT=5434 npm test`: 583 tests, 583 pass, 0 fail, 0 skipped (569 baseline + 14 new) |
+| Typecheck | `npx tsc --noEmit`: exit 0, at `568a6eb` and at `6ac0ea8` |
+| Runtime harness | N/A — pure functions, no I/O boundary; nothing consumes them until unit 5a |
+| Rollback boundary | Revert `6ac0ea8` (type widening, `cierreConNotificacion`, `PATRON_CODIGO_SMTP`), then `568a6eb` (`decidirNotificacion`). No other file imports them |
+| 3.5 fallout | No site needed a fix. `planificador.ts` spreads the close into `ejecucion.update` and logs `fase`/`error`/`codigoError`; `automatizaciones-rutas.ts` imports only `cronValido`; routes and console read `fase` as a DB string |
+
+### Unit 3 budget
+
+Code and tests alone are 381 changed lines. With this file and the six `tasks.md` checkboxes,
+the unit exceeds the 400-line cap, so this bookkeeping is left uncommitted in the working tree.
+Proposed split, already cut as commits: **3a** = `568a6eb` (task 3.1, 110 lines) plus its
+bookkeeping; **3b** = `6ac0ea8` (tasks 3.2–3.6, 271 lines) plus its bookkeeping. Each fits the
+budget.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 | `src/automatizaciones.test.ts` | Unit | ✅ 24/24 | ✅ Written; load failed (no `decidirNotificacion` export) | ✅ 29/29 | ✅ 5 non-ok results; zero rows with and without recipient/SMTP; missing recipient with SMTP set and unset; 2 recipients | ➖ None needed |
+| 3.2 | `src/automatizaciones.test.ts` | Unit | ✅ 29/29 | ✅ Written; load failed (no `cierreConNotificacion` export) | ✅ 34/34 | ✅ enviada; 3 omissions; 2 send failures (with and without cut/code); a throw; a failed query with `null` and with a stray send verdict | ➖ None needed |
+| 3.3 | `src/automatizaciones.test.ts` | Unit | ✅ 34/34 | ✅ Written; 2 of 4 failed (code gating, category re-gate). The no-spread case already held from 3.2 and acts as triangulation | ✅ 38/38 | ✅ 6 kept codes; 13 refused (Node codes, SQLSTATE, out of range, trailing LF, leading space, fullwidth digits, SMTP and AUTH text); unknown category | ➖ None needed |
+| 3.4 | `src/automatizaciones.ts` | — | — | ➖ Covered by 3.1–3.3 RED | ✅ 38/38 | ➖ Covered above | ➖ |
+| 3.5 | — | Typecheck | — | — | ✅ `tsc` exit 0, no fix needed | — | — |
+| 3.6 | — | Checkpoint | — | — | ✅ `tsc` clean, 38/38, full suite 583/583 | — | — |
+
+### Unit 3 Deviations
+
+1. **Throw in the notify step handled in the mapping.** The design table says a throw closes as
+   `fallo`/`notificacion`/`error-interno`, but its interface gave the new variant `error:
+   CategoriaEnvio`. The variant is `error: CategoriaEnvio | 'error-interno'`, and
+   `cierreConNotificacion` accepts `FalloInesperado` (its value is never read). Unit 5a only
+   catches the throw and hands `{ resultado: 'excepcion', error }` in (task 5.5).
+2. **Existing failure variant kept exact.** Widening `FaseCierre`/`CategoriaCierre` would also have
+   widened the query-failure variant. It now uses `Exclude<FaseCierre, 'notificacion'> | null` and
+   the unexported pre-CH-14 union `CategoriaCorrida`, so only the new variant can carry
+   `fase='notificacion'` or a send category. The query and send sets overlap by name
+   (`tiempo-agotado`, `credenciales-invalidas`, `error-desconocido`), so `fase` still tells them apart.
+3. **Shared SMTP code pattern.** `PATRON_CODIGO_SMTP` (`/^[2-5][0-9][0-9]$/`, equivalent to the
+   design's `\d` form) is exported from `automatizaciones.ts`; unit 4's `codigoSmtp` should import it
+   rather than repeat it. The category is also re-gated to the closed set (`error-desconocido`
+   otherwise), which the design did not list.
+4. **Extra exported types.** `OmisionNotificacion`, `DecisionNotificacion` (`{enviar:false,
+   notificacion}` or `{enviar:true, para}`), `SalidaNotificacion`, `CierreNotificado`.
+
 ## Notes for Later Units
 
 - Task 4.8 (live Mailpit test) targets `localhost:1025`/`8025`. On this machine those ports belong to
@@ -138,3 +189,7 @@ consumer yet.
   renderer never sees the recipient.
 - Unit 6 validates `destinatario` with `direccionValida`, which rejects (does not trim) surrounding
   whitespace.
+- Unit 5a flow: `d = decidirNotificacion(resultado, automatizacion.destinatario, notificador !== null)`;
+  when `d.enviar`, send to `d.para` and pass the verdict (or `{resultado:'excepcion', error}` on a
+  throw) to `cierreConNotificacion`; otherwise pass `d.notificacion`. Spread the returned
+  `CierreNotificado` into the single `ejecucion.update`.
