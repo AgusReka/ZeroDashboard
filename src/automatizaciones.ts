@@ -139,14 +139,25 @@ export interface FalloInesperado {
 /** Every way a scheduled run can end: the execution verdict, or a stop before it. */
 export type ResultadoCorrida = ResultadoEjecucion | RechazoPreparacion | FalloInesperado;
 
-/** `Ejecucion.fase`: a pre-dial stop, or the phase `ejecutarConsulta` reports. */
-export type FaseCierre = 'preparacion' | FaseEjecucion;
+/**
+ * `Ejecucion.fase`: a pre-dial stop, the phase `ejecutarConsulta` reports, or
+ * `notificacion` when the query succeeded and the send failed (CH-14, DEC-83).
+ */
+export type FaseCierre = 'preparacion' | FaseEjecucion | 'notificacion';
 
-/** `Ejecucion.error`: a closed category, never driver or thrown text. */
-export type CategoriaCierre =
-  | CategoriaPreparacion
-  | EjecucionFallida['categoria']
-  | 'error-interno';
+/** Why a send failed. Disjoint from the query categories by `fase='notificacion'`. */
+export type CategoriaEnvio =
+  | 'tiempo-agotado'
+  | 'servidor-inalcanzable'
+  | 'credenciales-invalidas'
+  | 'envio-rechazado'
+  | 'error-desconocido';
+
+/** `Ejecucion.error` of a run that stopped before or during its query. */
+type CategoriaCorrida = CategoriaPreparacion | EjecucionFallida['categoria'] | 'error-interno';
+
+/** `Ejecucion.error`: a closed category, never driver, SMTP, or thrown text. */
+export type CategoriaCierre = CategoriaCorrida | CategoriaEnvio;
 
 /**
  * The outcome columns of one `Ejecucion` row. Timestamps and duration are not here: the
@@ -156,6 +167,9 @@ export type CategoriaCierre =
  * execution failure (re-gated by `codigoPublicable`), or the comma-joined names of the
  * ungated entities for a DEC-71 refusal, taken only from the closed canonical contract.
  * Neither can carry free text.
+ *
+ * The third variant is a failed send after a successful query (R1 under DEC-83): the row
+ * count and cut stay true, and `codigoError` is only a three-digit SMTP reply code.
  */
 export type CierreEjecucion =
   | {
@@ -170,8 +184,16 @@ export type CierreEjecucion =
       estado: 'fallo';
       filas: null;
       corte: null;
-      fase: FaseCierre | null;
-      error: CategoriaCierre;
+      fase: Exclude<FaseCierre, 'notificacion'> | null;
+      error: CategoriaCorrida;
+      codigoError: string | null;
+    }
+  | {
+      estado: 'fallo';
+      filas: number;
+      corte: CorteEjecucion | null;
+      fase: 'notificacion';
+      error: CategoriaEnvio | 'error-interno';
       codigoError: string | null;
     };
 
@@ -279,4 +301,79 @@ export function decidirNotificacion(
     return { enviar: false, notificacion: 'no-configurada' };
   }
   return { enviar: true, para: destinatario };
+}
+
+/** What the notifier reports. It never throws and never carries SMTP text (DEC-81). */
+export type ResultadoEnvio =
+  | { resultado: 'enviada' }
+  | { resultado: 'fallo'; categoria: CategoriaEnvio; codigo: string | null };
+
+/**
+ * What the notify step ended with: the skip reason (or `null`) from
+ * `decidirNotificacion`, the notifier's verdict, or a throw nobody classified.
+ */
+export type SalidaNotificacion = OmisionNotificacion | null | ResultadoEnvio | FalloInesperado;
+
+/**
+ * The only shape a send failure's `codigoError` may take: an SMTP reply code, three ASCII
+ * digits starting 2–5. `codigoPublicable` is not reused because it accepts SQLSTATE and
+ * Node codes. `notificador.ts` gates nodemailer's `responseCode` with this same pattern;
+ * `cierreConNotificacion` re-applies it, so no notifier can place other text in the row.
+ */
+export const PATRON_CODIGO_SMTP = /^[2-5][0-9][0-9]$/;
+
+const CATEGORIAS_ENVIO: ReadonlySet<string> = new Set<CategoriaEnvio>([
+  'tiempo-agotado',
+  'servidor-inalcanzable',
+  'credenciales-invalidas',
+  'envio-rechazado',
+  'error-desconocido',
+]);
+
+/** A send failure's category, re-gated: anything outside the closed set is unknown. */
+function categoriaEnvio(valor: unknown): CategoriaEnvio {
+  return typeof valor === 'string' && CATEGORIAS_ENVIO.has(valor)
+    ? (valor as CategoriaEnvio)
+    : 'error-desconocido';
+}
+
+/** A send failure's code, re-gated: only a three-digit SMTP reply code survives. */
+function codigoEnvio(valor: unknown): string | null {
+  return typeof valor === 'string' && PATRON_CODIGO_SMTP.test(valor) ? valor : null;
+}
+
+/** The `Ejecucion` columns of a run, notification outcome included. */
+export type CierreNotificado = CierreEjecucion & { notificacion: EstadoNotificacion | null };
+
+/**
+ * Adds the notify step's outcome to a run's close. Only a failed send (or a throw in the
+ * notify step) rewrites it: `estado='fallo'`, `fase='notificacion'`, and `filas`/`corte`
+ * kept from the successful query (R1). Every other outcome of an `ok` run leaves `fase` at
+ * `ejecucion` (R3). A run whose query did not succeed keeps its close and records `null`,
+ * whatever is handed in. The failure close is built from named fields, never a spread of
+ * the send verdict, so a stray `message` or `response` cannot reach the row.
+ */
+export function cierreConNotificacion(
+  cierre: CierreEjecucion,
+  salida: SalidaNotificacion,
+): CierreNotificado {
+  if (cierre.estado !== 'ok' || salida === null) {
+    return { ...cierre, notificacion: null };
+  }
+  if (typeof salida === 'string') {
+    return { ...cierre, notificacion: salida };
+  }
+  if (salida.resultado === 'enviada') {
+    return { ...cierre, notificacion: 'enviada' };
+  }
+  const fallo = salida.resultado === 'fallo';
+  return {
+    estado: 'fallo',
+    filas: cierre.filas,
+    corte: cierre.corte,
+    fase: 'notificacion',
+    error: fallo ? categoriaEnvio(salida.categoria) : 'error-interno',
+    codigoError: fallo ? codigoEnvio(salida.codigo) : null,
+    notificacion: 'fallo-envio',
+  };
 }
