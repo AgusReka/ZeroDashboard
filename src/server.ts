@@ -13,6 +13,7 @@ import { registerContratoRoutes } from './contrato-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
+import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 
@@ -46,6 +47,10 @@ registerPlantillaRoutes(app, prisma.plantilla);
 // The template test route is NOT exempt (DEC-62): it resolves a tenant-owned connection,
 // so it gets the full scoped client, like the tenant-scoped registrars above.
 registerPlantillaPruebaRoute(app, prisma);
+// CH-13: automations are tenant-owned, so the full scoped client, like the test route.
+// The deployment zone (DEC-77) comes from this file's one `loadConfig()`, so a schedule
+// is accepted only in the zone the scheduler will read it in.
+registerAutomatizacionRoutes(app, prisma, config.zonaHoraria);
 
 app
   .listen({ port: config.port, host: '0.0.0.0' })
