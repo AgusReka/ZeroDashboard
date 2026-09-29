@@ -23,23 +23,26 @@ model Tenant {
   conexiones         Conexion[]
   consultasGuardadas ConsultaGuardada[]
   vistasCanonicas    VistaCanonica[]
+  automatizaciones   Automatizacion[]
+  ejecuciones        Ejecucion[]
 }
 
 model Conexion {
-  id              String          @id @default(uuid())
-  tenantId        String
-  tenant          Tenant          @relation(fields: [tenantId], references: [id])
-  nombre          String
-  motor           String
-  host            String
-  puerto          Int
-  baseDeDatos     String
-  usuarioDb       String
-  credencial      String
-  soloLectura     Boolean         @default(true)
-  creadaEn        DateTime        @default(now())
-  actualizadaEn   DateTime        @updatedAt
-  vistasCanonicas VistaCanonica[]
+  id               String           @id @default(uuid())
+  tenantId         String
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+  nombre           String
+  motor            String
+  host             String
+  puerto           Int
+  baseDeDatos      String
+  usuarioDb        String
+  credencial       String
+  soloLectura      Boolean          @default(true)
+  creadaEn         DateTime         @default(now())
+  actualizadaEn    DateTime         @updatedAt
+  vistasCanonicas  VistaCanonica[]
+  automatizaciones Automatizacion[]
 
   @@index([tenantId])
 }
@@ -113,12 +116,72 @@ model VistaCanonica {
 // second source of truth. `toleranciaFrescuraMinutos` is stored and not yet enforced
 // (DEC-66). A template is replaced in place by id and never deleted (DEC-68).
 model Plantilla {
-  id                        String @id @default(uuid())
+  id                        String           @id @default(uuid())
   nombre                    String
   sql                       String
-  parametros                Json   @default("[]")
+  parametros                Json             @default("[]")
   entidades                 Json
   automatizacion            String
   formato                   String
   toleranciaFrescuraMinutos Int
+  automatizaciones          Automatizacion[]
+}
+
+// CH-13 (DEC-74): an automation is a tenant's instance of a global `Plantilla`, bound to
+// one of that tenant's own `Conexion` rows, a set of parameter values and a standard
+// 5-field cron schedule. `tenantId` is a direct column so the isolation extension scopes
+// it like every other tenant model (DEC-13); the cross-tenant `conexionId` case is closed
+// by a scoped lookup in the route, not by a composite FK (DEC-35 precedent).
+//
+// `valores` is a JSON object validated in the application against the template's CH-11
+// declaration, at creation and again on every run, because DEC-68 replaces a template in
+// place and stored values can go stale. `cron` is plain TEXT validated in the application
+// (DEC-76). `activo` has the same meaning as `Tenant.activo`: deactivation keeps the row,
+// and there is no edit, delete or reactivation path (DEC-79). Every foreign key is
+// RESTRICT, so nothing an automation references can be deleted out from under it.
+model Automatizacion {
+  id          String      @id @default(uuid())
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  plantillaId String
+  plantilla   Plantilla   @relation(fields: [plantillaId], references: [id])
+  conexionId  String
+  conexion    Conexion    @relation(fields: [conexionId], references: [id])
+  valores     Json        @default("{}")
+  cron        String
+  activo      Boolean     @default(true)
+  creadaEn    DateTime    @default(now())
+  ejecuciones Ejecucion[]
+
+  @@index([tenantId])
+}
+
+// CH-13 (X2): one row per run of an `Automatizacion`, metadata only. The run's result
+// rows are counted and discarded; nothing here holds tenant data read from the tenant's
+// database (regla 5). `estado` ('en-curso' | 'ok' | 'fallo'), `corte` and `fase`
+// ('preparacion' or an execution phase) are plain TEXT for the reason `entidad` is:
+// their allowed values live in code. `error` is a closed category and `codigoError` a
+// publishable SQLSTATE; a raw driver message or stack trace is never stored.
+//
+// `iniciadaEn` and `finalizadaEn` carry no database default: the scheduler writes them
+// from its injected clock, so tests control time. The closing columns are nullable
+// because a row is written `en-curso` before the run and closed after it.
+model Ejecucion {
+  id               String         @id @default(uuid())
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  automatizacionId String
+  automatizacion   Automatizacion @relation(fields: [automatizacionId], references: [id])
+  estado           String
+  iniciadaEn       DateTime
+  finalizadaEn     DateTime?
+  duracionMs       Int?
+  filas            Int?
+  corte            String?
+  fase             String?
+  error            String?
+  codigoError      String?
+
+  @@index([tenantId])
+  @@index([automatizacionId, iniciadaEn])
 }

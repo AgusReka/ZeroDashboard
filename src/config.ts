@@ -14,6 +14,7 @@ interface AppConfig {
   connectionTestTimeoutMs: number;
   queryTimeoutMs: number;
   maxFilasPorConsulta: number;
+  zonaHoraria: string;
 }
 
 /** Used when CONNECTION_TEST_TIMEOUT_MS is not set. */
@@ -36,6 +37,13 @@ export const DEFAULT_QUERY_TIMEOUT_MS = 15000;
  * source, and that an execution the ceiling actually cut says so (DEC-18).
  */
 export const DEFAULT_MAX_FILAS_CONSULTA = 200;
+
+/**
+ * Used when ZONA_HORARIA_AUTOMATIZACIONES is not set. The single, deployment-wide IANA
+ * timezone in which every automation's cron schedule is interpreted (DEC-77). There is
+ * no per-tenant or per-automation zone; changing it is a restart, not a source edit.
+ */
+export const DEFAULT_ZONA_HORARIA = 'UTC';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -66,6 +74,26 @@ function enteroPositivoOpcional(name: string, porDefecto: number): number {
   return numero;
 }
 
+/**
+ * Reads the automation timezone. Unset or empty falls back to the default, like the
+ * budgets above; a value the runtime does not recognise as a timezone stops the boot
+ * (fail closed, as DEC-17 does for the master key), because a typo here would silently
+ * shift every automation's fire time. `Intl.DateTimeFormat` is the check, so this adds
+ * no dependency.
+ */
+function zonaHorariaOpcional(name: string, porDefecto: string): string {
+  const valor = process.env[name];
+  if (valor === undefined || valor === '') {
+    return porDefecto;
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: valor });
+  } catch {
+    throw new Error(`${name} must be a valid IANA timezone, got: ${valor}`);
+  }
+  return valor;
+}
+
 export function loadConfig(): AppConfig {
   const portValue = required('APP_PORT');
   const port = Number(portValue);
@@ -89,6 +117,7 @@ export function loadConfig(): AppConfig {
     'MAX_FILAS_CONSULTA',
     DEFAULT_MAX_FILAS_CONSULTA,
   );
+  const zonaHoraria = zonaHorariaOpcional('ZONA_HORARIA_AUTOMATIZACIONES', DEFAULT_ZONA_HORARIA);
 
   return {
     port,
@@ -97,5 +126,6 @@ export function loadConfig(): AppConfig {
     connectionTestTimeoutMs,
     queryTimeoutMs,
     maxFilasPorConsulta,
+    zonaHoraria,
   };
 }

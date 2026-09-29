@@ -65,9 +65,19 @@ export function exigirTenantActivo(): TenantActivo {
 }
 
 /**
- * Runs `fn` inside a context naming `tenant`. Test and seed helper only — in
- * production the hooks below are the sole entry, and there is deliberately no
- * exported way to mutate an existing context from a handler.
+ * Runs `fn` inside a context naming `tenant`. There is deliberately no exported way to
+ * mutate an existing context from a handler.
+ *
+ * Production has exactly two entries into a tenant context: the request hooks below,
+ * and — since CH-13 (design-level resolution under DEC-13/DEC-14) — the scheduler in
+ * `src/planificador.ts`, which has no request to read a header from. The scheduler
+ * derives `tenant` only from own-database `Tenant` rows with `activo = true`, never from
+ * any externally supplied value (regla 2), and runs one tenant's automations per
+ * context. Tests and seeds use it too.
+ *
+ * Queries must start inside `fn`: a Prisma query is a lazy thenable that runs only when
+ * awaited, so one returned bare from a non-`async` `fn` runs after this context has been
+ * left, where it fails closed. `await` it inside `fn`.
  */
 export function conTenantActivo<T>(tenant: TenantActivo, fn: () => Promise<T>): Promise<T> {
   return almacen.run({ tenant }, fn);

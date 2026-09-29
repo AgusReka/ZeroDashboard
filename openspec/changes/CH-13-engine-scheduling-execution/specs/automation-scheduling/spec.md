@@ -1,0 +1,115 @@
+# Automation Scheduling Specification
+
+## Purpose
+
+Turning a `Plantilla` (CH-12) into something that runs unattended, per tenant, on a schedule (X1): a minimal tenant-scoped `Automatizacion` binding a plantilla, a tenant's own connection, parameter values, and a cron schedule (DEC-74); an in-process scheduler (DEC-75) that fires due, active automations for active tenants only, reusing the existing read-only composition and execution pipeline. Instantiation UX, editing, overlaps, retries, and cross-tenant failure isolation are out of scope (CH-17, CH-18, CH-21).
+
+## Requirements
+
+### Requirement: Automatizacion Binds a Plantilla, a Tenant's Connection, Parameter Values, and a Schedule (DEC-74)
+
+The own database SHALL have an `Automatizacion` table. Every row MUST reference exactly one `Tenant` row and exactly one `Plantilla` row through required foreign keys, MUST reference exactly one `Conexion` row belonging to the same tenant, MUST store a parameter-value map validated against the referenced `Plantilla`'s declared parameters (CH-11 rules), and MUST store a cron schedule expression and an `activo` boolean defaulting to `true`.
+
+#### Scenario: Creating an automation with valid values
+
+- GIVEN an existing `Plantilla` and a `Conexion` belonging to the active tenant
+- WHEN an `Automatizacion` is created naming both, a value for every declared parameter, and a valid cron expression
+- THEN the row SHALL persist with `activo: true`
+
+#### Scenario: Parameter values validated like CH-11
+
+- GIVEN a `Plantilla` declaring a required parameter
+- WHEN an `Automatizacion` is created with no value for it
+- THEN the response SHALL be `400` naming the missing parameter
+
+#### Scenario: Connection must belong to the same tenant
+
+- GIVEN a `Conexion` belonging to a different tenant
+- WHEN an `Automatizacion` is created naming it
+- THEN the response SHALL be `404` and no row SHALL persist
+
+### Requirement: Automation Lifecycle Is Create, List, Get, Deactivate — No Edit or Delete (DEC-78, DEC-79)
+
+The system SHALL expose, all scoped to the active tenant: `POST /automatizaciones` (create), `GET /automatizaciones` (list), `GET /automatizaciones/:id` (get), and `POST /automatizaciones/:id/desactivar` (deactivate). It SHALL NOT expose any route that edits or deletes an existing row. Deactivating sets `activo: false` and this change provides no route to reverse it.
+
+#### Scenario: Deactivating an automation
+
+- GIVEN an active `Automatizacion` belonging to the active tenant
+- WHEN `POST /automatizaciones/:id/desactivar` is called
+- THEN its `activo` SHALL become `false`
+- AND no route SHALL exist to set it back to `true`
+
+#### Scenario: Deactivated automation is excluded from future runs but stays listed
+
+- GIVEN a deactivated `Automatizacion` with prior runs
+- WHEN `GET /automatizaciones` is called
+- THEN the row SHALL still appear
+- AND its past `Ejecucion` rows SHALL remain listable
+
+### Requirement: Cron Schedule Resolved by a Next-Fire-Only Library (DEC-76)
+
+The cron expression SHALL be validated at creation time and its next fire time SHALL be computed using a library limited to next-fire-time calculation, never used to execute tasks itself.
+
+#### Scenario: Invalid cron expression rejected
+
+- GIVEN a syntactically invalid cron expression
+- WHEN an `Automatizacion` is created with it
+- THEN the response SHALL be `400` naming the schedule field
+
+### Requirement: Schedule Interpreted in the Global Configured Timezone (DEC-77)
+
+Every cron expression SHALL be interpreted in the single timezone configured for the whole deployment (`project-environment`); no per-tenant or per-automation timezone SHALL be accepted.
+
+#### Scenario: Next fire time follows the configured timezone
+
+- GIVEN the deployment's configured timezone and an automation's cron expression
+- WHEN its next fire time is computed
+- THEN it SHALL be resolved in that configured timezone, not in UTC or the host's local time
+
+### Requirement: In-Process Scheduler Started With the Application (DEC-75)
+
+The application process SHALL start exactly one scheduler when it starts, with no separate process or service. The scheduler SHALL tick on a fixed interval and, on each tick, evaluate every active `Tenant`'s active, due `Automatizacion` rows.
+
+#### Scenario: Scheduler starts with the application
+
+- GIVEN the application process is started
+- WHEN startup completes
+- THEN the scheduler SHALL be running with no additional manual step
+
+### Requirement: Only Active Tenants' Active, Due Automations Run (DEC-14, DEC-79)
+
+On each tick, the scheduler SHALL skip every `Tenant` row with `activo: false` entirely, and SHALL skip every `Automatizacion` row with `activo: false`. Only a due, active automation belonging to an active tenant SHALL run.
+
+#### Scenario: Deactivated tenant's automations never run
+
+- GIVEN a `Tenant` with `activo: false` and a due active `Automatizacion`
+- WHEN the scheduler ticks
+- THEN that automation SHALL NOT run
+
+#### Scenario: Deactivated automation never runs
+
+- GIVEN an active tenant with a due `Automatizacion` whose `activo` is `false`
+- WHEN the scheduler ticks
+- THEN that automation SHALL NOT run
+
+### Requirement: Run Pipeline Reuses the Existing Read-Only Composition and Execution Chain (rule 5, DEC-71)
+
+A run SHALL compose the automation's `Plantilla` exactly as the CH-12 test endpoint does (`evaluarVistas`, `componerSentencia`), requiring a passing saved validation for every declared entity on the automation's `Conexion` (DEC-71); it SHALL then execute the composed statement through the existing read-only pipeline (`ejecutarConsulta`). No new execution surface SHALL be introduced.
+
+#### Scenario: Missing or failing view validation blocks the run
+
+- GIVEN an `Automatizacion` whose `Plantilla` declares an entity with no passing saved validation on its `Conexion`
+- WHEN the scheduler runs it
+- THEN the run SHALL NOT execute any query against the tenant's connection
+- AND the outcome SHALL be recorded (per `execution-log`) naming the ungated entity
+
+### Requirement: A Run's Failure Does Not Stop the Tick for Other Automations (Not CH-18 Isolation)
+
+The scheduler SHALL catch any error raised by one automation's run and continue evaluating the remaining due automations in the same tick. This is a per-run catch only; it is not the cross-tenant failure isolation guarantee of CH-18.
+
+#### Scenario: One failing run does not block a sibling run
+
+- GIVEN two due active automations in the same tick, one of which will fail
+- WHEN the scheduler ticks
+- THEN the failing automation SHALL be recorded as failed
+- AND the other automation SHALL still run to completion

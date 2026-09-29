@@ -869,13 +869,15 @@ describe('aplicarAlcance — the closed operation map', () => {
 // ---- CH-12 1.3 the schema itself, read from the generated client -------------------
 
 describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61)', () => {
-  test('the model list is exactly the four tenant models plus Plantilla', () => {
+  test('the model list is exactly the tenant models, Plantilla, and the CH-13 pair', () => {
     // Read from the generated client rather than by grepping `schema.prisma`: this is
-    // the model list the extension actually sees at runtime. It also pins the
-    // out-of-release entities out — no `Usuario`, `Ejecucion` or `Automatizacion`.
+    // the model list the extension actually sees at runtime. CH-13 (DEC-74, X2) adds
+    // `Automatizacion` and `Ejecucion`; the list still pins `Usuario` out.
     assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
+      'Automatizacion',
       'Conexion',
       'ConsultaGuardada',
+      'Ejecucion',
       'Plantilla',
       'Tenant',
       'VistaCanonica',
@@ -896,5 +898,70 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     ]);
     // The control: a scoped model does carry it, so the absence above is meaningful.
     assert.ok(Object.values(Prisma.ConsultaGuardadaScalarFieldEnum).includes('tenantId'));
+  });
+});
+
+// ---- CH-13 1.4 Automatizacion and Ejecucion are scoped models (DEC-13, DEC-74) ------
+
+describe('aislamiento — Automatizacion and Ejecucion fail closed outside a tenant context (CH-13)', () => {
+  // No live server is needed. For a scoped model the extension throws before the query
+  // is handed to Prisma, so nothing is ever dialled. The URL below points at a closed
+  // local port on purpose: an unscoped model would pass through and fail with a
+  // connection error instead, which is what makes the assertions below discriminating.
+  const URL_CERRADA = 'postgresql://nadie:nada@127.0.0.1:1/ninguna';
+  const aislado = extenderConAislamiento(
+    new PrismaClient({ adapter: new PrismaPg({ connectionString: URL_CERRADA }) }),
+  );
+
+  test('Automatizacion reads and writes with no active tenant throw ErrorSinTenantActivo', async () => {
+    await assert.rejects(() => aislado.automatizacion.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () => aislado.automatizacion.findUnique({ where: { id: 'cualquiera' } }),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () =>
+        aislado.automatizacion.create({
+          data: { plantillaId: 'p', conexionId: 'c', cron: '0 9 * * *' },
+        } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () => aislado.automatizacion.update({ where: { id: 'x' }, data: { activo: false } }),
+      ErrorSinTenantActivo,
+    );
+  });
+
+  test('Ejecucion reads and writes with no active tenant throw ErrorSinTenantActivo', async () => {
+    await assert.rejects(() => aislado.ejecucion.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () =>
+        aislado.ejecucion.create({
+          data: { automatizacionId: 'a', estado: 'en-curso', iniciadaEn: new Date() },
+        } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () => aislado.ejecucion.update({ where: { id: 'x' }, data: { estado: 'ok' } }),
+      ErrorSinTenantActivo,
+    );
+  });
+
+  test('inside a tenant context the same query is scoped and handed on, not refused', async () => {
+    // The control: with a context entered the extension lets the query through, so it
+    // reaches the closed port and fails there. Without it, the rejections above would
+    // also pass on a client that refused every query for an unrelated reason.
+    //
+    // The `await` inside the callback is load-bearing: a Prisma query is a lazy thenable
+    // that only runs when `then` is called. Returned un-awaited, it would run after
+    // `conTenantActivo` has already left the context, and fail closed exactly as above.
+    const error = await conTenantActivo({ id: 't', nombre: 'T' }, async () => {
+      return await aislado.automatizacion.findMany({});
+    }).then(
+      () => null,
+      (causa: unknown) => causa,
+    );
+    assert.ok(error !== null, 'the closed port must refuse the scoped query');
+    assert.ok(!(error instanceof ErrorSinTenantActivo), 'a context was entered');
   });
 });
