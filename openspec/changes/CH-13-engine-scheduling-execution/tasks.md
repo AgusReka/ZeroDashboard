@@ -104,12 +104,12 @@ CH-12's verify-then-archive close).
 
 ## 6. Minimal Console (`src/consola.ts`)
 
-- [ ] 6.1 RED extend `src/consola.test.ts`: the automations view lists plantilla, connection, schedule, and `activo` state for the active tenant; a create control reuses `controlDeValor` for parameter values and submits scoped to the active tenant; on success the new row appears in the list (spec `query-console` "Viewing the automations list", "Creating an automation from the console")
-- [ ] 6.2 RED extend: a deactivate control submits the deactivate action and the list reflects `activo: false`, with no edit/delete control present (spec "Deactivating from the console")
-- [ ] 6.3 RED extend: a runs view shows start, end, duration, row count, status, and a classified error for failed runs (spec "Viewing an automation's runs")
-- [ ] 6.4 RED extend: switching the active-tenant selector refreshes the automations view to the newly selected tenant, every call going through `pedir()` (spec "Switching tenant updates the automations view"; T4, DEC-15)
-- [ ] 6.5 Implement the "Automatizaciones" section in `src/consola.ts`: create form, list table, deactivate action, runs table — satisfies 6.1–6.4
-- [ ] 6.6 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/consola.test.ts` green
+- [ ] 6.1 (list half done in 6a; create half pending, unit 6b) RED extend `src/consola.test.ts`: the automations view lists plantilla, connection, schedule, and `activo` state for the active tenant; a create control reuses `controlDeValor` for parameter values and submits scoped to the active tenant; on success the new row appears in the list (spec `query-console` "Viewing the automations list", "Creating an automation from the console")
+- [x] 6.2 RED extend: a deactivate control submits the deactivate action and the list reflects `activo: false`, with no edit/delete control present (spec "Deactivating from the console")
+- [x] 6.3 RED extend: a runs view shows start, end, duration, row count, status, and a classified error for failed runs (spec "Viewing an automation's runs")
+- [x] 6.4 RED extend: switching the active-tenant selector refreshes the automations view to the newly selected tenant, every call going through `pedir()` (spec "Switching tenant updates the automations view"; T4, DEC-15)
+- [ ] 6.5 Implement the "Automatizaciones" section in `src/consola.ts`: create form, list table, deactivate action, runs table — satisfies 6.1–6.4 (unit 6a: list, deactivate, runs, tenant switch; unit 6b: create form)
+- [ ] 6.6 (passed for 6a; rerun after 6b) Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/consola.test.ts` green
 
 ## 7. Full-Suite Checkpoint, Verify & Archive
 
