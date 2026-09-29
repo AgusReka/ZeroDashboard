@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import net from 'node:net';
 import { describe, test } from 'node:test';
 import { createTransport, type SendMailOptions } from 'nodemailer';
 import type { Correo } from './correo.js';
 import {
   codigoSmtp,
+  crearNotificadorSmtp,
   leerSmtp,
   notificadorDesdeTransporte,
   opcionesTransporte,
@@ -14,7 +16,8 @@ import {
 /**
  * Unit cases for CH-14 Phase 4: the notifier (DEC-81, DEC-86 and its addendum). `leerSmtp`
  * reads an explicit environment object, so no case touches `process.env`. The transport
- * cases use nodemailer's JSON transport or a fake: none opens a socket.
+ * cases use nodemailer's JSON transport or a fake; only the `crearNotificadorSmtp` cases
+ * open sockets, and only to servers they start themselves on 127.0.0.1.
  */
 
 const REMITENTE = 'avisos@empresa-demo.com';
@@ -308,5 +311,116 @@ describe('opcionesTransporte — hardened nodemailer options with the send budge
     await assert.rejects(json.sendMail({ ...base, html: { href: 'http://127.0.0.1:9/x' } }), {
       code: 'EURLACCESS',
     });
+  });
+});
+
+// ---- 4.6 the outer time limit (R2 under DEC-19) -----------------------------------------
+
+/** A transport that answers after `ms`, or never; it counts its `close()` calls. */
+function lento(ms: number | null, cierre: () => void = () => {}) {
+  const t = {
+    cerrado: 0,
+    sendMail: () =>
+      new Promise<unknown>((resolve) => {
+        if (ms !== null) setTimeout(() => resolve({}), ms);
+      }),
+    close: () => {
+      t.cerrado += 1;
+      cierre();
+    },
+  };
+  return t;
+}
+
+describe('notificadorDesdeTransporte — a send never outlives its budget', () => {
+  test('4.6 a transport that never answers ends as tiempo-agotado and is closed', async () => {
+    const t = lento(null);
+    const inicio = performance.now();
+    const r = await notificadorDesdeTransporte(t, { de: REMITENTE, timeoutMs: 20 }).enviar(CORREO);
+    const ms = performance.now() - inicio;
+
+    assert.deepEqual(r, { resultado: 'fallo', categoria: 'tiempo-agotado', codigo: null });
+    assert.equal(t.cerrado, 1);
+    assert.ok(ms >= 15 && ms < 1000, `ended after ${ms} ms`);
+  });
+
+  test('4.6 a send inside the budget is enviada and the transport stays open', async () => {
+    const t = lento(5);
+    const r = await notificadorDesdeTransporte(t, { de: REMITENTE, timeoutMs: 500 }).enviar(CORREO);
+    assert.deepEqual(r, { resultado: 'enviada' });
+    assert.equal(t.cerrado, 0);
+  });
+
+  test('4.6 a throwing close() and a late rejection still never make enviar throw', async () => {
+    const t = lento(null, () => {
+      throw new Error('close failed');
+    });
+    const tardio: Transporte = {
+      sendMail: () => new Promise((_, reject) => setTimeout(() => reject(new Error('tarde')), 40)),
+      close: () => t.close(),
+    };
+    const notificador = notificadorDesdeTransporte(tardio, { de: REMITENTE, timeoutMs: 10 });
+    const r = await notificador.enviar(CORREO);
+    assert.deepEqual(r, { resultado: 'fallo', categoria: 'tiempo-agotado', codigo: null });
+    assert.equal(t.cerrado, 1);
+    await new Promise((resolve) => setTimeout(resolve, 60)); // the late rejection lands here
+  });
+});
+
+// ---- 4.7 the real SMTP notifier ---------------------------------------------------------
+
+/** A local TCP server that accepts connections and never says a word. */
+async function servidorMudo(): Promise<{ puerto: number; cerrar: () => Promise<void> }> {
+  const sockets = new Set<net.Socket>();
+  const servidor = net.createServer((s) => sockets.add(s));
+  await new Promise<void>((resolve) => servidor.listen(0, '127.0.0.1', resolve));
+  const { port } = servidor.address() as net.AddressInfo;
+  return {
+    puerto: port,
+    cerrar: () =>
+      new Promise((resolve) => {
+        for (const s of sockets) s.destroy();
+        servidor.close(() => resolve());
+      }),
+  };
+}
+
+describe('crearNotificadorSmtp — null when unset, bounded SMTP delivery when set', () => {
+  test('4.7 SMTP unset gives no notifier; an invalid setting stops the boot', () => {
+    assert.equal(crearNotificadorSmtp({ timeoutMs: 1000 }, {}), null);
+    assert.equal(crearNotificadorSmtp({ timeoutMs: 1000 }, { SMTP_HOST: '' }), null);
+    const incompleto = { SMTP_HOST: '127.0.0.1' };
+    assert.throws(() => crearNotificadorSmtp({ timeoutMs: 1000 }, incompleto), /SMTP_FROM/);
+  });
+
+  test('4.7 a closed port is servidor-inalcanzable', async () => {
+    const { puerto, cerrar } = await servidorMudo();
+    await cerrar(); // the port is now free: nothing listens on it
+    const notificador = crearNotificadorSmtp(
+      { timeoutMs: 2000 },
+      { SMTP_HOST: '127.0.0.1', SMTP_PORT: String(puerto), SMTP_FROM: REMITENTE },
+    );
+    assert.deepEqual(await notificador?.enviar(CORREO), {
+      resultado: 'fallo',
+      categoria: 'servidor-inalcanzable',
+      codigo: null,
+    });
+  });
+
+  test('4.7 a server that never greets is tiempo-agotado within the budget', async () => {
+    const { puerto, cerrar } = await servidorMudo();
+    try {
+      const notificador = crearNotificadorSmtp(
+        { timeoutMs: 100 },
+        { SMTP_HOST: '127.0.0.1', SMTP_PORT: String(puerto), SMTP_FROM: REMITENTE },
+      );
+      const inicio = performance.now();
+      const r = await notificador?.enviar(CORREO);
+      const ms = performance.now() - inicio;
+      assert.deepEqual(r, { resultado: 'fallo', categoria: 'tiempo-agotado', codigo: null });
+      assert.ok(ms < 2000, `ended after ${ms} ms`);
+    } finally {
+      await cerrar();
+    }
   });
 });

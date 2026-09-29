@@ -1,4 +1,4 @@
-import type { SendMailOptions, SMTPTransportOptions } from 'nodemailer';
+import { createTransport, type SendMailOptions, type SMTPTransportOptions } from 'nodemailer';
 import {
   PATRON_CODIGO_SMTP,
   type CategoriaEnvio,
@@ -169,9 +169,31 @@ function falloDe(e: unknown): ResultadoEnvio {
 /** The display name every message is sent under; the address is `SMTP_FROM`. */
 const NOMBRE_REMITENTE = 'ZeroDashboard';
 
+const TIEMPO_AGOTADO: ResultadoEnvio = {
+  resultado: 'fallo',
+  categoria: 'tiempo-agotado',
+  codigo: null,
+};
+
+/** Best effort: a transport that fails to close must not turn a timeout into a throw. */
+function cerrar(t: Transporte): void {
+  try {
+    t.close();
+  } catch {
+    // Nothing to report: the send is already recorded as tiempo-agotado.
+  }
+}
+
 /**
  * Wraps a transporter. The message carries exactly the recipient, subject and the two
  * parts: no attachments, no extra headers.
+ *
+ * The socket timeouts in `opcionesTransporte` bound each network phase; this outer limit
+ * bounds the whole send, whatever phase hangs, because the scheduler's tick is sequential
+ * (R2 under DEC-19). When it fires the transporter is closed and the send is recorded as
+ * `tiempo-agotado`; a late answer from the abandoned send is ignored. The SMTP transport is
+ * not pooled, so each send opens its own connection and a closed transporter still sends
+ * the next message.
  */
 export function notificadorDesdeTransporte(
   t: Transporte,
@@ -181,12 +203,37 @@ export function notificadorDesdeTransporte(
   return {
     async enviar(c) {
       const mensaje = { from: de, to: c.para, subject: c.asunto, html: c.html, text: c.texto };
+      // `then` also catches a synchronous throw from `sendMail`: this promise never rejects.
+      const envio = Promise.resolve()
+        .then(() => t.sendMail(mensaje))
+        .then((): ResultadoEnvio => ({ resultado: 'enviada' }), falloDe);
+      let reloj: ReturnType<typeof setTimeout> | undefined;
+      const limite = new Promise<ResultadoEnvio>((resolve) => {
+        reloj = setTimeout(() => {
+          cerrar(t);
+          resolve(TIEMPO_AGOTADO);
+        }, o.timeoutMs);
+      });
       try {
-        await t.sendMail(mensaje);
-        return { resultado: 'enviada' };
-      } catch (e) {
-        return falloDe(e);
+        return await Promise.race([envio, limite]);
+      } finally {
+        clearTimeout(reloj);
       }
     },
   };
+}
+
+/**
+ * The production notifier, built once at boot. `null` exactly when `SMTP_HOST` is absent or
+ * empty (DEC-86): the scheduler then records `no-configurada`. An invalid configuration
+ * throws here, before `listen`, naming the variable only.
+ */
+export function crearNotificadorSmtp(
+  o: { timeoutMs: number },
+  env: EntornoSmtp = process.env,
+): Notificador | null {
+  const smtp = leerSmtp(env);
+  if (smtp === null) return null;
+  const transporte = createTransport(opcionesTransporte(smtp, o.timeoutMs));
+  return notificadorDesdeTransporte(transporte, { de: smtp.de, timeoutMs: o.timeoutMs });
 }
