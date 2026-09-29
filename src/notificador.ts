@@ -1,4 +1,10 @@
-import { direccionValida } from './correo.js';
+import type { SendMailOptions, SMTPTransportOptions } from 'nodemailer';
+import {
+  PATRON_CODIGO_SMTP,
+  type CategoriaEnvio,
+  type ResultadoEnvio,
+} from './automatizaciones.js';
+import { direccionValida, type Correo } from './correo.js';
 
 /**
  * The email notifier (N1; DEC-81, DEC-86). This file is the only place that reads the
@@ -76,4 +82,111 @@ export function leerSmtp(env: EntornoSmtp): ConfigSmtp | null {
   }
   const secure = seguroDe(env);
   return { host, port: puertoDe(env, secure), secure, auth: credencialesDe(env), de };
+}
+
+// ---- sending (DEC-81) ----------------------------------------------------------------
+
+/**
+ * The nodemailer SMTP options for a configuration. `timeoutMs` (`SMTP_TIMEOUT_MS`) bounds
+ * each phase of the connection: connect, greeting and any idle socket. The hardening flags
+ * make sure no message content can make nodemailer read a file or fetch a URL, and that the
+ * library itself logs nothing. TLS certificate checks keep nodemailer's default (on).
+ */
+export function opcionesTransporte(c: ConfigSmtp, timeoutMs: number): SMTPTransportOptions {
+  return {
+    host: c.host,
+    port: c.port,
+    secure: c.secure,
+    ...(c.auth === null ? {} : { auth: { user: c.auth.user, pass: c.auth.pass } }),
+    connectionTimeout: timeoutMs,
+    greetingTimeout: timeoutMs,
+    socketTimeout: timeoutMs,
+    disableFileAccess: true,
+    disableUrlAccess: true,
+    logger: false,
+    debug: false,
+  };
+}
+
+/**
+ * The part of a nodemailer transporter the notifier uses. A real `Transporter` fits it;
+ * so does a test fake that rejects or never answers.
+ */
+export interface Transporte {
+  sendMail(mensaje: SendMailOptions): Promise<unknown>;
+  close(): void;
+}
+
+/** What the scheduler sends through. `enviar` never throws: every outcome is a value. */
+export interface Notificador {
+  enviar(correo: Correo): Promise<ResultadoEnvio>;
+}
+
+/**
+ * The `codigoError` of a send failure: nodemailer's numeric `responseCode`, as a string,
+ * only when it is a three-digit SMTP reply code (`PATRON_CODIGO_SMTP`, shared with
+ * `cierreConNotificacion`). A Node code such as `ECONNECTION` feeds the category only.
+ */
+export function codigoSmtp(valor: unknown): string | null {
+  if (typeof valor !== 'number' || !Number.isInteger(valor)) return null;
+  const texto = String(valor);
+  return PATRON_CODIGO_SMTP.test(texto) ? texto : null;
+}
+
+/** nodemailer `code` → closed category. Codes not listed fall to the reply-code rule. */
+const CATEGORIA_POR_CODIGO: ReadonlyMap<string, CategoriaEnvio> = new Map([
+  ['ETIMEDOUT', 'tiempo-agotado'],
+  ['ECONNECTION', 'servidor-inalcanzable'],
+  ['ESOCKET', 'servidor-inalcanzable'],
+  ['EDNS', 'servidor-inalcanzable'],
+  ['ETLS', 'servidor-inalcanzable'],
+  ['EPROXY', 'servidor-inalcanzable'],
+  ['EAUTH', 'credenciales-invalidas'],
+  ['ENOAUTH', 'credenciales-invalidas'],
+  ['EENVELOPE', 'envio-rechazado'],
+  ['EMESSAGE', 'envio-rechazado'],
+  ['EPROTOCOL', 'error-desconocido'],
+  ['ESTREAM', 'error-desconocido'],
+]);
+
+/**
+ * Classifies a failed send from its `code` and `responseCode` only. The error's `message`
+ * and `response` hold server text, and can echo the user or the recipient: they are never
+ * read, so they cannot reach the `Ejecucion` row or a log line.
+ */
+function falloDe(e: unknown): ResultadoEnvio {
+  if (!(e instanceof Error)) {
+    return { resultado: 'fallo', categoria: 'error-desconocido', codigo: null };
+  }
+  const { code, responseCode } = e as { code?: unknown; responseCode?: unknown };
+  const codigo = codigoSmtp(responseCode);
+  const conocida = typeof code === 'string' ? CATEGORIA_POR_CODIGO.get(code) : undefined;
+  const rechazo = codigo !== null && (codigo.startsWith('4') || codigo.startsWith('5'));
+  const categoria = conocida ?? (rechazo ? 'envio-rechazado' : 'error-desconocido');
+  return { resultado: 'fallo', categoria, codigo };
+}
+
+/** The display name every message is sent under; the address is `SMTP_FROM`. */
+const NOMBRE_REMITENTE = 'ZeroDashboard';
+
+/**
+ * Wraps a transporter. The message carries exactly the recipient, subject and the two
+ * parts: no attachments, no extra headers.
+ */
+export function notificadorDesdeTransporte(
+  t: Transporte,
+  o: { de: string; timeoutMs: number },
+): Notificador {
+  const de = { name: NOMBRE_REMITENTE, address: o.de };
+  return {
+    async enviar(c) {
+      const mensaje = { from: de, to: c.para, subject: c.asunto, html: c.html, text: c.texto };
+      try {
+        await t.sendMail(mensaje);
+        return { resultado: 'enviada' };
+      } catch (e) {
+        return falloDe(e);
+      }
+    },
+  };
 }
