@@ -16,6 +16,7 @@ import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { crearPlanificador } from './planificador.js';
 
 const config = loadConfig();
 const app = Fastify({ logger: true });
@@ -23,6 +24,13 @@ const adapter = new PrismaPg({ connectionString: config.databaseUrl });
 // The raw client is consumed on this line and never bound to a name: `prisma` is the
 // extended one, so no module downstream has an un-scoped handle to reach for.
 const prisma = extenderConAislamiento(new PrismaClient({ adapter }));
+// CH-13 (DEC-75): the one in-process scheduler, on the same scoped client and the same
+// zone the create route checks schedules in. It is armed only once the server listens,
+// and closing the app clears its timer and waits for a tick already running.
+const planificador = crearPlanificador({ prisma, zonaHoraria: config.zonaHoraria, log: app.log });
+app.addHook('onClose', async () => {
+  await planificador.detener();
+});
 
 // FIRST, before every `register*Routes` below. Fastify runs same-name hooks in
 // registration order, so this line's position is load-bearing: a route registered
@@ -54,6 +62,9 @@ registerAutomatizacionRoutes(app, prisma, config.zonaHoraria);
 
 app
   .listen({ port: config.port, host: '0.0.0.0' })
+  .then(() => {
+    planificador.iniciar();
+  })
   .catch((error: unknown) => {
     app.log.error(error);
     process.exit(1);

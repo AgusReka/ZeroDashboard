@@ -26,6 +26,9 @@ services:
       # a key in the image would travel with every copy of it. Without it the container
       # refuses to start, which is the intended fail-closed behaviour, not a defect.
       CREDENTIAL_MASTER_KEY: ${CREDENTIAL_MASTER_KEY}
+      # Optional since CH-13 (DEC-77): the one zone every automation schedule is read in.
+      # Unset or empty, the app falls back to its documented default (`UTC`).
+      ZONA_HORARIA_AUTOMATIZACIONES: ${ZONA_HORARIA_AUTOMATIZACIONES:-}
     ports:
       - "${APP_PORT}:${APP_PORT}"
 
