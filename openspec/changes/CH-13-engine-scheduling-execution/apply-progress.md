@@ -11,12 +11,13 @@ Mode: Standard (strict_tdd: false), RED/GREEN order from tasks.md followed. Deli
 | 2b Pure module: close-of-run mapping | 2.3, 2.4–2.5 (that half) | `ch13/2b-cierre-ejecucion` (base unit 2a) | `b6f7f42`, `52e1e8b` |
 | 3a Automation create route + registration | 3.1, 3.2, 3.3, 3.7; 3.6 create half | `ch13/3a-alta-automatizacion` (base unit 2b; renamed from `ch13/3-rutas-automatizacion`) | `9d1f0b1` |
 | 3b Automation list, get, `desactivar` | 3.4, 3.5, 3.8; 3.6 list/get/`desactivar` half | `ch13/3b-consulta-desactivar` (base unit 3a) | see `git log 9d1f0b1..ch13/3b-consulta-desactivar` |
-| 4a Scheduler tick: due check, tenant context, gate | 4.1–4.4; 4.8 `Reloj`/`ejecutarTick`/run-pipeline half | `ch13/4a-planificador` (base unit 3b) | see `git log 0a8f987..ch13/4a-planificador` |
+| 4a Scheduler tick: due check, tenant context, gate | 4.1–4.4; 4.8 `Reloj`/`ejecutarTick`/run-pipeline half | `ch13/4a-planificador` (base unit 3b) | `42ab413` |
+| 4b Timer, per-run catch, run log, server wiring | 4.5–4.7, 4.9, 4.10; 4.8 rest | `ch13/4b-planificador-ciclo` (base unit 4a) | see `git log 42ab413..ch13/4b-planificador-ciclo` |
 
 Unit 2 was one apply batch, split afterwards by the orchestrator into 2a and 2b with identical
 final code. Unit 3 was cut into 3a and 3b to fit the 400-line budget (the whole phase measured 520).
 
-Remaining: 4.5–4.7, the rest of 4.8 (`iniciar`, `detener`, timer, per-run catch), 4.9, 4.10 (unit 4b); Phases 5–7.
+Remaining: Phases 5–7.
 
 ## Unit 1 Evidence
 
@@ -95,16 +96,35 @@ Remaining: 4.5–4.7, the rest of 4.8 (`iniciar`, `detener`, timer, per-run catc
 | Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 515 tests, 515 pass, 0 fail, 0 skipped (baseline 511 + 4), two runs, no probe skips |
 | Runtime harness | `ejecutarTick` with a fake `Reloj` against the live test PostgreSQL on port 5434: two active tenants and one inactive, fixture automations "created" in 2020 and ticked over 2021 windows; every fixture connection points at `127.0.0.1:1`, so a run that reached the driver closes as a `conexion` failure |
 | Rollback boundary | Delete `src/planificador.ts` and `src/planificador.test.ts`; nothing imports them yet (`server.ts` wiring is 4.9, unit 4b) |
-| Review budget | 422 changed lines of code and tests vs `0a8f987` (plus these artifact updates); over the 400 budget with no cohesive further cut: 4.1–4.4 need the whole run pipeline (4.3 needs the gate and the `Ejecucion` write). `size:exception` recommended for this slice |
+| Review budget | 422 changed lines of code and tests vs `0a8f987`; no cohesive further cut (4.3 needs the gate and the `Ejecucion` write). The user accepted the slice as `size:exception` at 458 changed lines |
 
 ### Unit 4a implementation notes
 
 - `crearPlanificador({prisma, zonaHoraria, log, reloj?})` returns only `ejecutarTick` for now; 4b adds `iniciar`/`detener`. The window's lower edge is initialised from `reloj.ahora()` when the scheduler is built (no catch-up, DEC-75) and moved to `ahora` at the start of each tick.
 - Tick: `tenant.findMany({activo: true})` (unscoped model) → per tenant `conTenantActivo({id, nombre}, …)` with the tenant built only from that row → scoped `automatizacion.findMany({activo: true})` → `estaVencida(cron, max(desde, creadaEn), ahora, zona)` → sequential runs. Every query is awaited inside the callback.
 - Run: `ejecucion.create` `en-curso` with `iniciadaEn` from the clock (`conTenantInyectado`, no `tenantId` written) → global `plantilla.findUniqueOrThrow` → scoped `vistaCanonica.findMany({conexionId})` → `evaluarVistas` → `componerSentencia` → `prepararSentencia` (values re-checked every run) → `destinoDeConexion` (`ErrorCredencialIlegible` → `credencial-ilegible`, `null` → `conexion-no-encontrada`) → `ejecutarConsulta` with `limite = topeFilas = loadConfig().maxFilasPorConsulta`, `desplazamiento = 0` → `ejecucion.update` with `cierreDeResultado`, `finalizadaEn`, `duracionMs`. A failure logs `{automatizacionId, fase, error, codigoError}` only.
-- Not yet: an unexpected throw (e.g. `findUniqueOrThrow`, a corrupt cron, a DB error) propagates out of `ejecutarTick`, leaves the row `en-curso` and stops the tick. The per-run catch closing it as `error-interno` is task 4.5 (RED in 4b).
-- `docker-compose.yml` still does not forward `ZONA_HORARIA_AUTOMATIZACIONES`; that belongs with the 4.9 wiring in 4b.
+- An unexpected throw left the row `en-curso` and stopped the tick in 4a; unit 4b adds the per-run catch.
 - Test isolation: `tenant.findMany` sees every active tenant in the shared test DB, including other files' fixtures. Their automations have a real `creadaEn`, so `max(desde, creadaEn)` is after every 2021 window and they are never due in these ticks.
+
+## Unit 4b Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/planificador.test.ts`: 10 tests, 10 pass, 0 fail, 0 skipped |
+| RED observed | With the tests extended and the code absent: 6 fail, 4 pass — 4.5/4.6 threw `estaVencida: horario almacenado fuera de cron estándar` out of the tick; 4.7 `iniciar is not a function` |
+| Typecheck / build | `npx tsc --noEmit`: clean; `npm run build`: exit 0 |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 521 tests, 521 pass, 0 fail, 0 skipped (baseline 515 + 6), two runs; the process exits on its own (~9 s). No test imports `server.ts`, and the 4.7 tests use a fake `Reloj`, so no real timer is armed |
+| Runtime harness | Live PG on 5434: one tenant with four automations (read-only role `ch13_lector` on the live server → `ok`; gate refusal; closed port; corrupt template entities → `error-interno`) and one with a corrupt cron ahead of a sibling; timer over a fake client and a fake `Reloj` |
+| Rollback boundary | Remove the `crearPlanificador`/`onClose`/`iniciar()` lines in `src/server.ts` (stops every run) and the Compose variable; then revert the 4b part of `src/planificador.ts` and its tests |
+| Review budget | 379 changed lines of code, tests and Compose vs `42ab413`, plus these artifact updates |
+
+### Unit 4b implementation notes
+
+- Timer: `iniciar` arms `reloj.programar` for the next `hh:mm:01` (`hastaElProximoTick`); `disparar` runs `ejecutarTick(reloj.ahora())`, logs a tick-level throw by class name only, and re-arms in `finally` unless stopped. `detener` sets `detenido`, cancels the pending timer, awaits the in-flight tick. `iniciar` after `detener` is a no-op.
+- Per-run catch: a pipeline throw closes the open row as `error-interno` (`fase null`, `codigoError null`) and siblings continue. A stored cron that `estaVencida` cannot read is treated as due and recorded the same way, as `automatizaciones.ts` documents; such an automation writes one `error-interno` row per tick (creation refuses such crons, so only corruption reaches it). If the row writes themselves throw, the run is logged (`error-interno`, class name) and the loop continues.
+- `server.ts`: the scheduler is built next to `prisma` with `config.zonaHoraria` and `app.log`; `onClose` awaits `detener()`; `iniciar()` runs in `listen().then`.
+- `docker-compose.yml` forwards `ZONA_HORARIA_AUTOMATIZACIONES: ${ZONA_HORARIA_AUTOMATIZACIONES:-}`; empty falls back to `UTC` in `config.ts`.
+- No deviation from design; no new architecture decision.
 
 ## Notes for later units
 
@@ -112,4 +132,4 @@ Remaining: 4.5–4.7, the rest of 4.8 (`iniciar`, `detener`, timer, per-run catc
 - Prisma queries are lazy thenables. Inside `conTenantActivo`, a query must be awaited within `fn`; a bare query returned from a non-`async` `fn` runs after the context is left and throws `ErrorSinTenantActivo`. Relevant to `planificador.ts` (Phase 4). Documented in the `conTenantActivo` comment.
 - The migration SQL was generated with `prisma migrate diff --from-schema <base> --to-schema prisma/schema.prisma --script`; it was not applied (Docker/DB unavailable). The Compose entrypoint applies it via `migrate deploy`.
 - `prisma format` realigned the `Conexion` model columns after its new back-relation; whitespace only.
-- `docker-compose.yml` does not forward `ZONA_HORARIA_AUTOMATIZACIONES`, the same as the other optional variables (`MAX_FILAS_CONSULTA`, timeouts). The app uses `UTC` inside Compose until it is forwarded.
+- `docker-compose.yml` forwards `ZONA_HORARIA_AUTOMATIZACIONES` since unit 4b; the other optional variables (`MAX_FILAS_CONSULTA`, timeouts) are still not forwarded.
