@@ -4,6 +4,7 @@ import {
   DEFAULT_CONNECTION_TEST_TIMEOUT_MS,
   DEFAULT_MAX_FILAS_CONSULTA,
   DEFAULT_QUERY_TIMEOUT_MS,
+  DEFAULT_SMTP_TIMEOUT_MS,
   DEFAULT_ZONA_HORARIA,
   loadConfig,
 } from './config.js';
@@ -30,6 +31,7 @@ const VARIABLES = [
   'QUERY_TIMEOUT_MS',
   'MAX_FILAS_CONSULTA',
   'ZONA_HORARIA_AUTOMATIZACIONES',
+  'SMTP_TIMEOUT_MS',
 ] as const;
 
 /** A minimal environment in which `loadConfig()` is expected to succeed. */
@@ -185,4 +187,59 @@ describe('loadConfig — one deployment-wide timezone for automation schedules (
       assert.throws(() => loadConfig(), /ZONA_HORARIA_AUTOMATIZACIONES/);
     });
   }
+});
+
+describe('loadConfig — the SMTP send budget is configuration, not a source literal (CH-14, R2)', () => {
+  test('smtpTimeoutMs defaults to 10000 when SMTP_TIMEOUT_MS is unset', () => {
+    // R2 under DEC-19: a hung SMTP server must not block the sequential tick for longer
+    // than this budget, and an untouched deployment gets 10 seconds.
+    assert.equal(loadConfig().smtpTimeoutMs, DEFAULT_SMTP_TIMEOUT_MS);
+    assert.equal(DEFAULT_SMTP_TIMEOUT_MS, 10000);
+  });
+
+  test('an empty SMTP_TIMEOUT_MS falls back to the default', () => {
+    process.env.SMTP_TIMEOUT_MS = '';
+    assert.equal(loadConfig().smtpTimeoutMs, 10000);
+  });
+
+  test('SMTP_TIMEOUT_MS overrides the default without a source change', () => {
+    process.env.SMTP_TIMEOUT_MS = '2500';
+    assert.equal(loadConfig().smtpTimeoutMs, 2500);
+  });
+
+  for (const valor of ['0', '-5', '12.5', 'lento']) {
+    test(`SMTP_TIMEOUT_MS=${valor} stops the boot naming the variable, never its value`, () => {
+      process.env.SMTP_TIMEOUT_MS = valor;
+      assert.throws(
+        () => loadConfig(),
+        (error: unknown) => {
+          const mensaje = error instanceof Error ? error.message : String(error);
+          assert.match(mensaje, /SMTP_TIMEOUT_MS/);
+          assert.ok(!mensaje.includes(valor), `the message must not quote ${valor}`);
+          return true;
+        },
+      );
+    });
+  }
+
+  test('the SMTP connection settings never reach AppConfig', () => {
+    // DEC-86 / DEC-17 precedent: SMTP_HOST, SMTP_USER, SMTP_PASSWORD and friends are read
+    // only by the notifier. On AppConfig they would be one `log.info(config)` away from a
+    // log line; only the send budget, which is not a secret, lives here.
+    process.env.SMTP_HOST = 'smtp.ejemplo.test';
+    process.env.SMTP_PASSWORD = 'secreto-de-prueba';
+    try {
+      const config = loadConfig();
+      const serializado = JSON.stringify(config);
+      assert.ok(!serializado.includes('smtp.ejemplo.test'));
+      assert.ok(!serializado.includes('secreto-de-prueba'));
+      assert.deepEqual(
+        Object.keys(config).filter((clave) => clave.toLowerCase().includes('smtp')),
+        ['smtpTimeoutMs'],
+      );
+    } finally {
+      delete process.env.SMTP_HOST;
+      delete process.env.SMTP_PASSWORD;
+    }
+  });
 });
