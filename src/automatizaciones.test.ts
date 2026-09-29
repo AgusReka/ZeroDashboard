@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import {
   cierreDeResultado,
   cronValido,
+  decidirNotificacion,
   estaVencida,
   type ResultadoCorrida,
 } from './automatizaciones.js';
@@ -311,5 +312,64 @@ describe('cierreDeResultado — every outcome closes with closed categories only
       codigoError: null,
     });
     assert.equal(JSON.stringify(cierre).includes('s3cr3t'), false);
+  });
+});
+
+// ---- 3.1 notification precedence (DEC-83, DEC-84, DEC-86) ----------------------------
+
+const PARA = 'compras@ejemplo.test';
+
+describe('decidirNotificacion — the first condition that holds wins', () => {
+  test('3.1 a run that did not succeed records null and never sends', () => {
+    const noExitosas: ResultadoCorrida[] = [
+      fallida('ejecucion', 'error-sintaxis', '42601'),
+      fallida('conexion', 'host-inalcanzable', 'ECONNREFUSED'),
+      { resultado: 'rechazo', categoria: 'valores-invalidos' },
+      { resultado: 'rechazo', categoria: 'vista-canonica-no-aprobada', entidades: [] },
+      { resultado: 'excepcion', error: new Error('boom') },
+    ];
+    for (const resultado of noExitosas) {
+      assert.deepEqual(decidirNotificacion(resultado, PARA, true), {
+        enviar: false,
+        notificacion: null,
+      });
+    }
+  });
+
+  test('3.1 zero rows never sends, even with a recipient and SMTP configured', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(0), PARA, true), {
+      enviar: false,
+      notificacion: 'omitida-sin-filas',
+    });
+    assert.deepEqual(decidirNotificacion(exitosa(0), null, false), {
+      enviar: false,
+      notificacion: 'omitida-sin-filas',
+    });
+  });
+
+  test('3.1 a missing recipient wins over unset SMTP', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(2), null, false), {
+      enviar: false,
+      notificacion: 'sin-destinatario',
+    });
+    assert.deepEqual(decidirNotificacion(exitosa(2), null, true), {
+      enviar: false,
+      notificacion: 'sin-destinatario',
+    });
+  });
+
+  test('3.1 unset SMTP with a recipient records no-configurada', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(2), PARA, false), {
+      enviar: false,
+      notificacion: 'no-configurada',
+    });
+  });
+
+  test('3.1 rows, a recipient and SMTP configured: send once, to that recipient', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(12), PARA, true), { enviar: true, para: PARA });
+    assert.deepEqual(decidirNotificacion(exitosa(1, 'tope-de-filas'), 'otro@ejemplo.test', true), {
+      enviar: true,
+      para: 'otro@ejemplo.test',
+    });
   });
 });

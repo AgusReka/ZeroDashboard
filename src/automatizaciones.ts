@@ -230,3 +230,53 @@ export function cierreDeResultado(r: ResultadoCorrida): CierreEjecucion {
       };
   }
 }
+
+// ---- notifying a run (CH-14: X3, N1; DEC-83, DEC-84, DEC-86) --------------------------
+
+/** `Ejecucion.notificacion`: the outcome only, never a body, recipient, or row content. */
+export type EstadoNotificacion =
+  | 'enviada'
+  | 'omitida-sin-filas'
+  | 'fallo-envio'
+  | 'sin-destinatario'
+  | 'no-configurada';
+
+/** The outcomes that end the notify step before any send is attempted. */
+export type OmisionNotificacion = Extract<
+  EstadoNotificacion,
+  'omitida-sin-filas' | 'sin-destinatario' | 'no-configurada'
+>;
+
+/**
+ * Whether the notify step sends, and to whom. `notificacion: null` means the query did
+ * not succeed, so no notification applies (precedence row 1).
+ */
+export type DecisionNotificacion =
+  | { enviar: false; notificacion: OmisionNotificacion | null }
+  | { enviar: true; para: string };
+
+/**
+ * Evaluates the outcome precedence in order; the first condition that holds wins
+ * (design "Outcome precedence"). `configurado` is whether a `Notificador` exists, which
+ * is exactly whether `SMTP_HOST` is set. A missing recipient wins over unset SMTP because
+ * it is the more specific reason the operator can fix. Zero rows never send (DEC-84).
+ */
+export function decidirNotificacion(
+  r: ResultadoCorrida,
+  destinatario: string | null,
+  configurado: boolean,
+): DecisionNotificacion {
+  if (r.resultado !== 'ok') {
+    return { enviar: false, notificacion: null };
+  }
+  if (r.filas.length === 0) {
+    return { enviar: false, notificacion: 'omitida-sin-filas' };
+  }
+  if (destinatario === null) {
+    return { enviar: false, notificacion: 'sin-destinatario' };
+  }
+  if (!configurado) {
+    return { enviar: false, notificacion: 'no-configurada' };
+  }
+  return { enviar: true, para: destinatario };
+}
