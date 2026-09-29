@@ -11,11 +11,12 @@ Mode: Standard (strict_tdd: false), RED/GREEN order from tasks.md followed. Deli
 | 2b Pure module: close-of-run mapping | 2.3, 2.4–2.5 (that half) | `ch13/2b-cierre-ejecucion` (base unit 2a) | `b6f7f42`, `52e1e8b` |
 | 3a Automation create route + registration | 3.1, 3.2, 3.3, 3.7; 3.6 create half | `ch13/3a-alta-automatizacion` (base unit 2b; renamed from `ch13/3-rutas-automatizacion`) | `9d1f0b1` |
 | 3b Automation list, get, `desactivar` | 3.4, 3.5, 3.8; 3.6 list/get/`desactivar` half | `ch13/3b-consulta-desactivar` (base unit 3a) | see `git log 9d1f0b1..ch13/3b-consulta-desactivar` |
+| 4a Scheduler tick: due check, tenant context, gate | 4.1–4.4; 4.8 `Reloj`/`ejecutarTick`/run-pipeline half | `ch13/4a-planificador` (base unit 3b) | see `git log 0a8f987..ch13/4a-planificador` |
 
 Unit 2 was one apply batch, split afterwards by the orchestrator into 2a and 2b with identical
 final code. Unit 3 was cut into 3a and 3b to fit the 400-line budget (the whole phase measured 520).
 
-Remaining: Phases 4–7.
+Remaining: 4.5–4.7, the rest of 4.8 (`iniciar`, `detener`, timer, per-run catch), 4.9, 4.10 (unit 4b); Phases 5–7.
 
 ## Unit 1 Evidence
 
@@ -83,6 +84,27 @@ Remaining: Phases 4–7.
 - `POST /automatizaciones/:id/desactivar`: mirrors `/tenants/:id/baja` — read first (`404`), `409 automatizacion-desactivada` when already inactive, then `update {activo: false}` returning `AutomatizacionCompleta`. No route writes `activo: true`.
 - Tests assert, via `hasRoute`, that all four routes exist and that no `PUT`/`PATCH`/`DELETE /automatizaciones/:id` or `POST /automatizaciones/:id/activar` exists; a foreign id is `404` for tenant B on get and `desactivar` and A's row stays active.
 - No deviation from design; no new architecture decision.
+
+## Unit 4a Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/planificador.test.ts`: 4 tests, 4 pass, 0 fail, 0 skipped |
+| RED observed | Before `src/planificador.ts` existed: `ERR_MODULE_NOT_FOUND` for `./planificador.js` |
+| Typecheck | `npx tsc --noEmit`: clean |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 515 tests, 515 pass, 0 fail, 0 skipped (baseline 511 + 4), two runs, no probe skips |
+| Runtime harness | `ejecutarTick` with a fake `Reloj` against the live test PostgreSQL on port 5434: two active tenants and one inactive, fixture automations "created" in 2020 and ticked over 2021 windows; every fixture connection points at `127.0.0.1:1`, so a run that reached the driver closes as a `conexion` failure |
+| Rollback boundary | Delete `src/planificador.ts` and `src/planificador.test.ts`; nothing imports them yet (`server.ts` wiring is 4.9, unit 4b) |
+| Review budget | 422 changed lines of code and tests vs `0a8f987` (plus these artifact updates); over the 400 budget with no cohesive further cut: 4.1–4.4 need the whole run pipeline (4.3 needs the gate and the `Ejecucion` write). `size:exception` recommended for this slice |
+
+### Unit 4a implementation notes
+
+- `crearPlanificador({prisma, zonaHoraria, log, reloj?})` returns only `ejecutarTick` for now; 4b adds `iniciar`/`detener`. The window's lower edge is initialised from `reloj.ahora()` when the scheduler is built (no catch-up, DEC-75) and moved to `ahora` at the start of each tick.
+- Tick: `tenant.findMany({activo: true})` (unscoped model) → per tenant `conTenantActivo({id, nombre}, …)` with the tenant built only from that row → scoped `automatizacion.findMany({activo: true})` → `estaVencida(cron, max(desde, creadaEn), ahora, zona)` → sequential runs. Every query is awaited inside the callback.
+- Run: `ejecucion.create` `en-curso` with `iniciadaEn` from the clock (`conTenantInyectado`, no `tenantId` written) → global `plantilla.findUniqueOrThrow` → scoped `vistaCanonica.findMany({conexionId})` → `evaluarVistas` → `componerSentencia` → `prepararSentencia` (values re-checked every run) → `destinoDeConexion` (`ErrorCredencialIlegible` → `credencial-ilegible`, `null` → `conexion-no-encontrada`) → `ejecutarConsulta` with `limite = topeFilas = loadConfig().maxFilasPorConsulta`, `desplazamiento = 0` → `ejecucion.update` with `cierreDeResultado`, `finalizadaEn`, `duracionMs`. A failure logs `{automatizacionId, fase, error, codigoError}` only.
+- Not yet: an unexpected throw (e.g. `findUniqueOrThrow`, a corrupt cron, a DB error) propagates out of `ejecutarTick`, leaves the row `en-curso` and stops the tick. The per-run catch closing it as `error-interno` is task 4.5 (RED in 4b).
+- `docker-compose.yml` still does not forward `ZONA_HORARIA_AUTOMATIZACIONES`; that belongs with the 4.9 wiring in 4b.
+- Test isolation: `tenant.findMany` sees every active tenant in the shared test DB, including other files' fixtures. Their automations have a real `creadaEn`, so `max(desde, creadaEn)` is after every 2021 window and they are never due in these ticks.
 
 ## Notes for later units
 
