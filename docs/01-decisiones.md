@@ -1478,6 +1478,130 @@ No son decisiones nuevas ni abren compuertas: son la mecánica interna de decisi
 
 ---
 
+### DEC-81 — El correo se envía por SMTP con nodemailer, con Mailpit para desarrollo
+
+**Contexto.** N1 exige enviar el resultado de una automatización por correo. Hasta CH-14 no hay código, dependencia ni variable de entorno de correo. Los workflows originales usaban SMTP (Gmail, 465 SSL).
+
+**Opciones.** (a) nodemailer sobre SMTP, con Mailpit en Docker Compose para desarrollo. (b) API HTTP de un proveedor (Resend, SendGrid, Postmark). (c) SMTP escrito a mano sobre `node:net`, sin dependencia.
+
+**Decisión.** (a).
+
+**Por qué.** Da continuidad con el SMTP ya usado, no ata el proyecto a un proveedor ni hace pasar las filas por la API de un tercero, y permite probar el transporte sin red. Suma una sola dependencia, con el mismo criterio que DEC-76. Las credenciales SMTP van solo por variables de entorno (regla 7).
+
+**Se resigna.** Una dependencia nueva. El relay SMTP que se configure recibe el contenido del correo: es la primera salida de datos del tenant fuera del sistema, coherente con la inclinación de D-1 pero sin cerrarla.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-82 — El destinatario es una única dirección en la automatización
+
+**Contexto.** `Automatizacion` no tiene destinatario y `Tenant` solo tiene nombre y activo. `Usuario` está prohibido por la spec del modelo de dominio.
+
+**Opciones.** (a) Columna `destinatario` en `Automatizacion`, una dirección validada, cargada al crear y sin edición (DEC-79). (b) Columna en `Tenant`. (c) Un destinatario global por variable de entorno. (d) Ambas, con prioridad de la automatización. (e) Entidad `Usuario`. Subopción: una dirección o una lista.
+
+**Decisión.** (a), con una sola dirección.
+
+**Por qué.** Mantiene el destinatario dentro del alcance de tenant, sin tocar las rutas de tenants ni introducir entidades nuevas. La columna admite nulos porque las automatizaciones creadas en CH-13 no tienen destinatario.
+
+**Se resigna.** Para cambiar el destinatario se desactiva la automatización y se crea otra. No hay envío a varias direcciones.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-83 — El resultado de la notificación se registra en una columna de `Ejecucion`; un envío fallido marca la ejecución como fallida
+
+**Contexto.** X2 registra el resultado de la consulta; CH-14 agrega un segundo resultado, el del envío, que tiene que distinguirse: enviada, omitida por no haber filas, fallo de envío, sin destinatario, SMTP no configurado.
+
+**Opciones.** (a) Columna nueva `notificacion` que admite nulos, con esos cinco valores. (b) Solo ampliar los valores de `estado` y `fase`. (c) Tabla hija `Notificacion`. Subopción para un envío fallido: (i) `estado='fallo'`, `fase='notificacion'` y una categoría de error cerrada; (ii) `estado` queda en `ok` y solo `notificacion` refleja el fallo.
+
+**Decisión.** (a), con la subopción (i).
+
+**Por qué.** El resultado del envío se lee sin ambigüedad, y un envío fallido queda visible como fallo para lo que se apoye en `estado` (P3h, CH-17). El error se guarda como categoría cerrada, nunca como texto crudo del servidor SMTP.
+
+**Se resigna.** `estado='fallo'` deja de significar solo "falló la consulta": hay que mirar `fase` para saber qué falló.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-84 — Sin filas no se envía; la degradación elegante cubre datos incompletos
+
+**Contexto.** X3 dice que sin filas no se envía nada. N2 pide que el correo se vea bien sin datos. En el WF-03 original, el día vacío sí se enviaba.
+
+**Opciones.** (a) X3 literal: cero filas nunca envía; N2 cubre celdas nulas, agregados en cero, celdas vacías y el aviso de corte. (b) Un campo por plantilla para enviar aunque esté vacío. (c) Enviar siempre un correo de "sin datos".
+
+**Decisión.** (a).
+
+**Por qué.** Respeta X3 sin agregar campos a `Plantilla` (DEC-64, DEC-65) y deja a N2 un alcance verificable: el correo nunca muestra `null`, `undefined` ni celdas rotas.
+
+**Se resigna.** Un reporte que quiera avisar "hoy no hubo datos" no se puede expresar; queda documentado como límite del artefacto (regla 6), con N3 como lugar para revisarlo.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-85 — El HTML del correo lo arma un renderizador genérico que reimplementa el diseño validado
+
+**Contexto.** N1 pide reutilizar el HTML ya validado en los workflows. Ese HTML no está en el repositorio: vive como expresión de un nodo de n8n y está descrito en las bitácoras WF-01 y WF-03 (estilos inline, tabla, encabezado con color de acento, pie discreto, paleta ámbar `#f59e0b`, rojo `#dc2626`, azul `#2563eb`).
+
+**Opciones.** (a) Renderizador genérico de tablas a partir de las columnas; el color de acento y el emoji del asunto salen de la etiqueta `automatizacion` de la plantilla. (b) Tres diseños fijos por etiqueta, copiados de los workflows. (c) HTML guardado por plantilla.
+
+**Decisión.** (a).
+
+**Por qué.** Reutiliza el sistema visual documentado sin acoplarse a la forma de las columnas de cada consulta y sin agregar campos a `Plantilla` (DEC-65). (c) es N3 y queda fuera de alcance.
+
+**Se resigna.** No es el HTML literal de n8n sino una reimplementación a partir de las bitácoras. Un reporte con varias secciones (WF-03: tres consultas, un correo) no se reproduce: una ejecución produce una notificación, y queda como límite del artefacto.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-86 — Sin SMTP configurado, la automatización corre igual y registra que no se notificó
+
+**Contexto.** DEC-17 hace fallar el arranque sin clave maestra. Había que decidir si SMTP recibe el mismo trato.
+
+**Opciones.** (a) Variables `SMTP_*` opcionales: sin ellas la ejecución corre y registra `notificacion='no-configurada'`. (b) Fallar cerrado al arrancar, como DEC-17.
+
+**Decisión.** (a).
+
+**Por qué.** La ausencia de SMTP no compromete la seguridad (a diferencia de la clave maestra) y queda visible en el registro. Mantiene los tests y entornos sin correo real funcionando.
+
+**Se resigna.** Un despliegue sin SMTP no falla al arrancar: la ausencia se ve recién en el registro de ejecuciones.
+
+**Addendum (2026-09-29, diseño de CH-14).** "No configurado" significa `SMTP_HOST` ausente o vacío. Si `SMTP_HOST` está presente, el resto de la configuración tiene que ser completa y válida (`SMTP_FROM` presente, puerto numérico, `SMTP_SECURE` booleano, `SMTP_USER` y `SMTP_PASSWORD` juntos o ninguno); si no lo es, la aplicación no arranca y el error nombra la variable, nunca su valor. Es el mismo criterio que `config.ts` aplica al resto de las variables opcionales: ausente usa el valor por defecto, presente e inválida frena el arranque. Evita que un error de tipeo deje de enviar correos en silencio. Decidido por el usuario (autor) ante la validación del diseño — no inferido por el agente.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme, con addendum.
+
+---
+
+### Resoluciones de nivel diseño bajo DEC-19, DEC-83 y DEC-86 (CH-14)
+
+No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resuelta en `openspec/changes/CH-14-engine-condition-email-notification/design.md`.
+
+**1. Un envío fallido conserva el conteo de filas (bajo DEC-83).** La consulta sí corrió: la ejecución queda con `estado='fallo'`, `fase='notificacion'`, una categoría de envío cerrada y el mismo `filas` que habría tenido si el envío salía bien.
+
+**2. El envío tiene un tiempo máximo configurable (bajo DEC-19).** `SMTP_TIMEOUT_MS`, con valor por defecto 10000 ms, con el mismo criterio que los límites de consulta de DEC-19. Un servidor SMTP colgado no bloquea el resto del tick más allá de ese tiempo.
+
+**3. Con el envío exitoso o sin envío, `fase` queda en `ejecucion`.** Solo un envío fallido usa `fase='notificacion'`.
+
+**Estado:** firmes.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
