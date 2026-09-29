@@ -8,9 +8,12 @@ container `zd-ch09-testdb` on `localhost:5434`).
 
 | Unit | Tasks | Branch | Commits |
 |---|---|---|---|
-| 1 Planning, schema, migration, `smtpTimeoutMs`, pin, compose, `.env.example` | 1.1–1.9 | `ch14/1-esquema-config` (base `master` `a4d78db`) | `ce5bea5` (planning, docs only), `b208e00`, `975c7aa`, `6c4e046`, `c1130c2`, `b05d60e`, then the bookkeeping commit for this file |
+| 1 Planning, schema, migration, `smtpTimeoutMs`, pin, compose, `.env.example` | 1.1–1.9 | `ch14/1-esquema-config` (base `master` `a4d78db`) | `ce5bea5` (planning, docs only), `b208e00`, `975c7aa`, `6c4e046`, `c1130c2`, `b05d60e`, `f40d93c` (bookkeeping) |
+| 2a Pure helpers: `direccionValida`, `textoDeCelda`, `escaparHtml`, `asuntoCorreo` | 2.1, 2.2 (cell rules), 2.3 (`escaparHtml`), 2.5 (subject) | `ch14/2a-correo-auxiliares` (base `ch14/1-esquema-config` `f40d93c`) | `3b1043b` |
+| 2b Composition: `componerCorreo`, HTML/text parts, notices, accent, date | 2.2 (in-message), 2.3 (in-message), 2.4, 2.5 (accent), 2.6, 2.7, 2.8 | `ch14/2b-correo-composicion` (base `ch14/2a-correo-auxiliares`) | `b45c111`, then the bookkeeping commit for this file |
 
-Remaining: Phases 2–7 (units 2, 3, 4, 5a, 5b, 6, 7).
+Remaining: Phases 3–7 (units 3, 4, 5a, 5b, 6, 7). Unit 3 (`ch14/3-mapeo-notificacion`) now stacks on
+`ch14/2b-correo-composicion`.
 
 ## Task 1.2 Findings (for the PR body)
 
@@ -68,6 +71,61 @@ Remaining: Phases 2–7 (units 2, 3, 4, 5a, 5b, 6, 7).
    `Ejecucion` column set; it was updated in a separate commit (no interactive rebase available).
    Commit `975c7aa` alone leaves that one test red; the branch head is green.
 
+## Unit 2 Evidence (split into 2a/2b per the tasks.md contingency)
+
+The single slice measured 687 authored lines (`src/correo.ts` 322, `src/correo.test.ts` 365),
+over the 400 budget, so the planned 2a/2b split was applied. Both are pure-function slices with no
+consumer yet.
+
+| Evidence | 2a | 2b |
+|---|---|---|
+| Diff | `git diff --shortstat ch14/1-esquema-config..ch14/2a-correo-auxiliares`: 2 files, 331 insertions | `git diff --shortstat ch14/2a-correo-auxiliares..b45c111`: 2 files, 356 insertions (the bookkeeping commit adds only `openspec/` lines) |
+| Focused test command | `npx tsx --test src/correo.test.ts`: 12 tests, 12 pass, 0 fail | `npx tsx --test src/correo.test.ts`: 25 tests, 25 pass, 0 fail |
+| Full suite | `TEST_DB_PORT=5434 npm test`: 556 tests, 556 pass, 0 fail, 0 skipped | `TEST_DB_PORT=5434 npm test`: 569 tests, 569 pass, 0 fail, 0 skipped (544 baseline + 25 new) |
+| Typecheck | `npx tsc --noEmit`: exit 0 | `npx tsc --noEmit`: exit 0 |
+| Runtime harness | N/A — pure functions, no I/O boundary | N/A — pure functions, no I/O boundary |
+| Rollback boundary | Delete `src/correo.ts` and `src/correo.test.ts`; nothing imports them | Revert `b45c111` (removes the composition section and its tests); 2a stays intact |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 2.1 | `src/correo.test.ts` | Unit | N/A (new); suite 544/544 | ✅ Written; file failed to load (no `./correo.js`) | ✅ 3/3 | ✅ 4 accepted, 11 injection/separator, 19 malformed cases | ✅ None needed |
+| 2.2 | `src/correo.test.ts` | Unit | N/A (new) | ✅ Written; load failed (no `textoDeCelda`/`componerCorreo` export) | ✅ 8/8 | ✅ 6 empty values, numbers/bigint/text, bool/date/invalid date/bytes/object/cycle/function, 500 cap both sides, padding row, zero row with tag balance | ✅ Cap folded into `textoDeCelda` |
+| 2.3 | `src/correo.test.ts` | Unit | 8/8 | ✅ Written; load failed (no `escaparHtml` export) | ✅ 10/10 | ✅ all five characters; cell, column name and template name; identity on plain text | ✅ None needed |
+| 2.4 | `src/correo.test.ts` | Unit | 10/10 | ✅ Written; 3 of 4 failed (truncation, empty-cell, zero-column notices) | ✅ 14/14 | ✅ positive notice cases plus the complete-result negative case | ✅ Notices extracted to `avisosDe` |
+| 2.5 | `src/correo.test.ts` | Unit | 14/14 | ✅ Written; 5 of 5 failed. After the split refactor, the subject cases were repointed at `asuntoCorreo` and failed to load (no export) before it was exported | ✅ 19/19, then 25/25 after the refactor | ✅ 3 known labels, 4 unknown labels (`constructor`, `__proto__`, empty), `+` count, control characters, 200 cap | ✅ Subject extracted to exported `asuntoCorreo`; theme `Map` lookup |
+| 2.6 | `src/correo.test.ts` | Unit | 19/19 | ✅ Written; 2 of 4 failed (CR/LF in text part, date in zone). Text parity and the no-internals guard already held from 2.4/2.5 and act as triangulation | ✅ 23/23 | ✅ UTC vs Buenos Aires; CR, LF, CRLF in cells and column names; extra SQL/param/host/recipient fields ignored | ✅ `textoDe`/`htmlDe`/`ESTILO` extraction |
+| 2.7 | `src/correo.test.ts` | Unit | — | ➖ Covered by 2.1–2.6 RED | ✅ 25/25 | ➖ Covered above | ✅ |
+| 2.8 | — | Checkpoint | — | — | ✅ `tsc` clean, 25/25, full suite 569/569 | — | ✅ 2a/2b split applied |
+
+### Test Summary
+
+- Total tests written: 25 (12 in 2a, 13 in 2b)
+- Total tests passing: 569/569 on the 2b tip
+- Layers used: Unit (25)
+- Approval tests: none (no refactoring of existing code)
+- Pure functions created: `direccionValida`, `textoDeCelda`, `escaparHtml`, `asuntoCorreo`, `componerCorreo` (exported) plus private helpers
+
+### Unit 2 Deviations
+
+1. **2a/2b split.** Applied as tasks.md foresaw. The subject needed the label map for its emoji, so
+   the whole closed theme map (accent and emoji) lives in 2a with the subject; 2b only reads the
+   accent. tasks.md had listed the accent map under 2b.
+2. **Extra export `asuntoCorreo`.** Design lists `Correo`, `componerCorreo`, `direccionValida`,
+   `escaparHtml`, `textoDeCelda`. `asuntoCorreo` is also exported so 2a can be reviewed and tested on
+   its own. `componerCorreo` still returns the subject, so later units need nothing new.
+3. **`direccionValida` does not trim.** Design says "trimmed"; tasks 2.1 says "rejects whitespace".
+   The function refuses leading/trailing whitespace instead of trimming it, so the value checked is
+   always the value stored. Unit 6 (routes) may trim the request value before calling it if the
+   console should accept surrounding spaces; that is a route choice, not a renderer change.
+4. **Date line format.** Design only says "formatted in `zonaHoraria`". Chosen:
+   `Ejecución del YYYY-MM-DD HH:mm ({zona})`, built from `Intl.DateTimeFormat#formatToParts`, so it
+   does not depend on the ICU locale data of the host.
+5. **Cell cap.** 500 characters total, the last one being `…` (499 kept + ellipsis).
+6. **Subject cap.** 200 code points; the name is cut (with `…`) so the `({n}{+})` count always
+   survives. Control characters, including U+2028/U+2029, become one space.
+
 ## Notes for Later Units
 
 - Task 4.8 (live Mailpit test) targets `localhost:1025`/`8025`. On this machine those ports belong to
@@ -75,3 +133,8 @@ Remaining: Phases 2–7 (units 2, 3, 4, 5a, 5b, 6, 7).
   `MAILPIT_UI_PORT` (defaults 1026/8026) instead, or it will deliver into the wrong catcher.
 - `EREQUIRETLS`, `EFILEACCESS`, `EURLACCESS` and the other extra codes map to `error-desconocido`
   unless unit 4 decides otherwise within the design table.
+- Unit 5a calls `componerCorreo({ nombre, automatizacion, columnas, filas, hayMas, fecha, zona })`
+  with `fecha` = the run's `iniciadaEn` and `zona` = `zonaHoraria`, then adds `para` itself; the
+  renderer never sees the recipient.
+- Unit 6 validates `destinatario` with `direccionValida`, which rejects (does not trim) surrounding
+  whitespace.
