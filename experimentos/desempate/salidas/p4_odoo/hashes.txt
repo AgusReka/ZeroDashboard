@@ -1,0 +1,8 @@
+host 2026-09-29T13:04:41-03:00
+b2acb0664d007373269ef49af03dcf293a13cefc285df23a2d0d62416bee61f7 *experimentos/desempate/sql/04_consulta_canonica_v2.sql
+b2298a8a487af17d592207ac4b5a685e2ca4577826c57c7523bf551a336dba45 *experimentos/desempate/sql/manual/m_odoo.sql
+06c318f11e78888f2efff6316755828be59df4061145af476fdd17ac8373ab5f *experimentos/desempate/sql/estado/huella_odoo.sql
+contenedor
+b2acb0664d007373269ef49af03dcf293a13cefc285df23a2d0d62416bee61f7  /tmp/zd/v2.sql
+b2298a8a487af17d592207ac4b5a685e2ca4577826c57c7523bf551a336dba45  /tmp/zd/manual.sql
+06c318f11e78888f2efff6316755828be59df4061145af476fdd17ac8373ab5f  /tmp/zd/huella.sql

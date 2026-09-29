@@ -1,0 +1,33 @@
+inicio 2026-09-29T13:04:09-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_user, pg_backend_pid() AS pid, current_setting('transaction_read_only') AS read_only;
+         hora_servidor         | current_user | pid | read_only 
+-------------------------------+--------------+-----+-----------
+ 2026-09-29 16:04:10.089522+00 | medusa       | 120 | on
+(1 row)
+
+Output format is unaligned.
+Field separator is "|".
+SELECT
+    pr.id,
+    pr.nombre,
+    FLOOR(MIN(ins."stockDisponible"::numeric / rc."cantidadPorUnidad")) AS stock_producible,
+    (ARRAY_AGG(ins.nombre
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC, ins.id ASC))[1] AS insumo_limitante,
+    (ARRAY_AGG(ins."stockDisponible"
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC, ins.id ASC))[1] AS stock_insumo_limitante,
+    (ARRAY_AGG(ins.id
+       ORDER BY ins."stockDisponible"::numeric / rc."cantidadPorUnidad" ASC, ins.id ASC))[1] AS insumo_limitante_id
+FROM v_producto pr
+JOIN v_receta_componente rc ON rc."productoId" = pr.id
+JOIN v_insumo ins           ON ins.id = rc."insumoId"
+WHERE pr.activo = true
+  AND rc."cantidadPorUnidad" > 0
+GROUP BY pr.id, pr.nombre
+ORDER BY stock_producible ASC, pr.id;
+Output format is aligned.
+ROLLBACK;
+ROLLBACK
+exit=0
+fin 2026-09-29T13:04:10-03:00

@@ -1,0 +1,22 @@
+inicio 2026-09-29T13:03:52-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_user, pg_backend_pid() AS pid, current_setting('transaction_read_only') AS read_only;
+         hora_servidor         |     current_user     | pid | read_only 
+-------------------------------+----------------------+-----+-----------
+ 2026-09-29 16:03:53.386595+00 | lector_zerodashboard | 924 | on
+(1 row)
+
+Output format is unaligned.
+Field separator is "|".
+SELECT 'product' AS tabla, count(*) AS filas, md5(COALESCE(string_agg(t::text, E'\n' ORDER BY t::text COLLATE "C"), '')) AS huella FROM product t
+UNION ALL
+SELECT 'ingredient' AS tabla, count(*) AS filas, md5(COALESCE(string_agg(t::text, E'\n' ORDER BY t::text COLLATE "C"), '')) AS huella FROM ingredient t
+UNION ALL
+SELECT 'product_ingredient' AS tabla, count(*) AS filas, md5(COALESCE(string_agg(t::text, E'\n' ORDER BY t::text COLLATE "C"), '')) AS huella FROM product_ingredient t
+ORDER BY 1;
+Output format is aligned.
+ROLLBACK;
+ROLLBACK
+exit=0
+fin 2026-09-29T13:03:53-03:00

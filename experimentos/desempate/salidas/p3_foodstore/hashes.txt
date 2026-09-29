@@ -1,0 +1,8 @@
+host 2026-09-29T13:03:49-03:00
+b2acb0664d007373269ef49af03dcf293a13cefc285df23a2d0d62416bee61f7 *experimentos/desempate/sql/04_consulta_canonica_v2.sql
+fb5f04cb3c09acf159a0d13c8b8d950e3dc0f497b937f397ac2a47048791fe24 *experimentos/desempate/sql/manual/m_foodstore.sql
+0917a5a8eed4332c8ee68e7c5204ac041cb611fdb4c150f18640f73033762d47 *experimentos/desempate/sql/estado/huella_foodstore.sql
+contenedor
+b2acb0664d007373269ef49af03dcf293a13cefc285df23a2d0d62416bee61f7  /tmp/zd/v2.sql
+fb5f04cb3c09acf159a0d13c8b8d950e3dc0f497b937f397ac2a47048791fe24  /tmp/zd/manual.sql
+0917a5a8eed4332c8ee68e7c5204ac041cb611fdb4c150f18640f73033762d47  /tmp/zd/huella.sql

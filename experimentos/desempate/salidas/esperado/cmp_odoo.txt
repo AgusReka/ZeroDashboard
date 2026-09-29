@@ -1,0 +1,7 @@
+cmp esperado/odoo_base.txt p3_odoo/datos/v2_corrida1.txt: identicas
+cmp esperado/odoo_base.txt p3_odoo/datos/v2_corrida2.txt: identicas
+cmp esperado/odoo_base.txt p3_odoo/datos/v2_corrida3.txt: identicas
+cmp esperado/odoo_modificado.txt p4_odoo/datos/v2_corrida1.txt: identicas
+cmp esperado/odoo_modificado.txt p4_odoo/datos/v2_corrida2.txt: identicas
+cmp esperado/odoo_modificado.txt p4_odoo/datos/v2_corrida3.txt: identicas
+cmp esperado/odoo_base.txt p4_odoo/datos/v2_rollback.txt: identicas

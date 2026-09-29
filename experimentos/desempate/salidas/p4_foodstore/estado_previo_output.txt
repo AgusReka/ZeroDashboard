@@ -1,0 +1,28 @@
+inicio 2026-09-29T13:05:12-03:00
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+BEGIN
+SELECT now() AS hora_servidor, current_user, pg_backend_pid() AS pid, current_setting('transaction_read_only') AS read_only;
+         hora_servidor         |     current_user     | pid  | read_only 
+-------------------------------+----------------------+------+-----------
+ 2026-09-29 16:05:12.799296+00 | lector_zerodashboard | 1069 | on
+(1 row)
+
+Output format is unaligned.
+Field separator is "|".
+SELECT p.id AS producto, p.name AS producto_nombre, i.id AS insumo, i.name AS insumo_nombre,
+       i.stock_quantity AS existencia, pi.quantity AS cantidad_por_unidad
+FROM product p
+JOIN product_ingredient pi ON pi.product_id = p.id
+JOIN ingredient i          ON i.id = pi.ingredient_id
+WHERE p.deleted_at IS NULL AND i.deleted_at IS NULL AND p.available = true AND pi.quantity > 0
+ORDER BY p.id, i.id;
+SELECT 'product' AS tabla, count(*) AS filas, md5(COALESCE(string_agg(t::text, E'\n' ORDER BY t::text COLLATE "C"), '')) AS huella FROM product t
+UNION ALL
+SELECT 'ingredient' AS tabla, count(*) AS filas, md5(COALESCE(string_agg(t::text, E'\n' ORDER BY t::text COLLATE "C"), '')) AS huella FROM ingredient t
+UNION ALL
+SELECT 'product_ingredient' AS tabla, count(*) AS filas, md5(COALESCE(string_agg(t::text, E'\n' ORDER BY t::text COLLATE "C"), '')) AS huella FROM product_ingredient t
+ORDER BY 1;
+ROLLBACK;
+ROLLBACK
+exit=0
+fin 2026-09-29T13:05:12-03:00

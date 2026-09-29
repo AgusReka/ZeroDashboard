@@ -1,0 +1,26 @@
+1|Hamburguesa Clásica|1|Pan brioche|120|1
+1|Hamburguesa Clásica|2|Carne vacuna|80|1
+1|Hamburguesa Clásica|3|Lechuga|60|1
+1|Hamburguesa Clásica|4|Tomate|50|1
+1|Hamburguesa Clásica|5|Cebolla|70|1
+1|Hamburguesa Clásica|8|Mayonesa|200|1
+2|Hamburguesa BBQ Bacon|1|Pan brioche|120|1
+2|Hamburguesa BBQ Bacon|2|Carne vacuna|80|1
+2|Hamburguesa BBQ Bacon|5|Cebolla|70|1
+2|Hamburguesa BBQ Bacon|6|Queso cheddar|90|1
+2|Hamburguesa BBQ Bacon|7|Bacon|40|2
+2|Hamburguesa BBQ Bacon|11|Salsa BBQ|100|1
+3|Hamburguesa Doble|1|Pan brioche|120|1
+3|Hamburguesa Doble|2|Carne vacuna|80|2
+3|Hamburguesa Doble|3|Lechuga|60|1
+3|Hamburguesa Doble|4|Tomate|50|1
+3|Hamburguesa Doble|6|Queso cheddar|90|2
+3|Hamburguesa Doble|8|Mayonesa|200|1
+4|Hamburguesa Picante|1|Pan brioche|120|1
+4|Hamburguesa Picante|2|Carne vacuna|80|1
+4|Hamburguesa Picante|6|Queso cheddar|90|1
+4|Hamburguesa Picante|8|Mayonesa|200|1
+4|Hamburguesa Picante|11|Salsa BBQ|100|1
+4|Hamburguesa Picante|12|Jalapeños|30|2
+5|Papas Fritas|13|Papas|250|1
+6|Aros de Cebolla|5|Cebolla|70|1

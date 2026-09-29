@@ -6,7 +6,8 @@
 #   admin   -> dueno de las tablas (postgres, medusa, odoo): calculo manual en Odoo, huellas y modificaciones.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
-RAIZ=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+# pwd -W (Git Bash): ruta con forma Windows (C:/...), que docker cp entiende con MSYS_NO_PATHCONV=1.
+RAIZ=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && { pwd -W 2>/dev/null || pwd; })
 EXP=$RAIZ/experimentos/desempate
 V2=$EXP/sql/04_consulta_canonica_v2.sql
 

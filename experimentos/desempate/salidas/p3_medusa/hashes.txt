@@ -1,0 +1,8 @@
+host 2026-09-29T13:04:07-03:00
+b2acb0664d007373269ef49af03dcf293a13cefc285df23a2d0d62416bee61f7 *experimentos/desempate/sql/04_consulta_canonica_v2.sql
+14fed01719ac3f2ae58958bed7fd9de1bfb9039436d557823f2b5c87db0e4140 *experimentos/desempate/sql/manual/m_medusa.sql
+79f7fd21979faa7be2946ecadf0562b2a1ce0dedda4782c01efe2d411df564d0 *experimentos/desempate/sql/estado/huella_medusa.sql
+contenedor
+b2acb0664d007373269ef49af03dcf293a13cefc285df23a2d0d62416bee61f7  /tmp/zd/v2.sql
+14fed01719ac3f2ae58958bed7fd9de1bfb9039436d557823f2b5c87db0e4140  /tmp/zd/manual.sql
+79f7fd21979faa7be2946ecadf0562b2a1ce0dedda4782c01efe2d411df564d0  /tmp/zd/huella.sql
