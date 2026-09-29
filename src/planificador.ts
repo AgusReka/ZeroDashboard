@@ -3,6 +3,7 @@ import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js'
 import {
   cierreDeResultado,
   estaVencida,
+  type FalloInesperado,
   type ResultadoCorrida,
 } from './automatizaciones.js';
 import { loadConfig } from './config.js';
@@ -49,8 +50,27 @@ export interface DependenciasPlanificador {
 }
 
 export interface Planificador {
+  /** Arms the first tick, one second past the next whole minute. A no-op once stopped. */
+  iniciar(): void;
+  /** Clears the pending timer and waits for an in-flight tick; nothing is armed after it. */
+  detener(): Promise<void>;
   /** Evaluates the window `(previous tick, ahora]` and runs what is due in it. */
   ejecutarTick(ahora: Date): Promise<void>;
+}
+
+const MINUTO_MS = 60_000;
+/** Ticks land one second past the minute, so a fire at `hh:mm:00` is inside the window. */
+const DESFASE_MS = 1_000;
+
+/** Milliseconds from `ahora` to the next instant at `hh:mm:01`, always in the future. */
+function hastaElProximoTick(ahora: Date): number {
+  const resto = (((ahora.getTime() - DESFASE_MS) % MINUTO_MS) + MINUTO_MS) % MINUTO_MS;
+  return MINUTO_MS - resto;
+}
+
+/** Only the thrown value's class name reaches a log: never its message or stack. */
+function nombreDeError(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
 }
 
 /** The columns one run reads off its automation. `valores` is re-checked on every run. */
@@ -131,15 +151,29 @@ export function crearPlanificador({
     });
   }
 
-  /** One run: open its row, run it, close the row with closed columns only (X2). */
-  async function correr(automatizacion: AutomatizacionACorrer): Promise<void> {
+  /**
+   * One run: open its row, run it, close the row with closed columns only (X2). A throw
+   * from the pipeline closes the row as `error-interno`; `previo` is a throw that happened
+   * before the run could start (an unreadable stored schedule), recorded the same way.
+   */
+  async function correr(automatizacion: AutomatizacionACorrer, previo?: FalloInesperado): Promise<void> {
     const iniciadaEn = reloj.ahora();
     // `tenantId` is never written here: the extension injects the active tenant's.
     const { id } = await prisma.ejecucion.create({
       data: conTenantInyectado({ automatizacionId: automatizacion.id, estado: 'en-curso', iniciadaEn }),
       select: { id: true },
     });
-    const cierre = cierreDeResultado(await resultadoDeCorrida(automatizacion));
+    let resultado: ResultadoCorrida;
+    if (previo !== undefined) {
+      resultado = previo;
+    } else {
+      try {
+        resultado = await resultadoDeCorrida(automatizacion);
+      } catch (error) {
+        resultado = { resultado: 'excepcion', error };
+      }
+    }
+    const cierre = cierreDeResultado(resultado);
     const finalizadaEn = reloj.ahora();
     await prisma.ejecucion.update({
       where: { id },
@@ -153,13 +187,18 @@ export function crearPlanificador({
           fase: cierre.fase,
           error: cierre.error,
           codigoError: cierre.codigoError,
+          ...(resultado.resultado === 'excepcion' ? { nombreError: nombreDeError(resultado.error) } : {}),
         },
         'scheduled run failed',
       );
     }
   }
 
-  /** Inside one tenant's context: its active automations, run one after another. */
+  /**
+   * Inside one tenant's context: its active automations, run one after another. Each run
+   * has its own catch, so one failure never stops a sibling (a per-run catch only, not the
+   * CH-18 isolation guarantee).
+   */
   async function correrVencidas(desde: Date, hasta: Date): Promise<void> {
     const automatizaciones = await prisma.automatizacion.findMany({
       where: { activo: true },
@@ -169,8 +208,26 @@ export function crearPlanificador({
     for (const automatizacion of automatizaciones) {
       // Never due for an instant before it existed.
       const inicio = automatizacion.creadaEn > desde ? automatizacion.creadaEn : desde;
-      if (estaVencida(automatizacion.cron, inicio, hasta, zonaHoraria)) {
-        await correr(automatizacion);
+      let vencida: boolean;
+      let previo: FalloInesperado | undefined;
+      try {
+        vencida = estaVencida(automatizacion.cron, inicio, hasta, zonaHoraria);
+      } catch (error) {
+        // A stored schedule that is not standard cron is corruption: recorded, not skipped.
+        vencida = true;
+        previo = { resultado: 'excepcion', error };
+      }
+      if (!vencida) {
+        continue;
+      }
+      try {
+        await correr(automatizacion, previo);
+      } catch (error) {
+        // Only the row writes themselves reach here; the run could not be recorded.
+        log.error(
+          { automatizacionId: automatizacion.id, error: 'error-interno', nombreError: nombreDeError(error) },
+          'scheduled run could not be recorded',
+        );
       }
     }
   }
@@ -192,5 +249,43 @@ export function crearPlanificador({
     }
   }
 
-  return { ejecutarTick };
+  // The timer: a self-rescheduling `setTimeout`, so ticks never overlap and a slow tick
+  // loses no fire (the next window covers the gap).
+  let cancelar: (() => void) | null = null;
+  let enCurso: Promise<void> | null = null;
+  let detenido = false;
+
+  function programarSiguiente(): void {
+    if (!detenido) {
+      cancelar = reloj.programar(hastaElProximoTick(reloj.ahora()), disparar);
+    }
+  }
+
+  function disparar(): void {
+    cancelar = null;
+    enCurso = ejecutarTick(reloj.ahora())
+      .catch((error: unknown) => {
+        // A tick that could not even list the tenants; the next minute tries again.
+        log.error({ error: 'error-interno', nombreError: nombreDeError(error) }, 'scheduler tick failed');
+      })
+      .finally(() => {
+        enCurso = null;
+        programarSiguiente();
+      });
+  }
+
+  function iniciar(): void {
+    if (!detenido && cancelar === null && enCurso === null) {
+      programarSiguiente();
+    }
+  }
+
+  async function detener(): Promise<void> {
+    detenido = true;
+    cancelar?.();
+    cancelar = null;
+    await enCurso;
+  }
+
+  return { iniciar, detener, ejecutarTick };
 }
