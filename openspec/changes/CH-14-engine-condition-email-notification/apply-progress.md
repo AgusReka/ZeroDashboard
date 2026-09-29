@@ -11,10 +11,13 @@ container `zd-ch09-testdb` on `localhost:5434`).
 | 1 Planning, schema, migration, `smtpTimeoutMs`, pin, compose, `.env.example` | 1.1–1.9 | `ch14/1-esquema-config` (base `master` `a4d78db`) | `ce5bea5` (planning, docs only), `b208e00`, `975c7aa`, `6c4e046`, `c1130c2`, `b05d60e`, `f40d93c` (bookkeeping) |
 | 2a Pure helpers: `direccionValida`, `textoDeCelda`, `escaparHtml`, `asuntoCorreo` | 2.1, 2.2 (cell rules), 2.3 (`escaparHtml`), 2.5 (subject) | `ch14/2a-correo-auxiliares` (base `ch14/1-esquema-config` `f40d93c`) | `3b1043b` |
 | 2b Composition: `componerCorreo`, HTML/text parts, notices, accent, date | 2.2 (in-message), 2.3 (in-message), 2.4, 2.5 (accent), 2.6, 2.7, 2.8 | `ch14/2b-correo-composicion` (base `ch14/2a-correo-auxiliares`) | `b45c111`, `2a3dca8` (bookkeeping) |
-| 3 Outcome mapping: `decidirNotificacion`, `cierreConNotificacion`, close-type widening | 3.1–3.6 | `ch14/3-mapeo-notificacion` (base `ch14/2b-correo-composicion` `2a3dca8`) | `568a6eb` (3.1), `6ac0ea8` (3.2–3.5); this bookkeeping is uncommitted (see "Unit 3 budget") |
+| 3a Precedence: `decidirNotificacion` | 3.1 | `ch14/3a-decision-notificacion` (base `ch14/2b-correo-composicion` `2a3dca8`) | `568a6eb` |
+| 3b Close with notification, close-type widening | 3.2–3.6 | `ch14/3b-cierre-notificacion` (base 3a) | `6ac0ea8`, `c4cfc84` (bookkeeping) |
+| 4a `SMTP_*` parsing: `leerSmtp` | 4.1, 4.2 | `ch14/4a-notificador-entorno` (base 3b `c4cfc84`) | `2d4016b` |
+| 4b Send wrapper, closed categories, hardened options | 4.3, 4.4, 4.5 | `ch14/4b-notificador-transporte` (base 4a) | `576f0c5` |
+| 4c Outer time limit, `crearNotificadorSmtp`, live Mailpit test | 4.6–4.9 | `ch14/4c-notificador-limite` (base 4b) | `9fffc22`, `f34c976`, this bookkeeping |
 
-Remaining: Phases 4–7 (units 4, 5a, 5b, 6, 7). Unit 4 (`ch14/4-notificador`) stacks on
-`ch14/3-mapeo-notificacion`.
+Remaining: Phases 5–7 (units 5a, 5b, 6, 7). Unit 5a stacks on `ch14/4c-notificador-limite`.
 
 ## Task 1.2 Findings (for the PR body)
 
@@ -142,8 +145,8 @@ consumer yet.
 ### Unit 3 budget
 
 Code and tests alone are 381 changed lines. With this file and the six `tasks.md` checkboxes,
-the unit exceeds the 400-line cap, so this bookkeeping is left uncommitted in the working tree.
-Proposed split, already cut as commits: **3a** = `568a6eb` (task 3.1, 110 lines) plus its
+the unit exceeds the 400-line cap. It was delivered as the split below, with the bookkeeping
+committed on 3b (`c4cfc84`): **3a** = `568a6eb` (task 3.1, 110 lines) plus its
 bookkeeping; **3b** = `6ac0ea8` (tasks 3.2–3.6, 271 lines) plus its bookkeeping. Each fits the
 budget.
 
@@ -177,13 +180,55 @@ budget.
 4. **Extra exported types.** `OmisionNotificacion`, `DecisionNotificacion` (`{enviar:false,
    notificacion}` or `{enviar:true, para}`), `SalidaNotificacion`, `CierreNotificado`.
 
+## Unit 4 Evidence (split into 4a/4b/4c)
+
+The slice measured about 830 changed lines (code 239, unit tests 426, live test 107, plus
+bookkeeping), so two sub-branches of at most 400 lines each could not hold it. It was cut into
+three stacked sub-branches along its natural seams: configuration, sending, time limit and wiring.
+
+| Evidence | 4a | 4b | 4c |
+|---|---|---|---|
+| Diff vs previous branch | 2 files, +173 | 2 files, +335 −4 | 3 code files +269 −6, plus this bookkeeping |
+| Focused test | `npx tsx --test src/notificador.test.ts`: 5/5 | 13/13 | 19/19; `src/notificador-mailpit.test.ts` skipped when Mailpit is down |
+| Full suite (`TEST_DB_PORT=5434 npm test`) | 588/588 | 596/596 | 602/602, 0 fail (583 baseline + 19) |
+| Typecheck | `npx tsc --noEmit`: exit 0 | exit 0 | exit 0 |
+| Runtime harness | N/A — pure parsing | nodemailer `jsonTransport` (real library, no network) | Local TCP servers on 127.0.0.1 (closed port, silent server); live Mailpit via `docker compose --profile correo up -d mailpit` on 1026/8026: 1 pass, Mailpit reported `SMTPAccepted: 1`, message deleted; container stopped afterwards |
+| Rollback boundary | Delete `src/notificador.ts` and its test | Revert `576f0c5` | Revert `f34c976`, `9fffc22`; nothing imports the notifier until unit 5b |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1 | `src/notificador.test.ts` | Unit | N/A (new); suite 583/583 | ✅ Written; load failed (no `./notificador.js`) | ✅ 5/5 | ✅ absent/empty host with stray values; defaults; secure port; explicit port; credentials | ➖ None needed |
+| 4.2 | `src/notificador.test.ts` | Unit | N/A (new) | ✅ Written with 4.1; value-leak check proven red by putting `got: ${v}` in the port message (1 fail), then restored | ✅ 5/5 | ✅ 16 invalid cases over five variables | ➖ None needed |
+| 4.3 | `src/notificador.test.ts` | Unit (real `jsonTransport`) | ✅ 5/5 | ✅ Written; load failed (no `notificadorDesdeTransporte`) | ✅ 7/7 | ✅ two senders and recipients | ➖ None needed |
+| 4.4 | `src/notificador.test.ts` | Unit (fake transport) | ✅ 7/7 | ✅ Written; load failed (no `codigoSmtp`) | ✅ 11/11 | ✅ 13 codes; bare 550/421; code with 535; EPROTOCOL with 554; 250; non-Error; synchronous throw; 12 refused `codigoSmtp` values | ➖ None needed |
+| 4.5 | `src/notificador.test.ts` | Unit (real `jsonTransport`) | ✅ 11/11 | ✅ Written; load failed (no `opcionesTransporte`); with both flags flipped to `false` the two cases fail | ✅ 13/13 | ✅ with and without credentials; literal file/URL text; `path` and `href` refused | ➖ None needed |
+| 4.6 | `src/notificador.test.ts` | Unit (fake transport) | ✅ 13/13 | ✅ Written; 2 of 3 failed (hang timed out, late rejection) | ✅ 16/16 | ✅ never answers; answers inside the budget; throwing `close()` with a late rejection | ✅ `mensaje` extracted; closed-transport note |
+| 4.7 | `src/notificador.test.ts` | Integration (local sockets) | ✅ 16/16 | ✅ Written; load failed (no `crearNotificadorSmtp`) | ✅ 19/19 | ✅ unset; invalid; closed port; silent server | ➖ None needed |
+| 4.8 | `src/notificador-mailpit.test.ts` | Live (Mailpit) | — | ➖ Harness after 4.7 | ✅ 1/1 live; skipped when down | ➖ Single scenario | ➖ |
+| 4.9 | — | Checkpoint | — | — | ✅ `tsc` clean; 19/19; 602/602 | — | — |
+
+### Unit 4 Deviations
+
+1. **Three sub-branches, not two.** See the budget note above.
+2. **`Transporte` instead of nodemailer's `Transporter`.** `notificadorDesdeTransporte` takes the
+   two methods it uses (`sendMail`, `close`); a nodemailer transporter fits it, and fakes need no cast.
+3. **Extra exports.** `ConfigSmtp`, `EntornoSmtp` and `opcionesTransporte` (the hardening and the
+   three socket timeouts are asserted on it, and a JSON transport built from it proves the flags work).
+4. **`SMTP_PORT` range.** It must also be at most 65535.
+5. **Reply-code rule.** A listed `code` decides the category first; a 4xx/5xx `responseCode` means
+   `envio-rechazado` only when the code is absent or unlisted (so `EREQUIRETLS` with no reply code
+   stays `error-desconocido`). `codigoSmtp` accepts only an integer `responseCode`.
+6. **Live test ports.** Task 4.8 says 1025/8025. The test reads `MAILPIT_SMTP_PORT`/`MAILPIT_UI_PORT`
+   (1026/8026 by default) and skips when the port is 1025, so it cannot deliver into another catcher.
+7. **Outer-limit close.** nodemailer's SMTP `close()` does not abort a connection in flight; the three
+   socket timeouts end it. The transport is not pooled, so it still sends the next message.
+
 ## Notes for Later Units
 
-- Task 4.8 (live Mailpit test) targets `localhost:1025`/`8025`. On this machine those ports belong to
-  another project's Mailpit; the live test should read the host ports from `MAILPIT_SMTP_PORT` /
-  `MAILPIT_UI_PORT` (defaults 1026/8026) instead, or it will deliver into the wrong catcher.
-- `EREQUIRETLS`, `EFILEACCESS`, `EURLACCESS` and the other extra codes map to `error-desconocido`
-  unless unit 4 decides otherwise within the design table.
+- Unit 5b wires `crearNotificadorSmtp({ timeoutMs: config.smtpTimeoutMs })` (default env
+  `process.env`); it throws on an invalid `SMTP_*`, so call it before `listen`.
 - Unit 5a calls `componerCorreo({ nombre, automatizacion, columnas, filas, hayMas, fecha, zona })`
   with `fecha` = the run's `iniciadaEn` and `zona` = `zonaHoraria`, then adds `para` itself; the
   renderer never sees the recipient.
