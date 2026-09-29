@@ -9,7 +9,8 @@ import { registrarContextoTenant } from './contexto-tenant.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 
 /**
- * CH-13 unit 3: create, list, get and deactivate an automation (tasks 3.1–3.5). Every
+ * CH-13 units 3 and 5: create, list, get and deactivate an automation (tasks 3.1–3.5),
+ * and list its runs (task 5.1). Every
  * check that answers before a database read runs against a client that throws on any
  * read; the rest run against a live PostgreSQL and skip when none is reachable.
  */
@@ -49,6 +50,7 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
       ['GET', '/automatizaciones', '/automatizaciones'],
       ['GET', '/automatizaciones/:id', '/automatizaciones/cualquiera'],
       ['POST', '/automatizaciones/:id/desactivar', '/automatizaciones/cualquiera/desactivar'],
+      ['GET', '/automatizaciones/:id/ejecuciones', '/automatizaciones/cualquiera/ejecuciones'],
     ];
     for (const [method, patron, url] of rutas) {
       assert.equal(sinLecturas.hasRoute({ method, url: patron }), true, `${method} ${patron}`);
@@ -112,7 +114,7 @@ const motivoSkip: string | false = (await esAlcanzable(objetivo.host, objetivo.p
   ? false
   : `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — set TEST_DB_*`;
 
-describe('automation routes — create, list, get, deactivate (CH-13 3.2, 3.4, 3.5)', { skip: motivoSkip }, () => {
+describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 3.4, 3.5, 5.1)', { skip: motivoSkip }, () => {
   let app!: FastifyInstance;
   /** The raw client: fixtures and cleanup only. The app gets the extended one. */
   let prisma!: PrismaClient;
@@ -168,6 +170,7 @@ describe('automation routes — create, list, get, deactivate (CH-13 3.2, 3.4, 3
   after(async () => {
     for (const tenantId of [tenantA, tenantB]) {
       if (tenantId === undefined) continue;
+      await prisma.ejecucion.deleteMany({ where: { tenantId } });
       await prisma.automatizacion.deleteMany({ where: { tenantId } });
       await prisma.conexion.deleteMany({ where: { tenantId } });
       await prisma.tenant.delete({ where: { id: tenantId } });
@@ -263,5 +266,57 @@ describe('automation routes — create, list, get, deactivate (CH-13 3.2, 3.4, 3
       assert.equal(app.hasRoute({ method, url: '/automatizaciones/:id' }), false);
     }
     assert.equal(app.hasRoute({ method: 'POST', url: '/automatizaciones/:id/activar' }), false);
+  });
+
+  test("5.1 an automation's runs are listed newest first, even deactivated; a foreign id is 404", async () => {
+    const id = (await crear(cuerpo())).json().automatizacion.id as string;
+    // Run rows are the scheduler's to write; here they are written directly, oldest first.
+    const iniciadas = ['2021-03-01T10:00:00Z', '2021-03-02T10:00:00Z', '2021-03-03T10:00:00Z'];
+    for (const [i, iniciada] of iniciadas.entries()) {
+      await prisma.ejecucion.create({
+        data: {
+          tenantId: tenantA,
+          automatizacionId: id,
+          estado: i === 1 ? 'fallo' : 'ok',
+          iniciadaEn: new Date(iniciada),
+          finalizadaEn: new Date(new Date(iniciada).getTime() + 250),
+          duracionMs: 250,
+          filas: i === 1 ? null : 3,
+          fase: i === 1 ? 'conexion' : 'ejecucion',
+          error: i === 1 ? 'conexion' : null,
+        },
+      });
+    }
+    assert.equal((await pedir('POST', `/automatizaciones/${id}/desactivar`)).statusCode, 200);
+
+    const propia = await pedir('GET', `/automatizaciones/${id}/ejecuciones`);
+    assert.equal(propia.statusCode, 200, propia.body);
+    const { ejecuciones, truncado } = propia.json();
+    assert.equal(truncado, false);
+    assert.deepEqual(
+      ejecuciones.map((e: { iniciadaEn: string }) => e.iniciadaEn),
+      iniciadas.map((i) => new Date(i).toISOString()).reverse(),
+    );
+    assert.deepEqual(
+      { ...ejecuciones[1], id: undefined },
+      {
+        id: undefined,
+        estado: 'fallo',
+        iniciadaEn: '2021-03-02T10:00:00.000Z',
+        finalizadaEn: '2021-03-02T10:00:00.250Z',
+        duracionMs: 250,
+        filas: null,
+        corte: null,
+        fase: 'conexion',
+        error: 'conexion',
+        codigoError: null,
+      },
+    );
+
+    for (const url of [`/automatizaciones/${id}/ejecuciones`, '/automatizaciones/no-existe/ejecuciones']) {
+      const ajena = await pedir('GET', url, tenantB);
+      assert.equal(ajena.statusCode, 404, `${url}: ${ajena.body}`);
+      assert.deepEqual(ajena.json(), { error: 'automatizacion-no-encontrada' });
+    }
   });
 });

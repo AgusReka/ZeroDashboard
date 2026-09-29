@@ -13,11 +13,12 @@ Mode: Standard (strict_tdd: false), RED/GREEN order from tasks.md followed. Deli
 | 3b Automation list, get, `desactivar` | 3.4, 3.5, 3.8; 3.6 list/get/`desactivar` half | `ch13/3b-consulta-desactivar` (base unit 3a) | see `git log 9d1f0b1..ch13/3b-consulta-desactivar` |
 | 4a Scheduler tick: due check, tenant context, gate | 4.1–4.4; 4.8 `Reloj`/`ejecutarTick`/run-pipeline half | `ch13/4a-planificador` (base unit 3b) | `42ab413` |
 | 4b Timer, per-run catch, run log, server wiring | 4.5–4.7, 4.9, 4.10; 4.8 rest | `ch13/4b-planificador-ciclo` (base unit 4a) | see `git log 42ab413..ch13/4b-planificador-ciclo` |
+| 5 Runs route + T2 sweep extension | 5.1–5.4 | `ch13/5-rutas-ejecuciones-t2` (base unit 4b, `4c6a60f`) | `253a11a` (unit 4b bookkeeping, moved out of the 4b slice to keep it under budget), then the unit 5 commit |
 
 Unit 2 was one apply batch, split afterwards by the orchestrator into 2a and 2b with identical
 final code. Unit 3 was cut into 3a and 3b to fit the 400-line budget (the whole phase measured 520).
 
-Remaining: Phases 5–7.
+Remaining: Phases 6–7.
 
 ## Unit 1 Evidence
 
@@ -124,6 +125,27 @@ Remaining: Phases 5–7.
 - Per-run catch: a pipeline throw closes the open row as `error-interno` (`fase null`, `codigoError null`) and siblings continue. A stored cron that `estaVencida` cannot read is treated as due and recorded the same way, as `automatizaciones.ts` documents; such an automation writes one `error-interno` row per tick (creation refuses such crons, so only corruption reaches it). If the row writes themselves throw, the run is logged (`error-interno`, class name) and the loop continues.
 - `server.ts`: the scheduler is built next to `prisma` with `config.zonaHoraria` and `app.log`; `onClose` awaits `detener()`; `iniciar()` runs in `listen().then`.
 - `docker-compose.yml` forwards `ZONA_HORARIA_AUTOMATIZACIONES: ${ZONA_HORARIA_AUTOMATIZACIONES:-}`; empty falls back to `UTC` in `config.ts`.
+- No deviation from design; no new architecture decision.
+
+## Unit 5 Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/aislamiento.test.ts src/automatizaciones-rutas.test.ts`: 59 tests, 59 pass, 0 fail, 0 skipped |
+| RED observed | With the tests extended and the handler absent: route file 2 fail (3.1 `hasRoute` false for `GET /automatizaciones/:id/ejecuciones`; 5.1); `aislamiento` 2 fail of 51 (both `GET /automatizaciones/:id/ejecuciones` sweep rows) |
+| Typecheck | `npx tsc --noEmit`: clean |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 532 tests, 532 pass, 0 fail, 0 skipped (baseline 521 + 11), two runs; the process exits on its own (~8 s) |
+| Runtime harness | `app.inject()` against the live test PostgreSQL on port 5434: the T2 fixture tenants each create an automation through the API and own one run; a real `ejecutarTick` over both tenants |
+| Rollback boundary | Remove the `/automatizaciones/:id/ejecuciones` handler and `EjecucionListada` from `src/automatizaciones-rutas.ts`, the 5.1 test and table row in its test, and the CH-13 additions to `src/aislamiento.test.ts`; prior units unaffected |
+| Review budget | 308 changed lines vs `4c6a60f` before this bookkeeping, including the 44 lines of `253a11a` |
+
+### Unit 5 implementation notes
+
+- `GET /automatizaciones/:id/ejecuciones`: scoped `automatizacion.findUnique` (`404 automatizacion-no-encontrada` for a foreign or unknown id, before any run is read), then scoped `ejecucion.findMany` with `EjecucionListada` (every column except `tenantId` and `automatizacionId`), `orderBy [iniciadaEn desc, id asc]`, `take LIMITE_LISTADO + 1` → `200 {ejecuciones, truncado}`. A deactivated automation's runs stay listed (DEC-79).
+- T2: the fixture gains an API-created `Automatizacion` and one `Ejecucion` per tenant. New sweep rows: `POST /automatizaciones` naming the other tenant's connection (`404 conexion-no-encontrada`), `GET /automatizaciones/:id`, `GET .../ejecuciones`, `POST .../desactivar` (`404 automatizacion-no-encontrada`), with the owner's automation and run ids added to the leak checks. The `desactivar` row is last because its owner control deactivates the fixture automation.
+- A listing test proves each side sees only its own automations and that the refused create filed nothing. A tick test runs `ejecutarTick` over A and B and checks every `Ejecucion.tenantId` against its owner.
+- The tick test dates its automations 2019 and ticks a 2019 window, before every other suite's 2020 scheduler fixtures, so it runs only its own two. A parallel 2021 tick from `planificador.test.ts` may run them while active; the test counts only rows started at its own instant, checks the owner on every row, and deactivates both automations in `finally`. The template names `pedido`, which has no fixture view, so the gate refuses without a dial.
+- The "scoped read outside the context throws" row of the design's T2 line is already covered by the CH-13 1.4 tests and 3.6 in the same file; not duplicated.
 - No deviation from design; no new architecture decision.
 
 ## Notes for later units

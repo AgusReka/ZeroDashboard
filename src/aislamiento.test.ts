@@ -20,14 +20,16 @@ import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
 import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
+import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
+import { crearPlanificador } from './planificador.js';
 
 /**
  * CH-06 tasks 3.2–3.6 — **T2**: "ninguna operación devuelve filas del otro", proven by
  * an automated test rather than by inspection.
  *
  * Two tenants are loaded, each with its own `Conexion`, `ConsultaGuardada` and (CH-09)
- * `VistaCanonica`, whose mapping each validates (CH-10), and every tenant-scoped route
- * is exercised from both sides. The
+ * `VistaCanonica`, whose mapping each validates (CH-10), plus (CH-13) an `Automatizacion`
+ * and one `Ejecucion`, and every tenant-scoped route is exercised from both sides. The
  * sweep is written as a table over route × tenant on purpose: a route added later that
  * is missing from it is an obvious omission in review, which a hand-written case per
  * route is not.
@@ -79,6 +81,9 @@ interface Fixture {
    * owner control the sweep needs: the route was reached and ran its session.
    */
   validacion: { resultado: string; fase: string };
+  /** CH-13: this tenant's automation, created through the API, and one run of it. */
+  automatizacionId: string;
+  ejecucionId: string;
 }
 
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
@@ -110,9 +115,25 @@ describe(
     let db!: PrismaClient;
     let a!: Fixture;
     let b!: Fixture;
+    /** CH-13: the global template both fixture automations name (DEC-61). */
+    let plantillaId!: string;
 
     before(async () => {
       db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+      // `pedido` has no view on either fixture connection, so the DEC-71 gate refuses
+      // every scheduled run of it before any dial.
+      plantillaId = (
+        await db.plantilla.create({
+          data: {
+            nombre: `CH-13 T2 ${Date.now()}`,
+            sql: 'SELECT * FROM v_pedido',
+            entidades: ['pedido'],
+            automatizacion: 'stock-fisico',
+            formato: 'correo-html',
+            toleranciaFrescuraMinutos: 30,
+          },
+        })
+      ).id;
 
       const aislado = extenderConAislamiento(db);
       app = Fastify({ logger: false });
@@ -123,6 +144,7 @@ describe(
       registerVistaCanonicaRoutes(app, aislado);
       registerValidacionMapeoRoutes(app, aislado);
       registerPlantillaPruebaRoute(app, aislado);
+      registerAutomatizacionRoutes(app, aislado, 'UTC');
       await app.ready();
 
       a = await montarTenant('A');
@@ -136,9 +158,13 @@ describe(
         await db.consultaGuardada.deleteMany({ where: { tenantId: { in: ids } } });
         // CH-09: `VistaCanonica` references `Conexion` through a RESTRICT FK as well.
         await db.vistaCanonica.deleteMany({ where: { tenantId: { in: ids } } });
+        // CH-13: runs reference automations, which reference connections.
+        await db.ejecucion.deleteMany({ where: { tenantId: { in: ids } } });
+        await db.automatizacion.deleteMany({ where: { tenantId: { in: ids } } });
         await db.conexion.deleteMany({ where: { tenantId: { in: ids } } });
         await db.tenant.deleteMany({ where: { id: { in: ids } } });
       }
+      if (plantillaId !== undefined) await db.plantilla.delete({ where: { id: plantillaId } });
       await db.$disconnect();
       await app.close();
     });
@@ -204,6 +230,19 @@ describe(
       assert.equal(validacion.statusCode, 200, validacion.body);
       const { resultado, fase } = validacion.json() as { resultado: string; fase: string };
 
+      // CH-13: an automation through the API, and one run of it as the scheduler files it.
+      const alta = await app.inject({
+        method: 'POST',
+        url: '/automatizaciones',
+        headers,
+        payload: { plantillaId, conexionId: conexion.id, cron: '0 8 * * *' },
+      });
+      assert.equal(alta.statusCode, 201, alta.body);
+      const { automatizacion } = alta.json() as { automatizacion: { id: string } };
+      const ejecucion = await db.ejecucion.create({
+        data: { tenantId: tenant.id, automatizacionId: automatizacion.id, estado: 'ok', iniciadaEn: new Date() },
+      });
+
       return {
         tenantId: tenant.id,
         nombre,
@@ -213,6 +252,8 @@ describe(
         entidadVista,
         sqlVista,
         validacion: { resultado, fase },
+        automatizacionId: automatizacion.id,
+        ejecucionId: ejecucion.id,
       };
     }
 
@@ -234,6 +275,11 @@ describe(
 
         assert.equal(conexion?.tenantId, fixture.tenantId, `${fixture.nombre}: conexion`);
         assert.equal(guardada?.tenantId, fixture.tenantId, `${fixture.nombre}: consulta guardada`);
+        const automatizacion = await db.automatizacion.findUnique({
+          where: { id: fixture.automatizacionId },
+          select: { tenantId: true },
+        });
+        assert.equal(automatizacion?.tenantId, fixture.tenantId, `${fixture.nombre}: automatizacion`);
 
         const vistas = await db.vistaCanonica.findMany({
           where: { conexionId: fixture.conexionId },
@@ -352,6 +398,33 @@ describe(
           }),
         exitoso: 200,
       },
+      // CH-13: the automation routes and the runs listing. The create names the other
+      // tenant's connection; its owner control files a second automation for the caller.
+      // The `desactivar` row comes last: its owner control deactivates the fixture's
+      // automation, which a second call would answer with 409.
+      {
+        nombre: 'POST /automatizaciones',
+        errorEsperado: 'conexion-no-encontrada',
+        pedir: (llamante: Fixture, duenio: Fixture) =>
+          app.inject({
+            method: 'POST',
+            url: '/automatizaciones',
+            headers: cabeceras(llamante),
+            payload: { plantillaId, conexionId: duenio.conexionId, cron: '0 8 * * *' },
+          }),
+        exitoso: 201,
+      },
+      ...(['', '/ejecuciones', '/desactivar'] as const).map((sufijo) => ({
+        nombre: `${sufijo === '/desactivar' ? 'POST' : 'GET'} /automatizaciones/:id${sufijo}`,
+        errorEsperado: 'automatizacion-no-encontrada',
+        pedir: (llamante: Fixture, duenio: Fixture) =>
+          app.inject({
+            method: sufijo === '/desactivar' ? 'POST' : 'GET',
+            url: `/automatizaciones/${duenio.automatizacionId}${sufijo}`,
+            headers: cabeceras(llamante),
+          }),
+        exitoso: 200,
+      })),
     ];
 
     for (const ruta of rutas) {
@@ -374,6 +447,8 @@ describe(
           assert.ok(!respuesta.body.includes(duenio.sqlVista));
           assert.ok(!respuesta.body.includes(objetivo.password));
           assert.ok(!respuesta.body.includes(duenio.tenantId));
+          assert.ok(!respuesta.body.includes(duenio.automatizacionId));
+          assert.ok(!respuesta.body.includes(duenio.ejecucionId));
         }
       });
 
@@ -414,6 +489,82 @@ describe(
           `${llamante.nombre} must not see ${duenio.nombre}'s saved query`,
         );
         assert.ok(!respuesta.body.includes(duenio.tenantId));
+      }
+    });
+
+    test("CH-13 5.3 the automation listing never shows the other tenant's rows", async () => {
+      for (const [llamante, duenio] of [
+        [a, b],
+        [b, a],
+      ] as const) {
+        const respuesta = await app.inject({
+          method: 'GET',
+          url: '/automatizaciones',
+          headers: cabeceras(llamante),
+        });
+        assert.equal(respuesta.statusCode, 200, respuesta.body);
+        const ids = (respuesta.json() as { automatizaciones: { id: string }[] }).automatizaciones.map((f) => f.id);
+        assert.ok(ids.includes(llamante.automatizacionId), 'the caller must see its own automation');
+        assert.ok(!ids.includes(duenio.automatizacionId), `${llamante.nombre} saw ${duenio.nombre}'s automation`);
+        assert.ok(!respuesta.body.includes(duenio.conexionId));
+        // The sweep's refused create filed nothing: no caller row names the owner's connection.
+        assert.equal(
+          await db.automatizacion.count({ where: { tenantId: llamante.tenantId, conexionId: duenio.conexionId } }),
+          0,
+        );
+      }
+    });
+
+    test('CH-13 5.3 a tick over A and B files every run under the tenant that owns it', async () => {
+      // Created in 2019 and ticked over a 2019 window: every other suite's scheduler
+      // fixtures are dated 2020 and every real row later, so this tick runs only these two.
+      // Another suite's 2021 tick may run them too while they are active; such a run is
+      // still filed under its owner, and it is told apart below by its start time.
+      const propias: { id: string; duenio: Fixture }[] = [];
+      for (const duenio of [a, b]) {
+        const { id } = await db.automatizacion.create({
+          data: {
+            tenantId: duenio.tenantId,
+            plantillaId,
+            conexionId: duenio.conexionId,
+            cron: '* * * * *',
+            creadaEn: new Date('2019-01-01T00:00:00Z'),
+          },
+        });
+        propias.push({ id, duenio });
+      }
+      const desde = new Date('2019-06-01T08:00:30Z');
+      try {
+        const planificador = crearPlanificador({
+          prisma: extenderConAislamiento(db),
+          zonaHoraria: 'UTC',
+          log: Fastify({ logger: false }).log,
+          reloj: {
+            ahora: () => desde,
+            programar: () => {
+              throw new Error('ejecutarTick no programa temporizadores');
+            },
+          },
+        });
+        await planificador.ejecutarTick(new Date('2019-06-01T08:01:30Z'));
+      } finally {
+        await db.automatizacion.updateMany({
+          where: { id: { in: propias.map((p) => p.id) } },
+          data: { activo: false },
+        });
+      }
+      for (const { id, duenio } of propias) {
+        const filas = await db.ejecucion.findMany({
+          where: { automatizacionId: id },
+          select: { tenantId: true, iniciadaEn: true, error: true },
+        });
+        const deEsteTick = filas.filter((f) => f.iniciadaEn.getTime() === desde.getTime());
+        assert.equal(deEsteTick.length, 1, `${duenio.nombre}: one run from this tick`);
+        // Refused by the gate, so no target was dialled on either side.
+        assert.equal(deEsteTick[0]?.error, 'vista-canonica-no-aprobada');
+        for (const fila of filas) {
+          assert.equal(fila.tenantId, duenio.tenantId, `${duenio.nombre}: a run filed under another tenant`);
+        }
       }
     });
 

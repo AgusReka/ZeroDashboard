@@ -97,10 +97,10 @@ CH-12's verify-then-archive close).
 
 ## 5. Runs Route & T2 Sweep Extension (`src/automatizaciones-rutas.ts`, `src/aislamiento.test.ts`)
 
-- [ ] 5.1 RED extend `src/automatizaciones-rutas.test.ts`: `GET /automatizaciones/:id/ejecuciones` lists own automation's runs newest-first; naming another tenant's automation is `404`, no run data returned (spec `execution-log` "Listing runs for one's own automation", "Naming another tenant's automation")
-- [ ] 5.2 Implement the `GET /automatizaciones/:id/ejecuciones` handler in `src/automatizaciones-rutas.ts`: scoped `automatizacion.findUnique` [+tenantId] → `ejecucion.findMany` ordered by `iniciadaEn desc` — satisfies 5.1
-- [ ] 5.3 RED/GREEN extend `src/aislamiento.test.ts` (T2): full two-tenant sweep now includes create/list/get/desactivar automation routes and the runs-listing route; tenant B reaching A's automation, runs, or connection is `404`, nothing leaks (spec `tenant-isolation` "Full two-tenant route sweep"; Threat Matrix "Tenant B reaching A's automation, runs, or connection")
-- [ ] 5.4 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/automatizaciones-rutas.test.ts src/aislamiento.test.ts` green
+- [x] 5.1 RED extend `src/automatizaciones-rutas.test.ts`: `GET /automatizaciones/:id/ejecuciones` lists own automation's runs newest-first; naming another tenant's automation is `404`, no run data returned (spec `execution-log` "Listing runs for one's own automation", "Naming another tenant's automation")
+- [x] 5.2 Implement the `GET /automatizaciones/:id/ejecuciones` handler in `src/automatizaciones-rutas.ts`: scoped `automatizacion.findUnique` [+tenantId] → `ejecucion.findMany` ordered by `iniciadaEn desc` — satisfies 5.1
+- [x] 5.3 RED/GREEN extend `src/aislamiento.test.ts` (T2): full two-tenant sweep now includes create/list/get/desactivar automation routes and the runs-listing route; tenant B reaching A's automation, runs, or connection is `404`, nothing leaks (spec `tenant-isolation` "Full two-tenant route sweep"; Threat Matrix "Tenant B reaching A's automation, runs, or connection")
+- [x] 5.4 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/automatizaciones-rutas.test.ts src/aislamiento.test.ts` green
 
 ## 6. Minimal Console (`src/consola.ts`)
 

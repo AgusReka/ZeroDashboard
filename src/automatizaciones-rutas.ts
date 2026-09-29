@@ -9,7 +9,7 @@ import { prepararSentencia } from './parametros.js';
 
 /**
  * CH-13: the automation lifecycle routes — create, list, get, deactivate (DEC-74,
- * DEC-78, DEC-79). None is exempt from `x-tenant-id`: `Automatizacion` is a scoped model,
+ * DEC-78, DEC-79) — and the runs listing (DEC-80). None is exempt from `x-tenant-id`: `Automatizacion` is a scoped model,
  * so every read and write below is filtered by the tenant the hooks resolved from the
  * header (DEC-13), and the body never names one (rule 2). There is no edit, no delete
  * and no reactivation route; a mistaken automation is deactivated and created again.
@@ -30,6 +30,24 @@ export const AutomatizacionResumen = {
 
 /** Every column except `tenantId`, which the caller already knows: create, get, deactivate. */
 export const AutomatizacionCompleta = { ...AutomatizacionResumen, valores: true } as const;
+
+/**
+ * One run as the runs listing shows it (X2): every column except `tenantId` and
+ * `automatizacionId`, which the URL already names. The row holds metadata only, never
+ * the rows a run read, so there is nothing else to leave out.
+ */
+export const EjecucionListada = {
+  id: true,
+  estado: true,
+  iniciadaEn: true,
+  finalizadaEn: true,
+  duracionMs: true,
+  filas: true,
+  corte: true,
+  fase: true,
+  error: true,
+  codigoError: true,
+} as const;
 
 interface RegistroAutomatizacionBody {
   plantillaId: string;
@@ -192,6 +210,36 @@ export function registerAutomatizacionRoutes(
         select: AutomatizacionCompleta,
       });
       return reply.code(200).send({ automatizacion });
+    },
+  );
+
+  /**
+   * The runs of one automation, newest first (DEC-80). The automation is resolved first,
+   * through the scoped model, so another tenant's id is `404` before any run is read, the
+   * same answer as an unknown id. A deactivated automation still resolves: its past runs
+   * stay reachable (DEC-79). The run read is scoped by the extension as well.
+   */
+  app.get<{ Params: AutomatizacionParams }>(
+    '/automatizaciones/:id/ejecuciones',
+    async (request, reply) => {
+      const automatizacion = await prisma.automatizacion.findUnique({
+        where: { id: request.params.id },
+        select: { id: true },
+      });
+      if (automatizacion === null) {
+        return reply.code(404).send({ error: 'automatizacion-no-encontrada' });
+      }
+      const filas = await prisma.ejecucion.findMany({
+        where: { automatizacionId: automatizacion.id },
+        select: EjecucionListada,
+        orderBy: [{ iniciadaEn: 'desc' }, { id: 'asc' }],
+        take: LIMITE_LISTADO + 1,
+      });
+      const truncado = filas.length > LIMITE_LISTADO;
+      return reply.code(200).send({
+        ejecuciones: truncado ? filas.slice(0, LIMITE_LISTADO) : filas,
+        truncado,
+      });
     },
   );
 }
