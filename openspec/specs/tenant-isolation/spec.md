@@ -36,10 +36,10 @@ The system SHALL determine the active tenant explicitly from each incoming reque
 
 ### Requirement: Every Scoped Query Is Filtered by the Active Tenant (DEC-13)
 
-The system SHALL filter every read and write on `Conexion`, `ConsultaGuardada`, and the schema-mapping definitions added by this change by the resolved active tenant, structurally, such that a row belonging to a different tenant is treated as though it does not exist for that request.
-(Previously: covered only `Conexion` and `ConsultaGuardada`.)
+The system SHALL filter every read and write on `Conexion`, `ConsultaGuardada`, the schema-mapping definitions, `Automatizacion`, and `Ejecucion` by the resolved active tenant, structurally, such that a row belonging to a different tenant is treated as though it does not exist for that request or run.
+(Previously: covered `Conexion`, `ConsultaGuardada`, and the schema-mapping definitions; did not cover `Automatizacion` or `Ejecucion`, which did not yet exist.)
 
-#### Scenario: Reading another tenant's connection, saved query, or schema-mapping definition
+#### Scenario: Reading another tenant's connection, saved query, schema-mapping definition, automation, or execution record
 
 - GIVEN tenants A and B, and a row belonging to B
 - WHEN A's active tenant requests that row by id
@@ -54,20 +54,22 @@ The system SHALL filter every read and write on `Conexion`, `ConsultaGuardada`, 
 
 ### Requirement: Cross-Tenant Isolation Is Proven by an Automated Test (T2)
 
-The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes: triggering validation, reading a validation result, and reading the automation-applicability report.
+The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes (triggering validation, reading a validation result, reading the automation-applicability report) and this change's routes: creating, listing, getting, and deactivating an `Automatizacion`, and listing an automation's `Ejecucion` rows.
+(Previously: the sweep did not include this change's automation and execution-log routes, which did not yet exist.)
 
 #### Scenario: Full two-tenant route sweep
 
-- GIVEN two tenants, each with its own `Conexion`, `ConsultaGuardada`, schema-mapping definition, and validation result
-- WHEN every tenant-scoped route is exercised from both tenants, including validate, validation-read, and applicability-report routes
+- GIVEN two tenants, each with its own `Conexion`, `ConsultaGuardada`, schema-mapping definition, validation result, `Automatizacion`, and `Ejecucion`
+- WHEN every tenant-scoped route is exercised from both tenants, including validate, validation-read, applicability-report, automation, and runs-listing routes
 - THEN no response SHALL contain, confirm the existence of, trigger validation against, or act upon the other tenant's row
-- AND a cross-tenant request naming another tenant's connection or entity SHALL receive `404`
+- AND a cross-tenant request naming another tenant's connection, entity, or automation SHALL receive `404`
 
 #### Scenario: Database unreachable
 
 - GIVEN the live PostgreSQL database the test targets is unreachable
 - WHEN the test suite runs
 - THEN this test SHALL be skipped, not reported as a failure
+
 ### Requirement: Plantilla Is Outside the Structural Tenant Filter (DEC-61)
 
 `Plantilla` SHALL NOT be added to the tenant-scoped model allowlist (`MODELOS_AISLADOS`, DEC-13); its reads and writes SHALL proceed without any active-tenant filter. Its catalog routes (create, list, get, replace) SHALL be added to the tenant-context exemption allowlist, matched by exact method and route pattern. The test route (`POST /plantillas/:id/prueba`) SHALL NOT be added to that exemption: it resolves a tenant-owned `Conexion` and therefore SHALL require an active tenant like any other scoped route.
@@ -83,3 +85,19 @@ The system SHALL include an automated test that loads two tenants, exercises eve
 - GIVEN an existing `Plantilla`
 - WHEN `POST /plantillas/:id/prueba` is sent with no `x-tenant-id`
 - THEN the response SHALL be `400 tenant-no-indicado`
+### Requirement: Scheduler-Entered Tenant Context Derives Identity Only From Own-Database Rows
+
+The scheduler SHALL enter each tenant's context using the same fail-closed, structural extension applied to request handling (DEC-13); it SHALL derive the tenant identity used to enter that context only from `Tenant` rows read from the own database, never from any externally supplied value. No scheduler-initiated query against a tenant-scoped model SHALL bypass that structural filter.
+
+#### Scenario: Scheduler tick enters a tenant's context from its own Tenant row
+
+- GIVEN an active `Tenant` row with a due active `Automatizacion`
+- WHEN the scheduler ticks
+- THEN the run SHALL execute inside a context whose tenant id is read from that `Tenant` row
+- AND every query the run issues against a tenant-scoped model SHALL be filtered by that same tenant id
+
+#### Scenario: A scheduler-run query outside any context fails closed
+
+- GIVEN the scheduler's tenant-context entry mechanism
+- WHEN a query against a tenant-scoped model is attempted with no context entered
+- THEN it SHALL throw rather than execute unfiltered, same as a request-time query
