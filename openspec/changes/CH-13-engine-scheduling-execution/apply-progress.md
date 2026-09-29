@@ -7,9 +7,14 @@ Mode: Standard (strict_tdd: false), RED/GREEN order from tasks.md followed. Deli
 | Unit | Tasks | Branch | Commits |
 |---|---|---|---|
 | 1 Schema, isolation, config, dependency | 1.1–1.9 | `ch13/1-esquema-aislamiento-config` (base `master`) | `c12912f`, `c928e9a`, `bbc9100` |
-| 2 Pure `src/automatizaciones.ts` | 2.1–2.5 | `ch13/2-automatizaciones-puro` (base unit 1) | see `git log ch13/1-esquema-aislamiento-config..ch13/2-automatizaciones-puro` |
+| 2a Pure module: cron validity, due window | 2.1, 2.2, 2.4–2.5 (that half) | `ch13/2a-cron-ventana` (base unit 1) | `85e4b87` |
+| 2b Pure module: close-of-run mapping | 2.3, 2.4–2.5 (that half) | `ch13/2b-cierre-ejecucion` (base unit 2a) | `b6f7f42`, `52e1e8b` |
+| 3a Automation create route + registration | 3.1, 3.2, 3.3, 3.7; 3.6 create half | `ch13/3-rutas-automatizacion` (base unit 2b) | see `git log ch13/2b-cierre-ejecucion..ch13/3-rutas-automatizacion` |
 
-Remaining: Phases 3–7 (units 3–7).
+Unit 2 was one apply batch, split afterwards by the orchestrator into 2a and 2b with identical
+final code. Unit 3 was cut to 3a to fit the 400-line budget (the whole phase measured 520).
+
+Remaining: 3b (3.4, 3.5, the list/get/`desactivar` half of 3.6, 3.8), then Phases 4–7.
 
 ## Unit 1 Evidence
 
@@ -39,6 +44,25 @@ Remaining: Phases 3–7 (units 3–7).
 - `cierreDeResultado` takes `ResultadoCorrida = ResultadoEjecucion | RechazoPreparacion | FalloInesperado`, not only `ResultadoEjecucion` as the design's signature line shows, because task 2.3 requires gate refusal, `valores-invalidos`, and unexpected throws to be mapped too. It returns `CierreEjecucion` = `{estado, filas, corte, fase, error, codigoError}`; timestamps and `duracionMs` stay with the scheduler's injected clock.
 - Mapping: ok → `estado ok`, `filas` = row count, `corte`, `fase ejecucion`; execution failure → its `fase`, its closed `categoria` as `error`, `codigoError` = `codigoPublicable(codigo)` (re-gated); pre-dial refusal → `fase preparacion` with `vista-canonica-no-aprobada` | `valores-invalidos` | `conexion-no-encontrada` | `credencial-ilegible`; unexpected throw → `fase null`, `error-interno`, the thrown value is never read. Every branch builds a fresh object and never spreads its input.
 - Spec `execution-log` requires a gate refusal to name the ungated entity, and `Ejecucion` only has `error`/`codigoError`. The entity names go in `codigoError` (comma-joined, contract order as `evaluarVistas` returns them), filtered against `CONTRATO_CANONICO` names, so only closed text reaches the row. Units 4 and 6 should read `codigoError` that way for `vista-canonica-no-aprobada` rows.
+
+## Unit 3a Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/automatizaciones-rutas.test.ts`: 5 tests, 5 pass, 0 fail, 0 skipped |
+| RED observed | Before `src/automatizaciones-rutas.ts` existed: `ERR_MODULE_NOT_FOUND` for `./automatizaciones-rutas.js` |
+| Typecheck | `npx tsc --noEmit`: clean |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0 — 509 tests, 509 pass, 0 fail, 0 skipped (baseline 504 + 5), three runs. One earlier run showed 506: under full-suite load the 1000 ms TCP probe timed out and skipped this file's live describe as a suite (pre-existing probe pattern) |
+| Runtime harness | `app.inject()` against the live test PostgreSQL on port 5434: two tenants, a template with one required `texto` parameter, one connection per tenant |
+| Rollback boundary | Delete `src/automatizaciones-rutas.ts` and its test; remove the import and the `registerAutomatizacionRoutes` call in `src/server.ts` |
+
+### Unit 3a implementation notes
+
+- `registerAutomatizacionRoutes(app, prisma, zonaHoraria)`: the zone comes from `server.ts`'s one `loadConfig()`, so the create-time cron check uses the zone the scheduler will use. The design left the registrar signature open; this is an implementation detail, not a new decision.
+- Create order: strict AJV (`propertyNames`; `tenantId` or `activo` in the body is `400`) → `cronValido` (`400 campos ['/cron']`, before any read) → global `plantilla.findUnique` (`404 plantilla-no-encontrada`) → scoped `conexion.findUnique` (`404 conexion-no-encontrada`) → `prepararSentencia(sanearSql(plantilla.sql), plantilla.parametros, valores)` (`400 {campos, problemas}`, the test route's envelope) → `create` with `conTenantInyectado`; `activo` is left to the schema default.
+- `valores` is cast to `Prisma.InputJsonObject` on create; sound because `prepararSentencia` has just accepted every key as declared and every value as a string, finite number or boolean.
+- `AutomatizacionResumen` (no `valores`) and `AutomatizacionCompleta` are already exported for 3b's list and get/`desactivar`.
+- 3b plan, already written and passing once in this batch before the cut: `GET /automatizaciones` (`Resumen`, `creadaEn desc, id asc`, `LIMITE_LISTADO + 1` for `truncado`, deactivated rows included); `GET /automatizaciones/:id` (`404 automatizacion-no-encontrada`); `POST /automatizaciones/:id/desactivar` mirroring `/tenants/:id/baja` (read first, `404`, `409 automatizacion-desactivada`, `update {activo: false}`); tests asserting a foreign id is `404` for B and that no PUT/PATCH/DELETE or reactivation route exists (`hasRoute`); extend the 3.1 no-header test to the three new routes.
 
 ## Notes for later units
 

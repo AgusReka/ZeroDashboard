@@ -17,7 +17,7 @@ Tasks below use `/automatizaciones/:id/desactivar` as canonical, since the spec 
 | Estimated changed lines | ~1,700–2,050 total including tests (schema+isolation+config+dep ~230, pure `automatizaciones.ts` ~280, create/list/get/desactivar routes ~380, planificador+server wiring ~420, ejecuciones route+T2 ~280, console ~330) |
 | 400-line budget risk | High |
 | Chained PRs recommended | Yes |
-| Suggested split | PR 1 (schema+isolation+config+dep) → PR 2 (`automatizaciones.ts`) → PR 3 (automation routes) → PR 4 (planificador+wiring) → PR 5 (runs route+T2) → PR 6 (console) → PR 7 (checkpoint, verify, archive) |
+| Suggested split | PR 1 (schema+isolation+config+dep) → PR 2 (`automatizaciones.ts`, delivered as 2a + 2b) → PR 3 (automation routes, delivered as 3a + 3b) → PR 4 (planificador+wiring) → PR 5 (runs route+T2) → PR 6 (console) → PR 7 (checkpoint, verify, archive) |
 | Delivery strategy | auto-chain |
 | Chain strategy | stacked-to-main |
 
@@ -41,8 +41,10 @@ CH-12's verify-then-archive close).
 | Unit | Goal | Likely PR | Focused test command | Runtime harness | Rollback boundary |
 |------|------|-----------|----------------------|-----------------|-------------------|
 | 1 | Schema, isolation, config, `cron-parser` dependency | `ch13/1-esquema-aislamiento-config` (base `master`) | `npm test -- src/aislamiento.test.ts src/config.test.ts` | N/A — schema/config only, no scheduler yet | `DROP TABLE "Ejecucion"; DROP TABLE "Automatizacion"`; revert `MODELOS_AISLADOS` entries and `zonaHoraria` config |
-| 2 | Pure `src/automatizaciones.ts`: cron validity, due-window, close-of-run mapping | `ch13/2-automatizaciones-puro` (base unit 1) | `npm test -- src/automatizaciones.test.ts` | N/A — pure functions, no database | Delete `src/automatizaciones.ts` and its test; nothing consumes it yet |
-| 3 | Automation routes: create/list/get/desactivar (`src/automatizaciones-rutas.ts`) | `ch13/3-rutas-automatizacion` (base unit 2) | `npm test -- src/automatizaciones-rutas.test.ts` | `app.inject()` against live PostgreSQL, skipped when unreachable | Revert `src/automatizaciones-rutas.ts`/test and its `server.ts` registration |
+| 2a | Pure `src/automatizaciones.ts`: cron validity and due-window (DEC-76, DEC-77) | `ch13/2a-cron-ventana` (base unit 1) | `npm test -- src/automatizaciones.test.ts` | N/A — pure functions, no database | Revert `85e4b87`; nothing consumes it yet |
+| 2b | Pure `src/automatizaciones.ts`: close-of-run mapping (X2) | `ch13/2b-cierre-ejecucion` (base unit 2a) | `npm test -- src/automatizaciones.test.ts` | N/A — pure functions, no database | Revert `b6f7f42` and `52e1e8b`; nothing consumes it yet |
+| 3a | Automation routes: create + `server.ts` registration (3.1–3.3, 3.7) | `ch13/3-rutas-automatizacion` (base unit 2b) | `npm test -- src/automatizaciones-rutas.test.ts` | `app.inject()` against live PostgreSQL, skipped when unreachable | Revert `src/automatizaciones-rutas.ts`/test and its `server.ts` registration |
+| 3b | Automation routes: list, get, `desactivar` (3.4, 3.5, rest of 3.6, 3.8) | next slice (base unit 3a) | `npm test -- src/automatizaciones-rutas.test.ts` | `app.inject()` against live PostgreSQL, skipped when unreachable | Revert the list/get/`desactivar` handlers and their tests; the create route stays |
 | 4 | Scheduler loop + server wiring (`src/planificador.ts`) | `ch13/4-planificador` (base unit 3; fallback `4a`/`4b`) | `npm test -- src/planificador.test.ts` | Fake `Reloj` + live PostgreSQL, skipped when unreachable | Remove the `iniciar()` call in `server.ts` and revert `src/planificador.ts`/test; routes stay correct unconsumed |
 | 5 | Runs route (`GET .../ejecuciones`) + T2 sweep extension | `ch13/5-rutas-ejecuciones-t2` (base unit 4) | `npm test -- src/automatizaciones-rutas.test.ts src/aislamiento.test.ts` | `app.inject()` against live PostgreSQL, skipped when unreachable | Revert the runs handler and T2 additions; prior units unaffected |
 | 6 | Console "Automatizaciones" section | `ch13/6-consola` (base unit 5) | `npm test -- src/consola.test.ts` | Manual: load console, create/deactivate an automation, view runs | Revert `src/consola.ts`/test section; API stays usable without it |
@@ -70,13 +72,13 @@ CH-12's verify-then-archive close).
 
 ## 3. Automation Routes — Create, List, Get, Deactivate (`src/automatizaciones-rutas.ts`)
 
-- [ ] 3.1 RED `src/automatizaciones-rutas.test.ts`: `POST /automatizaciones` without `x-tenant-id` is `400 tenant-no-indicado`; strict AJV schema (`propertyNames`, no `tenantId` in body) rejects an extra `tenantId` field `400` (Threat Matrix "A new route called without the header", "tenantId in the body")
-- [ ] 3.2 RED extend: valid create persists `activo: true` with every declared parameter value validated like CH-11; a missing required parameter is `400` naming it; a `conexionId` belonging to another tenant is `404`, no row persists (spec "Creating an automation with valid values", "Parameter values validated like CH-11", "Connection must belong to the same tenant")
-- [ ] 3.3 RED extend: an invalid cron expression at create is `400` naming the schedule field (spec "Invalid cron expression rejected")
+- [x] 3.1 RED `src/automatizaciones-rutas.test.ts`: `POST /automatizaciones` without `x-tenant-id` is `400 tenant-no-indicado`; strict AJV schema (`propertyNames`, no `tenantId` in body) rejects an extra `tenantId` field `400` (Threat Matrix "A new route called without the header", "tenantId in the body")
+- [x] 3.2 RED extend: valid create persists `activo: true` with every declared parameter value validated like CH-11; a missing required parameter is `400` naming it; a `conexionId` belonging to another tenant is `404`, no row persists (spec "Creating an automation with valid values", "Parameter values validated like CH-11", "Connection must belong to the same tenant")
+- [x] 3.3 RED extend: an invalid cron expression at create is `400` naming the schedule field (spec "Invalid cron expression rejected")
 - [ ] 3.4 RED extend: `GET /automatizaciones` lists own rows including deactivated ones; `GET /automatizaciones/:id` returns full fields; unknown id is `404` (spec "Deactivated automation is excluded from future runs but stays listed")
 - [ ] 3.5 RED extend: `POST /automatizaciones/:id/desactivar` sets `activo: false`, `200`; unknown id `404`; already-inactive `409 automatizacion-desactivada`; no route exists to reverse it (spec "Deactivating an automation")
-- [ ] 3.6 Implement `registerAutomatizacionRoutes` in `src/automatizaciones-rutas.ts`: strict AJV body, `prepararSentencia`-style parameter check against the referenced `Plantilla`, scoped `conexion.findUnique`, `cronValido` gate, `create`/`findMany`/`findUnique`/`update` — satisfies 3.1–3.5
-- [ ] 3.7 Modify `src/server.ts`: register `registerAutomatizacionRoutes` after existing route registrations
+- [ ] 3.6 Implement `registerAutomatizacionRoutes` in `src/automatizaciones-rutas.ts`: strict AJV body, `prepararSentencia`-style parameter check against the referenced `Plantilla`, scoped `conexion.findUnique`, `cronValido` gate, `create`/`findMany`/`findUnique`/`update` — satisfies 3.1–3.5 (create done in unit 3a; list, get, `desactivar` remain for 3b)
+- [x] 3.7 Modify `src/server.ts`: register `registerAutomatizacionRoutes` after existing route registrations
 - [ ] 3.8 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/automatizaciones-rutas.test.ts` green
 
 ## 4. Scheduler Loop & Server Wiring (`src/planificador.ts`, `src/server.ts`)
