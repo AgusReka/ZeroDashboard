@@ -10,7 +10,7 @@ import { ErrorSinTenantActivo } from './contexto-tenant.js';
 import { cifrarCredencial } from './cripto-credencial.js';
 import type { ResultadoEnvio } from './automatizaciones.js';
 import type { Correo } from './correo.js';
-import type { Notificador } from './notificador.js';
+import { notificadorDesdeTransporte, type Notificador } from './notificador.js';
 import { crearPlanificador, type Reloj } from './planificador.js';
 
 /**
@@ -468,6 +468,139 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
       assert.deepEqual(columnas(filas[0], 'estado', 'fase', 'notificacion'), { estado: 'fallo', fase, notificacion: null });
       assert.equal(falso.a(para).length, 0);
     }
+  });
+
+  test('CH-14 5.4 5.6 a failed send closes fallo/notificacion keeping filas, logs no secrets, and a sibling still runs', async () => {
+    const tenantId = await tenant();
+    const falla = await automatizacion(tenantId, {
+      lector: true,
+      vistaSql: "SELECT 'fila-secreta' AS id",
+      destinatario: 'ch14-54-falla@example.com',
+      creadaEn: '2020-01-01T00:00:00Z',
+    });
+    const hermana = await automatizacion(tenantId, {
+      lector: true,
+      destinatario: 'ch14-54@example.com',
+      creadaEn: '2020-01-02T00:00:00Z',
+    });
+    // A verdict carrying SMTP text that a real notifier never returns: none of it may leak.
+    const falso = notificadorFalso(async (c) =>
+      c.para === 'ch14-54-falla@example.com'
+        ? ({ resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550', message: '550 secreto-smtp' } as ResultadoEnvio)
+        : { resultado: 'enviada' },
+    );
+    const lineas: string[] = [];
+
+    await tick(EN('19:00:30'), EN('19:01:30'), undefined, { notificador: falso.notificador, lineas });
+
+    // The row did reach the message, so its absence from the log below means something.
+    assert.match(falso.a('ch14-54-falla@example.com')[0].texto, /fila-secreta/);
+    const [fila] = await ejecuciones(falla);
+    assert.deepEqual(columnas(fila, 'estado', 'fase', 'filas', 'error', 'codigoError', 'notificacion'), {
+      estado: 'fallo',
+      fase: 'notificacion',
+      filas: 1,
+      error: 'envio-rechazado',
+      codigoError: '550',
+      notificacion: 'fallo-envio',
+    });
+    const [deHermana] = await ejecuciones(hermana);
+    assert.deepEqual(columnas(deHermana, 'estado', 'notificacion'), { estado: 'ok', notificacion: 'enviada' });
+
+    const avisos = lineas.map((l) => JSON.parse(l)).filter((l) => l.automatizacionId === falla);
+    assert.equal(avisos.length, 1);
+    assert.deepEqual(columnas(avisos[0], 'msg', 'automatizacionId', 'fase', 'error', 'codigoError'), {
+      msg: 'scheduled run failed',
+      automatizacionId: falla,
+      fase: 'notificacion',
+      error: 'envio-rechazado',
+      codigoError: '550',
+    });
+    for (const secreto of ['ch14-54-falla@example.com', 'fila-secreta', 'secreto-smtp']) {
+      assert.ok(!lineas.join('\n').includes(secreto), secreto);
+    }
+  });
+
+  test('CH-14 5.5 a notifier that throws closes the row as error-interno and logs only the error name', async () => {
+    const id = await automatizacion(await tenant(), { lector: true, destinatario: 'ch14-55@example.com' });
+    // A synchronous throw, the case a `.catch` on the returned promise would miss.
+    const notificador: Notificador = {
+      enviar: () => {
+        throw new TypeError('ch14-55 texto del servidor');
+      },
+    };
+    const lineas: string[] = [];
+
+    await tick(EN('20:00:30'), EN('20:01:30'), undefined, { notificador, lineas });
+
+    const filas = await ejecuciones(id);
+    assert.equal(filas.length, 1);
+    assert.deepEqual(columnas(filas[0], 'estado', 'fase', 'filas', 'error', 'codigoError', 'notificacion'), {
+      estado: 'fallo',
+      fase: 'notificacion',
+      filas: 1,
+      error: 'error-interno',
+      codigoError: null,
+      notificacion: 'fallo-envio',
+    });
+    assert.ok(filas[0].finalizadaEn !== null, 'the row is closed, not left en-curso');
+    const aviso = lineas.map((l) => JSON.parse(l)).find((l) => l.automatizacionId === id);
+    assert.equal(aviso?.nombreError, 'TypeError');
+    assert.ok(!lineas.join('\n').includes('texto del servidor'));
+  });
+
+  test('CH-14 5.7 the send is inside the duration and the row closes once, after it', async () => {
+    const id = await automatizacion(await tenant(), { lector: true, destinatario: 'ch14-57@example.com' });
+    let ahora = EN('21:00:30').getTime();
+    const reloj: Reloj = {
+      ahora: () => new Date(ahora),
+      programar: () => {
+        throw new Error('ejecutarTick no programa temporizadores');
+      },
+    };
+    let durante: Record<string, unknown>[] = [];
+    // Every send takes five seconds on the injected clock.
+    const falso = notificadorFalso(async (c) => {
+      if (c.para === 'ch14-57@example.com') {
+        durante = (await ejecuciones(id)).map((f) => columnas(f, 'estado', 'finalizadaEn', 'notificacion'));
+      }
+      ahora += 5_000;
+      return { resultado: 'enviada' };
+    });
+
+    await tick(EN('21:00:30'), EN('21:01:30'), reloj, { notificador: falso.notificador });
+
+    // While the send was in flight the row was still open: nothing closed it before.
+    assert.deepEqual(durante, [{ estado: 'en-curso', finalizadaEn: null, notificacion: null }]);
+    const [fila] = await ejecuciones(id);
+    assert.deepEqual(columnas(fila, 'estado', 'notificacion', 'duracionMs'), {
+      estado: 'ok',
+      notificacion: 'enviada',
+      duracionMs: 5_000,
+    });
+    assert.equal(fila.finalizadaEn?.getTime(), fila.iniciadaEn.getTime() + 5_000);
+  });
+
+  test('CH-14 5.9 a hanging send is cut by the outer limit and the next automation still runs', async () => {
+    const colgada = await automatizacion(await tenant(), { lector: true, destinatario: 'ch14-59@example.com' });
+    const siguiente = await automatizacion(await tenant(), { lector: true });
+    // The real notifier over a transport that never answers: only its outer limit ends it.
+    const notificador = notificadorDesdeTransporte(
+      { sendMail: () => new Promise(() => {}), close: () => {} },
+      { de: 'zerodashboard@example.com', timeoutMs: 50 },
+    );
+
+    await tick(EN('22:00:30'), EN('22:01:30'), undefined, { notificador });
+
+    const [fila] = await ejecuciones(colgada);
+    assert.deepEqual(columnas(fila, 'estado', 'fase', 'error', 'notificacion'), {
+      estado: 'fallo',
+      fase: 'notificacion',
+      error: 'tiempo-agotado',
+      notificacion: 'fallo-envio',
+    });
+    const [deSiguiente] = await ejecuciones(siguiente);
+    assert.deepEqual(columnas(deSiguiente, 'estado', 'notificacion'), { estado: 'ok', notificacion: 'sin-destinatario' });
   });
 });
 

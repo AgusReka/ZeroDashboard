@@ -87,6 +87,11 @@ function nombreDeError(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
 }
 
+/** A throw recorded as a value, whether it came from the pipeline or the notify step. */
+function esExcepcion(valor: ResultadoCorrida | SalidaNotificacion): valor is FalloInesperado {
+  return typeof valor === 'object' && valor !== null && valor.resultado === 'excepcion';
+}
+
 /** The columns one run reads off its automation. `valores` is re-checked on every run. */
 interface AutomatizacionACorrer {
   id: string;
@@ -177,7 +182,8 @@ export function crearPlanificador({
   /**
    * CH-14: the notify step, between the query and the close (DEC-83 precedence). A message
    * is rendered and sent only when `decidirNotificacion` says so; otherwise the omission
-   * is the outcome.
+   * is the outcome. A throw here, even a synchronous one from `enviar`, becomes a value, so
+   * the row still closes (`error-interno`) instead of staying `en-curso`.
    */
   async function notificar(
     automatizacion: AutomatizacionACorrer,
@@ -189,20 +195,24 @@ export function crearPlanificador({
     if (!decision.enviar) {
       return decision.notificacion;
     }
-    if (resultado.resultado !== 'ok' || plantilla === null || notificador === null) {
-      // Unreachable: a send is only decided for a successful query with a notifier.
-      throw new Error('notificar: envío decidido sin resultado, plantilla o notificador');
+    try {
+      if (resultado.resultado !== 'ok' || plantilla === null || notificador === null) {
+        // Unreachable: a send is only decided for a successful query with a notifier.
+        throw new Error('notificar: envío decidido sin resultado, plantilla o notificador');
+      }
+      const correo = componerCorreo({
+        nombre: plantilla.nombre,
+        automatizacion: plantilla.automatizacion,
+        columnas: resultado.columnas,
+        filas: resultado.filas,
+        hayMas: resultado.paginacion.hayMas,
+        fecha: iniciadaEn,
+        zona: zonaHoraria,
+      });
+      return await notificador.enviar({ para: decision.para, ...correo });
+    } catch (error) {
+      return { resultado: 'excepcion', error };
     }
-    const correo = componerCorreo({
-      nombre: plantilla.nombre,
-      automatizacion: plantilla.automatizacion,
-      columnas: resultado.columnas,
-      filas: resultado.filas,
-      hayMas: resultado.paginacion.hayMas,
-      fecha: iniciadaEn,
-      zona: zonaHoraria,
-    });
-    return notificador.enviar({ para: decision.para, ...correo });
   }
 
   /**
@@ -244,14 +254,16 @@ export function crearPlanificador({
       data: { ...cierre, finalizadaEn, duracionMs: finalizadaEn.getTime() - iniciadaEn.getTime() },
     });
     if (cierre.estado === 'fallo') {
-      // Closed columns only: never values, SQL, or driver text (rule 5).
+      // The throw, if any, from the pipeline or from the notify step: only its name is logged.
+      const excepcion = [resultado, salida].find(esExcepcion);
+      // Closed columns only: never values, SQL, driver or SMTP text, or the recipient (rule 5).
       log.warn(
         {
           automatizacionId: automatizacion.id,
           fase: cierre.fase,
           error: cierre.error,
           codigoError: cierre.codigoError,
-          ...(resultado.resultado === 'excepcion' ? { nombreError: nombreDeError(resultado.error) } : {}),
+          ...(excepcion ? { nombreError: nombreDeError(excepcion.error) } : {}),
         },
         'scheduled run failed',
       );
