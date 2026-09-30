@@ -98,3 +98,7 @@ Primera corrida de verify: **FAIL**, con un único crítico, que era esta bitác
 - `AGENTS.md` sigue listando D-4 y D-5 como compuertas abiertas; están cerradas (DEC-25, DEC-26). No se editó.
 - Archivos sin trackear en la raíz (`0`, `run`, `200`, `prisma;C`, `files.zip`). No se borraron.
 - Ramas `ch14/*` sin publicar; los PRs encadenados quedan para cuando se decida.
+
+---
+
+**Archivado**: 2026-09-29 — specs sincronizadas, carpeta del change movida a `openspec/changes/archive/2026-09-29-CH-14-engine-condition-email-notification/`.

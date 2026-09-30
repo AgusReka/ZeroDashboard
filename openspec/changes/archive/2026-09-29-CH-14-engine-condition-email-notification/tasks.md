@@ -137,7 +137,7 @@ cell/column/name (2.3), file/URL reference (4.5), SMTP text or credentials in `E
 - [x] 7.1 Create `docs/bitacora/CH-14-motor-condicion-y-notificacion.md` (mirror CH-13's bitácora): what was built, the nodemailer/Mailpit versions verified in 1.2, limits (non-ASCII recipients, nested-JSON `null`, Gmail 102 KB clipping, duplicate or lost mail on crash until CH-17/18), rollback via unset `SMTP_HOST`
 - [x] 7.2 Full-suite checkpoint: `npm test` green; `npx tsc --noEmit` clean; `npx prisma validate` clean
 - [x] 7.3 Run `sdd-verify` against every spec under `specs/` for this change; produce the verify report
-- [ ] 7.4 Run `sdd-archive`: merge each delta spec into its main spec and move `openspec/changes/CH-14-engine-condition-email-notification/` to `openspec/changes/archive/`. Do not edit `docs/01-decisiones.md` except the standard change record its archive step already prescribes
+- [x] 7.4 Run `sdd-archive`: merge each delta spec into its main spec and move `openspec/changes/CH-14-engine-condition-email-notification/` to `openspec/changes/archive/`. Do not edit `docs/01-decisiones.md` except the standard change record its archive step already prescribes
 
 ## Key Success-Criteria Traceability
 
