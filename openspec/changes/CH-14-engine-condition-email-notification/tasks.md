@@ -124,13 +124,13 @@ cell/column/name (2.3), file/URL reference (4.5), SMTP text or credentials in `E
 
 ## 6. Routes & Console (`src/automatizaciones-rutas.ts`, `src/consola.ts`)
 
-- [ ] 6.1 RED extend `src/automatizaciones-rutas.test.ts`: create with a valid `destinatario` persists it; without one persists `null`; an invalid recipient, one with CR/LF, or a comma-separated list is `400 {campos:['/destinatario']}` with no row persisted; no route edits the recipient (spec `automation-scheduling` "Creating with a valid recipient", "Creating without a recipient", "Invalid recipient rejected", "Recipient cannot be edited"; Threat Matrix "CRLF or `,` in recipient")
-- [ ] 6.2 RED extend: `GET /automatizaciones/:id` returns `destinatario`; the list projection stays minimal; the runs listing returns `notificacion` (spec `execution-log` "Listing shows notificacion")
-- [ ] 6.3 GREEN modify `src/automatizaciones-rutas.ts`: optional `destinatario` (string, 1–254, in `propertyNames`), `direccionValida` gate, add to `AutomatizacionCompleta` only, add `notificacion` to `EjecucionListada` — satisfies 6.1–6.2
-- [ ] 6.4 RED extend `src/consola.test.ts`: `auto-destinatario` email input, sent only when non-empty; a rejected recipient shows a legible message naming the recipient field, never a raw error object or stack trace (spec `query-console` "Creating with a recipient", "Invalid recipient shown legibly")
-- [ ] 6.5 RED extend: runs view has a "Notificación" column with labels Enviada / No enviada: sin filas / Sin destinatario / Correo no configurado / Falló el envío / —; a `fallo` run in phase `notificacion` shows one message per closed category (spec "Notification outcomes are legible", "Send failure visible as failure")
-- [ ] 6.6 GREEN modify `src/consola.ts`: recipient input, error message, "Notificación" column and category messages, every call through `pedir()` — satisfies 6.4–6.5
-- [ ] 6.7 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/automatizaciones-rutas.test.ts src/consola.test.ts` green; manual console check. Contingency: split 6a (6.1–6.3) and 6b (6.4–6.6)
+- [x] 6.1 RED extend `src/automatizaciones-rutas.test.ts`: create with a valid `destinatario` persists it; without one persists `null`; an invalid recipient, one with CR/LF, or a comma-separated list is `400 {campos:['/destinatario']}` with no row persisted; no route edits the recipient (spec `automation-scheduling` "Creating with a valid recipient", "Creating without a recipient", "Invalid recipient rejected", "Recipient cannot be edited"; Threat Matrix "CRLF or `,` in recipient")
+- [x] 6.2 RED extend: `GET /automatizaciones/:id` returns `destinatario`; the list projection stays minimal; the runs listing returns `notificacion` (spec `execution-log` "Listing shows notificacion")
+- [x] 6.3 GREEN modify `src/automatizaciones-rutas.ts`: optional `destinatario` (string, 1–254, in `propertyNames`), `direccionValida` gate, add to `AutomatizacionCompleta` only, add `notificacion` to `EjecucionListada` — satisfies 6.1–6.2
+- [x] 6.4 RED extend `src/consola.test.ts`: `auto-destinatario` email input, sent only when non-empty; a rejected recipient shows a legible message naming the recipient field, never a raw error object or stack trace (spec `query-console` "Creating with a recipient", "Invalid recipient shown legibly")
+- [x] 6.5 RED extend: runs view has a "Notificación" column with labels Enviada / No enviada: sin filas / Sin destinatario / Correo no configurado / Falló el envío / —; a `fallo` run in phase `notificacion` shows one message per closed category (spec "Notification outcomes are legible", "Send failure visible as failure")
+- [x] 6.6 GREEN modify `src/consola.ts`: recipient input, error message, "Notificación" column and category messages, every call through `pedir()` — satisfies 6.4–6.5
+- [x] 6.7 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/automatizaciones-rutas.test.ts src/consola.test.ts` green; manual console check (not run in a browser at apply; see apply-progress). Contingency: split 6a (6.1–6.3) and 6b (6.4–6.6)
 
 ## 7. Docs, Verify & Archive
 

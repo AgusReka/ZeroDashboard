@@ -18,9 +18,10 @@ container `zd-ch09-testdb` on `localhost:5434`).
 | 4c Outer time limit, `crearNotificadorSmtp`, live Mailpit test | 4.6–4.9 | `ch14/4c-notificador-limite` (base 4b) | `9fffc22`, `f34c976`, `dfca3a4` (bookkeeping) |
 | 5a1 Notify step and single close in `correr()` | 5.1–5.3, 5.8 (base) | `ch14/5a1-planificador-notifica` (base 4c `dfca3a4`) | `3f019eb` |
 | 5a2 Send failures: throw caught, log, duration, hang | 5.4–5.7, 5.9, 5.8 (complete) | `ch14/5a2-planificador-fallos` (base 5a1) | `53c6cbc`, `271b430` (bookkeeping) |
-| 5b Server wiring and T2 delivery | 5.10–5.12 | `ch14/5b-servidor-t2` (base 5a2 `271b430`) | `770df6f`, `e3fa12a`, this bookkeeping |
+| 5b Server wiring and T2 delivery | 5.10–5.12 | `ch14/5b-servidor-t2` (base 5a2 `271b430`) | `770df6f`, `e3fa12a`, `3ddede1` (bookkeeping) |
+| 6 Routes, console and T2 sweep for the new fields | 6.1–6.7 | `ch14/6-rutas-consola` (base 5b `3ddede1`) | `0d3fc75`, `63cc7a8`, this bookkeeping |
 
-Remaining: Phases 6–7. Unit 6 stacks on `ch14/5b-servidor-t2`.
+Remaining: Phase 7. Unit 7 stacks on `ch14/6-rutas-consola`.
 
 ## Task 1.2 Findings (for the PR body)
 
@@ -306,6 +307,46 @@ without the throw guard and the precedence tests; 5a2 holds the throw guard and 
    only testable as a process. It is the suite's first child-process test.
 3. **Log message.** The boot line is `{ correo: 'configurado' | 'no-configurado' }` with message
    `email notifications`.
+
+## Unit 6 Evidence
+
+Not split: code and tests measure 278 changed lines (`0d3fc75` routes + T2: 127; `63cc7a8`
+console: 151), and with this bookkeeping the branch stays under 400.
+
+| Evidence | Value |
+|---|---|
+| Diff | `git diff --shortstat ch14/5b-servidor-t2..63cc7a8`: 5 files, +259 −19, plus this bookkeeping |
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/automatizaciones-rutas.test.ts src/consola.test.ts`: 35/35; `src/aislamiento.test.ts`: 53/53 |
+| Full suite (`TEST_DB_PORT=5434 npm test`) | 620/620, 0 fail, 0 skipped (613 baseline + 7) |
+| Typecheck | `npx tsc --noEmit`: exit 0 |
+| Runtime harness | Routes through `app.inject()` on live PostgreSQL (5434), including the T2 two-tenant sweep; the console script served by the real route and executed over the stub DOM. No browser check was run at apply (no browser in this environment); it is left to the reviewer |
+| Rollback boundary | Revert `63cc7a8` (console only); revert `0d3fc75` (routes stop accepting `destinatario`, which becomes a `400` unknown field again; listings lose the two fields). The engine is unaffected |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 6.1 | `src/automatizaciones-rutas.test.ts` | Integration (live PG) + no-read client | ✅ 81/81 (routes, console, T2) | ✅ Written; 2 create tests failed (no `destinatario`). ⚠️ The 8 invalid-address cases passed at first, since the unknown key was already a `400 /destinatario`; after the allow-list change, disabling the `direccionValida` gate fails them (mutation) | ✅ 10/10 | ✅ 8 refused values (not an address, embedded CRLF, trailing CRLF, `,`, `;`, empty, spaces only, 262 chars); valid trimmed; absent → `null`; `destinatarioDe` unit cases (spaces/tabs trimmed, CR/LF kept) | ✅ `destinatarioDe` extracted and exported |
+| 6.2 | same + `src/aislamiento.test.ts` | Integration (live PG) | ✅ | ✅ The CH-13 runs-listing expectation updated to the spec'd shape failed (no `notificacion`) | ✅ | ✅ `enviada`, `omitida-sin-filas`, legacy `null`; list has no `destinatario`; T2: own get/runs only, owner's recipient absent from every 404 body. Mutation: dropping both fields from the projections fails 4 tests | ➖ |
+| 6.3 | `src/automatizaciones-rutas.ts` | — | — | ➖ Covered by 6.1–6.2 | ✅ 11/11 | ➖ | ➖ |
+| 6.4 | `src/consola.test.ts` | Unit (script over stub DOM) | ✅ 21/21 | ✅ Written; 2 failed (no `auto-destinatario`; generic banner) | ✅ 24/24 | ✅ trimmed value sent; blank → no key; the CH-13 create test (empty field) keeps its exact body. Mutation: removing the `/destinatario` branch fails it | ✅ Stack string simplified |
+| 6.5 | same | Unit | ✅ | ✅ Written; 2 failed (CH-13 runs row gained the column; no labels) | ✅ | ✅ 4 labels, `null` and an unknown value → `—`; 5 send categories → 5 distinct messages, `Falló el envío`, rows kept; `código SMTP 550`, never `SQLSTATE`. Mutation: SMTP code rendered as SQLSTATE fails it | ➖ |
+| 6.6 | `src/consola.ts` | — | — | ➖ Covered by 6.4–6.5 | ✅ | ➖ | ➖ |
+| 6.7 | — | Checkpoint | — | — | ✅ `tsc` clean; 35/35; 620/620 | — | — |
+
+### Unit 6 Deviations
+
+1. **Trimming.** Design says `direccionValida` input is "trimmed"; unit 2 left `direccionValida`
+   strict. The route trims only surrounding spaces and tabs (`destinatarioDe`) and stores the
+   trimmed value. CR/LF is not trimmed, so a trailing CRLF is still a `400` (Threat Matrix
+   "CRLF in recipient"). The console trims the input with `.trim()` before sending, as it does
+   for the connection id and the cron.
+2. **Order.** The address check runs right after the cron check and before any database read.
+3. **SMTP code label.** A `fase='notificacion'` failure shows its code as `código SMTP {n}`; the
+   CH-13 code appended every code as `SQLSTATE`.
+4. **`notificacion:error-interno`.** A throw in the notify step falls to the existing
+   `MENSAJES_CORRIDA['error-interno']` sentence; no new entry.
+5. **Extra export** `destinatarioDe` in `src/automatizaciones-rutas.ts`.
 
 ## Notes for Later Units
 
