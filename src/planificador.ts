@@ -1,16 +1,21 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
 import {
+  cierreConNotificacion,
   cierreDeResultado,
+  decidirNotificacion,
   estaVencida,
   type FalloInesperado,
   type ResultadoCorrida,
+  type SalidaNotificacion,
 } from './automatizaciones.js';
 import { loadConfig } from './config.js';
 import { destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta } from './consulta-ejecucion.js';
 import { conTenantActivo, type TenantActivo } from './contexto-tenant.js';
+import { componerCorreo } from './correo.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
+import type { Notificador } from './notificador.js';
 import { prepararSentencia } from './parametros.js';
 import { componerSentencia, evaluarVistas } from './plantillas.js';
 
@@ -20,6 +25,10 @@ import { componerSentencia, evaluarVistas } from './plantillas.js';
  * automations through the CH-12 pipeline, unchanged: `evaluarVistas` → `componerSentencia`
  * → `prepararSentencia` → `destinoDeConexion` → `ejecutarConsulta`. Each run writes one
  * `Ejecucion` row holding metadata only.
+ *
+ * CH-14 adds one step after the query (X3, N1): while the rows are in memory, the run
+ * decides whether to notify, renders the message, sends it once, and closes its row with
+ * the outcome in the same single write. The rows are dropped after the render.
  *
  * The engine executes the pattern and nothing more (rule 6): there is no new execution
  * surface, no retry, no catch-up of missed fires, and no parallelism. Those belong to
@@ -47,6 +56,11 @@ export interface DependenciasPlanificador {
   zonaHoraria: string;
   log: FastifyBaseLogger;
   reloj?: Reloj;
+  /**
+   * CH-14: the email transport (DEC-81). Absent or `null` exactly when SMTP is unset, and
+   * a run with rows and a recipient then records `no-configurada`.
+   */
+  notificador?: Notificador | null;
 }
 
 export interface Planificador {
@@ -81,6 +95,17 @@ interface AutomatizacionACorrer {
   valores: unknown;
   cron: string;
   creadaEn: Date;
+  /** Read from the run's own scoped row: never a global fallback (rule 2, DEC-82). */
+  destinatario: string | null;
+}
+
+/** The template columns a run reads: its statement, and the name and label its email shows. */
+interface PlantillaACorrer {
+  sql: string;
+  parametros: unknown;
+  entidades: unknown;
+  nombre: string;
+  automatizacion: string;
 }
 
 export function crearPlanificador({
@@ -88,6 +113,7 @@ export function crearPlanificador({
   zonaHoraria,
   log,
   reloj = relojDelSistema,
+  notificador = null,
 }: DependenciasPlanificador): Planificador {
   // The first window opens when the scheduler is built, so nothing that fell due before
   // the process started is caught up (DEC-75; catch-up is CH-17).
@@ -98,13 +124,10 @@ export function crearPlanificador({
    * dialled, in the order the design's data flow gives, so nothing reaches the tenant's
    * connection until every check has passed.
    */
-  async function resultadoDeCorrida(automatizacion: AutomatizacionACorrer): Promise<ResultadoCorrida> {
-    // `Plantilla` is global (DEC-61), so this read is not scoped. The foreign key is
-    // RESTRICT and templates are never deleted (DEC-68), so a missing row is corruption.
-    const plantilla = await prisma.plantilla.findUniqueOrThrow({
-      where: { id: automatizacion.plantillaId },
-      select: { sql: true, parametros: true, entidades: true },
-    });
+  async function resultadoDeCorrida(
+    automatizacion: AutomatizacionACorrer,
+    plantilla: PlantillaACorrer,
+  ): Promise<ResultadoCorrida> {
     // DEC-71 applies to scheduled runs as well: only this connection's saved verdicts count.
     const filas = await prisma.vistaCanonica.findMany({
       where: { conexionId: automatizacion.conexionId },
@@ -136,7 +159,7 @@ export function crearPlanificador({
     }
 
     // One page of the existing row ceiling (DEC-19): no new budget. The rows are counted
-    // by `cierreDeResultado` and then dropped (D-1 leaning).
+    // by `cierreDeResultado`, rendered by the notify step, and then dropped (D-1 leaning).
     const topeFilas = loadConfig().maxFilasPorConsulta;
     return ejecutarConsulta({
       host: destino.host,
@@ -152,9 +175,41 @@ export function crearPlanificador({
   }
 
   /**
-   * One run: open its row, run it, close the row with closed columns only (X2). A throw
-   * from the pipeline closes the row as `error-interno`; `previo` is a throw that happened
-   * before the run could start (an unreadable stored schedule), recorded the same way.
+   * CH-14: the notify step, between the query and the close (DEC-83 precedence). A message
+   * is rendered and sent only when `decidirNotificacion` says so; otherwise the omission
+   * is the outcome.
+   */
+  async function notificar(
+    automatizacion: AutomatizacionACorrer,
+    plantilla: PlantillaACorrer | null,
+    resultado: ResultadoCorrida,
+    iniciadaEn: Date,
+  ): Promise<SalidaNotificacion> {
+    const decision = decidirNotificacion(resultado, automatizacion.destinatario, notificador !== null);
+    if (!decision.enviar) {
+      return decision.notificacion;
+    }
+    if (resultado.resultado !== 'ok' || plantilla === null || notificador === null) {
+      // Unreachable: a send is only decided for a successful query with a notifier.
+      throw new Error('notificar: envío decidido sin resultado, plantilla o notificador');
+    }
+    const correo = componerCorreo({
+      nombre: plantilla.nombre,
+      automatizacion: plantilla.automatizacion,
+      columnas: resultado.columnas,
+      filas: resultado.filas,
+      hayMas: resultado.paginacion.hayMas,
+      fecha: iniciadaEn,
+      zona: zonaHoraria,
+    });
+    return notificador.enviar({ para: decision.para, ...correo });
+  }
+
+  /**
+   * One run: open its row, run it, notify, and close the row once with closed columns only
+   * (X2). A throw from the pipeline closes the row as `error-interno`; `previo` is a throw
+   * that happened before the run could start (an unreadable stored schedule), recorded the
+   * same way.
    */
   async function correr(automatizacion: AutomatizacionACorrer, previo?: FalloInesperado): Promise<void> {
     const iniciadaEn = reloj.ahora();
@@ -164,16 +219,25 @@ export function crearPlanificador({
       select: { id: true },
     });
     let resultado: ResultadoCorrida;
+    let plantilla: PlantillaACorrer | null = null;
     if (previo !== undefined) {
       resultado = previo;
     } else {
       try {
-        resultado = await resultadoDeCorrida(automatizacion);
+        // `Plantilla` is global (DEC-61), so this read is not scoped. The foreign key is
+        // RESTRICT and templates are never deleted (DEC-68), so a missing row is corruption.
+        plantilla = await prisma.plantilla.findUniqueOrThrow({
+          where: { id: automatizacion.plantillaId },
+          select: { sql: true, parametros: true, entidades: true, nombre: true, automatizacion: true },
+        });
+        resultado = await resultadoDeCorrida(automatizacion, plantilla);
       } catch (error) {
         resultado = { resultado: 'excepcion', error };
       }
     }
-    const cierre = cierreDeResultado(resultado);
+    const salida = await notificar(automatizacion, plantilla, resultado, iniciadaEn);
+    const cierre = cierreConNotificacion(cierreDeResultado(resultado), salida);
+    // Read after the send, so the duration includes it; then the row's only close.
     const finalizadaEn = reloj.ahora();
     await prisma.ejecucion.update({
       where: { id },
@@ -202,7 +266,15 @@ export function crearPlanificador({
   async function correrVencidas(desde: Date, hasta: Date): Promise<void> {
     const automatizaciones = await prisma.automatizacion.findMany({
       where: { activo: true },
-      select: { id: true, plantillaId: true, conexionId: true, valores: true, cron: true, creadaEn: true },
+      select: {
+        id: true,
+        plantillaId: true,
+        conexionId: true,
+        valores: true,
+        cron: true,
+        creadaEn: true,
+        destinatario: true,
+      },
       orderBy: [{ creadaEn: 'asc' }, { id: 'asc' }],
     });
     for (const automatizacion of automatizaciones) {
