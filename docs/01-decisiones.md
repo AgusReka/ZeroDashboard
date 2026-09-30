@@ -1602,6 +1602,104 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-87 — Las marcas de tiempo del alta se derivan con SQL versionado sobre columnas existentes
+
+**Contexto.** G1 pide marcas de tiempo de conexión, mapeo, validación y primera ejecución. Las columnas ya existen (`Conexion.creadaEn`, `VistaCanonica.creadaEn/actualizadaEn/validadaEn`, `Automatizacion.creadaEn`, `Ejecucion.iniciadaEn`), salvo el resultado de la prueba de conexión.
+
+**Opciones.** (a) Script SQL versionado con salidas fechadas y test con fixtures. (b) Vista en la base. (c) Ruta de lectura en la API. (d) Columnas write-once o tabla de eventos (`EventoAlta`).
+
+**Decisión.** (a). Sin migración, sin ruta, sin panel de consola y sin cambios en el motor.
+
+**Por qué.** Es lo que DEC-30, DEC-31 y DEC-40 ya presuponían. Respeta el anti-alcance del motor (regla 6), no agrega modelos (DEC-44) y cumple G3 (consulta identificable y fechada). Sirve también para tenants desactivados (DEC-14).
+
+**Se resigna.** No hay visibilidad dentro de la aplicación. La marca de validación queda mutable (se anula al re-registrar, DEC-41, y se sobrescribe al re-validar, DEC-44): es un límite del artefacto, y se mitiga capturando la salida de la consulta en la bitácora al cerrar cada alta. Las marcas miden tiempo transcurrido, no esfuerzo (incluyen horas ociosas, SQL escrito fuera del sistema y la espera del cron). No se asume orden estricto entre marcas por mezcla de relojes (base vs aplicación). Sin *backfill* ni medición retroactiva de CH-16 (horas autorreportadas).
+
+**Decidido por:** el usuario (autor), 2026-09-30, durante la exploración de CH-15 — no inferido por el agente. Las consecuencias de la mutabilidad, la ausencia de panel y el uso prospectivo se derivan de esta elección.
+
+**Estado:** firme.
+
+---
+
+### DEC-88 — La marca de «conexión» es el registro de la conexión
+
+**Contexto.** La prueba `POST /conexiones/:id/prueba` no persiste su resultado; no existe una marca de «conectó bien».
+
+**Opciones.** (a) Usar `Conexion.creadaEn`. (b) Persistir la primera prueba exitosa (`probadaEn`/`probadaOk`).
+
+**Decisión.** (a).
+
+**Por qué.** Evita migración y una escritura en una ruta hoy de solo lectura. La compuerta D-2 puede cambiar qué significa «conectado» (agente saliente), así que la marca se mantiene genérica.
+
+**Se resigna.** Un registro puede preceder a una conexión exitosa: la marca sobreestima el avance. Se documenta como límite del artefacto.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-89 — Definición de las marcas restantes y agregación por conexión
+
+**Decisión.** El reporte incluye: inicio del alta (`Tenant.creadoEn`); conexión (DEC-88); mapeo, con inicio (mínimo de `creadaEn`) y fin (máximo de `actualizadaEn`); última validación con su estado; primera ejecución con su `estado`/`fase` y, aparte, la primera con `estado='ok'`; y `Automatizacion.creadaEn` como quinta marca informativa que separa el esfuerzo del operador de la espera del cron. Se reporta una fila por `Conexion`, repitiendo la marca de inicio del tenant (coherente con DEC-33).
+
+**Por qué.** Muestra los intentos fallidos sin perder el primer éxito, y no atribuye al operador la espera del cron.
+
+**Se resigna.** No hay agregado por tenant; quien lo quiera lo calcula sobre las filas.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-90 — El script de marcas del alta no lleva parámetro de tenant y se corre fuera de la aplicación
+
+**Contexto.** El diseño de CH-15 debía decidir si `scripts/marcas-alta.sql` filtra por tenant o lista todos.
+
+**Opciones.** (a) Sin parámetro: lista las conexiones de todos los tenants, incluidos los desactivados; lo corre el autor a mano. (b) Con filtro de tenant como parámetro del driver, más un script ejecutor.
+
+**Decisión.** (a).
+
+**Por qué.** Cumple la regla 4 porque ningún valor entra a la consulta. `psql` no rellena un `$1` cuando recibe el archivo directo. Es una herramienta de investigación de P4, no una superficie del panel, así que la regla 2 (aislamiento del panel) no aplica; saltea la extensión de aislamiento de Prisma a propósito, igual que las consultas de CH-16b. Un test estático verifica que ningún código de la aplicación referencia el archivo.
+
+**Se resigna.** La salida cubre todos los tenants: quien la pega en una bitácora elige las filas que corresponden.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-91 — El script vive en `scripts/marcas-alta.sql`
+
+**Decisión.** `scripts/marcas-alta.sql`, junto a `smoke.sh`. No dentro de la carpeta del change.
+
+**Por qué.** Archivar mueve la carpeta del change y rompería la ruta del test y los enlaces de la bitácora. Es el primer SQL de larga vida fuera de las migraciones: fija la convención para scripts de investigación.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-92 — Solo lectura del script de marcas: rol de prueba y transacción de solo lectura
+
+**Contexto.** La regla 3 pide dos capas (rechazo en la aplicación y usuario sin escritura) y está escrita para consultas del panel contra la base del cliente. Aquí el script corre sobre la base propia de la aplicación, que no tiene un login de solo lectura.
+
+**Opciones.** (a) En el test: rol descartable con `SELECT` solo sobre las columnas necesarias, dentro de una transacción de solo lectura; en la corrida manual: transacción de solo lectura y archivo revisado. (b) Crear un login de solo lectura también para las corridas manuales.
+
+**Decisión.** (a).
+
+**Por qué.** (b) es alcance nuevo (migración/configuración) y sube el riesgo del límite de 400 líneas. Los permisos por columna del rol de prueba también hacen cumplir la minimización de datos (regla 5).
+
+**Se resigna.** En la corrida manual la base aplica una sola capa de solo lectura; la otra es la revisión del archivo.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
