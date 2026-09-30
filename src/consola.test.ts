@@ -136,6 +136,7 @@ const IDS = [
   'auto-valores',
   'auto-conexion',
   'auto-cron',
+  'auto-destinatario',
   'auto-crear',
   'auto-lista',
   'auto-ejecuciones',
@@ -806,11 +807,103 @@ describe('the console document, served by the real route', () => {
     assert.equal(corridas.length, 3);
     assert.deepEqual(
       corridas[0].hijos.map((celda) => celda.textContent),
-      ['2026-09-28T06:00:01.000Z', '2026-09-28T06:00:02.000Z', '850', '42', 'ok', ''],
+      // CH-14: a run with no notificacion (pre-CH-14) shows the placeholder, never "null".
+      ['2026-09-28T06:00:01.000Z', '2026-09-28T06:00:02.000Z', '850', '42', 'ok', '—', ''],
     );
     assert.match(corridas[1].textContent, /superó el tiempo máximo de ejecución.*\(SQLSTATE 57014\)/);
     assert.ok(!corridas[1].textContent.includes('tiempo-agotado'), 'the category code is translated');
     assert.match(corridas[2].textContent, /antes de conectar.*pedido,cliente/);
+  });
+
+  // ---- CH-14: recipient and notification outcome (spec `query-console`) -------------
+
+  /** Spec "Creating with a recipient": sent trimmed, and only when not empty. */
+  test('CH-14 6.4 the recipient is sent as destinatario only when one is entered', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    (escenario.nodos.get('auto-conexion') as Nodo).value = 'c-1';
+    (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
+    (escenario.nodos.get('auto-destinatario') as Nodo).value = ' ops@example.com ';
+    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
+    await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 2].url, '/automatizaciones');
+    assert.equal((escenario.peticiones[escenario.peticiones.length - 2].cuerpo as Record<string, unknown>).destinatario, 'ops@example.com');
+
+    // Blank (spaces only): no destinatario key at all, so the automation is created without one.
+    (escenario.nodos.get('auto-destinatario') as Nodo).value = '   ';
+    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
+    await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+    assert.equal('destinatario' in (escenario.peticiones[escenario.peticiones.length - 2].cuerpo as object), false);
+  });
+
+  /** Spec "Invalid recipient shown legibly". */
+  test('CH-14 6.4 a rejected recipient is one legible sentence naming the field, never a raw error', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    (escenario.nodos.get('auto-destinatario') as Nodo).value = 'ops@example.com, otro@example.com';
+    await enviar(
+      escenario,
+      { error: 'solicitud-invalida', campos: ['/destinatario'], stack: 'Error: boom\n    at direccionValida' },
+      400,
+      'auto-crear',
+      'click',
+    );
+    const banner = (escenario.nodos.get('banner') as Nodo).textContent;
+    assert.match(banner, /destinatario/);
+    assert.match(banner, /una sola dirección/);
+    assert.ok(!banner.includes('/destinatario'), 'the JSON pointer is translated');
+    assert.ok(!banner.includes('direccionValida'), 'no stack trace reaches the page');
+    assert.ok(!banner.includes('solicitud-invalida'), 'no raw error code reaches the page');
+  });
+
+  /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */
+  test('CH-14 6.5 the runs view labels every notification outcome and explains a failed send', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const base = { corte: null, codigoError: null, error: null, iniciadaEn: 'i', finalizadaEn: 'f', duracionMs: 1, filas: 3, fase: 'ejecucion', estado: 'ok' };
+    const categorias = ['tiempo-agotado', 'servidor-inalcanzable', 'credenciales-invalidas', 'envio-rechazado', 'error-desconocido'];
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', notificacion: 'enviada' },
+          { ...base, id: 'e-2', notificacion: 'omitida-sin-filas', filas: 0 },
+          { ...base, id: 'e-3', notificacion: 'sin-destinatario' },
+          { ...base, id: 'e-4', notificacion: 'no-configurada' },
+          { ...base, id: 'e-5', notificacion: null },
+          { ...base, id: 'e-6', notificacion: 'algo-desconocido' },
+          ...categorias.map((error, i) => ({
+            ...base, id: `f-${i}`, estado: 'fallo', fase: 'notificacion', filas: 12, error,
+            codigoError: error === 'envio-rechazado' ? '550' : null, notificacion: 'fallo-envio',
+          })),
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+
+    const encabezados = (escenario.nodos.get('auto-ejecuciones') as Nodo).hijos[0].textContent;
+    assert.ok(encabezados.includes('Notificación'), encabezados);
+    const corridas = filasDe(escenario, 'auto-ejecuciones', 'ejecucion');
+    assert.equal(corridas.length, 11);
+    assert.deepEqual(
+      corridas.slice(0, 6).map((fila) => fila.hijos[5].textContent),
+      ['Enviada', 'No enviada: sin filas', 'Sin destinatario', 'Correo no configurado', '—', '—'],
+    );
+    const fallidas = corridas.slice(6);
+    const mensajes = new Set<string>();
+    for (const [i, fila] of fallidas.entries()) {
+      const celdas = fila.hijos.map((celda) => celda.textContent);
+      assert.deepEqual(celdas.slice(3, 6), ['12', 'fallo', 'Falló el envío'], categorias[i]);
+      assert.ok(celdas[6].length > 0, `${categorias[i]} has a message`);
+      assert.ok(!celdas[6].includes(categorias[i]), `${categorias[i]} is translated`);
+      assert.ok(!celdas[6].includes('SQLSTATE'), 'an SMTP reply code is not a SQLSTATE');
+      mensajes.add(celdas[6]);
+    }
+    assert.equal(mensajes.size, categorias.length, 'one distinct message per category');
+    assert.match(fallidas[3].hijos[6].textContent, /código SMTP 550/);
+    assert.ok(!corridas.some((fila) => fila.textContent.includes('null')), 'null never reaches the page');
   });
 
   /** Spec "Switching tenant updates the automations view" (T4, DEC-15). */

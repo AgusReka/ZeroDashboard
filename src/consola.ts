@@ -168,6 +168,9 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   <label for="auto-cron">Horario (minuto hora día-del-mes mes día-de-la-semana)</label>
   <input id="auto-cron" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *">
 
+  <label for="auto-destinatario">Correo del destinatario (opcional; no se puede cambiar después)</label>
+  <input id="auto-destinatario" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
+
   <div class="controles">
     <button id="auto-crear" type="button">Crear automatización</button>
   </div>
@@ -209,7 +212,13 @@ var MENSAJES = {
   'ejecucion:permiso-denegado': 'El rol conectado no tiene permiso sobre alguno de los objetos que la consulta necesita.',
   'ejecucion:error-sintaxis': 'La sentencia es inválida, o contiene más de una sentencia en un mismo envío. Solo se admite una por ejecución.',
   'ejecucion:error-datos': 'La consulta es válida pero falló al procesar los datos (por ejemplo, una división por cero).',
-  'ejecucion:error-desconocido': 'La ejecución falló por un motivo no reconocido.'
+  'ejecucion:error-desconocido': 'La ejecución falló por un motivo no reconocido.',
+  // CH-14: a failed send. The query itself ran; only the email did not go out.
+  'notificacion:tiempo-agotado': 'El servidor de correo no respondió dentro del tiempo permitido. La consulta se ejecutó, pero el correo no se envió.',
+  'notificacion:servidor-inalcanzable': 'No se pudo conectar con el servidor de correo configurado. La consulta se ejecutó, pero el correo no se envió.',
+  'notificacion:credenciales-invalidas': 'El servidor de correo rechazó las credenciales configuradas. La consulta se ejecutó, pero el correo no se envió.',
+  'notificacion:envio-rechazado': 'El servidor de correo rechazó el mensaje o el destinatario. La consulta se ejecutó, pero el correo no se envió.',
+  'notificacion:error-desconocido': 'El envío del correo falló por un motivo no reconocido. La consulta se ejecutó, pero el correo no se envió.'
 };
 var MENSAJE_GENERICO = 'La ejecución falló y la consola no pudo identificar el motivo.';
 
@@ -270,6 +279,16 @@ var MENSAJES_CORRIDA = {
   'error-interno': 'La corrida falló por un error interno de la aplicación.'
 };
 
+// CH-14 (DEC-83): one label per closed notificacion value. Anything else, null
+// included, is the placeholder: a raw value never reaches the page.
+var ETIQUETAS_NOTIFICACION = {
+  'enviada': 'Enviada',
+  'omitida-sin-filas': 'No enviada: sin filas',
+  'sin-destinatario': 'Sin destinatario',
+  'no-configurada': 'Correo no configurado',
+  'fallo-envio': 'Falló el envío'
+};
+
 var CLAVE_TENANT = 'zerodashboard.tenantActivo';
 
 var selectorTenant = document.getElementById('tenant');
@@ -295,6 +314,7 @@ var selectorPlantilla = document.getElementById('auto-plantilla');
 var contenedorValoresAuto = document.getElementById('auto-valores');
 var entradaConexionAuto = document.getElementById('auto-conexion');
 var entradaCron = document.getElementById('auto-cron');
+var entradaDestinatario = document.getElementById('auto-destinatario');
 var botonCrearAuto = document.getElementById('auto-crear');
 var tablaAutomatizaciones = document.getElementById('auto-lista');
 var tablaEjecuciones = document.getElementById('auto-ejecuciones');
@@ -1137,16 +1157,20 @@ async function cargarAutomatizaciones() {
 async function crearAutomatizacion() {
   ocultarBanner();
   botonCrearAuto.disabled = true;
+  // No tenant here: the header names it (DEC-15), and the route refuses one in the body.
+  var alta = {
+    plantillaId: selectorPlantilla.value,
+    conexionId: entradaConexionAuto.value.trim(),
+    valores: valoresDe(filasValoresAuto),
+    cron: entradaCron.value.trim()
+  };
+  // CH-14: the recipient is optional; a blank one is not sent at all.
+  var destinatario = entradaDestinatario.value.trim();
+  if (destinatario !== '') { alta.destinatario = destinatario; }
   var resultado = await pedirAutomatizacion('/automatizaciones', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // No tenant here: the header names it (DEC-15), and the route refuses one in the body.
-    body: JSON.stringify({
-      plantillaId: selectorPlantilla.value,
-      conexionId: entradaConexionAuto.value.trim(),
-      valores: valoresDe(filasValoresAuto),
-      cron: entradaCron.value.trim()
-    })
+    body: JSON.stringify(alta)
   });
   botonCrearAuto.disabled = false;
   if (resultado === null) { return; }
@@ -1154,7 +1178,9 @@ async function crearAutomatizacion() {
     var campos = Array.isArray(resultado.cuerpo.campos) ? resultado.cuerpo.campos : [];
     mostrarBanner(campos.indexOf('/cron') !== -1
       ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
-      : mensajeDeSolicitudInvalida(resultado.cuerpo, []));
+      : campos.indexOf('/destinatario') !== -1
+        ? 'El correo del destinatario no es válido. Escriba una sola dirección, por ejemplo operaciones@empresa.com, sin espacios, comas ni punto y coma.'
+        : mensajeDeSolicitudInvalida(resultado.cuerpo, []));
     return;
   }
   if (resultado.status !== 201) { mostrarRechazo(resultado); return; }
@@ -1185,7 +1211,13 @@ function errorDeCorrida(fila) {
   }
   var texto = Object.prototype.hasOwnProperty.call(MENSAJES, clave) ? MENSAJES[clave]
     : Object.prototype.hasOwnProperty.call(MENSAJES_CORRIDA, error) ? MENSAJES_CORRIDA[error] : MENSAJE_GENERICO;
-  return fila.codigoError ? texto + ' (SQLSTATE ' + fila.codigoError + ')' : texto;
+  if (!fila.codigoError) { return texto; }
+  // CH-14: a failed send carries an SMTP reply code, never a SQLSTATE.
+  return texto + (fila.fase === 'notificacion' ? ' (código SMTP ' : ' (SQLSTATE ') + fila.codigoError + ')';
+}
+
+function etiquetaNotificacion(valor) {
+  return Object.prototype.hasOwnProperty.call(ETIQUETAS_NOTIFICACION, valor) ? ETIQUETAS_NOTIFICACION[valor] : '—';
 }
 
 async function verEjecuciones(id) {
@@ -1196,11 +1228,11 @@ async function verEjecuciones(id) {
   var filas = Array.isArray(resultado.cuerpo.ejecuciones) ? resultado.cuerpo.ejecuciones : [];
   renderizarTabla(
     tablaEjecuciones,
-    ['Inicio', 'Fin', 'Duración (ms)', 'Filas', 'Estado', 'Error'],
+    ['Inicio', 'Fin', 'Duración (ms)', 'Filas', 'Estado', 'Notificación', 'Error'],
     filas.map(function (fila) {
       var cantidad = textoOpcional(fila.filas) + (fila.corte === 'tope-de-filas' ? ' (cortado en el tope)' : '');
       return [String(fila.iniciadaEn), textoOpcional(fila.finalizadaEn), textoOpcional(fila.duracionMs),
-        cantidad, String(fila.estado), errorDeCorrida(fila)];
+        cantidad, String(fila.estado), etiquetaNotificacion(fila.notificacion), errorDeCorrida(fila)];
     }),
     'ejecucion',
     filas.length === 0 ? 'Esta automatización todavía no tiene ejecuciones.'
