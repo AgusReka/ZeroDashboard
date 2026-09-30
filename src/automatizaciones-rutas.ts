@@ -5,6 +5,7 @@ import { cronValido } from './automatizaciones.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
 import { LIMITE_LISTADO } from './consultas-guardadas.js';
+import { direccionValida } from './correo.js';
 import { prepararSentencia } from './parametros.js';
 
 /**
@@ -28,8 +29,11 @@ export const AutomatizacionResumen = {
   creadaEn: true,
 } as const;
 
-/** Every column except `tenantId`, which the caller already knows: create, get, deactivate. */
-export const AutomatizacionCompleta = { ...AutomatizacionResumen, valores: true } as const;
+/**
+ * Every column except `tenantId`, which the caller already knows: create, get, deactivate.
+ * CH-14: `destinatario` is here only, never on the list (DEC-82).
+ */
+export const AutomatizacionCompleta = { ...AutomatizacionResumen, valores: true, destinatario: true } as const;
 
 /**
  * One run as the runs listing shows it (X2): every column except `tenantId` and
@@ -47,6 +51,8 @@ export const EjecucionListada = {
   fase: true,
   error: true,
   codigoError: true,
+  /** CH-14 (DEC-83): the closed notification outcome, never a body or a recipient. */
+  notificacion: true,
 } as const;
 
 interface RegistroAutomatizacionBody {
@@ -55,6 +61,8 @@ interface RegistroAutomatizacionBody {
   /** Checked against the template's stored declaration by `prepararSentencia`. */
   valores: Record<string, unknown>;
   cron: string;
+  /** CH-14 (DEC-82): one address, settable only here. Absent means no notification. */
+  destinatario?: string;
 }
 
 interface AutomatizacionParams {
@@ -71,15 +79,25 @@ interface AutomatizacionParams {
 const registroAutomatizacionSchema = {
   type: 'object',
   additionalProperties: false,
-  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron'] },
+  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron', 'destinatario'] },
   required: ['plantillaId', 'conexionId', 'cron'],
   properties: {
     plantillaId: { type: 'string', minLength: 1 },
     conexionId: { type: 'string', minLength: 1 },
     valores: { type: 'object', default: {} },
     cron: { type: 'string', minLength: 1 },
+    destinatario: { type: 'string', minLength: 1, maxLength: 254 },
   },
 } as const;
+
+/**
+ * CH-14: the recipient as stored. Only surrounding spaces and tabs are trimmed (design
+ * "trimmed"); a CR or LF anywhere stays in, so `direccionValida` refuses it (Threat
+ * Matrix: CRLF in recipient is a `400`). `null` when the body has none.
+ */
+export function destinatarioDe(valor: string | undefined): string | null {
+  return valor === undefined ? null : valor.replace(/^[ \t]+|[ \t]+$/g, '');
+}
 
 /**
  * `zonaHoraria` is the deployment-wide zone (DEC-77), passed in by `src/server.ts` from
@@ -106,6 +124,11 @@ export function registerAutomatizacionRoutes(
       // before any row is looked up.
       if (!cronValido(cron, zonaHoraria)) {
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/cron'] });
+      }
+      // CH-14: pure as well, so a bad address is refused before any read (DEC-82).
+      const destinatario = destinatarioDe(request.body.destinatario);
+      if (destinatario !== null && !direccionValida(destinatario)) {
+        return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/destinatario'] });
       }
 
       // `Plantilla` is global (DEC-61): this read is not scoped, and `id` is `text`, so a
@@ -151,6 +174,7 @@ export function registerAutomatizacionRoutes(
           conexionId,
           valores: valores as Prisma.InputJsonObject,
           cron,
+          destinatario,
         }),
         select: AutomatizacionCompleta,
       });

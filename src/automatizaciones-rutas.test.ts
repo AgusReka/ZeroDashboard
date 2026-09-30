@@ -6,7 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
-import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
+import { destinatarioDe, registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 
 /**
  * CH-13 units 3 and 5: create, list, get and deactivate an automation (tasks 3.1–3.5),
@@ -28,6 +28,13 @@ function clienteSoloTenant(tenant: { id: string; nombre: string; activo: boolean
       modelo === 'tenant' ? { findUnique: async () => tenant } : modeloQueLanza(String(modelo)),
   }) as PrismaAislado;
 }
+
+test('CH-14 destinatarioDe trims spaces and tabs only; CR/LF is kept for the gate to refuse', () => {
+  assert.equal(destinatarioDe(undefined), null);
+  assert.equal(destinatarioDe(' \t ops@example.com \t'), 'ops@example.com');
+  assert.equal(destinatarioDe('ops@example.com\r\n'), 'ops@example.com\r\n');
+  assert.equal(destinatarioDe('ops@example.com'), 'ops@example.com');
+});
 
 describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3.3)', () => {
   let sinLecturas!: FastifyInstance;
@@ -71,6 +78,16 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
       [{ ...valido, cron: '@daily' }, ['/cron']],
       [{ ...valido, cron: '0 0 8 * * *' }, ['/cron']],
       [{ ...valido, cron: '61 * * * *' }, ['/cron']],
+      // CH-14 6.1: one address, checked by `direccionValida` before any read. CR/LF and
+      // separators are refused anywhere, edges included (Threat Matrix).
+      [{ ...valido, destinatario: 'no-es-una-direccion' }, ['/destinatario']],
+      [{ ...valido, destinatario: 'ops@example.com\r\nBcc: otro@example.com' }, ['/destinatario']],
+      [{ ...valido, destinatario: 'ops@example.com\r\n' }, ['/destinatario']],
+      [{ ...valido, destinatario: 'ops@example.com, otro@example.com' }, ['/destinatario']],
+      [{ ...valido, destinatario: 'ops@example.com;otro@example.com' }, ['/destinatario']],
+      [{ ...valido, destinatario: '' }, ['/destinatario']],
+      [{ ...valido, destinatario: '   ' }, ['/destinatario']],
+      [{ ...valido, destinatario: `${'a'.repeat(250)}@example.com` }, ['/destinatario']],
     ];
     for (const [payload, campos] of casos) {
       const respuesta = await sinLecturas.inject({
@@ -201,6 +218,26 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.equal(fila.cron, '0 8 * * 1-5');
   });
 
+  test('CH-14 6.1 a valid recipient persists trimmed and is returned by create and get', async () => {
+    const respuesta = await crear({ ...cuerpo(), destinatario: '  ops@example.com ' });
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    const { automatizacion } = respuesta.json();
+    assert.equal(automatizacion.destinatario, 'ops@example.com');
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id: automatizacion.id } });
+    assert.equal(fila.destinatario, 'ops@example.com');
+    const obtenida = await pedir('GET', `/automatizaciones/${automatizacion.id}`);
+    assert.equal(obtenida.json().automatizacion.destinatario, 'ops@example.com');
+  });
+
+  test('CH-14 6.1 without a recipient the row persists destinatario null', async () => {
+    const respuesta = await crear(cuerpo());
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    const { automatizacion } = respuesta.json();
+    assert.equal(automatizacion.destinatario, null);
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id: automatizacion.id } });
+    assert.equal(fila.destinatario, null);
+  });
+
   test('3.2 a missing or ill-typed parameter value is 400 naming it; nothing persists', async () => {
     const antes = await prisma.automatizacion.count({ where: { tenantId: tenantA } });
     for (const valores of [{}, { nombre: 3 }]) {
@@ -245,6 +282,8 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     const fila = listado.json().automatizaciones.find((a: { id: string }) => a.id === id);
     assert.equal(fila?.activo, false);
     assert.equal('valores' in fila, false);
+    // CH-14 6.2: the list stays minimal; the recipient is on the get only.
+    assert.equal('destinatario' in fila, false);
     assert.equal(listado.json().truncado, false);
     assert.deepEqual((await pedir('GET', '/automatizaciones', tenantB)).json().automatizaciones, []);
   });
@@ -284,6 +323,8 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
           filas: i === 1 ? null : 3,
           fase: i === 1 ? 'conexion' : 'ejecucion',
           error: i === 1 ? 'conexion' : null,
+          // CH-14: the oldest run reads as a pre-CH-14 row (null outcome).
+          notificacion: ['enviada', null, 'omitida-sin-filas'][i],
         },
       });
     }
@@ -310,7 +351,13 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
         fase: 'conexion',
         error: 'conexion',
         codigoError: null,
+        notificacion: null,
       },
+    );
+    // CH-14 6.2: each run carries its notification outcome.
+    assert.deepEqual(
+      ejecuciones.map((e: { notificacion: string | null }) => e.notificacion),
+      ['omitida-sin-filas', null, 'enviada'],
     );
 
     for (const url of [`/automatizaciones/${id}/ejecuciones`, '/automatizaciones/no-existe/ejecuciones']) {

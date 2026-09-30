@@ -103,6 +103,8 @@ interface Fixture {
   /** CH-13: this tenant's automation, created through the API, and one run of it. */
   automatizacionId: string;
   ejecucionId: string;
+  /** CH-14: this tenant's own recipient, set at create (DEC-82). */
+  destinatario: string;
 }
 
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
@@ -253,16 +255,24 @@ describe(
       const { resultado, fase } = validacion.json() as { resultado: string; fase: string };
 
       // CH-13: an automation through the API, and one run of it as the scheduler files it.
+      // CH-14: with its own recipient, and the run with its notification outcome.
+      const destinatario = `t2-${etiqueta.toLowerCase()}-${Date.now()}@example.com`;
       const alta = await app.inject({
         method: 'POST',
         url: '/automatizaciones',
         headers,
-        payload: { plantillaId, conexionId: conexion.id, cron: '0 8 * * *' },
+        payload: { plantillaId, conexionId: conexion.id, cron: '0 8 * * *', destinatario },
       });
       assert.equal(alta.statusCode, 201, alta.body);
       const { automatizacion } = alta.json() as { automatizacion: { id: string } };
       const ejecucion = await db.ejecucion.create({
-        data: { tenantId: tenant.id, automatizacionId: automatizacion.id, estado: 'ok', iniciadaEn: new Date() },
+        data: {
+          tenantId: tenant.id,
+          automatizacionId: automatizacion.id,
+          estado: 'ok',
+          iniciadaEn: new Date(),
+          notificacion: 'enviada',
+        },
       });
 
       return {
@@ -276,6 +286,7 @@ describe(
         validacion: { resultado, fase },
         automatizacionId: automatizacion.id,
         ejecucionId: ejecucion.id,
+        destinatario,
       };
     }
 
@@ -471,6 +482,7 @@ describe(
           assert.ok(!respuesta.body.includes(duenio.tenantId));
           assert.ok(!respuesta.body.includes(duenio.automatizacionId));
           assert.ok(!respuesta.body.includes(duenio.ejecucionId));
+          assert.ok(!respuesta.body.includes(duenio.destinatario));
         }
       });
 
@@ -534,6 +546,38 @@ describe(
           await db.automatizacion.count({ where: { tenantId: llamante.tenantId, conexionId: duenio.conexionId } }),
           0,
         );
+      }
+    });
+
+    test("CH-14 6.2 the get and the runs listing show only the caller's own recipient and outcome", async () => {
+      for (const [llamante, duenio] of [
+        [a, b],
+        [b, a],
+      ] as const) {
+        const obtenida = await app.inject({
+          method: 'GET',
+          url: `/automatizaciones/${llamante.automatizacionId}`,
+          headers: cabeceras(llamante),
+        });
+        assert.equal(obtenida.statusCode, 200, obtenida.body);
+        assert.equal(obtenida.json().automatizacion.destinatario, llamante.destinatario);
+        assert.ok(!obtenida.body.includes(duenio.destinatario));
+
+        const corridas = await app.inject({
+          method: 'GET',
+          url: `/automatizaciones/${llamante.automatizacionId}/ejecuciones`,
+          headers: cabeceras(llamante),
+        });
+        assert.equal(corridas.statusCode, 200, corridas.body);
+        const propia = (corridas.json() as { ejecuciones: { id: string; notificacion: string | null }[] })
+          .ejecuciones.find((e) => e.id === llamante.ejecucionId);
+        assert.equal(propia?.notificacion, 'enviada');
+        assert.ok(!corridas.body.includes(duenio.ejecucionId));
+
+        // The list is minimal: no recipient at all, the caller's or the owner's.
+        const listado = await app.inject({ method: 'GET', url: '/automatizaciones', headers: cabeceras(llamante) });
+        assert.ok(!listado.body.includes(llamante.destinatario));
+        assert.ok(!listado.body.includes(duenio.destinatario));
       }
     });
 
