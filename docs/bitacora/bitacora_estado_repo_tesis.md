@@ -445,7 +445,7 @@ Los archivos 3, 4 y 5 son registros de corridas; los 6 y 7 son SQL de los experi
 
 ## Paso 5 — README y raíz del repositorio
 
-Rama: `chore/readme-y-raiz`, creada con `git switch -c chore/readme-y-raiz --no-track origin/master` (parte de `9a0ca4b`; el `master` local estaba desactualizado, ver «Hallazgo previo»). Publicada con `git push -u origin chore/readme-y-raiz`, **sin fusionar**. El hash final se anota al pie.
+Rama: `chore/readme-y-raiz`, creada con `git switch -c chore/readme-y-raiz --no-track origin/master` (parte de `9a0ca4b`; el `master` local estaba desactualizado, ver «Hallazgo previo»). Publicada con `git push -u origin chore/readme-y-raiz`, **sin fusionar**. El hash final no se puede escribir acá sin cambiarlo: es el de la punta de la rama (`git rev-parse origin/chore/readme-y-raiz`); el commit con README y bitácora es `76c751a`.
 
 ### 5.1 README
 
