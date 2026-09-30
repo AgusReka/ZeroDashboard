@@ -17,9 +17,10 @@ container `zd-ch09-testdb` on `localhost:5434`).
 | 4b Send wrapper, closed categories, hardened options | 4.3, 4.4, 4.5 | `ch14/4b-notificador-transporte` (base 4a) | `576f0c5` |
 | 4c Outer time limit, `crearNotificadorSmtp`, live Mailpit test | 4.6–4.9 | `ch14/4c-notificador-limite` (base 4b) | `9fffc22`, `f34c976`, `dfca3a4` (bookkeeping) |
 | 5a1 Notify step and single close in `correr()` | 5.1–5.3, 5.8 (base) | `ch14/5a1-planificador-notifica` (base 4c `dfca3a4`) | `3f019eb` |
-| 5a2 Send failures: throw caught, log, duration, hang | 5.4–5.7, 5.9, 5.8 (complete) | `ch14/5a2-planificador-fallos` (base 5a1) | `53c6cbc`, this bookkeeping |
+| 5a2 Send failures: throw caught, log, duration, hang | 5.4–5.7, 5.9, 5.8 (complete) | `ch14/5a2-planificador-fallos` (base 5a1) | `53c6cbc`, `271b430` (bookkeeping) |
+| 5b Server wiring and T2 delivery | 5.10–5.12 | `ch14/5b-servidor-t2` (base 5a2 `271b430`) | `770df6f`, `e3fa12a`, this bookkeeping |
 
-Remaining: 5.10–5.12 (unit 5b), Phases 6–7. Unit 5b stacks on `ch14/5a2-planificador-fallos`.
+Remaining: Phases 6–7. Unit 6 stacks on `ch14/5b-servidor-t2`.
 
 ## Task 1.2 Findings (for the PR body)
 
@@ -276,6 +277,35 @@ without the throw guard and the precedence tests; 5a2 holds the throw guard and 
    fail before the notify step (`notificacion` null) or are not asserted on `notificacion`.
 6. **Tests run under ticks that also re-run earlier tests' automations**, so each CH-14 test uses its
    own recipient and reads only its own messages (`notificadorFalso().a(para)`).
+
+## Unit 5b Evidence
+
+| Evidence | Value |
+|---|---|
+| Diff | `git diff --shortstat ch14/5a2-planificador-fallos..e3fa12a`: 3 files, +303 −1, plus this bookkeeping |
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/planificador.test.ts src/aislamiento.test.ts src/server.test.ts`: 72/72 |
+| Full suite (`TEST_DB_PORT=5434 npm test`) | 613/613, 0 fail, 0 skipped (609 baseline + 4) |
+| Typecheck | `npx tsc --noEmit`: exit 0 |
+| Runtime harness | `src/server.test.ts` boots `src/server.ts` as a child process (`node --import tsx`), database on a closed port so no tick can touch live rows: SMTP unset listens and logs `no-configurado`; valid SMTP logs `configurado` with no host or sender printed; invalid `SMTP_PORT` exits non-zero naming the variable, not its value. T2 runs the real pipeline on live PostgreSQL as role `ch14_t2_lector` with a recording fake notifier |
+| Rollback boundary | Revert `e3fa12a` (T2 case only); revert `770df6f` (server builds no notifier, every run records `no-configurada` again) |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 5.10 | `src/server.test.ts` | Process (child boot) | N/A (new); no prior server test | ✅ Written; 3/3 failed (no `correo` line; invalid port still listened) | ✅ 3/3 | ✅ empty host with stray port; valid config; invalid port | ➖ None needed |
+| 5.11 | `src/aislamiento.test.ts` | Integration (live PG, fake notifier) | ✅ 51/51 | ⚠️ Passed on first run (5a built delivery). Mutations of `planificador.ts`: `destinatario ?? process.env.SMTP_TO` fails it; sending every message to the tick's first recipient fails it | ✅ 52/52 | ✅ two tenants with recipients plus one automation without a recipient under four recipient-like variables | ✅ Extra views deleted in `finally` (later cases count each tenant's views) |
+| 5.12 | — | Checkpoint | — | — | ✅ `tsc` clean; 72/72; 613/613 | — | — |
+
+### Unit 5b Deviations
+
+1. **Marker per tenant view, not a template parameter.** Task 5.11 says "a marker parameter per
+   tenant". Each tenant gets its own read-only connection and `producto` view returning its marker,
+   under one shared template, so the rows come from that tenant's own target.
+2. **New `src/server.test.ts`.** 5.10 listed no test; strict TDD needed one, and the entry point is
+   only testable as a process. It is the suite's first child-process test.
+3. **Log message.** The boot line is `{ correo: 'configurado' | 'no-configurado' }` with message
+   `email notifications`.
 
 ## Notes for Later Units
 
