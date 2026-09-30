@@ -17,6 +17,7 @@ import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { crearPlanificador } from './planificador.js';
+import { crearNotificadorSmtp } from './notificador.js';
 
 const config = loadConfig();
 const app = Fastify({ logger: true });
@@ -27,7 +28,19 @@ const prisma = extenderConAislamiento(new PrismaClient({ adapter }));
 // CH-13 (DEC-75): the one in-process scheduler, on the same scoped client and the same
 // zone the create route checks schedules in. It is armed only once the server listens,
 // and closing the app clears its timer and waits for a tick already running.
-const planificador = crearPlanificador({ prisma, zonaHoraria: config.zonaHoraria, log: app.log });
+// CH-14 (DEC-86 and its addendum): the notifier is built here, before `listen`, from the
+// `SMTP_*` variables. `SMTP_HOST` absent or empty gives `null` and every run records
+// `no-configurada`; `SMTP_HOST` present with anything else invalid throws here, naming
+// the variable and never its value, so the process stops before accepting a request.
+// Only the configured/not-configured state is logged: no host, port, sender or user.
+const notificador = crearNotificadorSmtp({ timeoutMs: config.smtpTimeoutMs });
+app.log.info({ correo: notificador === null ? 'no-configurado' : 'configurado' }, 'email notifications');
+const planificador = crearPlanificador({
+  prisma,
+  zonaHoraria: config.zonaHoraria,
+  log: app.log,
+  notificador,
+});
 app.addHook('onClose', async () => {
   await planificador.detener();
 });
