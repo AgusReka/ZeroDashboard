@@ -104,7 +104,7 @@ cell/column/name (2.3), file/URL reference (4.5), SMTP text or credentials in `E
 - [x] 4.5 RED extend: content referencing a file path or URL is not fetched (`disableFileAccess`, `disableUrlAccess` set; `logger:false`, `debug:false`) (Threat Matrix "Content references a file or URL")
 - [x] 4.6 RED extend: a hanging transport with a 20 ms `timeoutMs` returns `tiempo-agotado` through the outer `Promise.race` guard and calls `transporter.close()`; `enviar` never throws (spec "Unresponsive SMTP server")
 - [x] 4.7 GREEN create `src/notificador.ts`: `Notificador`, `leerSmtp`, `codigoSmtp`, `notificadorDesdeTransporte`, `crearNotificadorSmtp({timeoutMs}, env?)`; sets nodemailer `connectionTimeout`/`greetingTimeout`/`socketTimeout` — satisfies 4.1–4.6
-- [x] 4.8 Create `src/notificador-mailpit.test.ts`: live delivery to `localhost:1025`, asserts via the Mailpit HTTP API on 8025; skipped when unreachable
+- [x] 4.8 Create `src/notificador-mailpit.test.ts`: live delivery to `localhost:${MAILPIT_SMTP_PORT:-1026}`, asserts via the Mailpit HTTP API on `${MAILPIT_UI_PORT:-8026}` (host 1025/8025 belong to an unrelated Mailpit on the dev machine; the test refuses 1025); skipped when unreachable
 - [x] 4.9 Checkpoint: `npx tsc --noEmit` clean; `npm test -- src/notificador.test.ts src/notificador-mailpit.test.ts` green (the live test may report skipped)
 
 ## 5. Scheduler Integration & Server Wiring (`src/planificador.ts`, `src/server.ts`, `src/aislamiento.test.ts`)
@@ -134,9 +134,9 @@ cell/column/name (2.3), file/URL reference (4.5), SMTP text or credentials in `E
 
 ## 7. Docs, Verify & Archive
 
-- [ ] 7.1 Create `docs/bitacora/CH-14-motor-condicion-y-notificacion.md` (mirror CH-13's bitácora): what was built, the nodemailer/Mailpit versions verified in 1.2, limits (non-ASCII recipients, nested-JSON `null`, Gmail 102 KB clipping, duplicate or lost mail on crash until CH-17/18), rollback via unset `SMTP_HOST`
-- [ ] 7.2 Full-suite checkpoint: `npm test` green; `npx tsc --noEmit` clean; `npx prisma validate` clean
-- [ ] 7.3 Run `sdd-verify` against every spec under `specs/` for this change; produce the verify report
+- [x] 7.1 Create `docs/bitacora/CH-14-motor-condicion-y-notificacion.md` (mirror CH-13's bitácora): what was built, the nodemailer/Mailpit versions verified in 1.2, limits (non-ASCII recipients, nested-JSON `null`, Gmail 102 KB clipping, duplicate or lost mail on crash until CH-17/18), rollback via unset `SMTP_HOST`
+- [x] 7.2 Full-suite checkpoint: `npm test` green; `npx tsc --noEmit` clean; `npx prisma validate` clean
+- [x] 7.3 Run `sdd-verify` against every spec under `specs/` for this change; produce the verify report
 - [ ] 7.4 Run `sdd-archive`: merge each delta spec into its main spec and move `openspec/changes/CH-14-engine-condition-email-notification/` to `openspec/changes/archive/`. Do not edit `docs/01-decisiones.md` except the standard change record its archive step already prescribes
 
 ## Key Success-Criteria Traceability
