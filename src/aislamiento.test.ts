@@ -22,6 +22,9 @@ import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { crearPlanificador } from './planificador.js';
+import { cifrarCredencial } from './cripto-credencial.js';
+import type { Correo } from './correo.js';
+import type { Notificador } from './notificador.js';
 
 /**
  * CH-06 tasks 3.2–3.6 — **T2**: "ninguna operación devuelve filas del otro", proven by
@@ -64,6 +67,22 @@ process.env.DATABASE_URL ??= databaseUrl;
 // generated value: slice-2 fixtures write envelopes by hand and have to be able to open
 // them again in the same run.
 process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
+
+/** CH-14 T2: a plain login role (no grant, no CREATE), so DEC-08 lets a run read with it. */
+const ROL_T2 = 'ch14_t2_lector';
+const CLAVE_T2 = 'ch14-t2-clave-lector';
+/** Drops the T2 role. Safe before creation and after teardown. */
+const SQL_LIMPIEZA_T2 = `
+DO $limpieza$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '${ROL_T2}') THEN
+    EXECUTE format('DROP OWNED BY %I', '${ROL_T2}');
+    EXECUTE format('DROP ROLE %I', '${ROL_T2}');
+  END IF;
+END
+$limpieza$;`;
+/** Names an operator might expect a global recipient under; the scheduler reads none. */
+const VARIABLES_DESTINATARIO = ['SMTP_TO', 'SMTP_DESTINATARIO', 'DESTINATARIO', 'NOTIFICACION_DESTINATARIO'];
 
 /** Everything one tenant owns in this fixture. */
 interface Fixture {
@@ -117,6 +136,8 @@ describe(
     let b!: Fixture;
     /** CH-13: the global template both fixture automations name (DEC-61). */
     let plantillaId!: string;
+    /** CH-14: the `producto` template the T2 delivery tick runs, created by that test. */
+    let plantillaT2: string | undefined;
 
     before(async () => {
       db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -165,6 +186,7 @@ describe(
         await db.tenant.deleteMany({ where: { id: { in: ids } } });
       }
       if (plantillaId !== undefined) await db.plantilla.delete({ where: { id: plantillaId } });
+      if (plantillaT2 !== undefined) await db.plantilla.delete({ where: { id: plantillaT2 } });
       await db.$disconnect();
       await app.close();
     });
@@ -565,6 +587,145 @@ describe(
         for (const fila of filas) {
           assert.equal(fila.tenantId, duenio.tenantId, `${duenio.nombre}: a run filed under another tenant`);
         }
+      }
+    });
+
+    test("CH-14 5.11 a tick over A and B mails each tenant's rows only to its own recipient", async () => {
+      // The fixture connections dial as the superuser, which DEC-08 refuses, so each tenant
+      // gets one more connection as a plain login role and a `producto` view whose one row
+      // is that tenant's marker. The role name is not `planificador.test.ts`'s: that file
+      // creates and drops its own role while this one may be running.
+      await db.$executeRawUnsafe(SQL_LIMPIEZA_T2);
+      await db.$executeRawUnsafe(`CREATE ROLE ${ROL_T2} LOGIN PASSWORD '${CLAVE_T2}'`);
+      const sello = Date.now();
+      plantillaT2 = (
+        await db.plantilla.create({
+          data: {
+            nombre: `CH-14 T2 ${sello}`,
+            sql: 'SELECT * FROM v_producto',
+            entidades: ['producto'],
+            automatizacion: 'stock-fisico',
+            formato: 'correo-html',
+            toleranciaFrescuraMinutos: 30,
+          },
+        })
+      ).id;
+      // Same 2019 dating as the CH-13 tick above: only this test's automations are due.
+      const creadaEn = new Date('2019-01-01T00:00:00Z');
+      const propias: { id: string; duenio: Fixture; para: string | null; marcador: string }[] = [];
+      const conexionesT2: string[] = [];
+      for (const [duenio, etiqueta] of [
+        [a, 'a'],
+        [b, 'b'],
+      ] as const) {
+        const marcador = `marcador-t2-${etiqueta}-${sello}`;
+        const conexion = await db.conexion.create({
+          data: {
+            tenantId: duenio.tenantId,
+            nombre: `CH-14 T2 ${etiqueta}`,
+            motor: 'postgres',
+            host: objetivo.host,
+            puerto: objetivo.port,
+            baseDeDatos: objetivo.database,
+            usuarioDb: ROL_T2,
+            credencial: cifrarCredencial(CLAVE_T2),
+          },
+        });
+        conexionesT2.push(conexion.id);
+        await db.vistaCanonica.create({
+          data: {
+            tenantId: duenio.tenantId,
+            conexionId: conexion.id,
+            entidad: 'producto',
+            sql: `SELECT '${marcador}' AS id`,
+            estadoValidacion: 'valida',
+          },
+        });
+        // A also owns an automation with no recipient: it must never borrow one.
+        const propio = `ch14-t2-${etiqueta}-${sello}@example.com`;
+        const destinatarios = duenio === a ? [propio, null] : [propio];
+        for (const para of destinatarios) {
+          const { id } = await db.automatizacion.create({
+            data: {
+              tenantId: duenio.tenantId,
+              plantillaId: plantillaT2,
+              conexionId: conexion.id,
+              cron: '* * * * *',
+              creadaEn,
+              destinatario: para,
+            },
+          });
+          propias.push({ id, duenio, para, marcador });
+        }
+      }
+
+      const enviados: Correo[] = [];
+      const notificador: Notificador = {
+        enviar: async (correo) => {
+          enviados.push(correo);
+          return { resultado: 'enviada' };
+        },
+      };
+      // Variables that look like a recipient: none of them may become a fallback.
+      const GLOBAL = `global-${sello}@example.com`;
+      const previas = VARIABLES_DESTINATARIO.map((nombre) => [nombre, process.env[nombre]] as const);
+      for (const nombre of VARIABLES_DESTINATARIO) process.env[nombre] = GLOBAL;
+      const desde = new Date('2019-07-01T08:00:30Z');
+      try {
+        const planificador = crearPlanificador({
+          prisma: extenderConAislamiento(db),
+          zonaHoraria: 'UTC',
+          log: Fastify({ logger: false }).log,
+          notificador,
+          reloj: {
+            ahora: () => desde,
+            programar: () => {
+              throw new Error('ejecutarTick no programa temporizadores');
+            },
+          },
+        });
+        await planificador.ejecutarTick(new Date('2019-07-01T08:01:30Z'));
+      } finally {
+        for (const [nombre, valor] of previas) {
+          if (valor === undefined) delete process.env[nombre];
+          else process.env[nombre] = valor;
+        }
+        await db.automatizacion.updateMany({
+          where: { id: { in: propias.map((p) => p.id) } },
+          data: { activo: false },
+        });
+        // Later cases count each tenant's views and expect only the fixture's own.
+        await db.vistaCanonica.deleteMany({ where: { conexionId: { in: conexionesT2 } } });
+        await db.$executeRawUnsafe(SQL_LIMPIEZA_T2);
+      }
+
+      // Exactly two messages: one per recipient; the automation without one sent nothing.
+      const conDestinatario = propias.filter((p) => p.para !== null);
+      assert.deepEqual(
+        enviados.map((c) => c.para).sort(),
+        conDestinatario.map((p) => p.para).sort(),
+      );
+      for (const { para, duenio, marcador } of conDestinatario) {
+        const otro = propias.find((p) => p.duenio !== duenio)!.marcador;
+        const [correo] = enviados.filter((c) => c.para === para);
+        for (const cuerpo of [correo.texto, correo.html]) {
+          assert.ok(cuerpo.includes(marcador), `${duenio.nombre}: its own row is missing`);
+          assert.ok(!cuerpo.includes(otro), `${duenio.nombre}: the other tenant's row reached it`);
+        }
+      }
+      for (const { id, duenio, para } of propias) {
+        const filas = await db.ejecucion.findMany({
+          where: { automatizacionId: id, iniciadaEn: desde },
+          select: { tenantId: true, estado: true, filas: true, notificacion: true },
+        });
+        assert.deepEqual(filas, [
+          {
+            tenantId: duenio.tenantId,
+            estado: 'ok',
+            filas: 1,
+            notificacion: para === null ? 'sin-destinatario' : 'enviada',
+          },
+        ]);
       }
     });
 
