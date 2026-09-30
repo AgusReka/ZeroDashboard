@@ -15,6 +15,7 @@ interface AppConfig {
   queryTimeoutMs: number;
   maxFilasPorConsulta: number;
   zonaHoraria: string;
+  smtpTimeoutMs: number;
 }
 
 /** Used when CONNECTION_TEST_TIMEOUT_MS is not set. */
@@ -45,6 +46,15 @@ export const DEFAULT_MAX_FILAS_CONSULTA = 200;
  */
 export const DEFAULT_ZONA_HORARIA = 'UTC';
 
+/**
+ * Used when SMTP_TIMEOUT_MS is not set. Bounds one email send (R2 under DEC-19): the
+ * scheduler's tick is sequential, so a hung SMTP server must not hold it for longer
+ * than this. It is the only SMTP setting on `AppConfig`: the connection settings
+ * (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, ...) are read by the notifier alone, for
+ * the same reason the master key is not here.
+ */
+export const DEFAULT_SMTP_TIMEOUT_MS = 10000;
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -69,7 +79,9 @@ function enteroPositivoOpcional(name: string, porDefecto: number): number {
   }
   const numero = Number(valor);
   if (!Number.isInteger(numero) || numero <= 0) {
-    throw new Error(`${name} must be a positive integer, got: ${valor}`);
+    // The variable is named, its value is not (DEC-86 addendum): an error message is a
+    // log line, and the same parse now reads a budget that sits next to SMTP secrets.
+    throw new Error(`${name} must be a positive integer`);
   }
   return numero;
 }
@@ -118,6 +130,7 @@ export function loadConfig(): AppConfig {
     DEFAULT_MAX_FILAS_CONSULTA,
   );
   const zonaHoraria = zonaHorariaOpcional('ZONA_HORARIA_AUTOMATIZACIONES', DEFAULT_ZONA_HORARIA);
+  const smtpTimeoutMs = enteroPositivoOpcional('SMTP_TIMEOUT_MS', DEFAULT_SMTP_TIMEOUT_MS);
 
   return {
     port,
@@ -127,5 +140,6 @@ export function loadConfig(): AppConfig {
     queryTimeoutMs,
     maxFilasPorConsulta,
     zonaHoraria,
+    smtpTimeoutMs,
   };
 }

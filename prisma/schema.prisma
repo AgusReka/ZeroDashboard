@@ -139,19 +139,24 @@ model Plantilla {
 // (DEC-76). `activo` has the same meaning as `Tenant.activo`: deactivation keeps the row,
 // and there is no edit, delete or reactivation path (DEC-79). Every foreign key is
 // RESTRICT, so nothing an automation references can be deleted out from under it.
+//
+// CH-14 (DEC-82): `destinatario` is the one email address a run's rows are sent to. It
+// is nullable so pre-CH-14 automations keep running (they record `sin-destinatario`),
+// is validated in the application at creation, and there is no global fallback.
 model Automatizacion {
-  id          String      @id @default(uuid())
-  tenantId    String
-  tenant      Tenant      @relation(fields: [tenantId], references: [id])
-  plantillaId String
-  plantilla   Plantilla   @relation(fields: [plantillaId], references: [id])
-  conexionId  String
-  conexion    Conexion    @relation(fields: [conexionId], references: [id])
-  valores     Json        @default("{}")
-  cron        String
-  activo      Boolean     @default(true)
-  creadaEn    DateTime    @default(now())
-  ejecuciones Ejecucion[]
+  id           String      @id @default(uuid())
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id])
+  plantillaId  String
+  plantilla    Plantilla   @relation(fields: [plantillaId], references: [id])
+  conexionId   String
+  conexion     Conexion    @relation(fields: [conexionId], references: [id])
+  valores      Json        @default("{}")
+  cron         String
+  activo       Boolean     @default(true)
+  creadaEn     DateTime    @default(now())
+  destinatario String?
+  ejecuciones  Ejecucion[]
 
   @@index([tenantId])
 }
@@ -166,6 +171,11 @@ model Automatizacion {
 // `iniciadaEn` and `finalizadaEn` carry no database default: the scheduler writes them
 // from its injected clock, so tests control time. The closing columns are nullable
 // because a row is written `en-curso` before the run and closed after it.
+//
+// CH-14 (DEC-83): `notificacion` is the run's notification outcome, plain TEXT whose
+// allowed values live in code ('enviada' | 'omitida-sin-filas' | 'fallo-envio' |
+// 'sin-destinatario' | 'no-configurada'). It is null when the query failed and for rows
+// written before CH-14. It holds the outcome only, never a body, recipient or row.
 model Ejecucion {
   id               String         @id @default(uuid())
   tenantId         String
@@ -181,6 +191,7 @@ model Ejecucion {
   fase             String?
   error            String?
   codigoError      String?
+  notificacion     String?
 
   @@index([tenantId])
   @@index([automatizacionId, iniciadaEn])

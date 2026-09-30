@@ -1478,6 +1478,228 @@ No son decisiones nuevas ni abren compuertas: son la mecánica interna de decisi
 
 ---
 
+### DEC-81 — El correo se envía por SMTP con nodemailer, con Mailpit para desarrollo
+
+**Contexto.** N1 exige enviar el resultado de una automatización por correo. Hasta CH-14 no hay código, dependencia ni variable de entorno de correo. Los workflows originales usaban SMTP (Gmail, 465 SSL).
+
+**Opciones.** (a) nodemailer sobre SMTP, con Mailpit en Docker Compose para desarrollo. (b) API HTTP de un proveedor (Resend, SendGrid, Postmark). (c) SMTP escrito a mano sobre `node:net`, sin dependencia.
+
+**Decisión.** (a).
+
+**Por qué.** Da continuidad con el SMTP ya usado, no ata el proyecto a un proveedor ni hace pasar las filas por la API de un tercero, y permite probar el transporte sin red. Suma una sola dependencia, con el mismo criterio que DEC-76. Las credenciales SMTP van solo por variables de entorno (regla 7).
+
+**Se resigna.** Una dependencia nueva. El relay SMTP que se configure recibe el contenido del correo: es la primera salida de datos del tenant fuera del sistema, coherente con la inclinación de D-1 pero sin cerrarla.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-82 — El destinatario es una única dirección en la automatización
+
+**Contexto.** `Automatizacion` no tiene destinatario y `Tenant` solo tiene nombre y activo. `Usuario` está prohibido por la spec del modelo de dominio.
+
+**Opciones.** (a) Columna `destinatario` en `Automatizacion`, una dirección validada, cargada al crear y sin edición (DEC-79). (b) Columna en `Tenant`. (c) Un destinatario global por variable de entorno. (d) Ambas, con prioridad de la automatización. (e) Entidad `Usuario`. Subopción: una dirección o una lista.
+
+**Decisión.** (a), con una sola dirección.
+
+**Por qué.** Mantiene el destinatario dentro del alcance de tenant, sin tocar las rutas de tenants ni introducir entidades nuevas. La columna admite nulos porque las automatizaciones creadas en CH-13 no tienen destinatario.
+
+**Se resigna.** Para cambiar el destinatario se desactiva la automatización y se crea otra. No hay envío a varias direcciones.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-83 — El resultado de la notificación se registra en una columna de `Ejecucion`; un envío fallido marca la ejecución como fallida
+
+**Contexto.** X2 registra el resultado de la consulta; CH-14 agrega un segundo resultado, el del envío, que tiene que distinguirse: enviada, omitida por no haber filas, fallo de envío, sin destinatario, SMTP no configurado.
+
+**Opciones.** (a) Columna nueva `notificacion` que admite nulos, con esos cinco valores. (b) Solo ampliar los valores de `estado` y `fase`. (c) Tabla hija `Notificacion`. Subopción para un envío fallido: (i) `estado='fallo'`, `fase='notificacion'` y una categoría de error cerrada; (ii) `estado` queda en `ok` y solo `notificacion` refleja el fallo.
+
+**Decisión.** (a), con la subopción (i).
+
+**Por qué.** El resultado del envío se lee sin ambigüedad, y un envío fallido queda visible como fallo para lo que se apoye en `estado` (P3h, CH-17). El error se guarda como categoría cerrada, nunca como texto crudo del servidor SMTP.
+
+**Se resigna.** `estado='fallo'` deja de significar solo "falló la consulta": hay que mirar `fase` para saber qué falló.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-84 — Sin filas no se envía; la degradación elegante cubre datos incompletos
+
+**Contexto.** X3 dice que sin filas no se envía nada. N2 pide que el correo se vea bien sin datos. En el WF-03 original, el día vacío sí se enviaba.
+
+**Opciones.** (a) X3 literal: cero filas nunca envía; N2 cubre celdas nulas, agregados en cero, celdas vacías y el aviso de corte. (b) Un campo por plantilla para enviar aunque esté vacío. (c) Enviar siempre un correo de "sin datos".
+
+**Decisión.** (a).
+
+**Por qué.** Respeta X3 sin agregar campos a `Plantilla` (DEC-64, DEC-65) y deja a N2 un alcance verificable: el correo nunca muestra `null`, `undefined` ni celdas rotas.
+
+**Se resigna.** Un reporte que quiera avisar "hoy no hubo datos" no se puede expresar; queda documentado como límite del artefacto (regla 6), con N3 como lugar para revisarlo.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-85 — El HTML del correo lo arma un renderizador genérico que reimplementa el diseño validado
+
+**Contexto.** N1 pide reutilizar el HTML ya validado en los workflows. Ese HTML no está en el repositorio: vive como expresión de un nodo de n8n y está descrito en las bitácoras WF-01 y WF-03 (estilos inline, tabla, encabezado con color de acento, pie discreto, paleta ámbar `#f59e0b`, rojo `#dc2626`, azul `#2563eb`).
+
+**Opciones.** (a) Renderizador genérico de tablas a partir de las columnas; el color de acento y el emoji del asunto salen de la etiqueta `automatizacion` de la plantilla. (b) Tres diseños fijos por etiqueta, copiados de los workflows. (c) HTML guardado por plantilla.
+
+**Decisión.** (a).
+
+**Por qué.** Reutiliza el sistema visual documentado sin acoplarse a la forma de las columnas de cada consulta y sin agregar campos a `Plantilla` (DEC-65). (c) es N3 y queda fuera de alcance.
+
+**Se resigna.** No es el HTML literal de n8n sino una reimplementación a partir de las bitácoras. Un reporte con varias secciones (WF-03: tres consultas, un correo) no se reproduce: una ejecución produce una notificación, y queda como límite del artefacto.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-86 — Sin SMTP configurado, la automatización corre igual y registra que no se notificó
+
+**Contexto.** DEC-17 hace fallar el arranque sin clave maestra. Había que decidir si SMTP recibe el mismo trato.
+
+**Opciones.** (a) Variables `SMTP_*` opcionales: sin ellas la ejecución corre y registra `notificacion='no-configurada'`. (b) Fallar cerrado al arrancar, como DEC-17.
+
+**Decisión.** (a).
+
+**Por qué.** La ausencia de SMTP no compromete la seguridad (a diferencia de la clave maestra) y queda visible en el registro. Mantiene los tests y entornos sin correo real funcionando.
+
+**Se resigna.** Un despliegue sin SMTP no falla al arrancar: la ausencia se ve recién en el registro de ejecuciones.
+
+**Addendum (2026-09-29, diseño de CH-14).** "No configurado" significa `SMTP_HOST` ausente o vacío. Si `SMTP_HOST` está presente, el resto de la configuración tiene que ser completa y válida (`SMTP_FROM` presente, puerto numérico, `SMTP_SECURE` booleano, `SMTP_USER` y `SMTP_PASSWORD` juntos o ninguno); si no lo es, la aplicación no arranca y el error nombra la variable, nunca su valor. Es el mismo criterio que `config.ts` aplica al resto de las variables opcionales: ausente usa el valor por defecto, presente e inválida frena el arranque. Evita que un error de tipeo deje de enviar correos en silencio. Decidido por el usuario (autor) ante la validación del diseño — no inferido por el agente.
+
+**Decidido por:** el usuario (autor), 2026-09-29, durante la exploración de CH-14 — no inferido por el agente.
+
+**Estado:** firme, con addendum.
+
+---
+
+### Resoluciones de nivel diseño bajo DEC-19, DEC-83 y DEC-86 (CH-14)
+
+No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resuelta en `openspec/changes/CH-14-engine-condition-email-notification/design.md`.
+
+**1. Un envío fallido conserva el conteo de filas (bajo DEC-83).** La consulta sí corrió: la ejecución queda con `estado='fallo'`, `fase='notificacion'`, una categoría de envío cerrada y el mismo `filas` que habría tenido si el envío salía bien.
+
+**2. El envío tiene un tiempo máximo configurable (bajo DEC-19).** `SMTP_TIMEOUT_MS`, con valor por defecto 10000 ms, con el mismo criterio que los límites de consulta de DEC-19. Un servidor SMTP colgado no bloquea el resto del tick más allá de ese tiempo.
+
+**3. Con el envío exitoso o sin envío, `fase` queda en `ejecucion`.** Solo un envío fallido usa `fase='notificacion'`.
+
+**Estado:** firmes.
+
+---
+
+### DEC-87 — Las marcas de tiempo del alta se derivan con SQL versionado sobre columnas existentes
+
+**Contexto.** G1 pide marcas de tiempo de conexión, mapeo, validación y primera ejecución. Las columnas ya existen (`Conexion.creadaEn`, `VistaCanonica.creadaEn/actualizadaEn/validadaEn`, `Automatizacion.creadaEn`, `Ejecucion.iniciadaEn`), salvo el resultado de la prueba de conexión.
+
+**Opciones.** (a) Script SQL versionado con salidas fechadas y test con fixtures. (b) Vista en la base. (c) Ruta de lectura en la API. (d) Columnas write-once o tabla de eventos (`EventoAlta`).
+
+**Decisión.** (a). Sin migración, sin ruta, sin panel de consola y sin cambios en el motor.
+
+**Por qué.** Es lo que DEC-30, DEC-31 y DEC-40 ya presuponían. Respeta el anti-alcance del motor (regla 6), no agrega modelos (DEC-44) y cumple G3 (consulta identificable y fechada). Sirve también para tenants desactivados (DEC-14).
+
+**Se resigna.** No hay visibilidad dentro de la aplicación. La marca de validación queda mutable (se anula al re-registrar, DEC-41, y se sobrescribe al re-validar, DEC-44): es un límite del artefacto, y se mitiga capturando la salida de la consulta en la bitácora al cerrar cada alta. Las marcas miden tiempo transcurrido, no esfuerzo (incluyen horas ociosas, SQL escrito fuera del sistema y la espera del cron). No se asume orden estricto entre marcas por mezcla de relojes (base vs aplicación). Sin *backfill* ni medición retroactiva de CH-16 (horas autorreportadas).
+
+**Decidido por:** el usuario (autor), 2026-09-30, durante la exploración de CH-15 — no inferido por el agente. Las consecuencias de la mutabilidad, la ausencia de panel y el uso prospectivo se derivan de esta elección.
+
+**Estado:** firme.
+
+---
+
+### DEC-88 — La marca de «conexión» es el registro de la conexión
+
+**Contexto.** La prueba `POST /conexiones/:id/prueba` no persiste su resultado; no existe una marca de «conectó bien».
+
+**Opciones.** (a) Usar `Conexion.creadaEn`. (b) Persistir la primera prueba exitosa (`probadaEn`/`probadaOk`).
+
+**Decisión.** (a).
+
+**Por qué.** Evita migración y una escritura en una ruta hoy de solo lectura. La compuerta D-2 puede cambiar qué significa «conectado» (agente saliente), así que la marca se mantiene genérica.
+
+**Se resigna.** Un registro puede preceder a una conexión exitosa: la marca sobreestima el avance. Se documenta como límite del artefacto.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-89 — Definición de las marcas restantes y agregación por conexión
+
+**Decisión.** El reporte incluye: inicio del alta (`Tenant.creadoEn`); conexión (DEC-88); mapeo, con inicio (mínimo de `creadaEn`) y fin (máximo de `actualizadaEn`); última validación con su estado; primera ejecución con su `estado`/`fase` y, aparte, la primera con `estado='ok'`; y `Automatizacion.creadaEn` como quinta marca informativa que separa el esfuerzo del operador de la espera del cron. Se reporta una fila por `Conexion`, repitiendo la marca de inicio del tenant (coherente con DEC-33).
+
+**Por qué.** Muestra los intentos fallidos sin perder el primer éxito, y no atribuye al operador la espera del cron.
+
+**Se resigna.** No hay agregado por tenant; quien lo quiera lo calcula sobre las filas.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-90 — El script de marcas del alta no lleva parámetro de tenant y se corre fuera de la aplicación
+
+**Contexto.** El diseño de CH-15 debía decidir si `scripts/marcas-alta.sql` filtra por tenant o lista todos.
+
+**Opciones.** (a) Sin parámetro: lista las conexiones de todos los tenants, incluidos los desactivados; lo corre el autor a mano. (b) Con filtro de tenant como parámetro del driver, más un script ejecutor.
+
+**Decisión.** (a).
+
+**Por qué.** Cumple la regla 4 porque ningún valor entra a la consulta. `psql` no rellena un `$1` cuando recibe el archivo directo. Es una herramienta de investigación de P4, no una superficie del panel, así que la regla 2 (aislamiento del panel) no aplica; saltea la extensión de aislamiento de Prisma a propósito, igual que las consultas de CH-16b. Un test estático verifica que ningún código de la aplicación referencia el archivo.
+
+**Se resigna.** La salida cubre todos los tenants: quien la pega en una bitácora elige las filas que corresponden.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-91 — El script vive en `scripts/marcas-alta.sql`
+
+**Decisión.** `scripts/marcas-alta.sql`, junto a `smoke.sh`. No dentro de la carpeta del change.
+
+**Por qué.** Archivar mueve la carpeta del change y rompería la ruta del test y los enlaces de la bitácora. Es el primer SQL de larga vida fuera de las migraciones: fija la convención para scripts de investigación.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-92 — Solo lectura del script de marcas: rol de prueba y transacción de solo lectura
+
+**Contexto.** La regla 3 pide dos capas (rechazo en la aplicación y usuario sin escritura) y está escrita para consultas del panel contra la base del cliente. Aquí el script corre sobre la base propia de la aplicación, que no tiene un login de solo lectura.
+
+**Opciones.** (a) En el test: rol descartable con `SELECT` solo sobre las columnas necesarias, dentro de una transacción de solo lectura; en la corrida manual: transacción de solo lectura y archivo revisado. (b) Crear un login de solo lectura también para las corridas manuales.
+
+**Decisión.** (a).
+
+**Por qué.** (b) es alcance nuevo (migración/configuración) y sube el riesgo del límite de 400 líneas. Los permisos por columna del rol de prueba también hacen cumplir la minimización de datos (regla 5).
+
+**Se resigna.** En la corrida manual la base aplica una sola capa de solo lectura; la otra es la revisión del archivo.
+
+**Decidido por:** el usuario (autor), 2026-09-30 — no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

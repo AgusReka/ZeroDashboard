@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  cierreConNotificacion,
   cierreDeResultado,
   cronValido,
+  decidirNotificacion,
   estaVencida,
   type ResultadoCorrida,
 } from './automatizaciones.js';
@@ -311,5 +313,219 @@ describe('cierreDeResultado — every outcome closes with closed categories only
       codigoError: null,
     });
     assert.equal(JSON.stringify(cierre).includes('s3cr3t'), false);
+  });
+});
+
+// ---- 3.1 notification precedence (DEC-83, DEC-84, DEC-86) ----------------------------
+
+const PARA = 'compras@ejemplo.test';
+
+describe('decidirNotificacion — the first condition that holds wins', () => {
+  test('3.1 a run that did not succeed records null and never sends', () => {
+    const noExitosas: ResultadoCorrida[] = [
+      fallida('ejecucion', 'error-sintaxis', '42601'),
+      fallida('conexion', 'host-inalcanzable', 'ECONNREFUSED'),
+      { resultado: 'rechazo', categoria: 'valores-invalidos' },
+      { resultado: 'rechazo', categoria: 'vista-canonica-no-aprobada', entidades: [] },
+      { resultado: 'excepcion', error: new Error('boom') },
+    ];
+    for (const resultado of noExitosas) {
+      assert.deepEqual(decidirNotificacion(resultado, PARA, true), {
+        enviar: false,
+        notificacion: null,
+      });
+    }
+  });
+
+  test('3.1 zero rows never sends, even with a recipient and SMTP configured', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(0), PARA, true), {
+      enviar: false,
+      notificacion: 'omitida-sin-filas',
+    });
+    assert.deepEqual(decidirNotificacion(exitosa(0), null, false), {
+      enviar: false,
+      notificacion: 'omitida-sin-filas',
+    });
+  });
+
+  test('3.1 a missing recipient wins over unset SMTP', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(2), null, false), {
+      enviar: false,
+      notificacion: 'sin-destinatario',
+    });
+    assert.deepEqual(decidirNotificacion(exitosa(2), null, true), {
+      enviar: false,
+      notificacion: 'sin-destinatario',
+    });
+  });
+
+  test('3.1 unset SMTP with a recipient records no-configurada', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(2), PARA, false), {
+      enviar: false,
+      notificacion: 'no-configurada',
+    });
+  });
+
+  test('3.1 rows, a recipient and SMTP configured: send once, to that recipient', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(12), PARA, true), { enviar: true, para: PARA });
+    assert.deepEqual(decidirNotificacion(exitosa(1, 'tope-de-filas'), 'otro@ejemplo.test', true), {
+      enviar: true,
+      para: 'otro@ejemplo.test',
+    });
+  });
+});
+
+// ---- 3.2 closing a run with its notification (R1, R3 under DEC-83 and DEC-86) ---------
+
+describe('cierreConNotificacion — only a failed send changes the query close', () => {
+  test('3.2 enviada keeps the run ok in phase ejecucion', () => {
+    assert.deepEqual(cierreConNotificacion(cierreDeResultado(exitosa(12)), { resultado: 'enviada' }), {
+      estado: 'ok',
+      filas: 12,
+      corte: null,
+      fase: 'ejecucion',
+      error: null,
+      codigoError: null,
+      notificacion: 'enviada',
+    });
+  });
+
+  test('3.2 every non-send outcome of an ok run keeps it ok in phase ejecucion', () => {
+    for (const omision of ['omitida-sin-filas', 'sin-destinatario', 'no-configurada'] as const) {
+      const cierre = cierreDeResultado(exitosa(omision === 'omitida-sin-filas' ? 0 : 4));
+      assert.deepEqual(cierreConNotificacion(cierre, omision), { ...cierre, notificacion: omision });
+      assert.equal(cierreConNotificacion(cierre, omision).fase, 'ejecucion');
+    }
+  });
+
+  test('3.2 a failed send fails the run in phase notificacion and keeps filas and corte', () => {
+    const cierre = cierreDeResultado(exitosa(12, 'tope-de-filas'));
+    assert.deepEqual(
+      cierreConNotificacion(cierre, { resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550' }),
+      {
+        estado: 'fallo',
+        filas: 12,
+        corte: 'tope-de-filas',
+        fase: 'notificacion',
+        error: 'envio-rechazado',
+        codigoError: '550',
+        notificacion: 'fallo-envio',
+      },
+    );
+    assert.deepEqual(
+      cierreConNotificacion(cierreDeResultado(exitosa(3)), {
+        resultado: 'fallo',
+        categoria: 'tiempo-agotado',
+        codigo: null,
+      }),
+      {
+        estado: 'fallo',
+        filas: 3,
+        corte: null,
+        fase: 'notificacion',
+        error: 'tiempo-agotado',
+        codigoError: null,
+        notificacion: 'fallo-envio',
+      },
+    );
+  });
+
+  test('3.2 a throw in the notify step closes as error-interno, fallo-envio, no code', () => {
+    const lanzado = new Error('connect smtp://user:s3cr3t@mail failed');
+    const cierre = cierreConNotificacion(cierreDeResultado(exitosa(5)), {
+      resultado: 'excepcion',
+      error: lanzado,
+    });
+    assert.deepEqual(cierre, {
+      estado: 'fallo',
+      filas: 5,
+      corte: null,
+      fase: 'notificacion',
+      error: 'error-interno',
+      codigoError: null,
+      notificacion: 'fallo-envio',
+    });
+    assert.equal(JSON.stringify(cierre).includes('s3cr3t'), false);
+  });
+
+  test('3.2 a query that did not succeed keeps its close and records null', () => {
+    const fallo = cierreDeResultado(fallida('ejecucion', 'error-sintaxis', '42601'));
+    assert.deepEqual(cierreConNotificacion(fallo, null), { ...fallo, notificacion: null });
+    // Defensive: even a send verdict handed in by mistake cannot rewrite a failed query.
+    assert.deepEqual(cierreConNotificacion(fallo, { resultado: 'enviada' }), {
+      ...fallo,
+      notificacion: null,
+    });
+  });
+});
+
+// ---- 3.3 a failed send's code and category are gated (Threat Matrix "SMTP text") -----
+
+describe('cierreConNotificacion — only a three-digit SMTP code and a closed category', () => {
+  function falloDeEnvio(codigo: string | null): ReturnType<typeof cierreConNotificacion> {
+    return cierreConNotificacion(cierreDeResultado(exitosa(2)), {
+      resultado: 'fallo',
+      categoria: 'envio-rechazado',
+      codigo,
+    });
+  }
+
+  test('3.3 a three-digit SMTP reply code is kept', () => {
+    for (const codigo of ['250', '421', '450', '535', '550', '599']) {
+      assert.equal(falloDeEnvio(codigo).codigoError, codigo);
+    }
+  });
+
+  test('3.3 a Node code, a SQLSTATE or free text becomes null', () => {
+    for (const codigo of [
+      'ECONNECTION',
+      'ETIMEDOUT',
+      '42601',
+      '28P01',
+      '150',
+      '600',
+      '55',
+      '5500',
+      '550\n',
+      ' 550',
+      '５５０',
+      '550 5.1.1 <jefe@ejemplo.test>: Recipient address rejected',
+      'AUTH PLAIN dXNlcjpzM2NyM3Q=',
+    ]) {
+      assert.equal(falloDeEnvio(codigo).codigoError, null, JSON.stringify(codigo));
+    }
+  });
+
+  test('3.3 stray fields on the send verdict never reach the close', () => {
+    const conRuido = {
+      resultado: 'fallo',
+      categoria: 'credenciales-invalidas',
+      codigo: '535',
+      message: 'Invalid login: 535 Authentication failed for user=admin pass=s3cr3t',
+      response: '535 5.7.8 Username and Password not accepted',
+    } as const;
+    const cierre = cierreConNotificacion(cierreDeResultado(exitosa(2)), conRuido);
+    assert.deepEqual(Object.keys(cierre).sort(), [
+      'codigoError',
+      'corte',
+      'error',
+      'estado',
+      'fase',
+      'filas',
+      'notificacion',
+    ]);
+    const texto = JSON.stringify(cierre);
+    assert.equal(texto.includes('s3cr3t'), false);
+    assert.equal(texto.includes('Username'), false);
+    assert.equal(cierre.error, 'credenciales-invalidas');
+  });
+
+  test('3.3 a category outside the closed set becomes error-desconocido', () => {
+    const cierre = cierreConNotificacion(cierreDeResultado(exitosa(2)), {
+      resultado: 'fallo',
+      categoria: '550 mailbox jefe@ejemplo.test unavailable' as 'envio-rechazado',
+      codigo: null,
+    });
+    assert.equal(cierre.error, 'error-desconocido');
   });
 });
