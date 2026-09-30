@@ -4,6 +4,20 @@ Consola propia de consultas de solo lectura contra la base de un cliente (P1: el
 
 La documentación de arquitectura vive en `docs/` (ver `AGENTS.md` para el índice). Este archivo es la referencia operativa: cómo levantar el entorno y usar la API/consola.
 
+## Versión evaluada en la tesis
+
+- **Etiqueta:** [`congelamiento-tesis-2026-09-24`](https://github.com/AgusReka/ZeroDashboard/tree/congelamiento-tesis-2026-09-24), commit [`a1704bc`](https://github.com/AgusReka/ZeroDashboard/commit/a1704bcec01132f79f5eddfc66d9f6125bde6a02) (2026-09-24).
+- **`master` siguió avanzando.** La tesis evalúa solo el estado etiquetado y los experimentos que identifica su Tabla 3.3; lo que entró en `master` después de la etiqueta no forma parte de la evaluación.
+- **Ramas de experimentos** (publicadas, sin fusionar en `master`):
+
+  | Rama | Último commit | Estado |
+  |---|---|---|
+  | `experimento/reporte-diario` | [`0e80098`](https://github.com/AgusReka/ZeroDashboard/commit/0e800987c1f566217efcb70d095180cd192ab083) | No es ancestro de `master`. Sin fusionar. |
+  | `experimento/odoo` | [`c3ee7b4`](https://github.com/AgusReka/ZeroDashboard/commit/c3ee7b48ce616f3c95a5cbfcbbd7573882bb02cd) | No es ancestro de `master`. Sin fusionar. |
+  | `experimento/desempate` | [`d06b7ad`](https://github.com/AgusReka/ZeroDashboard/commit/d06b7ad471896bd29951647e3107dbf65e7437ae) | No es ancestro de `master`. Sin fusionar. |
+
+- **Fecha de corte:** 2026-09-30 20:38:31 -03:00 (`git fetch --all --tags`). En ese momento `origin/master` estaba en `9a0ca4b`. Detalle y comandos en `docs/bitacora/bitacora_estado_repo_tesis.md`.
+
 ## Levantar el entorno
 
 ```bash
