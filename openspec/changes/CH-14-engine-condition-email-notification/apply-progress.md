@@ -15,9 +15,11 @@ container `zd-ch09-testdb` on `localhost:5434`).
 | 3b Close with notification, close-type widening | 3.2–3.6 | `ch14/3b-cierre-notificacion` (base 3a) | `6ac0ea8`, `c4cfc84` (bookkeeping) |
 | 4a `SMTP_*` parsing: `leerSmtp` | 4.1, 4.2 | `ch14/4a-notificador-entorno` (base 3b `c4cfc84`) | `2d4016b` |
 | 4b Send wrapper, closed categories, hardened options | 4.3, 4.4, 4.5 | `ch14/4b-notificador-transporte` (base 4a) | `576f0c5` |
-| 4c Outer time limit, `crearNotificadorSmtp`, live Mailpit test | 4.6–4.9 | `ch14/4c-notificador-limite` (base 4b) | `9fffc22`, `f34c976`, this bookkeeping |
+| 4c Outer time limit, `crearNotificadorSmtp`, live Mailpit test | 4.6–4.9 | `ch14/4c-notificador-limite` (base 4b) | `9fffc22`, `f34c976`, `dfca3a4` (bookkeeping) |
+| 5a1 Notify step and single close in `correr()` | 5.1–5.3, 5.8 (base) | `ch14/5a1-planificador-notifica` (base 4c `dfca3a4`) | `3f019eb` |
+| 5a2 Send failures: throw caught, log, duration, hang | 5.4–5.7, 5.9, 5.8 (complete) | `ch14/5a2-planificador-fallos` (base 5a1) | `53c6cbc`, this bookkeeping |
 
-Remaining: Phases 5–7 (units 5a, 5b, 6, 7). Unit 5a stacks on `ch14/4c-notificador-limite`.
+Remaining: 5.10–5.12 (unit 5b), Phases 6–7. Unit 5b stacks on `ch14/5a2-planificador-fallos`.
 
 ## Task 1.2 Findings (for the PR body)
 
@@ -225,6 +227,56 @@ three stacked sub-branches along its natural seams: configuration, sending, time
 7. **Outer-limit close.** nodemailer's SMTP `close()` does not abort a connection in flight; the three
    socket timeouts end it. The transport is not pooled, so it still sends the next message.
 
+## Unit 5a Evidence (split into 5a1/5a2)
+
+The slice measured 378 changed lines of code and tests (`src/planificador.ts` +100 −16,
+`src/planificador.test.ts` +257 −5, across both commits); with the `tasks.md` and apply-progress
+bookkeeping it passed 400, so it was cut into two stacked sub-branches. The cut is not the
+planned "RED/GREEN boundary of 5.7" (that would leave a red branch): 5a1 holds the notify step
+without the throw guard and the precedence tests; 5a2 holds the throw guard and the failure tests.
+
+| Evidence | 5a1 | 5a2 |
+|---|---|---|
+| Diff vs previous branch | `git diff --shortstat ch14/4c-notificador-limite..ch14/5a1-planificador-notifica`: 2 files, +210 −19 | `git diff --shortstat ch14/5a1-planificador-notifica..53c6cbc`: 2 files, +162 −17, plus this bookkeeping |
+| Focused test | `TEST_DB_PORT=5434 npx tsx --test src/planificador.test.ts`: 13/13 | 17/17 |
+| Full suite (`TEST_DB_PORT=5434 npm test`) | 605/605, 0 fail, 0 skipped | 609/609, 0 fail, 0 skipped (602 baseline + 7) |
+| Typecheck | `npx tsc --noEmit`: exit 0 | exit 0 |
+| Runtime harness | Live PostgreSQL on 5434 (read-only role `ch13_lector` runs the real pipeline) + fake `Notificador` + fake `Reloj` | Same, plus the real `notificadorDesdeTransporte` over a transport that never answers (50 ms outer limit) and pino JSON lines captured through a Fastify logger stream |
+| Rollback boundary | Revert `3f019eb`: runs record `notificacion` null again; nothing injects a notifier until 5b | Revert `53c6cbc`: a throwing notifier would leave its row `en-curso` again; 5a1 stays |
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 5.1 | `src/planificador.test.ts` | Integration (live PG, fake notifier) | ✅ 10/10 | ✅ Written; 1 fail (`notificacion` null, expected `omitida-sin-filas`) | ✅ 11/11 | ✅ 0 rows vs 1 row in one tick; subject carries the template name and count | ✅ `columnas()` helper replaced hand-built objects |
+| 5.2 | same | Integration | ✅ 11/11 | ⚠️ Passed on first run (precedence already in `decidirNotificacion`, unit 3a). Mutation: passing `configurado=true` always makes it fail | ✅ 17/17 | ✅ enviada / absent notifier / `null` notifier, with and without recipient | ➖ |
+| 5.3 | same | Integration | ✅ | ⚠️ Passed on first run (triangulation of 5.1) | ✅ | ✅ query failure (`conexion`) and gate refusal (`preparacion`) | ➖ |
+| 5.4 | same | Integration | ✅ | ⚠️ Passed on first run (mapping from unit 3b). Mutation: dropping `destinatario` from the select fails 5.1, 5.2, 5.4, 5.7, 5.9 | ✅ | ✅ failing run and a sibling that sends in the same tick | ➖ |
+| 5.5 | same | Integration | ✅ 16/16 | ✅ Written; 1 fail (row left `en-curso`); re-proven red on the 5a1 commit | ✅ 17/17 | ✅ synchronous throw (the harder case); error name logged, message absent | ✅ unreachable guard moved inside the `try` so even it closes the row |
+| 5.6 | same (merged with 5.4) | Integration (pino lines) | ✅ | ⚠️ Passed on first run. Mutation: adding the recipient to `log.warn` makes it fail | ✅ | ✅ recipient, a marker cell (`fila-secreta`, proven present in the message) and SMTP text in the verdict all absent from every line | ➖ |
+| 5.7 | same | Integration (fake clock advanced by the send) | ✅ | ⚠️ Passed on first run. Mutation: reading `finalizadaEn` before the send makes it fail | ✅ | ✅ row still `en-curso` during the send; `duracionMs` = 5000 exactly | ➖ |
+| 5.8 | `src/planificador.ts` | — | — | ➖ Covered by 5.1–5.7 | ✅ | ➖ | ✅ `esExcepcion` names the pipeline or notify throw for the log |
+| 5.9 | same | Integration (real notifier, hanging transport) | ✅ | ⚠️ Passed on first run (outer limit from unit 4c) | ✅ | ➖ Single scenario; a regression would hang the tick and the test | ➖ |
+
+### Unit 5a Deviations
+
+1. **Split 5a1/5a2 at a different seam** than the forecast's "RED/GREEN boundary of 5.7", so both
+   branches are green (see above). 5a1 alone lets a throwing notifier leave its row `en-curso`;
+   the contract says `enviar` never throws and nothing injects a notifier before 5b.
+2. **Template read moved into `correr()`.** `resultadoDeCorrida` now receives the template, so the
+   notify step has its `nombre` and `automatizacion` label. The read, its select and its comment
+   are otherwise unchanged; a throw from it still closes as `error-interno`.
+3. **Many tasks were already satisfied.** 5.2–5.4, 5.6, 5.7 and 5.9 passed on their first run,
+   because precedence, mapping and the outer limit were built and unit-tested in units 3 and 4.
+   Each was proven to detect a regression by a mutation of `planificador.ts` (table above).
+4. **"Single `ejecucion.update`"** is shown by behaviour, not by counting calls: the row is still
+   `en-curso` with `finalizadaEn` and `notificacion` null while the send is in flight, and closed
+   with all of them afterwards.
+5. **Existing tests unchanged.** No CH-13 expectation needed an update: the rows they assert either
+   fail before the notify step (`notificacion` null) or are not asserted on `notificacion`.
+6. **Tests run under ticks that also re-run earlier tests' automations**, so each CH-14 test uses its
+   own recipient and reads only its own messages (`notificadorFalso().a(para)`).
+
 ## Notes for Later Units
 
 - Unit 5b wires `crearNotificadorSmtp({ timeoutMs: config.smtpTimeoutMs })` (default env
@@ -234,7 +286,9 @@ three stacked sub-branches along its natural seams: configuration, sending, time
   renderer never sees the recipient.
 - Unit 6 validates `destinatario` with `direccionValida`, which rejects (does not trim) surrounding
   whitespace.
-- Unit 5a flow: `d = decidirNotificacion(resultado, automatizacion.destinatario, notificador !== null)`;
+- Unit 5b: `crearPlanificador({ ..., notificador })` accepts `Notificador | null`; the T2 test can
+  reuse the fake-notifier pattern (record every `Correo`, filter by `para`).
+- Unit 5a flow (done): `d = decidirNotificacion(resultado, automatizacion.destinatario, notificador !== null)`;
   when `d.enviar`, send to `d.para` and pass the verdict (or `{resultado:'excepcion', error}` on a
   throw) to `cierreConNotificacion`; otherwise pass `d.notificacion`. Spread the returned
   `CierreNotificado` into the single `ejecucion.update`.
