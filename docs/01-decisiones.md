@@ -1862,6 +1862,70 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-103 — CH-17b: `intentos` cuenta los intentos de conexión reales y se muestra en el listado y en la consola
+
+**Contexto.** DEC-98 agrega la columna nullable `intentos` a `Ejecucion` sin fijar su valor para las corridas que no llegaron a conectar ni si el usuario la ve. Una fila `omitida` (DEC-96) o `interrumpida` (DEC-99) nunca intentó conectar, y las filas anteriores a la migración no tienen el dato.
+
+**Opciones.** Valor: (a) cuenta los intentos de conexión reales, o (b) nulo salvo que haya reintentos. Visibilidad: (c) en el listado de ejecuciones de la API y en la consola, o (d) solo en la base.
+
+**Decisión.** (a) y (c). `intentos` vale 1 si la corrida conectó, o falló, al primer intento, incluso con el reintento desactivado, y N si hizo N intentos. Es nulo cuando la corrida nunca llegó a intentar conectar (`omitida`, `interrumpida` y los rechazos previos a la conexión) y en las filas anteriores a la migración. `EjecucionListada` y la vista de ejecuciones de la consola muestran la columna.
+
+**Se resigna.** Cambia la spec de `query-console`. Un nulo significa «no aplica o dato anterior», nunca «un solo intento».
+
+**Decidido por:** el usuario, 2026-10-01, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-104 — CH-17b: el apagado cancela la pausa entre reintentos y cierra la fila
+
+**Contexto.** DEC-100 cierra la aplicación con SIGTERM y SIGINT y espera a `detener()`. Una corrida en pausa entre reintentos puede demorar el cierre hasta unos 10 s más los intentos restantes, y el tiempo de parada de un contenedor podría matar el proceso y dejar la fila `en-curso` para el barrido de DEC-99.
+
+**Opciones.** (a) `detener()` cancela la pausa y cierra la fila. (b) Dejar terminar el bucle.
+
+**Decisión.** (a). Al detener el planificador, la pausa pendiente se cancela, no se hacen más intentos y la corrida se cierra como `fallo` con la categoría del último intento y el `intentos` alcanzado.
+
+**Se resigna.** Una corrida que podía recuperarse en un reintento posterior se cierra como fallida; el próximo disparo es el reintento.
+
+**Decidido por:** el usuario, 2026-10-01, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-105 — CH-17b: máximo de 5 intentos, validado al arrancar
+
+**Contexto.** DEC-98 fija 3 intentos por defecto, pero el analizador de variables de DEC-19 acepta cualquier entero positivo. Un valor alto bloquea el tick serial con una conexión caída.
+
+**Opciones.** (a) Máximo 5 con fallo al arrancar si se excede. (b) Sin máximo.
+
+**Decisión.** (a). La variable de intentos admite de 1 a 5; un valor mayor hace fallar la configuración al arrancar con un mensaje claro, como las otras variables inválidas.
+
+**Se resigna.** Cambiar el máximo exige tocar el código.
+
+**Decidido por:** el usuario, 2026-10-01, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-106 — CH-17b: política inyectada, nombres de variables y alcance del apagado
+
+**Contexto.** El diseño de CH-17b (`openspec/changes/CH-17b-reintentos-de-conexion/design.md`) tomó elecciones que DEC-97, DEC-98 y DEC-103 a DEC-105 no fijan: cómo se inyecta la política, cómo se llaman las variables, dónde va la columna en la consola, qué hace el apagado con el resto del tick y cómo se prueba una secuencia de fallos.
+
+**Opciones.** Pruebas de la secuencia de fallos: relajar los ejemplos de la spec, o inyectar un punto de dial (`ejecutar?`) en el planificador. Apagado: cancelar solo la pausa, o además cortar el resto del tick.
+
+**Decisión.** La política se inyecta como `PoliticaReintentos { intentos, pausaMs }` en `DependenciasPlanificador`, con el valor por defecto `SIN_REINTENTOS` (1 intento, sin pausa). Las variables son `CONNECTION_RETRY_ATTEMPTS` (1 a 5, por defecto 3) y `CONNECTION_RETRY_PAUSE_MS` (entero positivo, por defecto 5000). `intentos` es la última columna de la vista de ejecuciones de la consola. Los ejemplos de la spec con fallo DNS se relajan y las pruebas usan `host-inalcanzable` seguido de `tiempo-agotado`; no se agrega un punto de inyección del dial. Al apagar, `detener()` cancela solo la pausa pendiente; el resto del tick en curso termina con un intento por cada automatización vencida restante, sin reintentos.
+
+**Se resigna.** No se puede probar un fallo DNS en una secuencia con destino fijo y sockets reales. El apagado puede demorar lo que tarden esas corridas restantes.
+
+**Decidido por:** el usuario, 2026-10-01, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
