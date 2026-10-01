@@ -1700,33 +1700,57 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-93 — Los resultados de las consultas no se persisten: solo consultas y metadatos de ejecución (D-1)
+
+**Contexto.** D-1 definía si el sistema guarda los resultados de las consultas. De eso depende si custodia datos personales de los clientes de los clientes, lo que cambia el apartado de consideraciones éticas y legales. Hasta R1 el resultado de una ejecución ya viaja al correo y no se guarda (DEC-83, DEC-84).
+
+**Opciones.** (a) Solo consultas y metadatos de ejecución. (b) Resultados con retención acotada. (c) Resultados completos.
+
+**Decisión.** (a). El sistema persiste consultas, plantillas, configuración y metadatos de ejecución (inicio, fin, duración, cantidad de filas, estado). No persiste el contenido de las filas devueltas.
+
+**Consecuencias.** El sistema no custodia datos personales de los clientes de los clientes, en línea con la minimización de datos. CH-27 (visualización de últimos resultados en el panel), que estaba sujeto a D-1, queda fuera del alcance mientras esta decisión no se reabra. Una reapertura exige registrar antes la política de retención y su impacto legal.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme. Cierra D-1.
+
+---
+
+### DEC-94 — El motor llega a la réplica del cliente por un agente saliente (D-2)
+
+**Contexto.** D-2 definía cómo el motor alcanza la réplica del cliente. De eso depende la barrera de entrada, que es la hipótesis central del trabajo: pedirle a una PYME que exponga su base a internet la contradice.
+
+**Opciones.** (a) Conexión directa, con la base del cliente expuesta. (b) Agente saliente instalado junto a la réplica. (c) VPN.
+
+**Decisión.** (b). Un agente instalado junto a la réplica inicia la conexión hacia afuera; el cliente no expone su base.
+
+**Consecuencias.** CH-19 (conectividad definitiva) implementa ese agente y cuesta más desarrollo que una conexión directa. El agente queda sujeto a las reglas no negociables: solo lectura en dos capas, sin concatenación de SQL, aislamiento entre tenants y secretos fuera del repositorio. El protocolo concreto entre agente y motor es una decisión de CH-19 y se registra al llegar.
+
+**Se resigna.** La conexión directa de R0 y R1 es la que se usa hasta CH-19; no es la solución definitiva. Queda sin verificar cómo resuelven esto los productos comparables, pendiente anotado en D-2.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme. Cierra D-2.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
 
-### D-1 — ¿Se persisten los resultados de las consultas?
+### D-1 — ¿Se persisten los resultados de las consultas? (cerrada)
 
-Opciones: solo consultas y metadatos / resultados con retención acotada / resultados completos.
+Resuelta como DEC-93: solo consultas y metadatos de ejecución.
 
-**Qué depende.** Si el sistema custodia datos personales de los clientes del cliente. Cambia por completo el apartado de consideraciones éticas y legales.
-
-**Inclinación actual:** solo consultas y metadatos de ejecución; el resultado viaja al correo y no se guarda.
-
-**Estado:** abierta.
+**Estado:** cerrada. Ver DEC-93 en "Decisiones tomadas".
 
 ---
 
-### D-2 — ¿Cómo llega el motor a la réplica del cliente?
+### D-2 — ¿Cómo llega el motor a la réplica del cliente? (cerrada)
 
-Opciones: conexión directa (el cliente expone su base) / agente saliente instalado junto a la réplica / VPN.
+Resuelta como DEC-94: agente saliente.
 
-**Qué depende.** La barrera de entrada, que es la hipótesis central del trabajo. Pedirle a una PYME que exponga su base a internet contradice esa hipótesis.
-
-**Inclinación actual:** agente saliente. Cuesta más desarrollo y preserva el argumento.
-
-**Pendiente de verificar:** cómo lo resuelven productos comparables.
-
-**Estado:** abierta.
+**Estado:** cerrada. Ver DEC-94 en "Decisiones tomadas".
 
 ---
 
