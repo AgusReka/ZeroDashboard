@@ -40,6 +40,11 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_TIMEOUT_MS: ${SMTP_TIMEOUT_MS:-}
+      # Optional since CH-17b (DEC-98, DEC-105): the scheduled-run connection retry policy.
+      # Unset or empty, the app falls back to its documented defaults (3 attempts, 5000 ms
+      # pause); an out-of-range value makes the container refuse to start.
+      CONNECTION_RETRY_ATTEMPTS: ${CONNECTION_RETRY_ATTEMPTS:-}
+      CONNECTION_RETRY_PAUSE_MS: ${CONNECTION_RETRY_PAUSE_MS:-}
     ports:
       - "${APP_PORT}:${APP_PORT}"
 

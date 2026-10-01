@@ -5,6 +5,7 @@ import {
   cierreDeResultado,
   cronValido,
   decidirNotificacion,
+  esFalloReintentable,
   estaVencida,
   type ResultadoCorrida,
 } from './automatizaciones.js';
@@ -313,6 +314,63 @@ describe('cierreDeResultado — every outcome closes with closed categories only
       codigoError: null,
     });
     assert.equal(JSON.stringify(cierre).includes('s3cr3t'), false);
+  });
+});
+
+// ---- CH-17b 1.1: which failures a scheduled run retries (X5, DEC-97) ---------------
+
+describe('esFalloReintentable — only a transient connection failure is retried', () => {
+  test('1.1 the three transient connection categories are retryable', () => {
+    for (const categoria of ['host-inalcanzable', 'dns-no-resuelve', 'tiempo-agotado'] as const) {
+      assert.equal(
+        esFalloReintentable(fallida('conexion', categoria, 'ECONNREFUSED')),
+        true,
+        `conexion/${categoria} must be retried`,
+      );
+    }
+  });
+
+  test('1.1 the other connection categories end the run after one attempt', () => {
+    for (const categoria of [
+      'credenciales-invalidas',
+      'base-inexistente',
+      'error-desconocido',
+    ] as const) {
+      assert.equal(
+        esFalloReintentable(fallida('conexion', categoria, null)),
+        false,
+        `conexion/${categoria} must not be retried`,
+      );
+    }
+  });
+
+  test('1.1 a query-phase timeout is not retried: the category alone does not decide', () => {
+    assert.equal(esFalloReintentable(fallida('ejecucion', 'tiempo-agotado', '57014')), false);
+    for (const categoria of ['error-sintaxis', 'error-datos', 'no-es-lectura'] as const) {
+      assert.equal(esFalloReintentable(fallida('ejecucion', categoria, null)), false);
+    }
+  });
+
+  test('1.1 a permissions refusal is never retried', () => {
+    for (const categoria of [
+      'rol-superusuario',
+      'rol-con-escritura-en-tabla',
+      'rol-con-create-en-esquema',
+    ] as const) {
+      assert.equal(esFalloReintentable(fallida('permisos', categoria, null)), false);
+    }
+  });
+
+  test('1.1 a success, a pre-dial refusal and an unexpected throw are never retried', () => {
+    const casos: ResultadoCorrida[] = [
+      exitosa(2),
+      { resultado: 'rechazo', categoria: 'conexion-no-encontrada' },
+      { resultado: 'rechazo', categoria: 'vista-canonica-no-aprobada', entidades: [] },
+      { resultado: 'excepcion', error: new Error('connect ECONNREFUSED') },
+    ];
+    for (const caso of casos) {
+      assert.equal(esFalloReintentable(caso), false, `${caso.resultado} must not be retried`);
+    }
   });
 });
 
