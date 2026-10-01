@@ -31,7 +31,8 @@ import { componerSentencia, evaluarVistas } from './plantillas.js';
  * the outcome in the same single write. The rows are dropped after the render.
  *
  * CH-17a adds the boot sweep (DEC-99): before the first tick, rows a stopped process left
- * `en-curso` are closed as `fallo`/`interrumpida` and never re-executed.
+ * `en-curso` are closed as `fallo`/`interrumpida` and never re-executed. It also adds the
+ * overlap check (DEC-96): an automation with a run still `en-curso` is skipped as `omitida`.
  *
  * The engine executes the pattern and nothing more (rule 6): there is no new execution
  * surface and no parallelism (CH-18), and no retry yet (CH-17b). Missed fires are never
@@ -110,6 +111,21 @@ function esExcepcion(valor: ResultadoCorrida | SalidaNotificacion): valor is Fal
 const CIERRE_INTERRUMPIDA = {
   estado: 'fallo',
   error: 'interrumpida',
+  duracionMs: null,
+  filas: null,
+  corte: null,
+  fase: null,
+  codigoError: null,
+  notificacion: null,
+} as const;
+
+/**
+ * DEC-96, DEC-102: the row a run skipped by an overlap writes. Nothing ran, so every
+ * outcome column is null and the row starts and ends at the same instant.
+ */
+const CIERRE_OMITIDA = {
+  estado: 'omitida',
+  error: 'solapamiento',
   duracionMs: null,
   filas: null,
   corte: null,
@@ -246,9 +262,35 @@ export function crearPlanificador({
    * (X2). A throw from the pipeline closes the row as `error-interno`; `previo` is a throw
    * that happened before the run could start (an unreadable stored schedule), recorded the
    * same way.
+   *
+   * CH-17a (DEC-96): first, the overlap check. While a previous run of this automation is
+   * still `en-curso`, nothing is composed, dialled or sent; one `omitida` row records the
+   * skip. The lookup goes through the scoped client, so another tenant's row is never seen.
+   * A throw here reaches the per-run catch in `correrVencidas`, and the run does not start.
    */
   async function correr(automatizacion: AutomatizacionACorrer, previo?: FalloInesperado): Promise<void> {
     const iniciadaEn = reloj.ahora();
+    const anteriorEnCurso = await prisma.ejecucion.findFirst({
+      where: { automatizacionId: automatizacion.id, estado: 'en-curso' },
+      select: { id: true },
+    });
+    if (anteriorEnCurso !== null) {
+      await prisma.ejecucion.create({
+        data: conTenantInyectado({
+          automatizacionId: automatizacion.id,
+          ...CIERRE_OMITIDA,
+          iniciadaEn,
+          finalizadaEn: iniciadaEn,
+        }),
+        select: { id: true },
+      });
+      // Closed columns only (rule 5).
+      log.warn(
+        { automatizacionId: automatizacion.id, error: CIERRE_OMITIDA.error },
+        'scheduled run skipped: previous run still en-curso',
+      );
+      return;
+    }
     // `tenantId` is never written here: the extension injects the active tenant's.
     const { id } = await prisma.ejecucion.create({
       data: conTenantInyectado({ automatizacionId: automatizacion.id, estado: 'en-curso', iniciadaEn }),
@@ -333,8 +375,9 @@ export function crearPlanificador({
       try {
         await correr(automatizacion, previo);
       } catch (error) {
-        // Only the row writes themselves reach here; the run could not be recorded. A row
-        // whose close failed stays `en-curso` until the next boot sweep (DEC-99).
+        // Only the overlap lookup and the row writes reach here; the run could not be
+        // recorded. A failed lookup starts nothing (DEC-96). A row whose close failed stays
+        // `en-curso` until the next boot sweep (DEC-99) and is skipped as `omitida` meanwhile.
         log.error(
           { automatizacionId: automatizacion.id, error: 'error-interno', nombreError: nombreDeError(error) },
           'scheduled run could not be recorded',

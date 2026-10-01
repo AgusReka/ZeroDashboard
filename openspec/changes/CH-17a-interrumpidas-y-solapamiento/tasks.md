@@ -39,13 +39,13 @@ Chain strategy: pending
 
 ## Slice 2: Overlap and Console
 
-- [ ] 2.1 RED `src/planificador.test.ts`: stuck automation gets two `omitida`/`solapamiento` rows over two ticks (`iniciadaEn = finalizadaEn`, other columns null), `en-curso` row unchanged, no query, notifier not called
-- [ ] 2.2 RED same file: sibling automation runs normally; tenant B's `en-curso` row does not block A; Proxy `findFirst` throw for one automation still lets the sibling run (existing per-run catch)
-- [ ] 2.3 GREEN `src/planificador.ts`: scoped `findFirst` (automatizacionId, `en-curso`) before `ejecucion.create` in `correr()`; if found, create the `omitida` row, `warn`, return
-- [ ] 2.4 RED `src/consola.test.ts` (existing fake DOM): `omitida` renders `Omitida`; `solapamiento` and `interrumpida` messages legible; nulls render `—`; unknown `estado` renders raw (CH-14 6.5 stays green)
-- [ ] 2.5 GREEN `src/consola.ts`: add both `MENSAJES_CORRIDA` entries, `ETIQUETAS_ESTADO = { omitida: 'Omitida' }`, `etiquetaEstado()`
-- [ ] 2.6 Create `docs/bitacora/CH-17a-interrumpidas-y-solapamiento.md` (Spanish, from `docs/bitacora/_plantilla.md` (read-only)): limits no catch-up, single instance (second sweep closes live runs), live-stuck row until next boot, second signal ignored
-- [ ] 2.7 Checkpoint: `TEST_DB_PORT=5434 npm test` green, `npx tsc --noEmit` clean, no `prisma/` diff
+- [x] 2.1 RED `src/planificador.test.ts`: stuck automation gets two `omitida`/`solapamiento` rows over two ticks (`iniciadaEn = finalizadaEn`, other columns null), `en-curso` row unchanged, no query, notifier not called
+- [x] 2.2 RED same file: sibling automation runs normally; tenant B's `en-curso` row does not block A; Proxy `findFirst` throw for one automation still lets the sibling run (existing per-run catch)
+- [x] 2.3 GREEN `src/planificador.ts`: scoped `findFirst` (automatizacionId, `en-curso`) before `ejecucion.create` in `correr()`; if found, create the `omitida` row, `warn`, return
+- [x] 2.4 RED `src/consola.test.ts` (existing fake DOM): `omitida` renders `Omitida`; `solapamiento` and `interrumpida` messages legible; nulls render `—`; unknown `estado` renders raw (CH-14 6.5 stays green)
+- [x] 2.5 GREEN `src/consola.ts`: add both `MENSAJES_CORRIDA` entries, `ETIQUETAS_ESTADO = { omitida: 'Omitida' }`, `etiquetaEstado()`
+- [x] 2.6 Create `docs/bitacora/CH-17a-interrumpidas-y-solapamiento.md` (Spanish, from `docs/bitacora/_plantilla.md` (read-only)): limits no catch-up, single instance (second sweep closes live runs), live-stuck row until next boot, second signal ignored
+- [x] 2.7 Checkpoint: `TEST_DB_PORT=5434 npm test` green, `npx tsc --noEmit` clean, no `prisma/` diff
 - [ ] 2.8 Run `sdd-verify`, then `sdd-archive`
 
 ## Traceability
