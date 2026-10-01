@@ -1734,6 +1734,118 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-95 — CH-17 no recupera disparos perdidos: el catch-up es un límite del artefacto
+
+**Contexto.** El planificador es serial y evalúa la ventana `(anterior, ahora]`. Si estuvo caído o una corrida se alargó, los disparos perdidos o colapsados en un solo veredicto no se recuperan ni dejan marca. Comentarios del código y la bitácora de CH-13 atribuían ese tratamiento a CH-17, pero X4, X5 y X7 no lo piden.
+
+**Opciones.** (a) Fuera de alcance, documentado como límite. (b) Registrar una marca por cada disparo colapsado. (c) Catch-up real tras una caída.
+
+**Decisión.** (a). CH-17 no implementa catch-up ni registra disparos colapsados. Se documenta como límite del artefacto y se corrigen los comentarios del código que lo atribuyen a CH-17.
+
+**Se resigna.** Tras una caída del servicio o una corrida muy larga, los disparos intermedios se pierden sin rastro. Ampliar el motor para cubrirlo contradice la regla 6.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-96 — X4: el solapamiento se detecta con una consulta a la base y se registra como ejecución `omitida`
+
+**Contexto.** En el diseño actual (serial, un proceso) una corrida no puede solaparse consigo misma. X4 solo actúa ante filas `en-curso` que no se cerraron (zombis), paralelismo futuro o varias instancias. El criterio exige que la nueva ejecución no arranque y que "quede registrado".
+
+**Opciones.** Mecanismo: (a) conjunto en memoria. (b) consulta a la base antes de crear la ejecución. (c) índice único parcial `WHERE estado = 'en-curso'`. Registro: (1) `estado = 'omitida'` con `error = 'solapamiento'`. (2) `estado = 'fallo'` con `error = 'solapamiento'`. (3) solo log. Frecuencia: una fila por tick o deduplicada.
+
+**Decisión.** (b) + (1), con una fila `omitida` por cada tick en que la automatización siga trabada. Antes de crear una `Ejecucion`, se busca por el cliente con alcance de tenant una fila `en-curso` de la misma automatización; si existe, no se corre y se escribe una fila `omitida`. `omitida` y `solapamiento` son valores nuevos de los conjuntos cerrados de `estado` y `error`.
+
+**Se resigna.** Hay una ventana de carrera entre la consulta y la creación; es aceptable mientras el tick sea serial. Si CH-18 introduce paralelismo, se reabre y se evalúa el índice único parcial. Una automatización trabada genera una fila por tick hasta que X7 la limpie.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-97 — X5: solo los fallos transitorios de la fase de conexión se reintentan
+
+**Contexto.** X5 pide una política de reintentos con tope. La spec de `email-notification` (CH-14) exige un único intento de envío, sin reintento. Los conjuntos cerrados de categorías de fallo por fase son la base para clasificar.
+
+**Opciones.** Categorías reintentables: solo conexión transitoria, o sumar `tiempo-agotado` de consulta, `error-desconocido` o `error-interno`. Fase de notificación: excluida o reintentable.
+
+**Decisión.** Se reintentan únicamente `host-inalcanzable`, `dns-no-resuelve` y `tiempo-agotado` de la fase de conexión. Nunca se reintentan: credenciales inválidas, base inexistente, permisos, preparación, sintaxis, datos, `no-es-lectura`, `tiempo-agotado` de consulta, `error-desconocido`, `error-interno` ni ningún fallo de la fase de notificación. La spec de `email-notification` se reafirma sin cambios.
+
+**Se resigna.** Un fallo transitorio fuera de esa lista espera al próximo disparo. Reintentar una consulta lenta castigaría la réplica del cliente.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-98 — X5: reintento dentro de la corrida, una fila por corrida con `intentos`, configuración global
+
+**Contexto.** El reintento puede bloquear el tick serial y afectar a otros tenants (X8, CH-18). Los tests existentes usan una conexión a puerto cerrado que clasifica como `host-inalcanzable`.
+
+**Opciones.** Mecánica: (P-A) bucle dentro de la corrida, (P-B) reintento en ticks posteriores, (P-C) sin reintento. Filas: una por corrida con `intentos`, o una por intento. Configuración: variables de entorno globales, columna por automatización o por plantilla.
+
+**Decisión.** P-A, con una sola fila `Ejecucion` por corrida y una columna nullable `intentos`. Tope de 3 intentos totales y pausa fija de 5 segundos, ambos por variable de entorno global (precedente DEC-19). La pausa usa `Reloj.programar` envuelto en una promesa. La política se inyecta en el planificador con un valor por defecto de «sin reintento», para que los tests existentes no cambien. Agotado el tope, la corrida se marca `fallo` con la categoría del último intento.
+
+**Se resigna.** Con una conexión caída, el peor caso bloquea el tick unos 3 × (timeout de conexión + 5 s). Es el costo de P-A y la razón del tope pequeño; el aislamiento entre tenants es CH-18.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-99 — X7: barrido al arrancar sobre todos los tenants, sin re-ejecutar y con arranque aunque falle
+
+**Contexto.** Una corrida interrumpida deja una fila `en-curso` para siempre. El barrido no puede usar SQL crudo (spec `tenant-isolation`, DEC-13). Un tenant dado de baja está congelado (DEC-14).
+
+**Opciones.** Alcance: tenants activos, todos o SQL crudo. Momento: solo al arrancar, o además un reaper por tick. Si el barrido falla: arrancar igual o negarse. Re-ejecución de las interrumpidas: sí o no.
+
+**Decisión.** Antes del primer tick, y recorriendo el contexto de cada tenant, incluidos los dados de baja, se hace un `updateMany` de las filas `en-curso` a `estado = 'fallo'`, `error = 'interrumpida'`, `finalizadaEn` igual a la hora de arranque y `duracionMs`, `filas`, `fase` y `notificacion` nulos. `interrumpida` es un valor nuevo del conjunto cerrado de `error`. Solo al arrancar: no hay reaper por tick. Si el barrido falla, se registra el error y el servicio arranca igual. Las corridas interrumpidas no se re-ejecutan. Se asume una única instancia (DEC-75).
+
+**Se resigna.** Una fila que queda `en-curso` en un proceso vivo (si falla el `update` final) no se limpia hasta el próximo arranque y bloquea la automatización por DEC-96 mientras tanto. Con varias instancias el barrido mataría corridas vivas. Una fila zombi tras un arranque con barrido fallido persiste hasta el siguiente.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-100 — Apagado ordenado con SIGTERM y SIGINT
+
+**Contexto.** No hay manejador de señales: cada redeploy durante una corrida la corta y deja una fila huérfana.
+
+**Opciones.** (a) Agregar un manejador que llame `app.close()`. (b) No agregarlo.
+
+**Decisión.** (a). SIGTERM y SIGINT cierran la aplicación, lo que ya espera a `detener()` del planificador.
+
+**Se resigna.** Reduce pero no elimina los huérfanos: una caída sin señal (por ejemplo `kill -9`) sigue dependiendo del barrido de DEC-99.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-101 — CH-17 se parte en CH-17a (X7 y X4) y CH-17b (X5)
+
+**Contexto.** El pronóstico de CH-17 es de 650 a 850 líneas de código y tests, contra un tope de revisión de 400 por PR.
+
+**Opciones.** (a) Partir en CH-17a y CH-17b. (b) Encadenar 3 o 4 slices. (c) Un solo PR con `size:exception`.
+
+**Decisión.** (a). CH-17a cubre X7 y X4 (DEC-99, DEC-96, DEC-100, DEC-95). CH-17b cubre X5 (DEC-97, DEC-98). Se ejecutan en ese orden, cada uno con su propio ciclo.
+
+**Se resigna.** Si CH-17a supera 400 líneas, se parte en slices dentro del mismo change.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

@@ -71,7 +71,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 
 | ID | Change | Historias |
 |---|---|---|
-| CH-17 | Motor: solapamientos, reintentos, ejecuciones interrumpidas | X4, X5, X7 |
+| CH-17 | Motor: solapamientos, reintentos, ejecuciones interrumpidas. Partido en CH-17a (X7, X4) y CH-17b (X5), ver DEC-101 | X4, X5, X7 |
 | CH-18 | Motor: control de notificaciones duplicadas y aislamiento de fallos entre tenants | X6, X8 |
 | CH-19 | Conectividad definitiva según D-2 | C1, C2, C3 |
 | CH-20 | Auditoría de ejecución de consultas | A5 |
