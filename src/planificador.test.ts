@@ -740,6 +740,89 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     const fila = await prisma.ejecucion.findUniqueOrThrow({ where: { id: viva.id } });
     assert.deepEqual(columnas(fila, 'estado', 'finalizadaEn', 'error'), { estado: 'en-curso', finalizadaEn: null, error: null });
   });
+
+  test('CH-17a 2.1 a stuck automation gets one omitida/solapamiento row per tick and runs or notifies nothing', async () => {
+    const tenantId = await tenant();
+    // A run would reach the live server, read one row and send it: none of that may happen.
+    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch17a-21@example.com' });
+    const viva = await atascada(tenantId, id);
+    const falso = notificadorFalso();
+    const lineas: string[] = [];
+
+    // A clock that moves on every read: equal start and end prove a single read.
+    await tick(EN('09:10:30'), EN('09:11:30'), relojQueAvanza(EN('09:10:30'), 250), { notificador: falso.notificador, lineas });
+    await tick(EN('09:11:30'), EN('09:12:30'), relojQueAvanza(EN('09:11:30'), 250), { notificador: falso.notificador });
+
+    const [enCurso, ...omitidas] = await ejecuciones(id);
+    assert.deepEqual(enCurso, viva, 'the en-curso row is unchanged');
+    const omitida = {
+      tenantId, estado: 'omitida', error: 'solapamiento',
+      duracionMs: null, filas: null, corte: null, fase: null, codigoError: null, notificacion: null,
+    };
+    assert.equal(omitidas.length, 2, 'one row per tick');
+    for (const fila of omitidas) {
+      assert.deepEqual(columnas(fila, ...Object.keys(omitida)), omitida);
+      assert.deepEqual(fila.finalizadaEn, fila.iniciadaEn);
+    }
+    assert.equal(falso.a('ch17a-21@example.com').length, 0);
+    const avisos = lineas.map((l) => JSON.parse(l)).filter((l) => l.automatizacionId === id);
+    assert.deepEqual(avisos.map((l) => columnas(l, 'level', 'msg', 'error')), [
+      { level: 40, msg: 'scheduled run skipped: previous run still en-curso', error: 'solapamiento' },
+    ]);
+
+    // Once the next boot sweep closes the stuck row, its omitida rows block nothing.
+    await crearPlanificador({ prisma: clienteDeBarrido([tenantId]).cliente, zonaHoraria: 'UTC', log: registro() }).barrerInterrumpidas();
+    await tick(EN('09:12:30'), EN('09:13:30'), undefined, { notificador: falso.notificador });
+    const ultima = (await ejecuciones(id)).at(-1);
+    assert.deepEqual(columnas(ultima ?? {}, 'estado', 'notificacion'), { estado: 'ok', notificacion: 'enviada' });
+    assert.equal(falso.a('ch17a-21@example.com').length, 1);
+  });
+
+  test('CH-17a 2.2 overlap is per automation and per tenant, and a failed lookup leaves later siblings running', async () => {
+    // B is created first, so the teardown deletes B's row before the A automation it names.
+    const b = await tenant();
+    const a = await tenant();
+    // Run in this order: the stuck one, the one whose lookup fails below, then the last.
+    const trabada = await automatizacion(a, { creadaEn: '2020-01-01T00:00:00Z' });
+    const hermana = await automatizacion(a, { creadaEn: '2020-01-02T00:00:00Z' });
+    const ultima = await automatizacion(a, { creadaEn: '2020-01-03T00:00:00Z' });
+    await atascada(a, trabada);
+    // An en-curso row in B naming A's automation: only an unscoped lookup could see it.
+    await atascada(b, ultima);
+
+    await tick(EN('09:20:30'), EN('09:21:30'));
+
+    const resultado = async (id: string) => (await ejecuciones(id)).filter((f) => f.tenantId === a).map((f) => f.estado + '/' + f.fase);
+    assert.deepEqual(await resultado(trabada), ['en-curso/null', 'omitida/null']);
+    // The siblings ran their whole pipeline, up to the closed port.
+    assert.deepEqual(await resultado(hermana), ['fallo/conexion']);
+    assert.deepEqual(await resultado(ultima), ['fallo/conexion']);
+
+    // The overlap lookup throws for `hermana` only: the per-run catch records it, the run
+    // does not start, and the sibling after it still runs.
+    const ejecucion = new Proxy(aislado.ejecucion, {
+      get: (destino, prop) =>
+        prop === 'findFirst'
+          ? (args: Parameters<typeof aislado.ejecucion.findFirst>[0]) =>
+              args?.where?.automatizacionId === hermana
+                ? Promise.reject(new Error('base caida secreta'))
+                : aislado.ejecucion.findFirst(args)
+          : Reflect.get(destino, prop),
+    });
+    const cliente = new Proxy(aislado, { get: (d, p) => (p === 'ejecucion' ? ejecucion : Reflect.get(d, p)) });
+    const lineas: string[] = [];
+    await crearPlanificador({ prisma: cliente, zonaHoraria: 'UTC', log: registro(lineas), reloj: relojFijo(EN('09:21:30')) })
+      .ejecutarTick(EN('09:22:30'));
+
+    assert.deepEqual(await resultado(hermana), ['fallo/conexion']);
+    assert.deepEqual(await resultado(ultima), ['fallo/conexion', 'fallo/conexion']);
+    assert.deepEqual(await resultado(trabada), ['en-curso/null', 'omitida/null', 'omitida/null']);
+    const avisos = lineas.map((l) => JSON.parse(l)).filter((l) => l.automatizacionId === hermana);
+    assert.deepEqual(avisos.map((l) => columnas(l, 'msg', 'error', 'nombreError')), [
+      { msg: 'scheduled run could not be recorded', error: 'error-interno', nombreError: 'Error' },
+    ]);
+    assert.ok(!lineas.join('\n').includes('base caida secreta'));
+  });
 });
 
 describe('scheduler timer: start and stop (CH-13 4.7)', () => {

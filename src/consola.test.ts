@@ -906,6 +906,41 @@ describe('the console document, served by the real route', () => {
     assert.ok(!corridas.some((fila) => fila.textContent.includes('null')), 'null never reaches the page');
   });
 
+  /** CH-17a spec `query-console`: an overlap skip and an interrupted run are legible. */
+  test('CH-17a 2.4 the runs view labels omitida and explains solapamiento and interrumpida', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const base = { corte: null, codigoError: null, fase: null, duracionMs: null, filas: null, notificacion: null, iniciadaEn: 'i' };
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', estado: 'omitida', error: 'solapamiento', finalizadaEn: 'i' },
+          { ...base, id: 'e-2', estado: 'fallo', error: 'interrumpida', finalizadaEn: 'arranque' },
+          { ...base, id: 'e-3', estado: 'otro-estado', error: 'otro-error', finalizadaEn: null },
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+
+    const [omitida, interrumpida, desconocida] = filasDe(escenario, 'auto-ejecuciones', 'ejecucion')
+      .map((fila) => fila.hijos.map((celda) => celda.textContent));
+    assert.deepEqual(omitida.slice(0, 6), ['i', 'i', '—', '—', 'Omitida', '—']);
+    assert.match(omitida[6], /^No se ejecutó: la corrida anterior .* seguía en curso\.$/);
+    // A failed status stays as it is; only the error is translated.
+    assert.deepEqual(interrumpida.slice(0, 6), ['i', 'arranque', '—', '—', 'fallo', '—']);
+    assert.match(interrumpida[6], /^La corrida se interrumpió por un reinicio del servicio/);
+    // Values the console does not know still render, raw estado and generic message.
+    assert.deepEqual(desconocida.slice(1, 5), ['—', '—', '—', 'otro-estado']);
+    assert.match(desconocida[6], /no pudo identificar el motivo/);
+    const texto = [...omitida, ...interrumpida, ...desconocida].join('\n');
+    for (const crudo of ['solapamiento', 'interrumpida', 'otro-error', 'null']) {
+      assert.ok(!texto.includes(crudo), crudo);
+    }
+  });
+
   /** Spec "Switching tenant updates the automations view" (T4, DEC-15). */
   test('switching tenant clears the runs and reloads the list for the new tenant only', async () => {
     const escenario = await arrancar([

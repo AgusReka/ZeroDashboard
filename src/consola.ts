@@ -276,7 +276,16 @@ var MENSAJES_CORRIDA = {
   'valores-invalidos': 'Los valores guardados ya no cumplen la declaración actual de la plantilla. No se conectó con el destino.',
   'conexion-no-encontrada': 'La conexión de la automatización ya no existe. No se conectó con el destino.',
   'credencial-ilegible': 'La credencial guardada de la conexión no se pudo descifrar. No se conectó con el destino.',
-  'error-interno': 'La corrida falló por un error interno de la aplicación.'
+  'error-interno': 'La corrida falló por un error interno de la aplicación.',
+  // CH-17a: an overlap skip (DEC-96) and a run closed by the boot sweep (DEC-99).
+  'solapamiento': 'No se ejecutó: la corrida anterior de esta automatización seguía en curso.',
+  'interrumpida': 'La corrida se interrumpió por un reinicio del servicio y no se volvió a ejecutar.'
+};
+
+// CH-17a (DEC-96): a label for the one estado that is not already a plain word. Any
+// other estado is shown as it is, as before.
+var ETIQUETAS_ESTADO = {
+  'omitida': 'Omitida'
 };
 
 // CH-14 (DEC-83): one label per closed notificacion value. Anything else, null
@@ -1220,6 +1229,10 @@ function etiquetaNotificacion(valor) {
   return Object.prototype.hasOwnProperty.call(ETIQUETAS_NOTIFICACION, valor) ? ETIQUETAS_NOTIFICACION[valor] : '—';
 }
 
+function etiquetaEstado(valor) {
+  return Object.prototype.hasOwnProperty.call(ETIQUETAS_ESTADO, valor) ? ETIQUETAS_ESTADO[valor] : String(valor);
+}
+
 async function verEjecuciones(id) {
   ocultarBanner();
   var resultado = await pedirAutomatizacion('/automatizaciones/' + encodeURIComponent(id) + '/ejecuciones');
@@ -1232,7 +1245,7 @@ async function verEjecuciones(id) {
     filas.map(function (fila) {
       var cantidad = textoOpcional(fila.filas) + (fila.corte === 'tope-de-filas' ? ' (cortado en el tope)' : '');
       return [String(fila.iniciadaEn), textoOpcional(fila.finalizadaEn), textoOpcional(fila.duracionMs),
-        cantidad, String(fila.estado), etiquetaNotificacion(fila.notificacion), errorDeCorrida(fila)];
+        cantidad, etiquetaEstado(fila.estado), etiquetaNotificacion(fila.notificacion), errorDeCorrida(fila)];
     }),
     'ejecucion',
     filas.length === 0 ? 'Esta automatización todavía no tiene ejecuciones.'
