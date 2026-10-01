@@ -1241,11 +1241,13 @@ async function verEjecuciones(id) {
   var filas = Array.isArray(resultado.cuerpo.ejecuciones) ? resultado.cuerpo.ejecuciones : [];
   renderizarTabla(
     tablaEjecuciones,
-    ['Inicio', 'Fin', 'Duración (ms)', 'Filas', 'Estado', 'Notificación', 'Error'],
+    // CH-17b: Intentos goes last so every existing column keeps its position (DEC-103).
+    ['Inicio', 'Fin', 'Duración (ms)', 'Filas', 'Estado', 'Notificación', 'Error', 'Intentos'],
     filas.map(function (fila) {
       var cantidad = textoOpcional(fila.filas) + (fila.corte === 'tope-de-filas' ? ' (cortado en el tope)' : '');
       return [String(fila.iniciadaEn), textoOpcional(fila.finalizadaEn), textoOpcional(fila.duracionMs),
-        cantidad, etiquetaEstado(fila.estado), etiquetaNotificacion(fila.notificacion), errorDeCorrida(fila)];
+        cantidad, etiquetaEstado(fila.estado), etiquetaNotificacion(fila.notificacion), errorDeCorrida(fila),
+        textoOpcional(fila.intentos)];
     }),
     'ejecucion',
     filas.length === 0 ? 'Esta automatización todavía no tiene ejecuciones.'

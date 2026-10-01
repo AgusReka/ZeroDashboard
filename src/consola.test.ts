@@ -808,7 +808,8 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(
       corridas[0].hijos.map((celda) => celda.textContent),
       // CH-14: a run with no notificacion (pre-CH-14) shows the placeholder, never "null".
-      ['2026-09-28T06:00:01.000Z', '2026-09-28T06:00:02.000Z', '850', '42', 'ok', '—', ''],
+      // CH-17b: nor intentos, the last column.
+      ['2026-09-28T06:00:01.000Z', '2026-09-28T06:00:02.000Z', '850', '42', 'ok', '—', '', '—'],
     );
     assert.match(corridas[1].textContent, /superó el tiempo máximo de ejecución.*\(SQLSTATE 57014\)/);
     assert.ok(!corridas[1].textContent.includes('tiempo-agotado'), 'the category code is translated');
@@ -939,6 +940,35 @@ describe('the console document, served by the real route', () => {
     for (const crudo of ['solapamiento', 'interrumpida', 'otro-error', 'null']) {
       assert.ok(!texto.includes(crudo), crudo);
     }
+  });
+
+  /** CH-17b spec `query-console` "Attempts are shown, null is a placeholder" (DEC-103). */
+  test('CH-17b 3.3 the runs view shows intentos last; null and absent are the placeholder', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const base = { corte: null, codigoError: null, error: null, fase: 'ejecucion', notificacion: null, iniciadaEn: 'i', finalizadaEn: 'f', duracionMs: 1, filas: 3 };
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', estado: 'ok', intentos: 3 },
+          { ...base, id: 'e-2', estado: 'ok', intentos: 1 },
+          { ...base, id: 'e-3', estado: 'omitida', error: 'solapamiento', fase: null, filas: null, intentos: null },
+          { ...base, id: 'e-4', estado: 'ok' },
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+
+    const encabezados = (escenario.nodos.get('auto-ejecuciones') as Nodo).hijos[0].hijos[0].hijos;
+    assert.deepEqual(encabezados.slice(5).map((celda) => celda.textContent), ['Notificación', 'Error', 'Intentos']);
+    const corridas = filasDe(escenario, 'auto-ejecuciones', 'ejecucion').map((fila) => fila.hijos.map((c) => c.textContent));
+    assert.deepEqual(corridas.map((celdas) => celdas.length), [8, 8, 8, 8]);
+    assert.deepEqual(corridas.map((celdas) => celdas[7]), ['3', '1', '—', '—']);
+    assert.match(corridas[2][6], /^No se ejecutó: la corrida anterior/, 'Error stays in its column');
+    assert.ok(!corridas.flat().some((texto) => texto.includes('null') || texto === 'undefined'));
   });
 
   /** Spec "Switching tenant updates the automations view" (T4, DEC-15). */
