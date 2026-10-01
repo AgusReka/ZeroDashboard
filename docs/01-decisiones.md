@@ -1846,6 +1846,22 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-102 — CH-17a: punto de entrada `arrancar()`, barrido tolerante por tenant, fila `omitida` y salida tras el apagado
+
+**Contexto.** El diseño de CH-17a (`openspec/changes/CH-17a-interrumpidas-y-solapamiento/design.md`) tomó elecciones que DEC-95, DEC-96, DEC-99 y DEC-100 no fijan. `iniciar()` es síncrono y los tests de temporizador de CH-13 dependen de eso; `server.ts` termina el proceso si el arranque rechaza; los tests corren en paralelo contra la misma base.
+
+**Opciones.** Entrada: (a) `arrancar()` asíncrono que barre y luego llama `iniciar()` sin cambios, o (b) volver asíncrono `iniciar()`. Barrido: tolerar el fallo por tenant, o abortar al primer fallo. Fila `omitida`: `finalizadaEn = iniciadaEn` con `duracionMs` nulo, o `duracionMs = 0`. Apagado: salir tras cerrar e ignorar una segunda señal, o forzar la salida con la segunda.
+
+**Decisión.** (a): `Planificador.arrancar()` ejecuta el barrido y después llama a `iniciar()`, que sigue siendo síncrono; el barrido nunca rechaza. El barrido captura y registra el fallo de cada tenant y sigue con los demás, con una única hora de arranque leída al inicio. La fila `omitida` lleva `finalizadaEn = iniciadaEn` y `duracionMs` nulo. El manejador de SIGTERM y SIGINT cierra la aplicación una sola vez, sale con código 0 (1 si el cierre falla) e ignora, registrándola, una segunda señal.
+
+**Se resigna.** Con un fallo de base durante el barrido, algunas filas zombi quedan hasta el próximo arranque (coherente con DEC-99, fail-open). Una segunda señal no permite matar un cierre colgado; eso exige `kill -9`.
+
+**Decidido por:** el usuario, 2026-09-30, no inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

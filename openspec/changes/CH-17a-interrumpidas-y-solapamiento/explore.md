@@ -1,6 +1,6 @@
 # Exploration: CH-17 — Engine: overlaps, retries, interrupted runs (X4, X5, X7)
 
-Status: explore done. Product decisions Q1–Q9 pending (see below). Not ready for proposal.
+Status: explore done. Decisions Q1–Q9 resolved as DEC-95 to DEC-101; CH-17 split into CH-17a (X7, X4) and CH-17b (X5) by DEC-101.
 
 ## Current state
 
