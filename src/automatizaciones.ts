@@ -83,7 +83,8 @@ export function cronValido(cron: string, zona: string): boolean {
  * `desde`; the upper edge is inclusive so a fire exactly at the tick is due. The caller
  * passes `desde = max(window start, creadaEn)`, so an automation never fires for an
  * instant before it existed. At most one verdict comes out per window, however many
- * fires it spans: catch-up and overlap handling belong to CH-17.
+ * fires it spans: missed fires are not caught up (DEC-95, a limit of the artifact), and
+ * overlap is the scheduler's concern (DEC-96).
  *
  * A stored expression that is not standard cron is corruption — creation refuses it —
  * so it fails closed with a throw, which the scheduler records as `error-interno`, rather
