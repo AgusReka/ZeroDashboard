@@ -38,7 +38,7 @@ import { componerSentencia, evaluarVistas } from './plantillas.js';
  * CH-17b adds a bounded retry of the dial alone (X5, DEC-97, DEC-98): a transient
  * connection failure is dialled again after a fixed pause on the injected clock, up to the
  * injected policy's cap, inside the same run and its one row. `intentos` records the dials
- * made (DEC-103).
+ * made (DEC-103), and `detener()` cancels a pending pause (DEC-104).
  *
  * The engine executes the pattern and nothing more (rule 6): there is no new execution
  * surface and no parallelism (CH-18). Missed fires are never caught up and coalesced fires
@@ -105,7 +105,10 @@ export interface Planificador {
   barrerInterrumpidas(): Promise<void>;
   /** Arms the first tick, one second past the next whole minute. A no-op once stopped. */
   iniciar(): void;
-  /** Clears the pending timer and waits for an in-flight tick; nothing is armed after it. */
+  /**
+   * Clears the pending timer and waits for an in-flight tick; nothing is armed after it.
+   * CH-17b (DEC-104): a pending retry pause is cancelled, not waited for.
+   */
   detener(): Promise<void>;
   /** Evaluates the window `(previous tick, ahora]` and runs what is due in it. */
   ejecutarTick(ahora: Date): Promise<void>;
@@ -134,6 +137,7 @@ function esExcepcion(valor: ResultadoCorrida | SalidaNotificacion): valor is Fal
 /**
  * DEC-99: how the boot sweep closes a row a stopped process left `en-curso`. Nothing ran
  * to completion, so every outcome column is null; `finalizadaEn` is set by the sweep.
+ * CH-17b (DEC-103): `intentos` is null too, stated like the other outcome columns.
  */
 const CIERRE_INTERRUMPIDA = {
   estado: 'fallo',
@@ -144,11 +148,13 @@ const CIERRE_INTERRUMPIDA = {
   fase: null,
   codigoError: null,
   notificacion: null,
+  intentos: null,
 } as const;
 
 /**
  * DEC-96, DEC-102: the row a run skipped by an overlap writes. Nothing ran, so every
- * outcome column is null and the row starts and ends at the same instant.
+ * outcome column is null and the row starts and ends at the same instant. CH-17b
+ * (DEC-103): nothing was dialled, so `intentos` is null.
  */
 const CIERRE_OMITIDA = {
   estado: 'omitida',
@@ -159,6 +165,7 @@ const CIERRE_OMITIDA = {
   fase: null,
   codigoError: null,
   notificacion: null,
+  intentos: null,
 } as const;
 
 /** The columns one run reads off its automation. `valores` is re-checked on every run. */
@@ -255,11 +262,11 @@ export function crearPlanificador({
   }
 
   /**
-   * CH-17b (DEC-97, DEC-98): the dial, dialled again after the policy's pause while it
-   * fails with a transient connection category. Only this call repeats: the checks above
-   * ran once and are not re-run. `conteo` is raised before each dial, so a throw mid-loop
-   * still leaves the attempts reached. The loop ends at the cap or on any other outcome;
-   * the last attempt's result is returned.
+   * CH-17b (DEC-97, DEC-98, DEC-104): the dial, dialled again after the policy's pause
+   * while it fails with a transient connection category. Only this call repeats: the
+   * checks above ran once and are not re-run. `conteo` is raised before each dial, so a
+   * throw mid-loop still leaves the attempts reached. The loop ends at the cap, on any
+   * other outcome, or once the planner is stopping; the last attempt's result is returned.
    */
   async function conectarConReintentos(
     automatizacionId: string,
@@ -274,24 +281,39 @@ export function crearPlanificador({
       if (resultado.resultado === 'ok' || !esFalloReintentable(resultado)) {
         return resultado;
       }
-      // The cap is reached: this attempt is the last.
-      if (intentos >= reintentos.intentos) {
+      // The cap is reached, or `detener()` was called while this attempt was dialling.
+      if (intentos >= reintentos.intentos || detenido) {
         return resultado;
       }
       // Closed fields only (rule 5): the attempt number and the category.
       log.info({ automatizacionId, intentos, error: resultado.categoria }, 'scheduled run connection retry');
-      await pausar(reintentos.pausaMs);
+      if (!(await pausar(reintentos.pausaMs))) {
+        // `detener()` cancelled the pause: no further attempt (DEC-104).
+        return resultado;
+      }
     }
   }
 
   /**
-   * CH-17b (DEC-98): the pause between two dials, on the injected clock. It resolves when
-   * the timer fires and nothing cancels it yet. The tick is serial, so at most one pause
-   * is pending.
+   * CH-17b (DEC-98, DEC-104): the pause between two dials, on the injected clock. Resolves
+   * `true` when the timer fires, and `false` at once when `detener()` cancels it or the
+   * planner is already stopped. The tick is serial, so at most one pause is pending.
    */
-  function pausar(ms: number): Promise<void> {
+  function pausar(ms: number): Promise<boolean> {
     return new Promise((resolve) => {
-      reloj.programar(ms, () => resolve());
+      if (detenido) {
+        resolve(false);
+        return;
+      }
+      const cancelarTemporizador = reloj.programar(ms, () => {
+        cancelarPausa = null;
+        resolve(true);
+      });
+      cancelarPausa = () => {
+        cancelarTemporizador();
+        cancelarPausa = null;
+        resolve(false);
+      };
     });
   }
 
@@ -489,6 +511,8 @@ export function crearPlanificador({
   let cancelar: (() => void) | null = null;
   let enCurso: Promise<void> | null = null;
   let detenido = false;
+  // CH-17b: cancels the pending retry pause, if any; separate from the tick's `cancelar`.
+  let cancelarPausa: (() => void) | null = null;
 
   function programarSiguiente(): void {
     if (!detenido) {
@@ -559,10 +583,16 @@ export function crearPlanificador({
     iniciar();
   }
 
+  /**
+   * CH-17b (DEC-104, DEC-106): a pending retry pause is cancelled too, so its run closes
+   * at once with the last attempt's category. The rest of the in-flight tick still runs,
+   * one attempt per remaining due automation and no retry, and is awaited.
+   */
   async function detener(): Promise<void> {
     detenido = true;
     cancelar?.();
     cancelar = null;
+    cancelarPausa?.();
     await enCurso;
   }
 

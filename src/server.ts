@@ -36,11 +36,15 @@ const prisma = extenderConAislamiento(new PrismaClient({ adapter }));
 // Only the configured/not-configured state is logged: no host, port, sender or user.
 const notificador = crearNotificadorSmtp({ timeoutMs: config.smtpTimeoutMs });
 app.log.info({ correo: notificador === null ? 'no-configurado' : 'configurado' }, 'email notifications');
+// CH-17b (DEC-98, DEC-105, DEC-106): the connection retry policy from
+// `CONNECTION_RETRY_ATTEMPTS` and `CONNECTION_RETRY_PAUSE_MS`, already validated by
+// `loadConfig()` above. Only scheduled runs retry; the console paths never do.
 const planificador = crearPlanificador({
   prisma,
   zonaHoraria: config.zonaHoraria,
   log: app.log,
   notificador,
+  reintentos: { intentos: config.connectionRetryAttempts, pausaMs: config.connectionRetryPauseMs },
 });
 app.addHook('onClose', async () => {
   await planificador.detener();

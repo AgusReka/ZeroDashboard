@@ -1082,6 +1082,73 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
       { estado: 'omitida', error: 'solapamiento', intentos: null },
     ]);
   });
+
+  test('CH-17b 2.4 detener during a pause cancels it and closes the row with the last category and count', async () => {
+    const puerto = await puertoLibre();
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, puerto });
+    let ahora = EN('06:50:30');
+    const temporizadores: { ms: number; disparar: () => void; cancelado: boolean }[] = [];
+    const reloj: Reloj = {
+      ahora: () => ahora,
+      programar: (ms, disparar) => {
+        const temporizador = { ms, disparar, cancelado: false };
+        temporizadores.push(temporizador);
+        return () => {
+          temporizador.cancelado = true;
+        };
+      },
+    };
+    const p = crearPlanificador({
+      prisma: clienteDeBarrido([tenantId]).cliente,
+      zonaHoraria: 'UTC',
+      log: registro(),
+      reloj,
+      reintentos: TRES_INTENTOS,
+    });
+    let cerrar: (() => Promise<void>) | undefined;
+
+    try {
+      await conVariable('CONNECTION_TEST_TIMEOUT_MS', '200', async () => {
+        // The timer path: the tick fires from the planner's own timer, as in production.
+        p.iniciar();
+        ahora = EN('06:51:30');
+        temporizadores[0].disparar();
+        // Attempt 1 is refused; attempt 2 meets a listener that never answers.
+        await esperarA(() => temporizadores.length === 2);
+        cerrar = await escuchar(puerto, 'callar');
+        temporizadores[1].disparar();
+        await esperarA(() => temporizadores.length === 3);
+        await p.detener();
+      });
+    } finally {
+      await cerrar?.();
+    }
+
+    // The pending pause is cancelled and nothing is armed after it: no attempt, no tick.
+    assert.deepEqual(temporizadores.map((t) => [t.ms, t.cancelado]), [[31_000, false], [5_000, false], [5_000, true]]);
+    const filas = await ejecuciones(id);
+    assert.deepEqual(filas.map((f) => columnas(f, 'estado', 'fase', 'error', 'intentos', 'notificacion')), [
+      { estado: 'fallo', fase: 'conexion', error: 'tiempo-agotado', intentos: 2, notificacion: null },
+    ]);
+    assert.ok(filas[0].finalizadaEn !== null, 'the row is closed, not left en-curso');
+  });
+
+  test('CH-17b 2.4 the boot sweep closes an en-curso row with intentos null, whatever it held', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId);
+    // The close is the only write of a count, so a live run never holds one; this row does.
+    await prisma.ejecucion.create({
+      data: { tenantId, automatizacionId: id, estado: 'en-curso', iniciadaEn: EN('08:00:00'), intentos: 2 },
+    });
+
+    await crearPlanificador({ prisma: clienteDeBarrido([tenantId]).cliente, zonaHoraria: 'UTC', log: registro() })
+      .barrerInterrumpidas();
+
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'error', 'intentos')), [
+      { estado: 'fallo', error: 'interrumpida', intentos: null },
+    ]);
+  });
 });
 
 describe('scheduler timer: start and stop (CH-13 4.7)', () => {
