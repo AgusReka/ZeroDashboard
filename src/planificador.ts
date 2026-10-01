@@ -30,9 +30,13 @@ import { componerSentencia, evaluarVistas } from './plantillas.js';
  * decides whether to notify, renders the message, sends it once, and closes its row with
  * the outcome in the same single write. The rows are dropped after the render.
  *
+ * CH-17a adds the boot sweep (DEC-99): before the first tick, rows a stopped process left
+ * `en-curso` are closed as `fallo`/`interrumpida` and never re-executed.
+ *
  * The engine executes the pattern and nothing more (rule 6): there is no new execution
- * surface, no retry, no catch-up of missed fires, and no parallelism. Those belong to
- * CH-17 and CH-18.
+ * surface and no parallelism (CH-18), and no retry yet (CH-17b). Missed fires are never
+ * caught up and coalesced fires leave no mark: that is a limit of the artifact (DEC-95),
+ * not pending work.
  */
 
 /** Time, injected so tests control it. `programar` returns the function that cancels. */
@@ -64,6 +68,13 @@ export interface DependenciasPlanificador {
 }
 
 export interface Planificador {
+  /** CH-17a (DEC-102): the boot sweep, then `iniciar()`. Never rejects. */
+  arrancar(): Promise<void>;
+  /**
+   * CH-17a (DEC-99): closes every `en-curso` row of every tenant, deactivated ones
+   * included, as `fallo`/`interrumpida`. Fail-open: it logs and never rejects.
+   */
+  barrerInterrumpidas(): Promise<void>;
   /** Arms the first tick, one second past the next whole minute. A no-op once stopped. */
   iniciar(): void;
   /** Clears the pending timer and waits for an in-flight tick; nothing is armed after it. */
@@ -91,6 +102,21 @@ function nombreDeError(error: unknown): string {
 function esExcepcion(valor: ResultadoCorrida | SalidaNotificacion): valor is FalloInesperado {
   return typeof valor === 'object' && valor !== null && valor.resultado === 'excepcion';
 }
+
+/**
+ * DEC-99: how the boot sweep closes a row a stopped process left `en-curso`. Nothing ran
+ * to completion, so every outcome column is null; `finalizadaEn` is set by the sweep.
+ */
+const CIERRE_INTERRUMPIDA = {
+  estado: 'fallo',
+  error: 'interrumpida',
+  duracionMs: null,
+  filas: null,
+  corte: null,
+  fase: null,
+  codigoError: null,
+  notificacion: null,
+} as const;
 
 /** The columns one run reads off its automation. `valores` is re-checked on every run. */
 interface AutomatizacionACorrer {
@@ -121,7 +147,7 @@ export function crearPlanificador({
   notificador = null,
 }: DependenciasPlanificador): Planificador {
   // The first window opens when the scheduler is built, so nothing that fell due before
-  // the process started is caught up (DEC-75; catch-up is CH-17).
+  // the process started is caught up (DEC-75; no catch-up is an artifact limit, DEC-95).
   let anterior = reloj.ahora();
 
   /**
@@ -307,7 +333,8 @@ export function crearPlanificador({
       try {
         await correr(automatizacion, previo);
       } catch (error) {
-        // Only the row writes themselves reach here; the run could not be recorded.
+        // Only the row writes themselves reach here; the run could not be recorded. A row
+        // whose close failed stays `en-curso` until the next boot sweep (DEC-99).
         log.error(
           { automatizacionId: automatizacion.id, error: 'error-interno', nombreError: nombreDeError(error) },
           'scheduled run could not be recorded',
@@ -364,6 +391,50 @@ export function crearPlanificador({
     }
   }
 
+  /**
+   * DEC-99: before the first tick, close the rows a stopped process left `en-curso`. They
+   * are never re-executed. Every tenant is entered, deactivated ones included: the one
+   * bounded exception to DEC-14, which closes rows and runs nothing. One failing tenant is
+   * logged and the others are still swept (DEC-102); nothing here rejects.
+   */
+  async function barrerInterrumpidas(): Promise<void> {
+    // One boot time for every tenant's rows.
+    const finalizadaEn = reloj.ahora();
+    let cerradas = 0;
+    try {
+      // `Tenant` is not a scoped model: its rows are the only source of tenant ids (rule 2).
+      const tenants = await prisma.tenant.findMany({ select: { id: true, nombre: true }, orderBy: { id: 'asc' } });
+      for (const fila of tenants) {
+        const tenant: TenantActivo = { id: fila.id, nombre: fila.nombre };
+        try {
+          // Awaited inside the callback, so the write starts inside this tenant's context.
+          const { count } = await conTenantActivo(tenant, async () =>
+            await prisma.ejecucion.updateMany({
+              where: { estado: 'en-curso' },
+              data: { ...CIERRE_INTERRUMPIDA, finalizadaEn },
+            }),
+          );
+          cerradas += count;
+        } catch (error) {
+          log.warn(
+            { tenantId: tenant.id, error: 'error-interno', nombreError: nombreDeError(error) },
+            'boot sweep failed for a tenant',
+          );
+        }
+      }
+    } catch (error) {
+      // The tenant list itself could not be read: the service starts anyway (fail-open).
+      log.error({ error: 'error-interno', nombreError: nombreDeError(error) }, 'boot sweep failed');
+      return;
+    }
+    log.info({ cerradas }, 'boot sweep closed interrupted runs');
+  }
+
+  async function arrancar(): Promise<void> {
+    await barrerInterrumpidas();
+    iniciar();
+  }
+
   async function detener(): Promise<void> {
     detenido = true;
     cancelar?.();
@@ -371,5 +442,5 @@ export function crearPlanificador({
     await enCurso;
   }
 
-  return { iniciar, detener, ejecutarTick };
+  return { arrancar, barrerInterrumpidas, iniciar, detener, ejecutarTick };
 }

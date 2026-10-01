@@ -73,7 +73,9 @@ export function exigirTenantActivo(): TenantActivo {
  * `src/planificador.ts`, which has no request to read a header from. The scheduler
  * derives `tenant` only from own-database `Tenant` rows with `activo = true`, never from
  * any externally supplied value (regla 2), and runs one tenant's automations per
- * context. Tests and seeds use it too.
+ * context. Its boot sweep (CH-17a, DEC-99) also enters deactivated tenants, from the same
+ * rows, only to close their `en-curso` runs; it runs nothing there. Tests and seeds use
+ * it too.
  *
  * Queries must start inside `fn`: a Prisma query is a lazy thenable that runs only when
  * awaited, so one returned bare from a non-`async` `fn` runs after this context has been

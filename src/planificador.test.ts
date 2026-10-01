@@ -6,7 +6,7 @@ import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
-import { ErrorSinTenantActivo } from './contexto-tenant.js';
+import { ErrorSinTenantActivo, tenantActivoOpcional } from './contexto-tenant.js';
 import { cifrarCredencial } from './cripto-credencial.js';
 import type { ResultadoEnvio } from './automatizaciones.js';
 import type { Correo } from './correo.js';
@@ -84,6 +84,13 @@ function relojQueAvanza(desde: Date, pasoMs: number): Reloj {
 }
 
 const EN = (hhmmss: string) => new Date(`2021-03-01T${hhmmss}Z`);
+
+/** A silent logger, or, with `lineas`, one that keeps every JSON line pino writes. */
+function registro(lineas?: string[]) {
+  return lineas
+    ? Fastify({ logger: { stream: { write: (linea: string) => void lineas.push(linea) } } }).log
+    : Fastify({ logger: false }).log;
+}
 
 /**
  * CH-14: a fake notifier that keeps every message and answers with `respuesta`. Ticks also
@@ -224,6 +231,42 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     await planificador.ejecutarTick(hasta);
   }
 
+  /**
+   * CH-17a: the client a sweep test hands the planner. `tenant.findMany` is narrowed to
+   * `propios`, because node:test runs files in parallel and a real sweep would close every
+   * other file's `en-curso` rows. Each `ejecucion.updateMany` records the tenant context it
+   * ran in and its count; the one in `fallaEn`'s context throws instead.
+   */
+  function clienteDeBarrido(propios: string[], fallaEn?: string) {
+    const llamadas: { tenantId: string | undefined; cerradas: number }[] = [];
+    const ejecucion = new Proxy(aislado.ejecucion, {
+      get: (destino, prop) =>
+        prop === 'updateMany'
+          ? async (args: Parameters<typeof aislado.ejecucion.updateMany>[0]) => {
+              const tenantId = tenantActivoOpcional()?.id;
+              if (fallaEn !== undefined && tenantId === fallaEn) throw new Error('base caida secreta');
+              const { count } = await aislado.ejecucion.updateMany(args);
+              llamadas.push({ tenantId, cerradas: count });
+              return { count };
+            }
+          : Reflect.get(destino, prop),
+    });
+    const tenantNarrowed = {
+      findMany: (args: Parameters<typeof aislado.tenant.findMany>[0] = {}) =>
+        aislado.tenant.findMany({ ...args, where: { AND: [args.where ?? {}, { id: { in: propios } }] } }),
+    };
+    const cliente = new Proxy(aislado, {
+      get: (destino, prop) =>
+        prop === 'tenant' ? tenantNarrowed : prop === 'ejecucion' ? ejecucion : Reflect.get(destino, prop),
+    });
+    return { cliente, llamadas };
+  }
+
+  /** A row a previous process left `en-curso`. */
+  function atascada(tenantId: string, automatizacionId: string, iniciadaEn = EN('08:00:00')) {
+    return prisma.ejecucion.create({ data: { tenantId, automatizacionId, estado: 'en-curso', iniciadaEn } });
+  }
+
   before(async () => {
     admin = new pg.Client({ ...objetivo });
     await admin.connect();
@@ -268,7 +311,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   test('4.1 a due active automation runs exactly once per tick, whatever the fires in its window', async () => {
     const id = await automatizacion(await tenant());
 
-    // Five fires inside the window, one run: catch-up belongs to CH-17.
+    // Five fires inside the window, one run: no catch-up (DEC-95, a limit of the artifact).
     await tick(EN('10:00:30'), EN('10:05:30'));
     let filas = await ejecuciones(id);
     assert.equal(filas.length, 1);
@@ -602,6 +645,101 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     const [deSiguiente] = await ejecuciones(siguiente);
     assert.deepEqual(columnas(deSiguiente, 'estado', 'notificacion'), { estado: 'ok', notificacion: 'sin-destinatario' });
   });
+
+  test('CH-17a 1.1 the boot sweep closes en-curso rows of active and deactivated tenants as fallo/interrumpida', async () => {
+    const activo = await tenant();
+    const inactivo = await tenant(false);
+    const deActivo = await automatizacion(activo);
+    const deInactivo = await automatizacion(inactivo);
+    await atascada(activo, deActivo);
+    await atascada(inactivo, deInactivo);
+    // Closed rows of every `estado`, with their outcome columns set: the sweep must not touch them.
+    for (const [hora, cierre] of [
+      ['07:00:00', { estado: 'ok', fase: 'ejecucion', filas: 3, notificacion: 'enviada' }],
+      ['07:01:00', { estado: 'fallo', fase: 'conexion', error: 'host-inalcanzable', codigoError: 'ECONNREFUSED' }],
+      ['07:02:00', { estado: 'omitida', error: 'solapamiento' }],
+    ] as const) {
+      await prisma.ejecucion.create({
+        data: { tenantId: activo, automatizacionId: deActivo, iniciadaEn: EN(hora), finalizadaEn: EN(hora), duracionMs: 0, ...cierre },
+      });
+    }
+    const cerradasAntes = (await ejecuciones(deActivo)).filter((f) => f.estado !== 'en-curso');
+    const { cliente } = clienteDeBarrido([activo, inactivo]);
+    // One read when the planner is built, then 09:00:00 is the boot time; a second read
+    // would give 09:00:01.
+    const reloj = relojQueAvanza(EN('08:59:59'), 1_000);
+
+    await crearPlanificador({ prisma: cliente, zonaHoraria: 'UTC', log: registro(), reloj }).barrerInterrumpidas();
+
+    const interrumpida = {
+      estado: 'fallo', error: 'interrumpida', finalizadaEn: EN('09:00:00'),
+      duracionMs: null, filas: null, corte: null, fase: null, codigoError: null, notificacion: null,
+    };
+    for (const id of [deActivo, deInactivo]) {
+      const [barrida] = (await ejecuciones(id)).filter((f) => f.iniciadaEn.getTime() === EN('08:00:00').getTime());
+      assert.deepEqual(columnas(barrida, ...Object.keys(interrumpida)), interrumpida, id);
+    }
+    // Nothing re-executed: no new row, and the closed rows are byte-for-byte unchanged.
+    assert.equal((await ejecuciones(deInactivo)).length, 1);
+    assert.deepEqual((await ejecuciones(deActivo)).filter((f) => f.error !== 'interrumpida'), cerradasAntes);
+  });
+
+  test('CH-17a 1.2 each tenant is swept in its own context, and one failing tenant leaves the other swept', async () => {
+    const a = await tenant();
+    const b = await tenant();
+    const deA = await automatizacion(a);
+    const deB = await automatizacion(b);
+    await atascada(a, deA, EN('08:00:00'));
+    await atascada(a, deA, EN('08:00:01'));
+    await atascada(b, deB);
+    const lineas: string[] = [];
+    const conFallo = clienteDeBarrido([a, b], b);
+
+    await crearPlanificador({ prisma: conFallo.cliente, zonaHoraria: 'UTC', log: registro(lineas) }).barrerInterrumpidas();
+
+    assert.deepEqual(conFallo.llamadas, [{ tenantId: a, cerradas: 2 }]);
+    assert.deepEqual((await ejecuciones(deA)).map((f) => f.error), ['interrumpida', 'interrumpida']);
+    assert.deepEqual((await ejecuciones(deB)).map((f) => f.estado), ['en-curso']);
+    const avisos = lineas.map((l) => JSON.parse(l));
+    assert.deepEqual(
+      avisos.filter((l) => l.tenantId === b).map((l) => columnas(l, 'msg', 'error', 'nombreError')),
+      [{ msg: 'boot sweep failed for a tenant', error: 'error-interno', nombreError: 'Error' }],
+    );
+    assert.deepEqual(avisos.filter((l) => 'cerradas' in l).map((l) => l.cerradas), [2]);
+    assert.ok(!lineas.join('\n').includes('base caida secreta'));
+
+    // Without the failure, B is swept too, in B's context only.
+    const sinFallo = clienteDeBarrido([a, b]);
+    await crearPlanificador({ prisma: sinFallo.cliente, zonaHoraria: 'UTC', log: registro() }).barrerInterrumpidas();
+    const esperadas = [{ tenantId: a, cerradas: 0 }, { tenantId: b, cerradas: 1 }];
+    const orden = (x: { tenantId?: string }, y: { tenantId?: string }) => String(x.tenantId).localeCompare(String(y.tenantId));
+    assert.deepEqual([...sinFallo.llamadas].sort(orden), esperadas.sort(orden));
+
+    // Outside any context the scoped write fails closed. The filter matches nothing, so
+    // even a broken extension could not close another file's rows here.
+    await assert.rejects(
+      aislado.ejecucion.updateMany({ where: { id: 'no-existe' }, data: { estado: 'fallo' } }),
+      ErrorSinTenantActivo,
+    );
+  });
+
+  test('CH-17a 1.3 a row that goes en-curso after the sweep stays en-curso through a later tick', async () => {
+    const tenantId = await tenant();
+    // Never due in the window below, so only the sibling runs in this tenant's tick.
+    const quieta = await automatizacion(tenantId, { cron: '0 0 1 1 *', creadaEn: '2020-01-01T00:00:00Z' });
+    const hermana = await automatizacion(tenantId, { creadaEn: '2020-01-02T00:00:00Z' });
+    const { cliente } = clienteDeBarrido([tenantId]);
+    const p = crearPlanificador({ prisma: cliente, zonaHoraria: 'UTC', log: registro(), reloj: relojFijo(EN('23:00:30')) });
+
+    await p.barrerInterrumpidas();
+    const viva = await atascada(tenantId, quieta, EN('23:00:40'));
+    await p.ejecutarTick(EN('23:01:30'));
+
+    // The tick did run in this tenant: the sibling reached the closed port.
+    assert.deepEqual((await ejecuciones(hermana)).map((f) => f.fase), ['conexion']);
+    const fila = await prisma.ejecucion.findUniqueOrThrow({ where: { id: viva.id } });
+    assert.deepEqual(columnas(fila, 'estado', 'finalizadaEn', 'error'), { estado: 'en-curso', finalizadaEn: null, error: null });
+  });
 });
 
 describe('scheduler timer: start and stop (CH-13 4.7)', () => {
@@ -639,8 +777,8 @@ describe('scheduler timer: start and stop (CH-13 4.7)', () => {
 
   const vuelta = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-  function planificador(prisma: PrismaAislado, reloj: Reloj) {
-    return crearPlanificador({ prisma, zonaHoraria: 'UTC', log: Fastify({ logger: false }).log, reloj });
+  function planificador(prisma: PrismaAislado, reloj: Reloj, lineas?: string[]) {
+    return crearPlanificador({ prisma, zonaHoraria: 'UTC', log: registro(lineas), reloj });
   }
 
   test('4.7 iniciar aligns the timer to the next whole minute plus one second', () => {
@@ -693,5 +831,47 @@ describe('scheduler timer: start and stop (CH-13 4.7)', () => {
     assert.equal(temporizadores[1].cancelado, false);
     await p.detener();
     assert.equal(temporizadores[1].cancelado, true);
+  });
+
+  test('CH-17a 1.2 a sweep whose tenant list fails resolves and logs closed fields only', async () => {
+    const cliente = clienteControlado();
+    const lineas: string[] = [];
+    const barrido = planificador(cliente.prisma, relojManual().reloj, lineas).barrerInterrumpidas();
+    cliente.fallar(new Error('base caida secreta'));
+    await barrido;
+    const fallos = lineas.map((l) => JSON.parse(l)).filter((l) => l.msg === 'boot sweep failed');
+    assert.deepEqual(fallos.map((l) => [l.error, l.nombreError]), [['error-interno', 'Error']]);
+    assert.ok(!lineas.join('\n').includes('base caida secreta'));
+  });
+
+  test('CH-17a 1.3 arrancar arms the first tick only once the sweep has resolved', async () => {
+    const { reloj, temporizadores } = relojManual();
+    const cliente = clienteControlado();
+    const arranque = planificador(cliente.prisma, reloj).arrancar();
+    await vuelta();
+    assert.equal(temporizadores.length, 0, 'the sweep is still reading tenants');
+    cliente.responder();
+    await arranque;
+    assert.deepEqual(temporizadores.map((t) => t.ms), [30_750]);
+  });
+
+  test('CH-17a 1.3 a failed sweep still arms the first tick', async () => {
+    const { reloj, temporizadores } = relojManual();
+    const cliente = clienteControlado();
+    const arranque = planificador(cliente.prisma, reloj).arrancar();
+    cliente.fallar(new Error('base caida'));
+    await arranque;
+    assert.deepEqual(temporizadores.map((t) => t.ms), [30_750]);
+  });
+
+  test('CH-17a 1.3 detener during the sweep leaves no timer armed', async () => {
+    const { reloj, temporizadores } = relojManual();
+    const cliente = clienteControlado();
+    const p = planificador(cliente.prisma, reloj);
+    const arranque = p.arrancar();
+    await p.detener();
+    cliente.responder();
+    await arranque;
+    assert.equal(temporizadores.length, 0);
   });
 });
