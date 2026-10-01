@@ -73,11 +73,12 @@ registerPlantillaPruebaRoute(app, prisma);
 // is accepted only in the zone the scheduler will read it in.
 registerAutomatizacionRoutes(app, prisma, config.zonaHoraria);
 
+// CH-17a (DEC-99, DEC-102): `arrancar` sweeps the rows a stopped process left `en-curso`,
+// then arms the first tick. HTTP never writes `Ejecucion`, so serving during the sweep is
+// safe; the sweep never rejects, so a failed one does not reach the `.catch` below.
 app
   .listen({ port: config.port, host: '0.0.0.0' })
-  .then(() => {
-    planificador.iniciar();
-  })
+  .then(() => planificador.arrancar())
   .catch((error: unknown) => {
     app.log.error(error);
     process.exit(1);

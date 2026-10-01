@@ -27,15 +27,15 @@ Chain strategy: pending
 
 ## Slice 1: Sweep and Shutdown
 
-- [ ] 1.1 RED `src/planificador.test.ts`: test-only Proxy narrows `tenant.findMany` to own tenants; active and deactivated tenants swept to `fallo`/`interrumpida`, `finalizadaEn` = fake boot time, other columns null; closed rows unchanged; swept automation gets no new row (spec "Interrupted runs are not re-executed")
-- [ ] 1.2 RED same file: one tenant's `updateMany` throwing still sweeps the other; failed `tenant.findMany` resolves and logs; each call runs inside a tenant context; `aislado.ejecucion.updateMany` outside a context throws `ErrorSinTenantActivo`
-- [ ] 1.3 RED same file (`relojManual`, `clienteControlado`): `arrancar` arms no timer until the sweep resolves; a failed sweep still arms; `detener()` during the sweep leaves no timer; a row created after the sweep is not reaped
-- [ ] 1.4 GREEN `src/planificador.ts`: add `barrerInterrumpidas()` (one `reloj.ahora()`, no `activo` filter, `conTenantActivo` + `async () => await prisma.ejecucion.updateMany`, per-tenant try/catch, logs `{ cerradas }`) and `arrancar()`; `iniciar()` unchanged
-- [ ] 1.5 RED `src/apagado.test.ts` (new, `EventEmitter` as process): SIGTERM and SIGINT call `cerrar` once, even across two signals, then `salir(0)`; a rejection gives `salir(1)`; a real Fastify app with `onClose` calling `detener()` cancels the timer
-- [ ] 1.6 GREEN `src/apagado.ts` (new): `registrarApagado` with `on`, memoized close promise, ignored and logged second signal
-- [ ] 1.7 `src/server.ts`: call `registrarApagado` before `listen`; replace `iniciar()` with `arrancar()` in the `listen` callback
-- [ ] 1.8 Comments only: fix DEC-95 attribution in `src/planificador.ts` (lines 33-35, 124, `correrVencidas` catch), `src/automatizaciones.ts` (line 86), `src/contexto-tenant.ts` (sweep enters deactivated tenants), `src/planificador.test.ts` (line 271)
-- [ ] 1.9 Checkpoint: `TEST_DB_PORT=5434 npm test` green, `npx tsc --noEmit` clean, existing 4.7 timer tests unmodified
+- [x] 1.1 RED `src/planificador.test.ts`: test-only Proxy narrows `tenant.findMany` to own tenants; active and deactivated tenants swept to `fallo`/`interrumpida`, `finalizadaEn` = fake boot time, other columns null; closed rows unchanged; swept automation gets no new row (spec "Interrupted runs are not re-executed")
+- [x] 1.2 RED same file: one tenant's `updateMany` throwing still sweeps the other; failed `tenant.findMany` resolves and logs; each call runs inside a tenant context; `aislado.ejecucion.updateMany` outside a context throws `ErrorSinTenantActivo`
+- [x] 1.3 RED same file (`relojManual`, `clienteControlado`): `arrancar` arms no timer until the sweep resolves; a failed sweep still arms; `detener()` during the sweep leaves no timer; a row created after the sweep is not reaped
+- [x] 1.4 GREEN `src/planificador.ts`: add `barrerInterrumpidas()` (one `reloj.ahora()`, no `activo` filter, `conTenantActivo` + `async () => await prisma.ejecucion.updateMany`, per-tenant try/catch, logs `{ cerradas }`) and `arrancar()`; `iniciar()` unchanged
+- [x] 1.5 RED `src/apagado.test.ts` (new, `EventEmitter` as process): SIGTERM and SIGINT call `cerrar` once, even across two signals, then `salir(0)`; a rejection gives `salir(1)`; a real Fastify app with `onClose` calling `detener()` cancels the timer
+- [x] 1.6 GREEN `src/apagado.ts` (new): `registrarApagado` with `on`, memoized close promise, ignored and logged second signal
+- [x] 1.7 `src/server.ts`: call `registrarApagado` before `listen`; replace `iniciar()` with `arrancar()` in the `listen` callback
+- [x] 1.8 Comments only: fix DEC-95 attribution in `src/planificador.ts` (lines 33-35, 124, `correrVencidas` catch), `src/automatizaciones.ts` (line 86), `src/contexto-tenant.ts` (sweep enters deactivated tenants), `src/planificador.test.ts` (line 271)
+- [x] 1.9 Checkpoint: `TEST_DB_PORT=5434 npm test` green, `npx tsc --noEmit` clean, existing 4.7 timer tests unmodified
 
 ## Slice 2: Overlap and Console
 
