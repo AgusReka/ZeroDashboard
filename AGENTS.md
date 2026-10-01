@@ -35,4 +35,4 @@ El anti-alcance descrito en la sección 6 de `docs/00-contexto.md` (y detallado 
 
 ## Compuertas abiertas
 
-Hay cuatro compuertas abiertas registradas en `docs/01-decisiones.md`: **D-1, D-2, D-4, D-5**. Ningún change de R2 en adelante se implementa sin que estén cerradas.
+Las compuertas D-1, D-2, D-4 y D-5 están cerradas (DEC-93, DEC-94, DEC-25 y DEC-26 en `docs/01-decisiones.md`). Queda abierta D-6 (declaración de uso de asistentes de IA), que no bloquea el código.
