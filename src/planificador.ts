@@ -4,6 +4,7 @@ import {
   cierreConNotificacion,
   cierreDeResultado,
   decidirNotificacion,
+  esFalloReintentable,
   estaVencida,
   type FalloInesperado,
   type ResultadoCorrida,
@@ -11,7 +12,7 @@ import {
 } from './automatizaciones.js';
 import { loadConfig } from './config.js';
 import { destinoDeConexion } from './conexion-destino.js';
-import { ejecutarConsulta } from './consulta-ejecucion.js';
+import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from './consulta-ejecucion.js';
 import { conTenantActivo, type TenantActivo } from './contexto-tenant.js';
 import { componerCorreo } from './correo.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
@@ -34,10 +35,14 @@ import { componerSentencia, evaluarVistas } from './plantillas.js';
  * `en-curso` are closed as `fallo`/`interrumpida` and never re-executed. It also adds the
  * overlap check (DEC-96): an automation with a run still `en-curso` is skipped as `omitida`.
  *
+ * CH-17b adds a bounded retry of the dial alone (X5, DEC-97, DEC-98): a transient
+ * connection failure is dialled again after a fixed pause on the injected clock, up to the
+ * injected policy's cap, inside the same run and its one row. `intentos` records the dials
+ * made (DEC-103).
+ *
  * The engine executes the pattern and nothing more (rule 6): there is no new execution
- * surface and no parallelism (CH-18), and no retry yet (CH-17b). Missed fires are never
- * caught up and coalesced fires leave no mark: that is a limit of the artifact (DEC-95),
- * not pending work.
+ * surface and no parallelism (CH-18). Missed fires are never caught up and coalesced fires
+ * leave no mark: that is a limit of the artifact (DEC-95), not pending work.
  */
 
 /** Time, injected so tests control it. `programar` returns the function that cancels. */
@@ -66,6 +71,28 @@ export interface DependenciasPlanificador {
    * a run with rows and a recipient then records `no-configurada`.
    */
   notificador?: Notificador | null;
+  /** CH-17b: the connection retry policy (DEC-98). Absent means `SIN_REINTENTOS`. */
+  reintentos?: PoliticaReintentos;
+}
+
+/**
+ * CH-17b (DEC-98, DEC-106): how many connection attempts one run makes in total, and the
+ * fixed pause between two of them. `intentos: 1` is no retry.
+ */
+export interface PoliticaReintentos {
+  intentos: number;
+  pausaMs: number;
+}
+
+/** The default: one attempt and no pause, so a planner built without a policy never retries. */
+export const SIN_REINTENTOS: PoliticaReintentos = { intentos: 1, pausaMs: 0 };
+
+/**
+ * The dials one run has made, raised before each one (DEC-103). `null` until the first,
+ * so a run refused or broken before dialling records no count.
+ */
+interface ConteoIntentos {
+  intentos: number | null;
 }
 
 export interface Planificador {
@@ -161,6 +188,7 @@ export function crearPlanificador({
   log,
   reloj = relojDelSistema,
   notificador = null,
+  reintentos = SIN_REINTENTOS,
 }: DependenciasPlanificador): Planificador {
   // The first window opens when the scheduler is built, so nothing that fell due before
   // the process started is caught up (DEC-75; no catch-up is an artifact limit, DEC-95).
@@ -174,6 +202,7 @@ export function crearPlanificador({
   async function resultadoDeCorrida(
     automatizacion: AutomatizacionACorrer,
     plantilla: PlantillaACorrer,
+    conteo: ConteoIntentos,
   ): Promise<ResultadoCorrida> {
     // DEC-71 applies to scheduled runs as well: only this connection's saved verdicts count.
     const filas = await prisma.vistaCanonica.findMany({
@@ -208,16 +237,61 @@ export function crearPlanificador({
     // One page of the existing row ceiling (DEC-19): no new budget. The rows are counted
     // by `cierreDeResultado`, rendered by the notify step, and then dropped (D-1 leaning).
     const topeFilas = loadConfig().maxFilasPorConsulta;
-    return ejecutarConsulta({
-      host: destino.host,
-      port: destino.port,
-      database: destino.database,
-      user: destino.user,
-      password: destino.password,
-      sentencia: preparada.valor,
-      limite: topeFilas,
-      desplazamiento: 0,
-      topeFilas,
+    return conectarConReintentos(
+      automatizacion.id,
+      {
+        host: destino.host,
+        port: destino.port,
+        database: destino.database,
+        user: destino.user,
+        password: destino.password,
+        sentencia: preparada.valor,
+        limite: topeFilas,
+        desplazamiento: 0,
+        topeFilas,
+      },
+      conteo,
+    );
+  }
+
+  /**
+   * CH-17b (DEC-97, DEC-98): the dial, dialled again after the policy's pause while it
+   * fails with a transient connection category. Only this call repeats: the checks above
+   * ran once and are not re-run. `conteo` is raised before each dial, so a throw mid-loop
+   * still leaves the attempts reached. The loop ends at the cap or on any other outcome;
+   * the last attempt's result is returned.
+   */
+  async function conectarConReintentos(
+    automatizacionId: string,
+    peticion: PeticionEjecucion,
+    conteo: ConteoIntentos,
+  ): Promise<ResultadoEjecucion> {
+    for (;;) {
+      const intentos = (conteo.intentos ?? 0) + 1;
+      conteo.intentos = intentos;
+      const resultado = await ejecutarConsulta(peticion);
+      // Success, or a failure DEC-97 does not retry: this attempt is the last.
+      if (resultado.resultado === 'ok' || !esFalloReintentable(resultado)) {
+        return resultado;
+      }
+      // The cap is reached: this attempt is the last.
+      if (intentos >= reintentos.intentos) {
+        return resultado;
+      }
+      // Closed fields only (rule 5): the attempt number and the category.
+      log.info({ automatizacionId, intentos, error: resultado.categoria }, 'scheduled run connection retry');
+      await pausar(reintentos.pausaMs);
+    }
+  }
+
+  /**
+   * CH-17b (DEC-98): the pause between two dials, on the injected clock. It resolves when
+   * the timer fires and nothing cancels it yet. The tick is serial, so at most one pause
+   * is pending.
+   */
+  function pausar(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      reloj.programar(ms, () => resolve());
     });
   }
 
@@ -298,6 +372,7 @@ export function crearPlanificador({
     });
     let resultado: ResultadoCorrida;
     let plantilla: PlantillaACorrer | null = null;
+    const conteo: ConteoIntentos = { intentos: null };
     if (previo !== undefined) {
       resultado = previo;
     } else {
@@ -308,7 +383,7 @@ export function crearPlanificador({
           where: { id: automatizacion.plantillaId },
           select: { sql: true, parametros: true, entidades: true, nombre: true, automatizacion: true },
         });
-        resultado = await resultadoDeCorrida(automatizacion, plantilla);
+        resultado = await resultadoDeCorrida(automatizacion, plantilla, conteo);
       } catch (error) {
         resultado = { resultado: 'excepcion', error };
       }
@@ -319,7 +394,12 @@ export function crearPlanificador({
     const finalizadaEn = reloj.ahora();
     await prisma.ejecucion.update({
       where: { id },
-      data: { ...cierre, finalizadaEn, duracionMs: finalizadaEn.getTime() - iniciadaEn.getTime() },
+      data: {
+        ...cierre,
+        intentos: conteo.intentos,
+        finalizadaEn,
+        duracionMs: finalizadaEn.getTime() - iniciadaEn.getTime(),
+      },
     });
     if (cierre.estado === 'fallo') {
       // The throw, if any, from the pipeline or from the notify step: only its name is logged.
@@ -331,6 +411,7 @@ export function crearPlanificador({
           fase: cierre.fase,
           error: cierre.error,
           codigoError: cierre.codigoError,
+          intentos: conteo.intentos,
           ...(excepcion ? { nombreError: nombreDeError(excepcion.error) } : {}),
         },
         'scheduled run failed',

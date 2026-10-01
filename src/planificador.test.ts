@@ -11,7 +11,7 @@ import { cifrarCredencial } from './cripto-credencial.js';
 import type { ResultadoEnvio } from './automatizaciones.js';
 import type { Correo } from './correo.js';
 import { notificadorDesdeTransporte, type Notificador } from './notificador.js';
-import { crearPlanificador, type Reloj } from './planificador.js';
+import { crearPlanificador, type PoliticaReintentos, type Reloj } from './planificador.js';
 
 /**
  * CH-13 units 4a and 4b: scheduler ticks against a live PostgreSQL (tasks 4.1–4.6), skipped
@@ -152,11 +152,23 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   /**
    * A connection with a legible credential and an approved `producto` view: on a closed
-   * port, or, with `lector`, on the live server as the read-only role.
+   * port, or, with `lector`, on the live server as the read-only role. CH-17b: with
+   * `puerto`, the role dials `127.0.0.1:puerto` instead, where a test may start a listener;
+   * `clave` replaces the role's password.
    */
-  async function conexion(tenantId: string, lector = false, vistaSql = 'SELECT 1 AS id'): Promise<string> {
+  async function conexion(
+    tenantId: string,
+    lector = false,
+    vistaSql = 'SELECT 1 AS id',
+    { puerto, clave = CLAVE_LECTOR }: { puerto?: number; clave?: string } = {},
+  ): Promise<string> {
     const destino = lector
-      ? { host: objetivo.host, puerto: objetivo.port, baseDeDatos: objetivo.database, usuarioDb: ROL_LECTOR }
+      ? {
+          host: puerto === undefined ? objetivo.host : '127.0.0.1',
+          puerto: puerto ?? objetivo.port,
+          baseDeDatos: objetivo.database,
+          usuarioDb: ROL_LECTOR,
+        }
       : { host: '127.0.0.1', puerto: 1, baseDeDatos: 'nadie', usuarioDb: 'nadie' };
     const { id } = await prisma.conexion.create({
       data: {
@@ -164,7 +176,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
         nombre: `${marca} conexion`,
         motor: 'postgres',
         ...destino,
-        credencial: cifrarCredencial(lector ? CLAVE_LECTOR : 'nunca-se-usa'),
+        credencial: cifrarCredencial(lector ? clave : 'nunca-se-usa'),
       },
     });
     await prisma.vistaCanonica.create({
@@ -183,10 +195,16 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     /** CH-14: the `producto` view's body, so a run can return 0 rows or a marker cell. */
     vistaSql?: string;
     destinatario?: string;
+    /** CH-17b: see `conexion`. */
+    puerto?: number;
+    clave?: string;
   }
 
   async function automatizacion(tenantId: string, opciones: OpcionesAutomatizacion = {}) {
-    const conexionId = await conexion(tenantId, opciones.lector, opciones.vistaSql);
+    const conexionId = await conexion(tenantId, opciones.lector, opciones.vistaSql, {
+      puerto: opciones.puerto,
+      clave: opciones.clave,
+    });
     const fila = await prisma.automatizacion.create({
       data: {
         tenantId,
@@ -266,6 +284,104 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   /** A row a previous process left `en-curso`. */
   function atascada(tenantId: string, automatizacionId: string, iniciadaEn = EN('08:00:00')) {
     return prisma.ejecucion.create({ data: { tenantId, automatizacionId, estado: 'en-curso', iniciadaEn } });
+  }
+
+  /** CH-17b: the deployment default (DEC-98): three attempts in total, 5000 ms apart. */
+  const TRES_INTENTOS: PoliticaReintentos = { intentos: 3, pausaMs: 5_000 };
+
+  /**
+   * CH-17b: a fixed clock that records the milliseconds of every timer the planner asks
+   * for. `alPausar` gets the timer's 1-based number and decides when it fires; by default
+   * on the next turn, so a retry loop runs to its end. Nothing in these tests cancels.
+   */
+  function relojDePausas(
+    ahora: Date,
+    alPausar: (n: number, disparar: () => void) => void = (_, disparar) => void setImmediate(disparar),
+  ) {
+    const pausas: number[] = [];
+    const reloj: Reloj = {
+      ahora: () => ahora,
+      programar: (ms, disparar) => {
+        pausas.push(ms);
+        alPausar(pausas.length, disparar);
+        return () => {};
+      },
+    };
+    return { reloj, pausas };
+  }
+
+  /**
+   * CH-17b: one tick over `propios` tenants only, so the due automations of earlier tests
+   * and other files never dial, pause, or consume the fake clock's timers.
+   */
+  async function tickDe(
+    propios: string[],
+    hasta: Date,
+    reloj: Reloj,
+    reintentos?: PoliticaReintentos,
+    extra: { notificador?: Notificador; lineas?: string[] } = {},
+  ): Promise<void> {
+    await crearPlanificador({
+      prisma: clienteDeBarrido(propios).cliente,
+      zonaHoraria: 'UTC',
+      log: registro(extra.lineas),
+      reloj,
+      ...(reintentos === undefined ? {} : { reintentos }),
+      ...(extra.notificador === undefined ? {} : { notificador: extra.notificador }),
+    }).ejecutarTick(hasta);
+  }
+
+  /** CH-17b: a local port nothing listens on right now, so a dial to it is refused. */
+  async function puertoLibre(): Promise<number> {
+    const servidor = net.createServer();
+    await new Promise<void>((resolve) => servidor.listen(0, '127.0.0.1', resolve));
+    const { port } = servidor.address() as net.AddressInfo;
+    await new Promise<void>((resolve) => servidor.close(() => resolve()));
+    return port;
+  }
+
+  /**
+   * CH-17b: a listener on `puerto` that either forwards every socket to the live server, so
+   * a dial there connects, or accepts it and never answers, so a dial there runs out of
+   * time. Returns the function that closes it and every socket it holds.
+   */
+  async function escuchar(puerto: number, modo: 'reenviar' | 'callar'): Promise<() => Promise<void>> {
+    const sockets = new Set<net.Socket>();
+    const servidor = net.createServer((entrante) => {
+      sockets.add(entrante);
+      entrante.on('error', () => {});
+      if (modo === 'reenviar') {
+        const saliente = net.connect({ host: objetivo.host, port: objetivo.port });
+        sockets.add(saliente);
+        saliente.on('error', () => entrante.destroy());
+        entrante.pipe(saliente).pipe(entrante);
+      }
+    });
+    await new Promise<void>((resolve) => servidor.listen(puerto, '127.0.0.1', resolve));
+    return async () => {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => servidor.close(() => resolve()));
+    };
+  }
+
+  /** CH-17b: waits until `listo()` holds, for a run that is parked in a pause. */
+  async function esperarA(listo: () => boolean): Promise<void> {
+    for (let vuelta = 0; !listo(); vuelta++) {
+      if (vuelta === 500) throw new Error('esperarA: the condition never held');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  /** CH-17b: sets one environment variable for the length of `cuerpo`, then restores it. */
+  async function conVariable(nombre: string, valor: string, cuerpo: () => Promise<void>): Promise<void> {
+    const previo = process.env[nombre];
+    process.env[nombre] = valor;
+    try {
+      await cuerpo();
+    } finally {
+      if (previo === undefined) delete process.env[nombre];
+      else process.env[nombre] = previo;
+    }
   }
 
   before(async () => {
@@ -823,6 +939,148 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
       { msg: 'scheduled run could not be recorded', error: 'error-interno', nombreError: 'Error' },
     ]);
     assert.ok(!lineas.join('\n').includes('base caida secreta'));
+  });
+
+  test('CH-17b 2.1 retry off dials once; a cap of 3 on a closed port pauses twice and closes one row', async () => {
+    const tenantId = await tenant();
+    const exito = await automatizacion(tenantId, { lector: true, creadaEn: '2020-01-01T00:00:00Z' });
+    const cerrada = await automatizacion(tenantId, { creadaEn: '2020-01-02T00:00:00Z' });
+
+    // No policy: this clock throws on any timer, so a pause would close the run error-interno.
+    await tickDe([tenantId], EN('06:01:30'), relojFijo(EN('06:00:30')));
+    const { reloj, pausas } = relojDePausas(EN('06:01:30'));
+    const lineas: string[] = [];
+    await tickDe([tenantId], EN('06:02:30'), reloj, TRES_INTENTOS, { lineas });
+
+    const resultado = async (id: string) =>
+      (await ejecuciones(id)).map((f) => columnas(f, 'estado', 'fase', 'error', 'intentos', 'notificacion'));
+    const ok = { estado: 'ok', fase: 'ejecucion', error: null, intentos: 1, notificacion: 'sin-destinatario' };
+    // A first-try connection counts one attempt, with retry off or on (DEC-103).
+    assert.deepEqual(await resultado(exito), [ok, ok]);
+    assert.deepEqual(await resultado(cerrada), [
+      { estado: 'fallo', fase: 'conexion', error: 'host-inalcanzable', intentos: 1, notificacion: null },
+      { estado: 'fallo', fase: 'conexion', error: 'host-inalcanzable', intentos: 3, notificacion: null },
+    ]);
+    // Two pauses of the policy's length; a fourth dial would have needed a third one.
+    assert.deepEqual(pausas, [5_000, 5_000]);
+    const avisos = lineas.map((l) => JSON.parse(l)).filter((l) => l.automatizacionId === cerrada);
+    assert.deepEqual(avisos.map((l) => columnas(l, 'level', 'msg', 'intentos', 'error')), [
+      { level: 30, msg: 'scheduled run connection retry', intentos: 1, error: 'host-inalcanzable' },
+      { level: 30, msg: 'scheduled run connection retry', intentos: 2, error: 'host-inalcanzable' },
+      { level: 40, msg: 'scheduled run failed', intentos: 3, error: 'host-inalcanzable' },
+    ]);
+  });
+
+  test('CH-17b 2.2 a refused first attempt, then a connection, closes one ok row with intentos 2', async () => {
+    const puerto = await puertoLibre();
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, puerto });
+    let cerrar: (() => Promise<void>) | undefined;
+    // Attempt 1 is refused; the pause starts a forwarder to the live server on that port.
+    const { reloj, pausas } = relojDePausas(EN('06:10:30'), (_, disparar) => {
+      void escuchar(puerto, 'reenviar').then((c) => {
+        cerrar = c;
+        disparar();
+      });
+    });
+
+    try {
+      await tickDe([tenantId], EN('06:11:30'), reloj, TRES_INTENTOS);
+    } finally {
+      await cerrar?.();
+    }
+
+    assert.deepEqual(pausas, [5_000]);
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'fase', 'error', 'filas', 'intentos')), [
+      { estado: 'ok', fase: 'ejecucion', error: null, filas: 1, intentos: 2 },
+    ]);
+  });
+
+  test('CH-17b 2.2 at the cap the row carries the last attempt category: refused twice, then timed out', async () => {
+    const puerto = await puertoLibre();
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, puerto });
+    let cerrar: (() => Promise<void>) | undefined;
+    // Before attempt 3, a listener that accepts the socket and never answers.
+    const { reloj, pausas } = relojDePausas(EN('06:20:30'), (n, disparar) => {
+      if (n === 1) {
+        setImmediate(disparar);
+        return;
+      }
+      void escuchar(puerto, 'callar').then((c) => {
+        cerrar = c;
+        disparar();
+      });
+    });
+
+    try {
+      await conVariable('CONNECTION_TEST_TIMEOUT_MS', '200', () =>
+        tickDe([tenantId], EN('06:21:30'), reloj, TRES_INTENTOS),
+      );
+    } finally {
+      await cerrar?.();
+    }
+
+    assert.deepEqual(pausas, [5_000, 5_000]);
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'fase', 'error', 'intentos')), [
+      { estado: 'fallo', fase: 'conexion', error: 'tiempo-agotado', intentos: 3 },
+    ]);
+  });
+
+  test('CH-17b 2.3 wrong credentials, a query-phase timeout and a failed send dial once; a gate refusal never', async () => {
+    const tenantId = await tenant();
+    const credenciales = await automatizacion(tenantId, { lector: true, clave: 'clave-equivocada', creadaEn: '2020-01-01T00:00:00Z' });
+    const lenta = await automatizacion(tenantId, { lector: true, vistaSql: 'SELECT pg_sleep(2) AS id', creadaEn: '2020-01-02T00:00:00Z' });
+    const envio = await automatizacion(tenantId, { lector: true, destinatario: 'ch17b-23@example.com', creadaEn: '2020-01-03T00:00:00Z' });
+    const compuerta = await automatizacion(tenantId, { vista: false, creadaEn: '2020-01-04T00:00:00Z' });
+    const falso = notificadorFalso(async () => ({ resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550' }));
+    const { reloj, pausas } = relojDePausas(EN('06:30:30'));
+
+    await conVariable('QUERY_TIMEOUT_MS', '100', () =>
+      tickDe([tenantId], EN('06:31:30'), reloj, TRES_INTENTOS, { notificador: falso.notificador }),
+    );
+
+    assert.deepEqual(pausas, [], 'no failure here earns a pause');
+    const esperado: [string, Record<string, unknown>][] = [
+      [credenciales, { estado: 'fallo', fase: 'conexion', error: 'credenciales-invalidas', intentos: 1 }],
+      [lenta, { estado: 'fallo', fase: 'ejecucion', error: 'tiempo-agotado', intentos: 1 }],
+      [envio, { estado: 'fallo', fase: 'notificacion', error: 'envio-rechazado', intentos: 1 }],
+      // Refused before any dial: nothing was attempted, so the count is null, not 0 or 1.
+      [compuerta, { estado: 'fallo', fase: 'preparacion', error: 'vista-canonica-no-aprobada', intentos: null }],
+    ];
+    for (const [id, campos] of esperado) {
+      const filas = await ejecuciones(id);
+      assert.deepEqual(filas.map((f) => columnas(f, ...Object.keys(campos))), [campos], id);
+    }
+    // The send is attempted exactly once (email-notification, DEC-97).
+    assert.equal(falso.a('ch17b-23@example.com').length, 1);
+  });
+
+  test('CH-17b 2.4 a run in a pause stays en-curso, and another planner tick records omitida with null intentos', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId);
+    let soltar: (() => void) | undefined;
+    // The first pause is held until the test lets it go; the second fires at once.
+    const { reloj, pausas } = relojDePausas(EN('06:40:30'), (n, disparar) => {
+      if (n === 1) soltar = disparar;
+      else setImmediate(disparar);
+    });
+
+    const corrida = tickDe([tenantId], EN('06:41:30'), reloj, TRES_INTENTOS);
+    await esperarA(() => soltar !== undefined);
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'intentos')), [
+      { estado: 'en-curso', intentos: null },
+    ]);
+    // A second instance's tick: the overlap guard (DEC-96) covers the run mid-retry.
+    await tickDe([tenantId], EN('06:41:40'), relojFijo(EN('06:40:40')));
+    assert.deepEqual(pausas, [5_000], 'no second attempt starts before the pause fires');
+    soltar?.();
+    await corrida;
+
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'error', 'intentos')), [
+      { estado: 'fallo', error: 'host-inalcanzable', intentos: 3 },
+      { estado: 'omitida', error: 'solapamiento', intentos: null },
+    ]);
   });
 });
 
