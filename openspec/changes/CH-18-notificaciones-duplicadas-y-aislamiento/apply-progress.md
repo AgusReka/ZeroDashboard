@@ -2,7 +2,7 @@
 
 **Mode**: Strict TDD (requested by tasks.md and the orchestrator; `openspec/config.yaml` still says `strict_tdd: false` from the pre-code init)
 **Delivery**: single PR, `size:exception` accepted (`exception-ok`); one commit per work unit
-**Progress**: 22/27 tasks complete (units 1 and 2 done; unit 3 pending)
+**Progress**: 26/27 tasks complete (units 1, 2 and 3 done; only 3.5, verify and archive, remains)
 
 ## Completed
 
@@ -28,10 +28,14 @@
 - [x] 2.12 RED console labels, timeout copy, raw tokens absent, no backtick in the served page
 - [x] 2.13 GREEN `ETIQUETAS_NOTIFICACION` and `MENSAJES['notificacion:tiempo-agotado']` with its comment
 - [x] 2.14 Checkpoint: full suite green, type check clean, no `prisma/` diff, unit 2 committed
+- [x] 3.1 `src/planificador.ts`: header comment and `correrVencidas` doc no longer name CH-18 as pending; they state the per-tenant catch (DEC-109), the serial tick (DEC-110) and the marker (DEC-107, DEC-108)
+- [x] 3.2 Bitácora `docs/bitacora/CH-18-notificaciones-duplicadas-y-aislamiento.md`: what was built, spike evidence (6/6 crash, 3/3 survive per scenario), decisions, frictions, verification, pending work
+- [x] 3.3 Same bitácora, limits table (rule 6) with DEC refs: no content/cooldown dedupe and no notification table (DEC-107, DEC-108), serial tick (DEC-110), `PrismaPg` pool outside the listener (DEC-111), lost tenant window (DEC-95, DEC-109), `enviando`/`incierta`/timeout semantics (DEC-108), non-atomic sweep pair (DEC-102), DEC-96 race window (DEC-75, DEC-99, DEC-111)
+- [x] 3.4 Final checkpoint: full suite green, type check clean, unit 3 committed
 
 ## Pending
 
-- Unit 3: tasks 3.1-3.5
+- 3.5 `sdd-verify`, then `sdd-archive` (not part of apply)
 
 ## Spike Evidence (DEC-111, for the unit 3 bitácora)
 
@@ -89,6 +93,15 @@ Outcome: the crash is proven and deterministic, so the listener was added and bo
 | Full verification | `npx tsc --noEmit` → exit 0, no output. `TEST_DB_PORT=5434 npm test` → tests 687, pass 687, fail 0, skipped 0 |
 | Rollback boundary | Revert the unit 2 commit: `src/planificador.ts` (marker, two-step sweep), `src/automatizaciones.ts` (types), `src/consola.ts` (labels, timeout copy) and their tests. No migration; `prisma/` unchanged |
 
+## Work Unit Evidence (unit 3)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `TEST_DB_PORT=5434 npm test` → tests 687, suites 98, pass 687, fail 0, cancelled 0, skipped 0 (comments and docs only, so the full suite is the focused check) |
+| Runtime harness command/scenario and exact result | N/A: comments and documentation only; no runtime boundary changes |
+| Full verification | `npx tsc --noEmit` → exit 0, no output. `TEST_DB_PORT=5434 npm test` → 687/687 |
+| Rollback boundary | Revert the unit 3 commit: comment edits in `src/planificador.ts` and `prisma/schema.prisma`, the bitácora file, and the `tasks.md`/`apply-progress.md` updates |
+
 ## Deviations and Notes
 
 - Commit message follows the orchestrator's wording (`feat(ch18): aislamiento de errores por tenant en el tick (X8, DEC-109)`, plus the listener), not the `fix(ch18): …` wording in task 1.8.
@@ -101,3 +114,7 @@ Outcome: the crash is proven and deterministic, so the listener was added and bo
 - The four 2.8 tests passed before the GREEN step: the code already sent at most once. They are guards that the marker does not break that.
 - Two existing tests changed on purpose (DEC-108), to call out in the PR: CH-14 5.7 now expects `'enviando'` inside `enviar`; CH-17a 1.2 now expects two sweep writes per tenant, the `incierta` one first.
 - Unit 2 is about 490 changed lines in total (about 440 in `src/`, most of it test code), against a forecast of 280-340. Covered by the accepted `size:exception`.
+- Real commit sizes: unit 1 358+/13-, unit 2 503+/46- (both include `tasks.md` and `apply-progress.md`).
+- Unit 3 edits the `Ejecucion` header comment in `prisma/schema.prisma` to document `enviando` and `incierta` (requested by the orchestrator). It is a comment only: no model, column or migration change. Task 3.4's wording "no `prisma/` change" is read as "no schema change"; `git diff --stat` does show the comment lines.
+- Unit 3 commit message follows the orchestrator's wording (`docs(ch18): bitacora y limpieza de comentarios pendientes`), not the wording in task 3.4.
+- CH-17b did not touch `docs/02-mapa-de-changes.md` or the README progress line, so unit 3 does not either; the DEC cross-references live in the bitácora. `docs/01-decisiones.md` and `openspec/specs/**` were not edited.

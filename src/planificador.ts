@@ -40,9 +40,16 @@ import { componerSentencia, evaluarVistas } from './plantillas.js';
  * injected policy's cap, inside the same run and its one row. `intentos` records the dials
  * made (DEC-103), and `detener()` cancels a pending pause (DEC-104).
  *
+ * CH-18 isolates failures per tenant (X8, DEC-109): a throw outside any run in one tenant
+ * is logged with closed fields and the next tenant still runs. The tick stays serial
+ * (DEC-110): one tenant at a time, one automation at a time. It also makes the one send
+ * per run explicit (X6, DEC-107): the run's row carries `notificacion='enviando'` just
+ * before it, and the boot sweep closes a row still carrying it as `incierta` (DEC-108).
+ *
  * The engine executes the pattern and nothing more (rule 6): there is no new execution
- * surface and no parallelism (CH-18). Missed fires are never caught up and coalesced fires
- * leave no mark: that is a limit of the artifact (DEC-95), not pending work.
+ * surface, no parallelism, no per-tenant lanes and no circuit breaker (DEC-110). Missed
+ * fires are never caught up and coalesced fires leave no mark: that is a limit of the
+ * artifact (DEC-95), not pending work.
  */
 
 /** Time, injected so tests control it. `programar` returns the function that cancels. */
@@ -452,8 +459,9 @@ export function crearPlanificador({
 
   /**
    * Inside one tenant's context: its active automations, run one after another. Each run
-   * has its own catch, so one failure never stops a sibling (a per-run catch only, not the
-   * CH-18 isolation guarantee).
+   * has its own catch, so one failure never stops a sibling. A throw outside any run (the
+   * listing, for one) reaches the per-tenant catch in `ejecutarTick` (DEC-109), so it never
+   * stops another tenant either.
    */
   async function correrVencidas(desde: Date, hasta: Date): Promise<void> {
     const automatizaciones = await prisma.automatizacion.findMany({

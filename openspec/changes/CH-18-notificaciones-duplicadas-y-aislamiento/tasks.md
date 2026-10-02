@@ -58,10 +58,10 @@ Chain strategy: size-exception
 
 ## Unit 3: Wording, Bitácora, Cross-References
 
-- [ ] 3.1 `src/planificador.ts`: reword header comment (`:43-45`) and `:444-448` to drop "CH-18 pending"; state per-tenant catch, serial tick, DEC-109/110
-- [ ] 3.2 Create `docs/bitacora/CH-18-notificaciones-duplicadas-y-aislamiento.md` (Spanish, from `docs/bitacora/_plantilla.md` (read-only), following `docs/bitacora/CH-17b-reintentos-de-conexion.md` (read-only)): spike evidence per scenario and the listener outcome (DEC-111); `enviando` honestly shown for a crash between marker and `enviar`; timeout shown as "puede haberse entregado"
-- [ ] 3.3 Same bitácora, limits table (rule 6) with DEC refs: X8-B lanes, X8-C loops, X8-D circuit breaker (DEC-110); X6-C notification table, X6-D content/cooldown dedupe (DEC-107); pool outside listener scope; two consecutive identical runs may each send; DEC-96 race window stays acceptable while the tick is serial
-- [ ] 3.4 Final checkpoint: `npm test` green (baseline 671 plus new tests), `npx tsc --noEmit` clean, `git diff --stat` shows no `prisma/` change; commit "docs(ch18): bitacora y limites"
+- [x] 3.1 `src/planificador.ts`: reword header comment (`:43-45`) and `:444-448` to drop "CH-18 pending"; state per-tenant catch, serial tick, DEC-109/110
+- [x] 3.2 Create `docs/bitacora/CH-18-notificaciones-duplicadas-y-aislamiento.md` (Spanish, from `docs/bitacora/_plantilla.md` (read-only), following `docs/bitacora/CH-17b-reintentos-de-conexion.md` (read-only)): spike evidence per scenario and the listener outcome (DEC-111); `enviando` honestly shown for a crash between marker and `enviar`; timeout shown as "puede haberse entregado"
+- [x] 3.3 Same bitácora, limits table (rule 6) with DEC refs: X8-B lanes, X8-C loops, X8-D circuit breaker (DEC-110); X6-C notification table, X6-D content/cooldown dedupe (DEC-107); pool outside listener scope; two consecutive identical runs may each send; DEC-96 race window stays acceptable while the tick is serial
+- [x] 3.4 Final checkpoint: `npm test` green (baseline 671 plus new tests), `npx tsc --noEmit` clean, `git diff --stat` shows no `prisma/` change; commit "docs(ch18): bitacora y limites"
 - [ ] 3.5 Run `sdd-verify`, then `sdd-archive` (applies the Purpose wording and the renamed requirement in `openspec/specs/automation-scheduling/spec.md`, `email-notification`, `execution-log`, `query-console`)
 
 ## Traceability
