@@ -1,3 +1,4 @@
+import type { Duplex } from 'node:stream';
 import pg from 'pg';
 import { loadConfig } from './config.js';
 import { codigoPublicable, leerCodigoCrudo } from './pg-error.js';
@@ -31,7 +32,25 @@ export interface DestinoPostgres {
   database: string;
   user: string;
   password: string;
+  /**
+   * CH-19a (DEC-112, DEC-113): when present, the session's bytes travel over this
+   * channel instead of a direct TCP dial. No production path sets it yet.
+   */
+  canal?: AbrirCanal;
 }
+
+/**
+ * One data channel as the driver uses it (pg 8.23, `connection.js:44-47`): a duplex
+ * that also takes `setNoDelay` and `connect` and emits `'connect'` asynchronously. It
+ * must reach `'close'` on every path, so a channel that dies is never half-open.
+ */
+export interface CanalDuplex extends Duplex {
+  setNoDelay(noDelay?: boolean): unknown;
+  connect(port: number, host: string): unknown;
+}
+
+/** Opens a fresh channel per call: a pg client cannot be reused (DEC-113). */
+export type AbrirCanal = () => CanalDuplex;
 
 /** Discrete connection fields for one probe attempt. */
 export interface ProbeTarget extends DestinoPostgres {
@@ -102,14 +121,21 @@ export function iniciarConexion(destino: DestinoPostgres, timeoutMs: number): Co
   // `connectionTimeoutMillis` stays mandatory and explicit (the driver default is `0`,
   // i.e. wait forever) but sits a margin above the budget: it is the backstop that
   // tears the socket down, never the timer that classifies the attempt.
-  const cliente = new pg.Client({
+  const config = {
     host: destino.host,
     port: destino.port,
     database: destino.database,
     user: destino.user,
     password: destino.password,
     connectionTimeoutMillis: timeoutMs + MARGEN_RESPALDO_MS,
-  });
+  };
+  // CH-19a: with a channel, the factory goes to pg as is, so nothing here can log or
+  // buffer its bytes (rule 5). `ssl: false` is explicit because `PGSSLMODE` would
+  // otherwise turn SSL negotiation on over the channel (DEC-113).
+  const cliente =
+    destino.canal === undefined
+      ? new pg.Client(config)
+      : new pg.Client({ ...config, stream: destino.canal, ssl: false });
   // CH-18 (DEC-111): a connection that dies after login makes the client emit `'error'`,
   // and with no listener Node ends the process; a test that destroys the socket proved it.
   // The failure still reaches the caller through the rejected connect or query, so the

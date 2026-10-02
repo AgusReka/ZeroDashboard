@@ -2006,6 +2006,170 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-112 — CH-19: el agente es un relay de bytes; el motor sigue ejecutando la consulta
+
+**Contexto.** DEC-94 eligió el agente saliente y dejó el protocolo concreto como decisión de CH-19. Todo el tráfico hacia la base del tenant pasa por un solo punto de conexión (`iniciarConexion`, `src/db-probe.ts`), y `pg` acepta un `stream` inyectado.
+
+**Opciones.** (a) Relay de bytes: el agente es un túnel TLS hacia un destino permitido y el motor mantiene `pg.Client`. (b) RPC de sentencias: el agente ejecuta la sesión de solo lectura. (c) Túnel estándar (SSH -R, chisel).
+
+**Decisión.** (a).
+
+**Por qué.** Las dos capas de solo lectura, el chequeo de permisos de DEC-08 y la regla de una sola sentencia (DEC-09) quedan en un único lugar. El agente no suma capacidad de ejecución (regla 6). (b) duplica la lógica de solo lectura en la máquina del cliente y reabre DEC-16/17/20. (c) exige un servidor de túneles entrante y no da latido a nivel de aplicación, que C2 necesita.
+
+**Se resigna.** La contraseña de la base sigue en el motor (DEC-17 sin cambios). El agente no hace cumplir nada semántico: solo reenvía bytes y aplica su lista de destinos (DEC-115).
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-113 — CH-19: transporte WebSocket sobre TLS
+
+**Contexto.** Hace falta un canal que inicie el agente y que lleve control y datos.
+
+**Opciones.** (a) WebSocket sobre TLS en el puerto de la aplicación: un canal de control y un canal de datos por sesión de base. (b) TCP con mTLS y encuadre propio. (c) Long-poll HTTP. (d) gRPC.
+
+**Decisión.** (a). El TLS termina en un proxy inverso. El agente verifica el certificado del servidor y rechaza `ws://` salvo en loopback.
+
+**Por qué.** Sale por 443, no exige puertos entrantes al cliente (C1) y es liviano. (c) solo encaja con RPC y (d) es desproporcionado.
+
+**Se resigna.** Nueva dependencia (`ws`) del lado del motor. El túnel es TLS obligatorio porque por él viajan datos de consulta; `iniciarConexion` hoy no usa `ssl` hacia la base y eso no cambia.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-114 — CH-19: el agente se autentica con un token propio, guardado como hash
+
+**Contexto.** El motor debe saber a qué tenant pertenece cada agente sin confiar en lo que el agente declare (regla 2).
+
+**Opciones.** (a) Token opaco de 256 bits por agente, guardado como SHA-256, mostrado una sola vez y revocable. (b) Código de alta de un solo uso canjeado por token. (c) mTLS con CA propia.
+
+**Decisión.** (a). El tenant se deduce solo de la fila del token, nunca del contenido del mensaje. Los identificadores de sesión no son adivinables y el canal de datos se reautentica con el token dueño de la sesión.
+
+**Por qué.** (b) agrega pasos al alta y encarece C3. (c) exige una PKI desproporcionada para el prototipo.
+
+**Se resigna.** Un token filtrado sirve hasta que se revoque. El token es un secreto (regla 7): no entra en el repositorio, en bitácoras ni en capturas.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-115 — CH-19: un agente por tenant; la lista de destinos vive solo en el agente
+
+**Contexto.** Si el motor decidiera a qué destinos puede llegar el agente, un motor comprometido podría usar cada agente para explorar la red interna de su cliente.
+
+**Opciones.** Cardinalidad: un agente por tenant o varios. Lista de destinos: en el motor, en el agente o en ambos. Modo directo: convive o se reemplaza.
+
+**Decisión.** Un agente por tenant (`Conexion.agenteId` nulo para conexión directa). La lista de destinos permitidos vive solo en el agente (`AGENT_ALLOWED_TARGETS`). El modo directo convive, porque lo necesitan las pruebas y R0/R1 (DEC-94). `Conexion.host` y `Conexion.puerto` pasan a significar «tal como los ve el agente».
+
+**Por qué.** Mantiene el control del destino del lado del cliente, que es quien asume el riesgo de su red.
+
+**Se resigna.** Un solo agente por tenant es un punto único de falla.
+
+**Pendiente.** Si el modo directo queda habilitado o se apaga por configuración en producción no está decidido; se resuelve antes de CH-19b.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada, salvo el punto pendiente.
+
+**Estado:** firme, con un punto pendiente.
+
+---
+
+### DEC-116 — CH-19: rutas `/agente/*` como excepción cerrada a `X-Tenant-Id`
+
+**Contexto.** La autenticación por token ocurre antes de que exista contexto de tenant, y `X-Tenant-Id` nunca se toma de la petición del cliente (regla 2). Un modelo que no figure en `MODELOS_AISLADOS` pasa sin filtrar.
+
+**Opciones.** Excepción cerrada y registrada, como DEC-24 y DEC-61, o rutas sin excepción con el tenant en el encabezado.
+
+**Decisión.** Excepción cerrada para `/agente/*`. El manejador entra a `conTenantActivo` desde la fila del token, igual que el planificador. Todo modelo nuevo de agente se agrega a `MODELOS_AISLADOS` o se justifica por escrito. El registro de sesiones es en memoria, coherente con la instancia única de DEC-75.
+
+**Por qué.** Evita aceptar el tenant desde el cliente y reutiliza el patrón ya probado.
+
+**Se resigna.** El registro de sesiones no sobrevive a un reinicio.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-117 — CH-19: con el agente desconectado la ejecución se intenta y falla con categoría propia
+
+**Contexto.** Hay que definir qué hace el planificador cuando el agente de un tenant no está conectado.
+
+**Opciones.** (a) Intentar y fallar visible con la categoría nueva `agente-desconectado`. (b) Omitir la ejecución como `omitida`.
+
+**Decisión.** (a). La categoría es distinta de `host-inalcanzable`. El agente informa los errores del lado de la réplica como código cerrado, porque el motor ya no ve `ECONNREFUSED`. Si `agente-desconectado` es reintentable se resuelve en la especificación de CH-19d como enmienda a DEC-97.
+
+**Por qué.** Omitir es el circuit breaker que DEC-110 rechazó y amplía el motor (regla 6). Un fallo visible deja rastro en el registro de ejecución.
+
+**Se resigna.** Cada ejecución de un tenant con agente caído consume su intento de conexión.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-118 — CH-19 (C2): alcanzabilidad por latido y sondeo TCP
+
+**Contexto.** C2 pide detectar un tenant inalcanzable con aviso antes de que falle una ejecución programada. Hoy no hay estado de alcanzabilidad persistido.
+
+**Opciones.** (a) Latido del agente más sondeo TCP de los destinos permitidos, sin credenciales ni SQL. (b) Derivar el estado del historial de `Ejecucion`. (c) Tabla de eventos.
+
+**Decisión.** (a). Columnas de último estado en el registro del agente; se persisten solo las transiciones, no cada latido. Estado visible en consola y API, más una vista de automatizaciones en riesgo en la próxima ventana. No hay correo de alerta. El sondeo vive en el servidor del canal, no en el planificador.
+
+**Por qué.** (b) es reactivo y no cumple «aviso antes». (c) ya fue rechazada en DEC-87. Un correo de alerta sería una superficie de notificación nueva (regla 6, DEC-82).
+
+**Se resigna.** Sin alerta activa al operador: queda como límite del artefacto.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-119 — CH-19 (C3): costo de conectividad por script y plantilla, sin tabla de eventos
+
+**Contexto.** C3 pide registrar cuánto costó resolver la conectividad en cada alta. DEC-87/90/91 resolvieron G1 con un script versionado y bitácora manual.
+
+**Opciones.** (a) Solo convención de bitácora. (b) Script al estilo `marcas-alta.sql` más plantilla, con marcas de primer latido y primera sesión exitosa. (c) Tabla de eventos persistida.
+
+**Decisión.** (b). Se enmienda DEC-88: la marca de conexión del alta pasa a tener un equivalente para tenants con agente.
+
+**Por qué.** Reutiliza el patrón existente y no agrega tablas de eventos (DEC-87).
+
+**Se resigna.** Las marcas miden tiempo transcurrido, no esfuerzo, y los intentos fallidos de prueba no se persisten; la fricción queda en la bitácora escrita a mano.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-120 — CH-19: el agente se empaqueta como imagen Docker
+
+**Contexto.** El agente corre en la infraestructura del cliente.
+
+**Opciones.** (a) Imagen Docker con entrypoint propio. (b) Binario único de Node. (c) Paquete npm. (d) Binario Go.
+
+**Decisión.** (a). El agente lee su propia configuración (no usa `loadConfig`, para no exigir secretos del motor en la máquina del cliente) y comparte con el motor solo los tipos del protocolo. Incluye un fragmento de Compose y un `.env.example` sin valores reales (regla 7).
+
+**Por qué.** La sección 7 de `docs/00-contexto.md` fija Docker Compose. Un binario Go rompería DEC-05.
+
+**Se resigna.** El cliente necesita Docker en el host del agente.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

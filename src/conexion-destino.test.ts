@@ -6,7 +6,30 @@ import { PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento, conTenantInyectado } from './aislamiento-prisma.js';
 import { conTenantActivo } from './contexto-tenant.js';
 import { cifrarCredencial, ErrorCredencialIlegible } from './cripto-credencial.js';
-import { destinoDeConexion } from './conexion-destino.js';
+import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
+import type { AbrirCanal } from './db-probe.js';
+
+/** CH-19a, H1: the callers' one copy of the destination fields. No server needed. */
+describe('camposDeDestino — the channel is threaded without inspection', () => {
+  const resuelto = { id: 'conexion-h1', host: 'replica', port: 5433, database: 'tienda', user: 'lector', password: 'x' };
+
+  test('H1 the same channel reference passes through and the id is dropped', () => {
+    const canal: AbrirCanal = () => {
+      throw new Error('the helper must never open the channel');
+    };
+    const campos = camposDeDestino({ ...resuelto, canal });
+    assert.equal(campos.canal, canal);
+    assert.deepEqual(Object.keys(campos).sort(), ['canal', 'database', 'host', 'password', 'port', 'user']);
+  });
+
+  test('H1 without a channel, canal is undefined and the five fields are copied', () => {
+    const campos = camposDeDestino(resuelto);
+    assert.deepEqual(
+      { ...campos },
+      { host: 'replica', port: 5433, database: 'tienda', user: 'lector', password: 'x', canal: undefined },
+    );
+  });
+});
 
 /**
  * Integration cases for CH-07 task 2.3. They talk to a real PostgreSQL server because
@@ -125,6 +148,9 @@ describe(
       assert.equal(destino?.database, objetivo.database);
       assert.equal(destino?.user, objetivo.user);
       assert.equal(destino?.password, CREDENCIAL, 'the credential must come back deciphered');
+      // CH-19a: no production path supplies a channel, so the resolved row carries none.
+      assert.ok(destino !== null && !('canal' in destino));
+      assert.equal(destino.canal, undefined);
     });
 
     test('the row itself never holds the plaintext (A2: a dump yields nothing readable)', async () => {

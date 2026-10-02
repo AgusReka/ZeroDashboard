@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
-import { destinoDeConexion } from './conexion-destino.js';
+import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta, sanearSql } from './consulta-ejecucion.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
 import { prepararSentencia, TIPOS_PARAMETRO } from './parametros.js';
@@ -114,11 +114,7 @@ export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAisla
       }
 
       const ejecucion = await ejecutarConsulta({
-        host: conexion.host,
-        port: conexion.port,
-        database: conexion.database,
-        user: conexion.user,
-        password: conexion.password,
+        ...camposDeDestino(conexion),
         sentencia: preparada.valor,
         limite: body.limite,
         desplazamiento: body.desplazamiento,

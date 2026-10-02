@@ -58,3 +58,19 @@ export async function destinoDeConexion(
     password: descifrarCredencial(conexion.credencial),
   };
 }
+
+/**
+ * CH-19a: the one copy of a destination's connection fields that the callers spread into
+ * a probe or an execution. `canal` passes through as the same reference and is never
+ * branched on, so no caller inspects it; `id` is left out because the engine never reads it.
+ */
+export function camposDeDestino(destino: DestinoPostgres): DestinoPostgres {
+  return {
+    host: destino.host,
+    port: destino.port,
+    database: destino.database,
+    user: destino.user,
+    password: destino.password,
+    canal: destino.canal,
+  };
+}

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
-import { destinoDeConexion } from './conexion-destino.js';
+import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { cifrarCredencial, ErrorCredencialIlegible } from './cripto-credencial.js';
 import { probeConnection } from './db-probe.js';
 
@@ -223,13 +223,7 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
 
       // The probe is fixed and unconditional: `motor` is stored but never consulted
       // here, so a non-PostgreSQL target fails legibly instead of being refused.
-      const prueba = await probeConnection({
-        host: conexion.host,
-        port: conexion.port,
-        database: conexion.database,
-        user: conexion.user,
-        password: conexion.password,
-      });
+      const prueba = await probeConnection(camposDeDestino(conexion));
 
       if (prueba.resultado === 'fallo') {
         // Sanitized summary only. The `app.log.error(error, …)` form used by
