@@ -254,6 +254,35 @@ export function cierreDeResultado(r: ResultadoCorrida): CierreEjecucion {
   }
 }
 
+// ---- retrying a run's connection (CH-17b: X5; DEC-97) -------------------------------
+
+/**
+ * The connection-phase categories a scheduled run retries (DEC-97): the target could not
+ * be reached, its name did not resolve, or the connection attempt ran out of time. All
+ * three can clear on their own. Closed on purpose: a new category is not retried until a
+ * decision adds it here.
+ */
+const CATEGORIAS_REINTENTABLES: ReadonlySet<EjecucionFallida['categoria']> = new Set([
+  'host-inalcanzable',
+  'dns-no-resuelve',
+  'tiempo-agotado',
+]);
+
+/**
+ * Whether a run's outcome is a transient connection failure that earns another attempt
+ * (X5, DEC-97). The phase is checked as well as the category, because `tiempo-agotado`
+ * also names a query that ran too long, and retrying a slow query would only load the
+ * tenant's replica again. Everything else ends the run after the attempt that produced
+ * it: wrong credentials, a missing database, permissions, every query-phase failure, a
+ * pre-dial refusal, an unexpected throw, and success. The notification step never
+ * reaches this function: a send is attempted exactly once.
+ */
+export function esFalloReintentable(r: ResultadoCorrida): boolean {
+  return (
+    r.resultado === 'fallo' && r.fase === 'conexion' && CATEGORIAS_REINTENTABLES.has(r.categoria)
+  );
+}
+
 // ---- notifying a run (CH-14: X3, N1; DEC-83, DEC-84, DEC-86) --------------------------
 
 /** `Ejecucion.notificacion`: the outcome only, never a body, recipient, or row content. */

@@ -30,13 +30,13 @@ Slice 3 is planned up front: the design puts slice 2 at 340-380 with listing, co
 
 ## Slice 1: Config, Env, Migration, Pure Rule
 
-- [ ] 1.1 RED `src/automatizaciones.test.ts`: `esFalloReintentable` truth table (3 retryable connection categories; not `credenciales-invalidas`, `base-inexistente`, `error-desconocido` on connection; not `tiempo-agotado` on `ejecucion`; not any `permisos`, `ok`, `rechazo`, `excepcion`)
-- [ ] 1.2 GREEN `src/automatizaciones.ts`: add `esFalloReintentable` beside `cierreDeResultado`
-- [ ] 1.3 RED `src/config.test.ts`: defaults 3 and 5000; overrides 5 and 1000; empty falls back; attempts `6`, `0`, `abc`, `12.5` and pause `0`, `abc` throw naming the variable, never the value
-- [ ] 1.4 GREEN `src/config.ts`: constants, `enteroEnRangoOpcional`, `connectionRetryAttempts`, `connectionRetryPauseMs`
-- [ ] 1.5 `.env.example` and `docker-compose.yml`: commented defaults; Compose forwards `${VAR:-}`
-- [ ] 1.6 `prisma/schema.prisma` `intentos Int?` and `prisma/migrations/20261001000000_ejecucion_intentos/migration.sql` (header and rollback line as in `20260929000000_notificacion`); run `npx prisma generate`
-- [ ] 1.7 Checkpoint: full suite green, `npx tsc --noEmit` clean, existing tests unmodified
+- [x] 1.1 RED `src/automatizaciones.test.ts`: `esFalloReintentable` truth table (3 retryable connection categories; not `credenciales-invalidas`, `base-inexistente`, `error-desconocido` on connection; not `tiempo-agotado` on `ejecucion`; not any `permisos`, `ok`, `rechazo`, `excepcion`)
+- [x] 1.2 GREEN `src/automatizaciones.ts`: add `esFalloReintentable` beside `cierreDeResultado`
+- [x] 1.3 RED `src/config.test.ts`: defaults 3 and 5000; overrides 5 and 1000; empty falls back; attempts `6`, `0`, `abc`, `12.5` and pause `0`, `abc` throw naming the variable, never the value
+- [x] 1.4 GREEN `src/config.ts`: constants, `enteroEnRangoOpcional`, `connectionRetryAttempts`, `connectionRetryPauseMs`
+- [x] 1.5 `.env.example` and `docker-compose.yml`: commented defaults; Compose forwards `${VAR:-}`
+- [x] 1.6 `prisma/schema.prisma` `intentos Int?` and `prisma/migrations/20261001000000_ejecucion_intentos/migration.sql` (header and rollback line as in `20260929000000_notificacion`); run `npx prisma generate`
+- [x] 1.7 Checkpoint: full suite green, `npx tsc --noEmit` clean, existing tests unmodified
 
 ## Slice 2: Retry Loop and Wiring
 

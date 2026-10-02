@@ -16,6 +16,8 @@ interface AppConfig {
   maxFilasPorConsulta: number;
   zonaHoraria: string;
   smtpTimeoutMs: number;
+  connectionRetryAttempts: number;
+  connectionRetryPauseMs: number;
 }
 
 /** Used when CONNECTION_TEST_TIMEOUT_MS is not set. */
@@ -55,6 +57,24 @@ export const DEFAULT_ZONA_HORARIA = 'UTC';
  */
 export const DEFAULT_SMTP_TIMEOUT_MS = 10000;
 
+/**
+ * Used when CONNECTION_RETRY_ATTEMPTS is not set. The total number of connection attempts
+ * one scheduled run makes when the failure is transient (X5, DEC-97/DEC-98): the first
+ * attempt plus up to two retries. `1` turns retry off.
+ */
+export const DEFAULT_CONNECTION_RETRY_ATTEMPTS = 3;
+
+/**
+ * The highest CONNECTION_RETRY_ATTEMPTS accepted (DEC-105). The scheduler's tick is
+ * serial, so every attempt against a dead target holds it for a connection timeout plus a
+ * pause; a larger value is refused at boot instead of silently blocking the tick. Moving
+ * this ceiling is a source change on purpose.
+ */
+export const MAX_CONNECTION_RETRY_ATTEMPTS = 5;
+
+/** Used when CONNECTION_RETRY_PAUSE_MS is not set. The fixed pause between attempts. */
+export const DEFAULT_CONNECTION_RETRY_PAUSE_MS = 5000;
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -82,6 +102,19 @@ function enteroPositivoOpcional(name: string, porDefecto: number): number {
     // The variable is named, its value is not (DEC-86 addendum): an error message is a
     // log line, and the same parse now reads a budget that sits next to SMTP secrets.
     throw new Error(`${name} must be a positive integer`);
+  }
+  return numero;
+}
+
+/**
+ * Reads an optional integer from 1 to `maximo`: the same parse and refusal as
+ * `enteroPositivoOpcional`, plus an upper bound (DEC-105). Like that one, the error names
+ * the variable and the allowed range, never the value.
+ */
+function enteroEnRangoOpcional(name: string, porDefecto: number, maximo: number): number {
+  const numero = enteroPositivoOpcional(name, porDefecto);
+  if (numero > maximo) {
+    throw new Error(`${name} must be an integer between 1 and ${maximo}`);
   }
   return numero;
 }
@@ -131,6 +164,15 @@ export function loadConfig(): AppConfig {
   );
   const zonaHoraria = zonaHorariaOpcional('ZONA_HORARIA_AUTOMATIZACIONES', DEFAULT_ZONA_HORARIA);
   const smtpTimeoutMs = enteroPositivoOpcional('SMTP_TIMEOUT_MS', DEFAULT_SMTP_TIMEOUT_MS);
+  const connectionRetryAttempts = enteroEnRangoOpcional(
+    'CONNECTION_RETRY_ATTEMPTS',
+    DEFAULT_CONNECTION_RETRY_ATTEMPTS,
+    MAX_CONNECTION_RETRY_ATTEMPTS,
+  );
+  const connectionRetryPauseMs = enteroPositivoOpcional(
+    'CONNECTION_RETRY_PAUSE_MS',
+    DEFAULT_CONNECTION_RETRY_PAUSE_MS,
+  );
 
   return {
     port,
@@ -141,5 +183,7 @@ export function loadConfig(): AppConfig {
     maxFilasPorConsulta,
     zonaHoraria,
     smtpTimeoutMs,
+    connectionRetryAttempts,
+    connectionRetryPauseMs,
   };
 }

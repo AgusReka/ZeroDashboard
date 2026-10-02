@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, test } from 'node:test';
 import {
+  DEFAULT_CONNECTION_RETRY_ATTEMPTS,
+  DEFAULT_CONNECTION_RETRY_PAUSE_MS,
   DEFAULT_CONNECTION_TEST_TIMEOUT_MS,
   DEFAULT_MAX_FILAS_CONSULTA,
   DEFAULT_QUERY_TIMEOUT_MS,
   DEFAULT_SMTP_TIMEOUT_MS,
   DEFAULT_ZONA_HORARIA,
+  MAX_CONNECTION_RETRY_ATTEMPTS,
   loadConfig,
 } from './config.js';
 import { VARIABLE_CLAVE_MAESTRA } from './cripto-credencial.js';
@@ -32,6 +35,8 @@ const VARIABLES = [
   'MAX_FILAS_CONSULTA',
   'ZONA_HORARIA_AUTOMATIZACIONES',
   'SMTP_TIMEOUT_MS',
+  'CONNECTION_RETRY_ATTEMPTS',
+  'CONNECTION_RETRY_PAUSE_MS',
 ] as const;
 
 /** A minimal environment in which `loadConfig()` is expected to succeed. */
@@ -242,4 +247,69 @@ describe('loadConfig — the SMTP send budget is configuration, not a source lit
       delete process.env.SMTP_PASSWORD;
     }
   });
+});
+
+describe('loadConfig — the connection retry policy is configuration (CH-17b, DEC-105)', () => {
+  /** Asserts the boot refusal names the variable and never quotes the offending value. */
+  function rechazaSinCitar(variable: string, valor: string, patron?: RegExp): void {
+    process.env[variable] = valor;
+    assert.throws(
+      () => loadConfig(),
+      (error: unknown) => {
+        const mensaje = error instanceof Error ? error.message : String(error);
+        assert.match(mensaje, new RegExp(variable));
+        if (patron) {
+          assert.match(mensaje, patron);
+        }
+        assert.ok(!mensaje.includes(valor), `the message must not quote ${valor}`);
+        return true;
+      },
+    );
+  }
+
+  test('1.3 both default when unset: 3 total attempts and a 5000 ms pause', () => {
+    const config = loadConfig();
+    assert.equal(config.connectionRetryAttempts, DEFAULT_CONNECTION_RETRY_ATTEMPTS);
+    assert.equal(config.connectionRetryPauseMs, DEFAULT_CONNECTION_RETRY_PAUSE_MS);
+    assert.equal(DEFAULT_CONNECTION_RETRY_ATTEMPTS, 3);
+    assert.equal(DEFAULT_CONNECTION_RETRY_PAUSE_MS, 5000);
+    assert.equal(MAX_CONNECTION_RETRY_ATTEMPTS, 5);
+  });
+
+  test('1.3 valid values override the defaults without a source change', () => {
+    process.env.CONNECTION_RETRY_ATTEMPTS = '5';
+    process.env.CONNECTION_RETRY_PAUSE_MS = '1000';
+    const config = loadConfig();
+    assert.equal(config.connectionRetryAttempts, 5);
+    assert.equal(config.connectionRetryPauseMs, 1000);
+  });
+
+  test('1.3 one attempt is accepted: it is how retry is turned off', () => {
+    process.env.CONNECTION_RETRY_ATTEMPTS = '1';
+    assert.equal(loadConfig().connectionRetryAttempts, 1);
+  });
+
+  test('1.3 empty values fall back to the defaults', () => {
+    process.env.CONNECTION_RETRY_ATTEMPTS = '';
+    process.env.CONNECTION_RETRY_PAUSE_MS = '';
+    const config = loadConfig();
+    assert.equal(config.connectionRetryAttempts, 3);
+    assert.equal(config.connectionRetryPauseMs, 5000);
+  });
+
+  test('1.3 more than 5 attempts stops the boot with the allowed range', () => {
+    rechazaSinCitar('CONNECTION_RETRY_ATTEMPTS', '6', /between 1 and 5/);
+  });
+
+  for (const valor of ['0', 'abc', '12.5']) {
+    test(`1.3 CONNECTION_RETRY_ATTEMPTS=${valor} stops the boot, never quoting the value`, () => {
+      rechazaSinCitar('CONNECTION_RETRY_ATTEMPTS', valor);
+    });
+  }
+
+  for (const valor of ['0', 'abc']) {
+    test(`1.3 CONNECTION_RETRY_PAUSE_MS=${valor} stops the boot, never quoting the value`, () => {
+      rechazaSinCitar('CONNECTION_RETRY_PAUSE_MS', valor);
+    });
+  }
 });

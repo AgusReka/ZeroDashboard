@@ -126,10 +126,11 @@ $limpieza$;`;
 /**
  * Every column an `Ejecucion` row has: metadata only, no place for the rows a run read.
  * CH-14 adds `notificacion` (DEC-83), which holds an outcome label, never a body or row.
+ * CH-17b adds `intentos` (DEC-103), a count of connection attempts.
  */
 const COLUMNAS_EJECUCION = [
   'automatizacionId', 'codigoError', 'corte', 'duracionMs', 'error', 'estado',
-  'fase', 'filas', 'finalizadaEn', 'id', 'iniciadaEn', 'notificacion', 'tenantId',
+  'fase', 'filas', 'finalizadaEn', 'id', 'iniciadaEn', 'intentos', 'notificacion', 'tenantId',
 ];
 
 describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1–4.6)', { skip: motivoSkip }, () => {

@@ -176,6 +176,11 @@ model Automatizacion {
 // allowed values live in code ('enviada' | 'omitida-sin-filas' | 'fallo-envio' |
 // 'sin-destinatario' | 'no-configurada'). It is null when the query failed and for rows
 // written before CH-14. It holds the outcome only, never a body, recipient or row.
+//
+// CH-17b (DEC-98, DEC-103): `intentos` is the number of real connection attempts the run
+// made: 1 when it connected, or failed, on the first attempt (even with retry off), N
+// after N attempts. It is null when the run never dialled (`omitida`, `interrumpida`, a
+// refusal before connecting) and for rows written before CH-17b; null never means one.
 model Ejecucion {
   id               String         @id @default(uuid())
   tenantId         String
@@ -192,6 +197,7 @@ model Ejecucion {
   error            String?
   codigoError      String?
   notificacion     String?
+  intentos         Int?
 
   @@index([tenantId])
   @@index([automatizacionId, iniciadaEn])
