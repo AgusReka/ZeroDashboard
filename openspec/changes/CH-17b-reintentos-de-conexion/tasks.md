@@ -40,13 +40,13 @@ Slice 3 is planned up front: the design puts slice 2 at 340-380 with listing, co
 
 ## Slice 2: Retry Loop and Wiring
 
-- [ ] 2.1 RED `src/planificador.test.ts` (Proxy-narrowed tenants, fake `Reloj` recording `programar`): default policy on a closed port gives `intentos=1`, no timer; cap 3 gives two 5000 ms pauses, one `fallo`/`host-inalcanzable` row, `intentos=3`, no fourth dial
-- [ ] 2.2 RED same file: transient then success via `net` forwarder started in the pause callback gives `ok`/`intentos=2`; closed, closed, stalling listener gives `tiempo-agotado`/3
-- [ ] 2.3 RED same file: no retry for wrong credentials, query-phase error (`intentos=1`), or send failure (one notifier call); gate refusal gives null
-- [ ] 2.4 RED same file: second planner's tick during a pause writes `omitida` with null `intentos`; `detener()` during a pause resolves, row `fallo`/last category/`intentos=2`, no further `programar`; sentinels carry `intentos: null`
-- [ ] 2.5 GREEN `src/planificador.ts`: `PoliticaReintentos`, `SIN_REINTENTOS`, `reintentos?` dependency, `pausar`, `cancelarPausa`, `conectarConReintentos`, `conteo`, `detener()` cancel, `intentos` in final update and sentinels, retry `info` log, `intentos` on the failure `warn`, header comment
-- [ ] 2.6 `src/server.ts`: pass `reintentos` from `config`
-- [ ] 2.7 Checkpoint: full suite green, `npx tsc --noEmit` clean, existing scheduler tests unmodified
+- [x] 2.1 RED `src/planificador.test.ts` (Proxy-narrowed tenants, fake `Reloj` recording `programar`): default policy on a closed port gives `intentos=1`, no timer; cap 3 gives two 5000 ms pauses, one `fallo`/`host-inalcanzable` row, `intentos=3`, no fourth dial
+- [x] 2.2 RED same file: transient then success via `net` forwarder started in the pause callback gives `ok`/`intentos=2`; closed, closed, stalling listener gives `tiempo-agotado`/3
+- [x] 2.3 RED same file: no retry for wrong credentials, query-phase error (`intentos=1`), or send failure (one notifier call); gate refusal gives null
+- [ ] 2.4 RED same file: second planner's tick during a pause writes `omitida` with null `intentos`; `detener()` during a pause resolves, row `fallo`/last category/`intentos=2`, no further `programar`; sentinels carry `intentos: null` (overlap test in slice 2a; the rest in slice 2b)
+- [ ] 2.5 GREEN `src/planificador.ts`: `PoliticaReintentos`, `SIN_REINTENTOS`, `reintentos?` dependency, `pausar`, `cancelarPausa`, `conectarConReintentos`, `conteo`, `detener()` cancel, `intentos` in final update and sentinels, retry `info` log, `intentos` on the failure `warn`, header comment (slice 2a without `cancelarPausa`, `detener()` cancel and sentinels; those in slice 2b)
+- [ ] 2.6 `src/server.ts`: pass `reintentos` from `config` (slice 2b)
+- [ ] 2.7 Checkpoint: full suite green, `npx tsc --noEmit` clean, existing scheduler tests unmodified (slice 2b)
 
 ## Slice 3: Listing, Console, Bitácora
 
