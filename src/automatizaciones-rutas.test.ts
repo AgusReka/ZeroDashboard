@@ -325,6 +325,8 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
           error: i === 1 ? 'conexion' : null,
           // CH-14: the oldest run reads as a pre-CH-14 row (null outcome).
           notificacion: ['enviada', null, 'omitida-sin-filas'][i],
+          // CH-17b: the middle run reads as a pre-migration row (null attempts, DEC-103).
+          intentos: [1, null, 2][i],
         },
       });
     }
@@ -352,12 +354,18 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
         error: 'conexion',
         codigoError: null,
         notificacion: null,
+        intentos: null,
       },
     );
     // CH-14 6.2: each run carries its notification outcome.
     assert.deepEqual(
       ejecuciones.map((e: { notificacion: string | null }) => e.notificacion),
       ['omitida-sin-filas', null, 'enviada'],
+    );
+    // CH-17b 3.1: each run carries its connection attempts; null stays null, never 1.
+    assert.deepEqual(
+      ejecuciones.map((e: { intentos: number | null }) => e.intentos),
+      [2, null, 1],
     );
 
     for (const url of [`/automatizaciones/${id}/ejecuciones`, '/automatizaciones/no-existe/ejecuciones']) {

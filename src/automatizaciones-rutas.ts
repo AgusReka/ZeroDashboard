@@ -53,6 +53,8 @@ export const EjecucionListada = {
   codigoError: true,
   /** CH-14 (DEC-83): the closed notification outcome, never a body or a recipient. */
   notificacion: true,
+  /** CH-17b (DEC-103): real connection attempts; null when the run never dialled. */
+  intentos: true,
 } as const;
 
 interface RegistroAutomatizacionBody {

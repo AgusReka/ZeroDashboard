@@ -50,12 +50,12 @@ Slice 3 is planned up front: the design puts slice 2 at 340-380 with listing, co
 
 ## Slice 3: Listing, Console, Bitácora
 
-- [ ] 3.1 RED `src/automatizaciones-rutas.test.ts`: listing returns `intentos` 2 and null; update the full-row `deepEqual` (line 342) to include `intentos: null`
-- [ ] 3.2 GREEN `src/automatizaciones-rutas.ts`: add `intentos` to `EjecucionListada` and the mapping
-- [ ] 3.3 RED `src/consola.test.ts`: `Intentos` header last; `3` shown; `null` and `undefined` show `—`; existing positional asserts unchanged
-- [ ] 3.4 GREEN `src/consola.ts`: append `Intentos` after `Error` using `textoOpcional`
-- [ ] 3.5 Create `docs/bitacora/CH-17b-reintentos-de-conexion.md` (Spanish, from `docs/bitacora/_plantilla.md` (read-only)): serial tick blocked up to ~25 s, cap fixed in code, no notification retry
-- [ ] 3.6 Checkpoint: full suite green, `npx tsc --noEmit` clean, no `prisma/` diff
+- [x] 3.1 RED `src/automatizaciones-rutas.test.ts`: listing returns `intentos` 2 and null; update the full-row `deepEqual` (line 342) to include `intentos: null`
+- [x] 3.2 GREEN `src/automatizaciones-rutas.ts`: add `intentos` to `EjecucionListada` and the mapping
+- [x] 3.3 RED `src/consola.test.ts`: `Intentos` header last; `3` shown; `null` and `undefined` show `—`; existing positional asserts unchanged
+- [x] 3.4 GREEN `src/consola.ts`: append `Intentos` after `Error` using `textoOpcional`
+- [x] 3.5 Create `docs/bitacora/CH-17b-reintentos-de-conexion.md` (Spanish, from `docs/bitacora/_plantilla.md` (read-only)): serial tick blocked up to ~25 s, cap fixed in code, no notification retry
+- [x] 3.6 Checkpoint: full suite green, `npx tsc --noEmit` clean, no `prisma/` diff
 - [ ] 3.7 Run `sdd-verify`, then `sdd-archive`
 
 ## Traceability
