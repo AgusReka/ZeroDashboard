@@ -11,7 +11,7 @@ import {
   type SalidaNotificacion,
 } from './automatizaciones.js';
 import { loadConfig } from './config.js';
-import { destinoDeConexion } from './conexion-destino.js';
+import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from './consulta-ejecucion.js';
 import { conTenantActivo, type TenantActivo } from './contexto-tenant.js';
 import { componerCorreo } from './correo.js';
@@ -254,11 +254,7 @@ export function crearPlanificador({
     return conectarConReintentos(
       automatizacion.id,
       {
-        host: destino.host,
-        port: destino.port,
-        database: destino.database,
-        user: destino.user,
-        password: destino.password,
+        ...camposDeDestino(destino),
         sentencia: preparada.valor,
         limite: topeFilas,
         desplazamiento: 0,

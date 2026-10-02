@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
-import { destinoDeConexion } from './conexion-destino.js';
+import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta } from './consulta-ejecucion.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
 import { prepararSentencia } from './parametros.js';
@@ -101,11 +101,7 @@ async function ejecutarPrueba(
   }
 
   const ejecucion = await ejecutarConsulta({
-    host: destino.host,
-    port: destino.port,
-    database: destino.database,
-    user: destino.user,
-    password: destino.password,
+    ...camposDeDestino(destino),
     sentencia: preparada.valor,
     limite: cuerpo.limite,
     desplazamiento: cuerpo.desplazamiento,
