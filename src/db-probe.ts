@@ -110,6 +110,11 @@ export function iniciarConexion(destino: DestinoPostgres, timeoutMs: number): Co
     password: destino.password,
     connectionTimeoutMillis: timeoutMs + MARGEN_RESPALDO_MS,
   });
+  // CH-18 (DEC-111): a connection that dies after login makes the client emit `'error'`,
+  // and with no listener Node ends the process; a test that destroys the socket proved it.
+  // The failure still reaches the caller through the rejected connect or query, so the
+  // error is never read here: no driver text crosses this boundary (rule 5).
+  cliente.on('error', () => {});
 
   let temporizador: ReturnType<typeof setTimeout> | undefined;
   const vencimiento = new Promise<never>((_, rechazar) => {

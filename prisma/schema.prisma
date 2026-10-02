@@ -177,6 +177,11 @@ model Automatizacion {
 // 'sin-destinatario' | 'no-configurada'). It is null when the query failed and for rows
 // written before CH-14. It holds the outcome only, never a body, recipient or row.
 //
+// CH-18 (DEC-108): two more values, with no migration. 'enviando' is written on the
+// `en-curso` row just before the send and overwritten by the close. 'incierta' is written
+// only by the boot sweep, for a row it finds still 'enviando': the email may have left.
+// A sweep that finds no marker still writes null. No close writes either value.
+//
 // CH-17b (DEC-98, DEC-103): `intentos` is the number of real connection attempts the run
 // made: 1 when it connected, or failed, on the first attempt (even with retry off), N
 // after N attempts. It is null when the run never dialled (`omitida`, `interrumpida`, a

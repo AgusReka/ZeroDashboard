@@ -91,7 +91,8 @@ The system SHALL expose `GET /automatizaciones/:id/ejecuciones`, scoped to the a
 - AND no run data SHALL be returned
 ### Requirement: Ejecucion Records the Notification Outcome (DEC-83)
 
-`Ejecucion` SHALL have a nullable `notificacion` column whose only permitted values are `enviada`, `omitida-sin-filas`, `fallo-envio`, `sin-destinatario`, `no-configurada`, and null. Its value SHALL follow the precedence defined in `email-notification`. It SHALL be null when the query failed and for rows written before this change. `notificacion` MUST store the outcome only, never a message body, recipient, or row content.
+`Ejecucion` SHALL have a nullable `notificacion` column whose only permitted values are `enviada`, `omitida-sin-filas`, `fallo-envio`, `sin-destinatario`, `no-configurada`, `enviando`, `incierta`, and null (DEC-83, DEC-108). Its final value SHALL follow the precedence defined in `email-notification`. `enviando` is transient: it SHALL appear only on an `en-curso` row whose send is pending. `incierta` SHALL be written only by the boot sweep and means it is unknown whether the message left. `notificacion` SHALL be null when the query failed and for rows written before this change. `notificacion` MUST store the outcome only, never a message body, recipient, or row content.
+(Previously: the set had no `enviando` or `incierta`.)
 
 #### Scenario: Each outcome is recorded
 
@@ -110,6 +111,18 @@ The system SHALL expose `GET /automatizaciones/:id/ejecuciones`, scoped to the a
 - GIVEN an `Ejecucion` row written before this change
 - WHEN it is listed
 - THEN `notificacion` SHALL be null
+
+#### Scenario: A completed run never ends as enviando
+
+- GIVEN a run whose send completes, accepted or failed
+- WHEN the run closes
+- THEN `notificacion` SHALL be `enviada` or `fallo-envio`, never `enviando`
+
+#### Scenario: Listing shows the new values
+
+- GIVEN one `en-curso`/`enviando` row and one `fallo`/`interrumpida`/`incierta` row
+- WHEN `GET /automatizaciones/:id/ejecuciones` is called
+- THEN both rows SHALL be listed with those values
 
 ### Requirement: A Send Failure Marks the Run Failed in Phase notificacion (DEC-83)
 
@@ -154,20 +167,27 @@ The permitted `Ejecucion.estado` values SHALL be `en-curso`, `ok`, `fallo`, and 
 
 ### Requirement: Interrupted Runs Are Closed as fallo/interrumpida (DEC-99)
 
-A row left `en-curso` by a process stop SHALL be closed with `estado='fallo'` and `error='interrumpida'`. Its `finalizadaEn` SHALL equal the boot time of the sweep; `duracionMs`, `filas`, `fase`, and `notificacion` SHALL be null.
+A row left `en-curso` by a process stop SHALL be closed with `estado='fallo'` and `error='interrumpida'`. Its `finalizadaEn` SHALL equal the boot time of the sweep; `duracionMs`, `filas`, `fase`, and `intentos` SHALL be null. WHEN the row's `notificacion` was `enviando`, the sweep SHALL set `notificacion='incierta'`; for every other swept row `notificacion` SHALL stay null.
+(Previously: `notificacion` was always null on swept rows.)
 
 #### Scenario: A swept row has the interrupted shape
 
-- GIVEN an `en-curso` row from a previous process
+- GIVEN an `en-curso` row from a previous process with null `notificacion`
 - WHEN the boot sweep runs
 - THEN the row SHALL have `estado='fallo'`, `error='interrumpida'`, `finalizadaEn` equal to boot time, and null `duracionMs`, `filas`, `fase`, `notificacion`
 
+#### Scenario: A row interrupted mid-send becomes incierta
+
+- GIVEN an `en-curso` row with `notificacion='enviando'` from a previous process
+- WHEN the boot sweep runs
+- THEN the row SHALL be `fallo`, `error='interrumpida'`, `notificacion='incierta'`
+- AND the notifier SHALL NOT be called
+
 #### Scenario: Closed rows are untouched by the sweep
 
-- GIVEN rows with `estado` `ok`, `fallo`, and `omitida`
+- GIVEN rows with `estado` `ok`, `fallo`, and `omitida`, including one `fallo-envio`
 - WHEN the boot sweep runs
 - THEN those rows SHALL be unchanged
-
 ### Requirement: Ejecucion Records the Connection Attempts Made (DEC-98, DEC-103)
 
 `Ejecucion` SHALL have a nullable integer `intentos` added by an additive migration. It SHALL equal the number of real connection attempts the run made: 1 when the run connected or failed on its first attempt (even with retry disabled), N after N attempts. It MUST be null WHEN the run never attempted to connect (`omitida`, `interrumpida`, and rejections before connection such as a validation-gate refusal) and for rows written before the migration. Null MUST NOT mean a single attempt. A retried run SHALL still write exactly one row.
