@@ -285,13 +285,25 @@ export function esFalloReintentable(r: ResultadoCorrida): boolean {
 
 // ---- notifying a run (CH-14: X3, N1; DEC-83, DEC-84, DEC-86) --------------------------
 
-/** `Ejecucion.notificacion`: the outcome only, never a body, recipient, or row content. */
+/**
+ * `Ejecucion.notificacion`: the outcome only, never a body, recipient, or row content.
+ * CH-18 (DEC-108) adds the two marks in `MarcaNotificacion`.
+ */
 export type EstadoNotificacion =
   | 'enviada'
   | 'omitida-sin-filas'
   | 'fallo-envio'
   | 'sin-destinatario'
-  | 'no-configurada';
+  | 'no-configurada'
+  | 'enviando'
+  | 'incierta';
+
+/**
+ * CH-18 (DEC-108): the values no run's close writes. `enviando` is set on the `en-curso`
+ * row just before the send and overwritten by the close; `incierta` is written only by
+ * the boot sweep, for a row it finds still `enviando`: nobody knows whether the email left.
+ */
+export type MarcaNotificacion = Extract<EstadoNotificacion, 'enviando' | 'incierta'>;
 
 /** The outcomes that end the notify step before any send is attempted. */
 export type OmisionNotificacion = Extract<
@@ -372,8 +384,13 @@ function codigoEnvio(valor: unknown): string | null {
   return typeof valor === 'string' && PATRON_CODIGO_SMTP.test(valor) ? valor : null;
 }
 
-/** The `Ejecucion` columns of a run, notification outcome included. */
-export type CierreNotificado = CierreEjecucion & { notificacion: EstadoNotificacion | null };
+/**
+ * The `Ejecucion` columns of a run, notification outcome included. A close never carries
+ * a mark (CH-18, DEC-108), so the compiler rules out closing a row as `enviando`.
+ */
+export type CierreNotificado = CierreEjecucion & {
+  notificacion: Exclude<EstadoNotificacion, MarcaNotificacion> | null;
+};
 
 /**
  * Adds the notify step's outcome to a run's close. Only a failed send (or a throw in the

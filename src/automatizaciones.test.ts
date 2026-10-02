@@ -7,7 +7,11 @@ import {
   decidirNotificacion,
   esFalloReintentable,
   estaVencida,
+  type CategoriaEnvio,
+  type CierreNotificado,
+  type MarcaNotificacion,
   type ResultadoCorrida,
+  type SalidaNotificacion,
 } from './automatizaciones.js';
 import type { EjecucionExitosa, EjecucionFallida } from './consulta-ejecucion.js';
 
@@ -514,6 +518,50 @@ describe('cierreConNotificacion — only a failed send changes the query close',
       ...fallo,
       notificacion: null,
     });
+  });
+});
+
+// ---- CH-18 2.1 a close never carries the marker or the sweep's outcome (DEC-108) ------
+
+/**
+ * Compile-time half: `CierreNotificado` cannot hold `enviando` or `incierta`, so no close
+ * written by a run can leave the marker behind. `tsc --noEmit` fails if either is allowed.
+ */
+type MarcaEnCierre = Extract<CierreNotificado['notificacion'], MarcaNotificacion>;
+const marcaFueraDelCierre: [MarcaEnCierre] extends [never] ? true : false = true;
+
+describe('cierreConNotificacion — never yields the marker or incierta (CH-18, DEC-108)', () => {
+  test('2.1 every notify outcome, over an ok and a failed query, closes outside the marks', () => {
+    const categorias: CategoriaEnvio[] = [
+      'tiempo-agotado',
+      'servidor-inalcanzable',
+      'credenciales-invalidas',
+      'envio-rechazado',
+      'error-desconocido',
+    ];
+    const salidas: SalidaNotificacion[] = [
+      null,
+      'omitida-sin-filas',
+      'sin-destinatario',
+      'no-configurada',
+      { resultado: 'enviada' },
+      ...categorias.map((categoria) => ({ resultado: 'fallo' as const, categoria, codigo: null })),
+      { resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550' },
+      { resultado: 'excepcion', error: new Error('boom') },
+    ];
+    const cierres = [cierreDeResultado(exitosa(3)), cierreDeResultado(fallida('ejecucion', 'error-sintaxis', '42601'))];
+    const permitidos = new Set([null, 'enviada', 'omitida-sin-filas', 'fallo-envio', 'sin-destinatario', 'no-configurada']);
+    let vistos = 0;
+    for (const cierre of cierres) {
+      for (const salida of salidas) {
+        const { notificacion } = cierreConNotificacion(cierre, salida);
+        assert.ok(permitidos.has(notificacion), `${JSON.stringify(salida)} -> ${String(notificacion)}`);
+        assert.ok(!['enviando', 'incierta'].includes(String(notificacion)));
+        vistos++;
+      }
+    }
+    assert.equal(vistos, cierres.length * salidas.length);
+    assert.equal(marcaFueraDelCierre, true);
   });
 });
 

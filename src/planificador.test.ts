@@ -259,20 +259,26 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     fallaListadoEn?: string;
     /** Awaited before each listing, so a test can hold one tenant's first query. */
     antesDeListar?: (tenantId: string | undefined) => Promise<void>;
+    /** CH-18 (DEC-108): the marker write (`notificacion: 'enviando'`) throws instead. */
+    fallaMarca?: boolean;
   }
 
   /**
    * CH-17a: the client a sweep test hands the planner. `tenant.findMany` is narrowed to
    * `propios`, because node:test runs files in parallel and a real sweep would close every
    * other file's `en-curso` rows. Each `ejecucion.updateMany` records the tenant context it
-   * ran in and its count; the one in `fallaEn`'s context throws instead.
+   * ran in, the `notificacion` it writes, and its count; the one in `fallaEn`'s context
+   * throws instead.
    *
    * CH-18: each `automatizacion.findMany` records the tenant context it was called in, in
-   * call order, in `listados`; see `OpcionesBarrido` for the failure and the hold.
+   * call order, in `listados`; see `OpcionesBarrido` for the failure and the hold. Each
+   * `ejecucion.update` that writes the marker records the row id in `marcas`, attempted
+   * writes included.
    */
   function clienteDeBarrido(propios: string[], fallaEn?: string, opciones: OpcionesBarrido = {}) {
-    const llamadas: { tenantId: string | undefined; cerradas: number }[] = [];
+    const llamadas: { tenantId: string | undefined; notificacion: unknown; cerradas: number }[] = [];
     const listados: (string | undefined)[] = [];
+    const marcas: string[] = [];
     const automatizacion = new Proxy(aislado.automatizacion, {
       get: (destino, prop) =>
         prop === 'findMany'
@@ -294,10 +300,18 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
               const tenantId = tenantActivoOpcional()?.id;
               if (fallaEn !== undefined && tenantId === fallaEn) throw new Error('base caida secreta');
               const { count } = await aislado.ejecucion.updateMany(args);
-              llamadas.push({ tenantId, cerradas: count });
+              llamadas.push({ tenantId, notificacion: args.data.notificacion, cerradas: count });
               return { count };
             }
-          : Reflect.get(destino, prop),
+          : prop === 'update'
+            ? async (args: Parameters<typeof aislado.ejecucion.update>[0]) => {
+                if (args.data.notificacion === 'enviando') {
+                  marcas.push(String(args.where.id));
+                  if (opciones.fallaMarca) throw new Error('base caida secreta');
+                }
+                return aislado.ejecucion.update(args);
+              }
+            : Reflect.get(destino, prop),
     });
     const tenantNarrowed = {
       findMany: (args: Parameters<typeof aislado.tenant.findMany>[0] = {}) =>
@@ -313,7 +327,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
               ? automatizacion
               : Reflect.get(destino, prop),
     });
-    return { cliente, llamadas, listados };
+    return { cliente, llamadas, listados, marcas };
   }
 
   /** CH-18: two new tenants, in the order a tick visits them (by id, as the database sorts). */
@@ -776,8 +790,9 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
     await tick(EN('21:00:30'), EN('21:01:30'), reloj, { notificador: falso.notificador });
 
-    // While the send was in flight the row was still open: nothing closed it before.
-    assert.deepEqual(durante, [{ estado: 'en-curso', finalizadaEn: null, notificacion: null }]);
+    // While the send was in flight the row was still open: nothing closed it before. CH-18
+    // (DEC-108): it carried the marker written just before the send.
+    assert.deepEqual(durante, [{ estado: 'en-curso', finalizadaEn: null, notificacion: 'enviando' }]);
     const [fila] = await ejecuciones(id);
     assert.deepEqual(columnas(fila, 'estado', 'notificacion', 'duracionMs'), {
       estado: 'ok',
@@ -860,7 +875,12 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
     await crearPlanificador({ prisma: conFallo.cliente, zonaHoraria: 'UTC', log: registro(lineas) }).barrerInterrumpidas();
 
-    assert.deepEqual(conFallo.llamadas, [{ tenantId: a, cerradas: 2 }]);
+    // CH-18 (DEC-108): two writes per tenant, the `incierta` one first (no row here was
+    // marked), then the one that closes the rest.
+    assert.deepEqual(conFallo.llamadas, [
+      { tenantId: a, notificacion: 'incierta', cerradas: 0 },
+      { tenantId: a, notificacion: null, cerradas: 2 },
+    ]);
     assert.deepEqual((await ejecuciones(deA)).map((f) => f.error), ['interrumpida', 'interrumpida']);
     assert.deepEqual((await ejecuciones(deB)).map((f) => f.estado), ['en-curso']);
     const avisos = lineas.map((l) => JSON.parse(l));
@@ -874,7 +894,12 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     // Without the failure, B is swept too, in B's context only.
     const sinFallo = clienteDeBarrido([a, b]);
     await crearPlanificador({ prisma: sinFallo.cliente, zonaHoraria: 'UTC', log: registro() }).barrerInterrumpidas();
-    const esperadas = [{ tenantId: a, cerradas: 0 }, { tenantId: b, cerradas: 1 }];
+    const esperadas = [
+      { tenantId: a, notificacion: 'incierta', cerradas: 0 },
+      { tenantId: a, notificacion: null, cerradas: 0 },
+      { tenantId: b, notificacion: 'incierta', cerradas: 0 },
+      { tenantId: b, notificacion: null, cerradas: 1 },
+    ];
     const orden = (x: { tenantId?: string }, y: { tenantId?: string }) => String(x.tenantId).localeCompare(String(y.tenantId));
     assert.deepEqual([...sinFallo.llamadas].sort(orden), esperadas.sort(orden));
 
@@ -1290,6 +1315,256 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
         { tenantId: duenio, fase: 'conexion' },
       ]);
     }
+  });
+
+  // ---- CH-18 unit 2: at most one send per run, and the marker before it (X6) ----------
+
+  /** CH-18: a planner over `propios` only, built at `desde`, with the given notifier. */
+  function planificadorDe(
+    cliente: PrismaAislado,
+    desde: Date,
+    extra: { notificador?: Notificador | null; lineas?: string[]; reintentos?: PoliticaReintentos; reloj?: Reloj } = {},
+  ) {
+    return crearPlanificador({
+      prisma: cliente,
+      zonaHoraria: 'UTC',
+      log: registro(extra.lineas),
+      reloj: extra.reloj ?? relojFijo(desde),
+      ...(extra.notificador === undefined ? {} : { notificador: extra.notificador }),
+      ...(extra.reintentos === undefined ? {} : { reintentos: extra.reintentos }),
+    });
+  }
+
+  test('CH-18 2.3 while the notifier runs, the row is en-curso with the marker; it closes enviada', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-23@example.com' });
+    let durante: Record<string, unknown>[] = [];
+    const falso = notificadorFalso(async () => {
+      durante = (await ejecuciones(id)).map((f) => columnas(f, 'estado', 'finalizadaEn', 'notificacion'));
+      return { resultado: 'enviada' };
+    });
+
+    await planificadorDe(clienteDeBarrido([tenantId]).cliente, EN('04:00:30'), { notificador: falso.notificador })
+      .ejecutarTick(EN('04:01:30'));
+
+    assert.deepEqual(durante, [{ estado: 'en-curso', finalizadaEn: null, notificacion: 'enviando' }]);
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'notificacion')), [
+      { estado: 'ok', notificacion: 'enviada' },
+    ]);
+    assert.equal(falso.a('ch18-23@example.com').length, 1);
+  });
+
+  test('CH-18 2.4 the marker is written only on the path that sends: never for an omission or a failed run', async () => {
+    const tenantId = await tenant();
+    const vacia = await automatizacion(tenantId, {
+      lector: true, vistaSql: 'SELECT 1 AS id WHERE false', destinatario: 'ch18-24-vacia@example.com', creadaEn: '2020-01-01T00:00:00Z',
+    });
+    const sinDestinatario = await automatizacion(tenantId, { lector: true, creadaEn: '2020-01-02T00:00:00Z' });
+    const fallida = await automatizacion(tenantId, { destinatario: 'ch18-24-fallo@example.com', creadaEn: '2020-01-03T00:00:00Z' });
+    const compuerta = await automatizacion(tenantId, { vista: false, destinatario: 'ch18-24-compuerta@example.com', creadaEn: '2020-01-04T00:00:00Z' });
+    const envia = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-24@example.com', creadaEn: '2020-01-05T00:00:00Z' });
+    const { cliente, marcas } = clienteDeBarrido([tenantId]);
+    const falso = notificadorFalso();
+
+    // With a notifier, then with SMTP unset: one planner each, two windows.
+    await planificadorDe(cliente, EN('04:10:30'), { notificador: falso.notificador }).ejecutarTick(EN('04:11:30'));
+    await planificadorDe(cliente, EN('04:11:30'), { notificador: null }).ejecutarTick(EN('04:12:30'));
+
+    const resultado = async (id: string) => (await ejecuciones(id)).map((f) => `${f.estado}/${f.notificacion}`);
+    assert.deepEqual(await resultado(vacia), ['ok/omitida-sin-filas', 'ok/omitida-sin-filas']);
+    assert.deepEqual(await resultado(sinDestinatario), ['ok/sin-destinatario', 'ok/sin-destinatario']);
+    assert.deepEqual(await resultado(fallida), ['fallo/null', 'fallo/null']);
+    assert.deepEqual(await resultado(compuerta), ['fallo/null', 'fallo/null']);
+    assert.deepEqual(await resultado(envia), ['ok/enviada', 'ok/no-configurada']);
+    // One marker in ten runs: the row of the one run that reached the notifier.
+    const [enviada] = await ejecuciones(envia);
+    assert.deepEqual(marcas, [enviada.id]);
+    for (const para of ['ch18-24-vacia@example.com', 'ch18-24-fallo@example.com', 'ch18-24-compuerta@example.com']) {
+      assert.equal(falso.a(para).length, 0, para);
+    }
+    assert.equal(falso.a('ch18-24@example.com').length, 1);
+  });
+
+  test('CH-18 2.5 a marker write that throws calls no notifier and closes fallo/notificacion as error-interno', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-25@example.com' });
+    const { cliente, marcas } = clienteDeBarrido([tenantId], undefined, { fallaMarca: true });
+    const falso = notificadorFalso();
+    const lineas: string[] = [];
+
+    await planificadorDe(cliente, EN('04:20:30'), { notificador: falso.notificador, lineas }).ejecutarTick(EN('04:21:30'));
+
+    assert.equal(marcas.length, 1, 'the marker was attempted');
+    assert.equal(falso.a('ch18-25@example.com').length, 0, 'no send without the marker');
+    const filas = await ejecuciones(id);
+    assert.deepEqual(filas.map((f) => columnas(f, 'estado', 'fase', 'filas', 'error', 'codigoError', 'notificacion')), [
+      { estado: 'fallo', fase: 'notificacion', filas: 1, error: 'error-interno', codigoError: null, notificacion: 'fallo-envio' },
+    ]);
+    const avisos = lineas.map((l) => JSON.parse(l)).filter((l) => l.automatizacionId === id);
+    assert.deepEqual(avisos.map((l) => columnas(l, 'msg', 'error', 'nombreError')), [
+      { msg: 'scheduled run failed', error: 'error-interno', nombreError: 'Error' },
+    ]);
+    assert.ok(!lineas.join('\n').includes('base caida secreta'));
+  });
+
+  test('CH-18 2.6 a process lost mid-send leaves en-curso/enviando, and the next boot sweep records incierta', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-26@example.com' });
+    // The send never answers: as far as this run knows, the process died during it.
+    const falso = notificadorFalso(() => new Promise<ResultadoEnvio>(() => {}));
+    void planificadorDe(clienteDeBarrido([tenantId]).cliente, EN('04:30:30'), { notificador: falso.notificador })
+      .ejecutarTick(EN('04:31:30'));
+    await esperarA(() => falso.a('ch18-26@example.com').length === 1);
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'notificacion')), [
+      { estado: 'en-curso', notificacion: 'enviando' },
+    ]);
+
+    // The next process: its boot sweep closes the row and sends nothing.
+    await planificadorDe(clienteDeBarrido([tenantId]).cliente, EN('04:40:00'), { notificador: falso.notificador })
+      .barrerInterrumpidas();
+
+    const barrida = {
+      estado: 'fallo', error: 'interrumpida', notificacion: 'incierta', finalizadaEn: EN('04:40:00'),
+      duracionMs: null, filas: null, corte: null, fase: null, codigoError: null, intentos: null,
+    };
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, ...Object.keys(barrida))), [barrida]);
+    assert.equal(falso.a('ch18-26@example.com').length, 1, 'the sweep never sends');
+  });
+
+  test('CH-18 2.7 the sweep turns enviando into incierta, keeps null as null, and leaves closed rows alone', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId);
+    await prisma.ejecucion.create({
+      data: { tenantId, automatizacionId: id, estado: 'en-curso', iniciadaEn: EN('08:00:00'), notificacion: 'enviando' },
+    });
+    await atascada(tenantId, id, EN('08:00:01'));
+    for (const [hora, cierre] of [
+      ['07:00:00', { estado: 'ok', fase: 'ejecucion', filas: 3, notificacion: 'enviada' }],
+      ['07:01:00', { estado: 'fallo', fase: 'notificacion', filas: 2, error: 'tiempo-agotado', notificacion: 'fallo-envio' }],
+      ['07:02:00', { estado: 'omitida', error: 'solapamiento' }],
+    ] as const) {
+      await prisma.ejecucion.create({
+        data: { tenantId, automatizacionId: id, iniciadaEn: EN(hora), finalizadaEn: EN(hora), duracionMs: 0, ...cierre },
+      });
+    }
+    const cerradasAntes = (await ejecuciones(id)).filter((f) => f.estado !== 'en-curso');
+    const lineas: string[] = [];
+
+    await planificadorDe(clienteDeBarrido([tenantId]).cliente, EN('09:00:00'), { lineas }).barrerInterrumpidas();
+
+    const barridas = (await ejecuciones(id)).filter((f) => f.error === 'interrumpida');
+    assert.deepEqual(barridas.map((f) => columnas(f, 'iniciadaEn', 'estado', 'notificacion')), [
+      { iniciadaEn: EN('08:00:00'), estado: 'fallo', notificacion: 'incierta' },
+      { iniciadaEn: EN('08:00:01'), estado: 'fallo', notificacion: null },
+    ]);
+    assert.deepEqual((await ejecuciones(id)).filter((f) => f.error !== 'interrumpida'), cerradasAntes);
+    // The total and, apart, how many of them are uncertain: counts only (rule 5).
+    const resumen = lineas.map((l) => JSON.parse(l)).filter((l) => l.msg === 'boot sweep closed interrupted runs');
+    assert.deepEqual(resumen.map((l) => columnas(l, 'cerradas', 'inciertas')), [{ cerradas: 2, inciertas: 1 }]);
+  });
+
+  test('CH-18 2.8 a retried dial that then connects sends once', async () => {
+    const puerto = await puertoLibre();
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, puerto, destinatario: 'ch18-28-reintento@example.com' });
+    let cerrar: (() => Promise<void>) | undefined;
+    const { reloj } = relojDePausas(EN('04:50:30'), (_, disparar) => {
+      void escuchar(puerto, 'reenviar').then((c) => {
+        cerrar = c;
+        disparar();
+      });
+    });
+    const falso = notificadorFalso();
+
+    try {
+      await tickDe([tenantId], EN('04:51:30'), reloj, TRES_INTENTOS, { notificador: falso.notificador });
+    } finally {
+      await cerrar?.();
+    }
+
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'intentos', 'notificacion')), [
+      { estado: 'ok', intentos: 2, notificacion: 'enviada' },
+    ]);
+    assert.equal(falso.a('ch18-28-reintento@example.com').length, 1);
+  });
+
+  test('CH-18 2.8 a run stuck in enviando makes the next tick skip as omitida, with no send', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-28-solape@example.com' });
+    const atascadaEnviando = await prisma.ejecucion.create({
+      data: { tenantId, automatizacionId: id, estado: 'en-curso', iniciadaEn: EN('04:59:00'), notificacion: 'enviando' },
+    });
+    const falso = notificadorFalso();
+
+    await tickDe([tenantId], EN('05:21:30'), relojFijo(EN('05:20:30')), undefined, { notificador: falso.notificador });
+
+    const [enCurso, ...resto] = await ejecuciones(id);
+    assert.deepEqual(enCurso, atascadaEnviando, 'the marked row is unchanged');
+    assert.deepEqual(resto.map((f) => columnas(f, 'estado', 'error', 'notificacion')), [
+      { estado: 'omitida', error: 'solapamiento', notificacion: null },
+    ]);
+    assert.equal(falso.a('ch18-28-solape@example.com').length, 0);
+  });
+
+  test('CH-18 2.8 detener during a send on the timer path waits for it: one send, enviada, nothing armed', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-28-detener@example.com' });
+    let ahora = EN('05:30:30');
+    const temporizadores: { ms: number; disparar: () => void }[] = [];
+    const reloj: Reloj = {
+      ahora: () => ahora,
+      programar: (ms, disparar) => {
+        temporizadores.push({ ms, disparar });
+        return () => {};
+      },
+    };
+    let soltarEnvio!: (r: ResultadoEnvio) => void;
+    const falso = notificadorFalso(() => new Promise<ResultadoEnvio>((resolve) => {
+      soltarEnvio = resolve;
+    }));
+    const p = planificadorDe(clienteDeBarrido([tenantId]).cliente, ahora, { notificador: falso.notificador, reloj });
+
+    p.iniciar();
+    ahora = EN('05:31:01');
+    temporizadores[0].disparar();
+    await esperarA(() => falso.a('ch18-28-detener@example.com').length === 1);
+    let detenido = false;
+    const deteniendo = p.detener().then(() => {
+      detenido = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(detenido, false, 'detener waits for the send in flight');
+    soltarEnvio({ resultado: 'enviada' });
+    await deteniendo;
+
+    assert.equal(falso.a('ch18-28-detener@example.com').length, 1);
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'notificacion')), [
+      { estado: 'ok', notificacion: 'enviada' },
+    ]);
+    assert.equal(temporizadores.length, 1, 'no timer is armed once stopped');
+  });
+
+  test('CH-18 2.8 a send cut by the outer time limit was attempted once and is not repeated', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-28-tiempo@example.com' });
+    let envios = 0;
+    const notificador = notificadorDesdeTransporte(
+      {
+        sendMail: () => {
+          envios++;
+          return new Promise(() => {});
+        },
+        close: () => {},
+      },
+      { de: 'zerodashboard@example.com', timeoutMs: 50 },
+    );
+
+    await tickDe([tenantId], EN('05:41:30'), relojFijo(EN('05:40:30')), undefined, { notificador });
+
+    assert.equal(envios, 1);
+    assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'fase', 'error', 'notificacion')), [
+      { estado: 'fallo', fase: 'notificacion', error: 'tiempo-agotado', notificacion: 'fallo-envio' },
+    ]);
   });
 });
 

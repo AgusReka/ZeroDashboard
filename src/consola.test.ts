@@ -907,6 +907,57 @@ describe('the console document, served by the real route', () => {
     assert.ok(!corridas.some((fila) => fila.textContent.includes('null')), 'null never reaches the page');
   });
 
+  /**
+   * CH-18 spec `query-console` (DEC-108): a pending send and an interrupted one are
+   * labelled, and a timed-out send never claims the email was not sent.
+   */
+  test('CH-18 2.12 the runs view labels enviando and incierta, and a timed-out send may have been delivered', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const base = { corte: null, codigoError: null, error: null, iniciadaEn: 'i', finalizadaEn: 'f', duracionMs: 1, filas: 3, fase: 'ejecucion' };
+    const categorias = ['tiempo-agotado', 'servidor-inalcanzable', 'credenciales-invalidas', 'envio-rechazado', 'error-desconocido'];
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', estado: 'en-curso', finalizadaEn: null, duracionMs: null, filas: null, fase: null, notificacion: 'enviando' },
+          { ...base, id: 'e-2', estado: 'fallo', error: 'interrumpida', duracionMs: null, filas: null, fase: null, notificacion: 'incierta' },
+          ...categorias.map((error, i) => ({
+            ...base, id: `f-${i}`, estado: 'fallo', fase: 'notificacion', error, notificacion: 'fallo-envio',
+          })),
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+
+    const [enviando, incierta, ...fallidas] = filasDe(escenario, 'auto-ejecuciones', 'ejecucion')
+      .map((fila) => fila.hijos.map((celda) => celda.textContent));
+    assert.equal(enviando[5], 'Envío en curso');
+    assert.equal(incierta[5], 'Sin confirmar: puede haberse entregado');
+    assert.match(incierta[6], /^La corrida se interrumpió por un reinicio del servicio/);
+
+    const [tiempo, ...otras] = fallidas.map((celdas) => celdas[6]);
+    assert.match(tiempo, /puede haberse entregado/);
+    assert.ok(!tiempo.includes('no se envió'), 'a timed-out send is not claimed undelivered');
+    // The other four send failures keep their CH-14 copy.
+    assert.deepEqual(otras, [
+      'No se pudo conectar con el servidor de correo configurado. La consulta se ejecutó, pero el correo no se envió.',
+      'El servidor de correo rechazó las credenciales configuradas. La consulta se ejecutó, pero el correo no se envió.',
+      'El servidor de correo rechazó el mensaje o el destinatario. La consulta se ejecutó, pero el correo no se envió.',
+      'El envío del correo falló por un motivo no reconocido. La consulta se ejecutó, pero el correo no se envió.',
+    ]);
+    assert.equal(new Set([tiempo, ...otras]).size, categorias.length, 'one distinct message per category');
+
+    const texto = [enviando, incierta, ...fallidas].flat().join('\n');
+    for (const crudo of ['enviando', 'incierta', 'interrumpida', 'fallo-envio', 'null', ...categorias]) {
+      assert.ok(!texto.includes(crudo), crudo);
+    }
+    // The page is one template literal: a backtick in any string would end it.
+    assert.ok(!documento.includes(String.fromCharCode(96)), 'no backtick in the served page');
+  });
+
   /** CH-17a spec `query-console`: an overlap skip and an interrupted run are legible. */
   test('CH-17a 2.4 the runs view labels omitida and explains solapamiento and interrumpida', async () => {
     const escenario = await arrancar();

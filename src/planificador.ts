@@ -322,12 +322,20 @@ export function crearPlanificador({
    * is rendered and sent only when `decidirNotificacion` says so; otherwise the omission
    * is the outcome. A throw here, even a synchronous one from `enviar`, becomes a value, so
    * the row still closes (`error-interno`) instead of staying `en-curso`.
+   *
+   * CH-18 (X6, DEC-107, DEC-108): `enviar` is called at most once per run, and only after
+   * the run's own row (`id`) carries `notificacion='enviando'`. The marker is written after
+   * the message is composed, so a compose throw marks nothing, and through the scoped
+   * client (rule 2). A marker write that throws is an `excepcion` like any other here: no
+   * send, and the row closes `error-interno`. The close overwrites the marker; a row the
+   * process left marked is closed `incierta` by the next boot sweep.
    */
   async function notificar(
     automatizacion: AutomatizacionACorrer,
     plantilla: PlantillaACorrer | null,
     resultado: ResultadoCorrida,
     iniciadaEn: Date,
+    id: string,
   ): Promise<SalidaNotificacion> {
     const decision = decidirNotificacion(resultado, automatizacion.destinatario, notificador !== null);
     if (!decision.enviar) {
@@ -347,6 +355,7 @@ export function crearPlanificador({
         fecha: iniciadaEn,
         zona: zonaHoraria,
       });
+      await prisma.ejecucion.update({ where: { id }, data: { notificacion: 'enviando' }, select: { id: true } });
       return await notificador.enviar({ para: decision.para, ...correo });
     } catch (error) {
       return { resultado: 'excepcion', error };
@@ -410,7 +419,7 @@ export function crearPlanificador({
         resultado = { resultado: 'excepcion', error };
       }
     }
-    const salida = await notificar(automatizacion, plantilla, resultado, iniciadaEn);
+    const salida = await notificar(automatizacion, plantilla, resultado, iniciadaEn, id);
     const cierre = cierreConNotificacion(cierreDeResultado(resultado), salida);
     // Read after the send, so the duration includes it; then the row's only close.
     const finalizadaEn = reloj.ahora();
@@ -558,25 +567,38 @@ export function crearPlanificador({
    * are never re-executed. Every tenant is entered, deactivated ones included: the one
    * bounded exception to DEC-14, which closes rows and runs nothing. One failing tenant is
    * logged and the others are still swept (DEC-102); nothing here rejects.
+   *
+   * CH-18 (DEC-108): a row still carrying the `enviando` marker may have sent its email, so
+   * it is closed first, as `incierta`; the second write closes the rest with `notificacion`
+   * null. The order matters: the second write would clear the marker. If the second write
+   * fails, the rows the first one closed stay closed and the rest wait for the next boot
+   * (fail-open, DEC-102). The sweep never sends and never re-executes.
    */
   async function barrerInterrumpidas(): Promise<void> {
     // One boot time for every tenant's rows.
     const finalizadaEn = reloj.ahora();
     let cerradas = 0;
+    let inciertas = 0;
     try {
       // `Tenant` is not a scoped model: its rows are the only source of tenant ids (rule 2).
       const tenants = await prisma.tenant.findMany({ select: { id: true, nombre: true }, orderBy: { id: 'asc' } });
       for (const fila of tenants) {
         const tenant: TenantActivo = { id: fila.id, nombre: fila.nombre };
         try {
-          // Awaited inside the callback, so the write starts inside this tenant's context.
-          const { count } = await conTenantActivo(tenant, async () =>
-            await prisma.ejecucion.updateMany({
+          // Awaited inside the callback, so both writes start inside this tenant's context.
+          await conTenantActivo(tenant, async () => {
+            const marcadas = await prisma.ejecucion.updateMany({
+              where: { estado: 'en-curso', notificacion: 'enviando' },
+              data: { ...CIERRE_INTERRUMPIDA, notificacion: 'incierta', finalizadaEn },
+            });
+            inciertas += marcadas.count;
+            cerradas += marcadas.count;
+            const resto = await prisma.ejecucion.updateMany({
               where: { estado: 'en-curso' },
               data: { ...CIERRE_INTERRUMPIDA, finalizadaEn },
-            }),
-          );
-          cerradas += count;
+            });
+            cerradas += resto.count;
+          });
         } catch (error) {
           log.warn(
             { tenantId: tenant.id, error: 'error-interno', nombreError: nombreDeError(error) },
@@ -589,7 +611,8 @@ export function crearPlanificador({
       log.error({ error: 'error-interno', nombreError: nombreDeError(error) }, 'boot sweep failed');
       return;
     }
-    log.info({ cerradas }, 'boot sweep closed interrupted runs');
+    // Counts only (rule 5): every row closed, and how many of them are `incierta`.
+    log.info({ cerradas, inciertas }, 'boot sweep closed interrupted runs');
   }
 
   async function arrancar(): Promise<void> {

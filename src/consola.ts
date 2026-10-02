@@ -213,8 +213,10 @@ var MENSAJES = {
   'ejecucion:error-sintaxis': 'La sentencia es inválida, o contiene más de una sentencia en un mismo envío. Solo se admite una por ejecución.',
   'ejecucion:error-datos': 'La consulta es válida pero falló al procesar los datos (por ejemplo, una división por cero).',
   'ejecucion:error-desconocido': 'La ejecución falló por un motivo no reconocido.',
-  // CH-14: a failed send. The query itself ran; only the email did not go out.
-  'notificacion:tiempo-agotado': 'El servidor de correo no respondió dentro del tiempo permitido. La consulta se ejecutó, pero el correo no se envió.',
+  // CH-14: a failed send. The query itself ran; only the email did not go out. CH-18
+  // (DEC-108): a send cut by the time limit may still have been accepted by the server,
+  // so its copy says the email may have been delivered, never that it was not sent.
+  'notificacion:tiempo-agotado': 'El servidor de correo no respondió dentro del tiempo permitido. La consulta se ejecutó, pero no se confirmó el envío: el correo puede haberse entregado.',
   'notificacion:servidor-inalcanzable': 'No se pudo conectar con el servidor de correo configurado. La consulta se ejecutó, pero el correo no se envió.',
   'notificacion:credenciales-invalidas': 'El servidor de correo rechazó las credenciales configuradas. La consulta se ejecutó, pero el correo no se envió.',
   'notificacion:envio-rechazado': 'El servidor de correo rechazó el mensaje o el destinatario. La consulta se ejecutó, pero el correo no se envió.',
@@ -289,13 +291,16 @@ var ETIQUETAS_ESTADO = {
 };
 
 // CH-14 (DEC-83): one label per closed notificacion value. Anything else, null
-// included, is the placeholder: a raw value never reaches the page.
+// included, is the placeholder: a raw value never reaches the page. CH-18 (DEC-108):
+// enviando marks a send in progress, and incierta a run interrupted during its send.
 var ETIQUETAS_NOTIFICACION = {
   'enviada': 'Enviada',
   'omitida-sin-filas': 'No enviada: sin filas',
   'sin-destinatario': 'Sin destinatario',
   'no-configurada': 'Correo no configurado',
-  'fallo-envio': 'Falló el envío'
+  'fallo-envio': 'Falló el envío',
+  'enviando': 'Envío en curso',
+  'incierta': 'Sin confirmar: puede haberse entregado'
 };
 
 var CLAVE_TENANT = 'zerodashboard.tenantActivo';
