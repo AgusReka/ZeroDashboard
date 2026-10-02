@@ -2,7 +2,7 @@
 
 ## MODIFIED Requirements
 
-### Requirement: Runs View Shows Readable Messages for solapamiento and interrumpida (DEC-96, DEC-99, DEC-108)
+### Requirement: Runs View Shows Readable Messages for solapamiento and interrumpida (DEC-96, DEC-99)
 
 In the runs view, a run with `error='solapamiento'` SHALL show a legible message stating that the run was skipped because the previous run was still in progress, and a run with `error='interrumpida'` SHALL show a legible message stating that the run was interrupted by a service restart. An `omitida` status SHALL render with a legible label. A `notificacion` of `enviando` SHALL render a legible "sending" label and `incierta` SHALL render a legible label stating it is unknown whether the email was sent. A run with `fase='notificacion'` and `error='tiempo-agotado'` SHALL show copy stating the email may have been delivered ("puede haberse entregado"), and MUST NOT state that the email was not sent; other send failures keep their existing copy. The raw values MUST NOT be the only text shown, and `null` MUST NOT be rendered as text. New label and copy strings MUST NOT contain a backtick, because the page script is embedded in a template literal.
 (Previously: no labels for `enviando` or `incierta`; a timed-out send was shown as not sent.)

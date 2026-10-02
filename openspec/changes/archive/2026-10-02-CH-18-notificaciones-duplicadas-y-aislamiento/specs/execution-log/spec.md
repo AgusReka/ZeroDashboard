@@ -2,9 +2,9 @@
 
 ## MODIFIED Requirements
 
-### Requirement: Ejecucion Records the Notification Outcome (DEC-83, DEC-108)
+### Requirement: Ejecucion Records the Notification Outcome (DEC-83)
 
-`Ejecucion` SHALL have a nullable `notificacion` column whose only permitted values are `enviada`, `omitida-sin-filas`, `fallo-envio`, `sin-destinatario`, `no-configurada`, `enviando`, `incierta`, and null. Its final value SHALL follow the precedence defined in `email-notification`. `enviando` is transient: it SHALL appear only on an `en-curso` row whose send is pending. `incierta` SHALL be written only by the boot sweep and means it is unknown whether the message left. `notificacion` SHALL be null when the query failed and for rows written before this change. `notificacion` MUST store the outcome only, never a message body, recipient, or row content.
+`Ejecucion` SHALL have a nullable `notificacion` column whose only permitted values are `enviada`, `omitida-sin-filas`, `fallo-envio`, `sin-destinatario`, `no-configurada`, `enviando`, `incierta`, and null (DEC-83, DEC-108). Its final value SHALL follow the precedence defined in `email-notification`. `enviando` is transient: it SHALL appear only on an `en-curso` row whose send is pending. `incierta` SHALL be written only by the boot sweep and means it is unknown whether the message left. `notificacion` SHALL be null when the query failed and for rows written before this change. `notificacion` MUST store the outcome only, never a message body, recipient, or row content.
 (Previously: the set had no `enviando` or `incierta`.)
 
 #### Scenario: Each outcome is recorded
@@ -37,7 +37,7 @@
 - WHEN `GET /automatizaciones/:id/ejecuciones` is called
 - THEN both rows SHALL be listed with those values
 
-### Requirement: Interrupted Runs Are Closed as fallo/interrumpida (DEC-99, DEC-108)
+### Requirement: Interrupted Runs Are Closed as fallo/interrumpida (DEC-99)
 
 A row left `en-curso` by a process stop SHALL be closed with `estado='fallo'` and `error='interrumpida'`. Its `finalizadaEn` SHALL equal the boot time of the sweep; `duracionMs`, `filas`, `fase`, and `intentos` SHALL be null. WHEN the row's `notificacion` was `enviando`, the sweep SHALL set `notificacion='incierta'`; for every other swept row `notificacion` SHALL stay null.
 (Previously: `notificacion` was always null on swept rows.)
