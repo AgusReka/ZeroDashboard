@@ -1926,6 +1926,86 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-107 — CH-18 (X6): «mismo evento» es una ejecución; el envío es como máximo una vez
+
+**Contexto.** X6 pide que una ejecución produzca como máximo una notificación. El código ya envía una vez por corrida (DEC-85, DEC-97) y no re-ejecuta las interrumpidas (DEC-99).
+
+**Opciones.** (a) Evento = una corrida. (b) Evento = mismo contenido que la corrida anterior. (c) Enfriamiento por tiempo por automatización.
+
+**Decisión.** (a). Una ejecución envía como máximo un correo, sin reintento del envío. La supresión por contenido o por tiempo queda como límite del artefacto: exige estado persistido (DEC-93, regla 5) o configuración nueva por plantilla (DEC-64, DEC-65) y ampliaría el motor (regla 6).
+
+**Se resigna.** Dos corridas seguidas con las mismas filas envían dos correos.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-108 — CH-18 (X6): marca previa al envío y resultado `incierta`
+
+**Contexto.** Un corte entre el envío y el cierre de la fila, o un envío que vence por tiempo pero igual se entrega, dejan el registro sin saber si el correo salió (límites de CH-14).
+
+**Opciones.** (a) Solo documentar y corregir el texto de la consola. (b) `notificacion = 'enviando'` antes de enviar; el barrido de arranque la cierra como `fallo` / `interrumpida` con `notificacion = 'incierta'`; el envío vencido por tiempo se muestra como «puede haberse entregado». (c) Tabla de notificaciones con clave de idempotencia.
+
+**Decisión.** (b). `notificacion` es texto, sin migración. No se reintenta el envío (DEC-97) ni se re-ejecutan las corridas interrumpidas (DEC-99). El «reporte de fallas de notificación» pendiente de CH-17b queda cubierto por `fallo-envio`, `incierta` y el listado de ejecuciones.
+
+**Se resigna.** Un `UPDATE` extra por corrida que notifica; dos valores nuevos en el conjunto cerrado de `notificacion`; la spec de `execution-log` deja de exigir `notificacion` nula en las filas barridas.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-109 — CH-18 (X8): aislamiento de errores por tenant dentro del tick
+
+**Contexto.** Una excepción fuera de `correr()` en un tenant aborta el tick, y los tenants siguientes pierden su ventana: `anterior` ya avanzó y no hay recuperación (DEC-95).
+
+**Opciones.** (a) Captura por tenant con log de campos cerrados; el tick sigue con los demás. (b) Además registrar una fila de ejecución, imposible porque la fila exige `automatizacionId`.
+
+**Decisión.** (a), con el mismo patrón que el barrido de arranque (DEC-102). Un fallo a nivel de tenant queda solo en el log.
+
+**Se resigna.** Esa ventana del tenant fallido no se recupera (DEC-95).
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-110 — CH-18 (X8): el tick sigue serial
+
+**Contexto.** DEC-98 dejó para CH-18 el costo de bloqueo por una conexión caída.
+
+**Opciones.** (a) Serial con aislamiento de errores. (b) Carriles seriales por tenant con tope de concurrencia y barrera de tick. (c) Lazos independientes por tenant. (d) Cortacircuitos por conexión.
+
+**Decisión.** (a). El criterio de X8 es aislar errores, no latencia. (b), (c) y (d) agregan capacidad al motor que ninguna historia pide (regla 6) y quedan como límite del artefacto.
+
+**Se resigna.** Una conexión caída sigue demorando a los demás tenants hasta la cota de DEC-98.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
+### DEC-111 — CH-18 (X8): la ventana de carrera de DEC-96 sigue cerrada y se endurece la conexión del agente
+
+**Contexto.** DEC-96 se reabría si CH-18 introducía paralelismo. Además, `pg.Client` en `src/db-probe.ts` no tiene listener de `'error'`; una conexión que muere tras el login podría terminar el proceso. Ese archivo lo comparten los caminos de CH-03 y CH-04.
+
+**Opciones.** Carrera: (a) cerrada, sin índice único parcial; (b) índice único parcial con `partialIndexes` de Prisma. Listener: incluirlo o solo documentar.
+
+**Decisión.** Carrera (a): sin paralelismo (DEC-110) y con instancia única (DEC-75, DEC-99) la ventana no se reabre. Listener: se incluye solo si una prueba confirma que el cierre del proceso ocurre; si la prueba lo refuta, no se agrega nada.
+
+**Se resigna.** Sin defensa en base contra una segunda instancia.
+
+**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
