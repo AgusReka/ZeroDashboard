@@ -30,14 +30,14 @@ Chain strategy: size-exception
 
 ## Unit 1: Per-Tenant Catch (X8-A, DEC-109/110/111)
 
-- [ ] 1.1 RED `src/planificador.test.ts`: generalize `clienteDeBarrido` (`:259-282`) with `fallaListadoEn`; two tenants, failing one is the lower id; other tenant is `ok`/`enviada` with one notifier call; failing tenant has 0 rows; exactly one log line `{tenantId, error:'error-interno', nombreError:'Error'}`; `'base caida secreta'` and tenant name absent
-- [ ] 1.2 RED same file: tick 1 fails for A, tick 2 runs A healthy with cron `0 9 * * *`; A has 0 rows (window lost, DEC-95)
-- [ ] 1.3 RED same file: Proxy records `tenantActivoOpcional()` per listing as `[A, B]`; every row carries its own `tenantId`; tenants never run concurrently (deferred first query blocks second tenant)
-- [ ] 1.4 GREEN `src/planificador.ts`: wrap the per-tenant step in `ejecutarTick` (`:502-506`) in try/catch; `log.error` with closed fields only; `anterior = ahora` stays first
-- [ ] 1.5 Spike RED `src/db-probe.test.ts` (skip without PG): child via `spawn(process.execPath, ['--import','tsx','--input-type=module','--eval', SCRIPT])`, fixed argv, no shell, credentials via env, 15 s kill; `net` forwarder; destroy sockets (a) idle after login, (b) during `SELECT pg_sleep(5)` with rejection handled; child prints `SOBREVIVIO`; parent asserts exit 0 and marker
-- [ ] 1.6 Run the spike on unchanged `src/db-probe.ts`; record per-scenario outcome. Non-zero exit proves the crash; a green scenario is refuted and dropped. If `--eval` cannot resolve `.ts`, fall back to the `tsx` CLI `--eval` (no fixture file)
-- [ ] 1.7 GREEN conditional `src/db-probe.ts`: only if 1.6 proved a crash, add `cliente.on('error', () => {})` after `new pg.Client` (`:105-112`), error never read. If every scenario is refuted or the result is flaky or inconclusive: remove the spike test, add no listener (DEC-111)
-- [ ] 1.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; commit "fix(ch18): aislamiento de fallos por tenant en el tick" (spike evidence kept for unit 3)
+- [x] 1.1 RED `src/planificador.test.ts`: generalize `clienteDeBarrido` (`:259-282`) with `fallaListadoEn`; two tenants, failing one is the lower id; other tenant is `ok`/`enviada` with one notifier call; failing tenant has 0 rows; exactly one log line `{tenantId, error:'error-interno', nombreError:'Error'}`; `'base caida secreta'` and tenant name absent
+- [x] 1.2 RED same file: tick 1 fails for A, tick 2 runs A healthy with cron `0 9 * * *`; A has 0 rows (window lost, DEC-95)
+- [x] 1.3 RED same file: Proxy records `tenantActivoOpcional()` per listing as `[A, B]`; every row carries its own `tenantId`; tenants never run concurrently (deferred first query blocks second tenant)
+- [x] 1.4 GREEN `src/planificador.ts`: wrap the per-tenant step in `ejecutarTick` (`:502-506`) in try/catch; `log.error` with closed fields only; `anterior = ahora` stays first
+- [x] 1.5 Spike RED `src/db-probe.test.ts` (skip without PG): child via `spawn(process.execPath, ['--import','tsx','--input-type=module','--eval', SCRIPT])`, fixed argv, no shell, credentials via env, 15 s kill; `net` forwarder; destroy sockets (a) idle after login, (b) during `SELECT pg_sleep(5)` with rejection handled; child prints `SOBREVIVIO`; parent asserts exit 0 and marker
+- [x] 1.6 Run the spike on unchanged `src/db-probe.ts`; record per-scenario outcome. Non-zero exit proves the crash; a green scenario is refuted and dropped. If `--eval` cannot resolve `.ts`, fall back to the `tsx` CLI `--eval` (no fixture file)
+- [x] 1.7 GREEN conditional `src/db-probe.ts`: only if 1.6 proved a crash, add `cliente.on('error', () => {})` after `new pg.Client` (`:105-112`), error never read. If every scenario is refuted or the result is flaky or inconclusive: remove the spike test, add no listener (DEC-111)
+- [x] 1.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; commit "fix(ch18): aislamiento de fallos por tenant en el tick" (spike evidence kept for unit 3)
 
 ## Unit 2: At-Most-Once and the `enviando` Marker (X6-B, DEC-107/108)
 

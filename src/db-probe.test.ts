@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { classifyConnectionError, probeConnection } from './db-probe.js';
@@ -203,5 +204,123 @@ describe('probeConnection — the budget is decided by the race, not by the cloc
       !JSON.stringify(resultado).includes(password),
       'a timed-out probe must not echo the credential',
     );
+  });
+});
+
+/**
+ * CH-18 (DEC-111): does an agent connection that dies after login take the process down?
+ * The question is answered in a child process, so a crash ends the child and never the
+ * runner. The child dials the live server through a local forwarder, logs in through
+ * `iniciarConexion`, then destroys every forwarder socket: (a) while the client is idle,
+ * and (b) while a query is in flight, its rejection handled. It prints `SOBREVIVIO` only if
+ * it is still alive half a second later. Credentials reach it through the environment; the
+ * script is a fixed string and no shell runs it, as in `server.test.ts`.
+ */
+const objetivoSonda = {
+  host: process.env.TEST_DB_HOST ?? 'localhost',
+  port: Number(process.env.TEST_DB_PORT ?? '5432'),
+  user: process.env.TEST_DB_USER ?? 'zerodashboard',
+  password: process.env.TEST_DB_PASSWORD ?? 'change-me',
+  database: process.env.TEST_DB_NAME ?? 'zerodashboard',
+};
+
+const LIMITE_SONDA_MS = 15_000;
+
+const GUION_SONDA = `
+import net from 'node:net';
+const { iniciarConexion } = await import(process.env.SONDA_MODULO);
+const sockets = new Set();
+const reenviador = net.createServer((entrante) => {
+  const saliente = net.connect({ host: process.env.SONDA_HOST, port: Number(process.env.SONDA_PUERTO) });
+  for (const socket of [entrante, saliente]) {
+    sockets.add(socket);
+    socket.on('error', () => {});
+  }
+  entrante.pipe(saliente).pipe(entrante);
+});
+await new Promise((resolve) => reenviador.listen(0, '127.0.0.1', resolve));
+const { cliente, conectado, cancelarTemporizador } = iniciarConexion({
+  host: '127.0.0.1',
+  port: reenviador.address().port,
+  database: process.env.SONDA_BASE,
+  user: process.env.SONDA_USUARIO,
+  password: process.env.SONDA_CLAVE,
+}, 5000);
+await conectado;
+cancelarTemporizador();
+const cortar = () => {
+  for (const socket of sockets) socket.destroy();
+};
+if (process.env.SONDA_ESCENARIO === 'inactiva') {
+  cortar();
+} else {
+  const consulta = cliente.query('SELECT pg_sleep(5)').then(() => 'resuelta', () => 'rechazada');
+  setTimeout(cortar, 200);
+  console.log('CONSULTA ' + (await consulta));
+}
+await new Promise((resolve) => setTimeout(resolve, 500));
+console.log('SOBREVIVIO');
+process.exit(0);
+`;
+
+function alcanzable(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const cerrar = (valor: boolean): void => {
+      socket.destroy();
+      resolve(valor);
+    };
+    socket.setTimeout(1000);
+    socket.once('connect', () => cerrar(true));
+    socket.once('timeout', () => cerrar(false));
+    socket.once('error', () => cerrar(false));
+  });
+}
+
+const motivoSkipSonda: string | false = (await alcanzable(objetivoSonda.host, objetivoSonda.port))
+  ? false
+  : `no PostgreSQL server at ${objetivoSonda.host}:${objetivoSonda.port} — set TEST_DB_*`;
+
+/** Runs the child in one scenario; `codigo` is `null` when it had to be killed. */
+function correrSonda(escenario: 'inactiva' | 'consulta'): Promise<{ codigo: number | null; salida: string }> {
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    SONDA_MODULO: new URL('./db-probe.ts', import.meta.url).href,
+    SONDA_ESCENARIO: escenario,
+    SONDA_HOST: objetivoSonda.host,
+    SONDA_PUERTO: String(objetivoSonda.port),
+    SONDA_BASE: objetivoSonda.database,
+    SONDA_USUARIO: objetivoSonda.user,
+    SONDA_CLAVE: objetivoSonda.password,
+  };
+  const hijo = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', GUION_SONDA], { env });
+  let salida = '';
+  hijo.stdout.on('data', (trozo: Buffer) => {
+    salida += trozo.toString();
+  });
+  hijo.stderr.on('data', (trozo: Buffer) => {
+    salida += trozo.toString();
+  });
+  return new Promise((resolve) => {
+    const limite = setTimeout(() => hijo.kill(), LIMITE_SONDA_MS);
+    hijo.once('exit', (codigo) => {
+      clearTimeout(limite);
+      resolve({ codigo, salida });
+    });
+  });
+}
+
+describe('agent connection dying after login (CH-18, DEC-111)', { skip: motivoSkipSonda, timeout: 3 * LIMITE_SONDA_MS }, () => {
+  test('(a) every socket destroyed while the client is idle: the process stays alive', async () => {
+    const { codigo, salida } = await correrSonda('inactiva');
+    assert.equal(codigo, 0, salida);
+    assert.match(salida, /SOBREVIVIO/);
+  });
+
+  test('(b) every socket destroyed during a query: the query rejects and the process stays alive', async () => {
+    const { codigo, salida } = await correrSonda('consulta');
+    assert.equal(codigo, 0, salida);
+    assert.match(salida, /CONSULTA rechazada/);
+    assert.match(salida, /SOBREVIVIO/);
   });
 });

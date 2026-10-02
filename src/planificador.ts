@@ -499,10 +499,24 @@ export function crearPlanificador({
       select: { id: true, nombre: true },
       orderBy: { id: 'asc' },
     });
+    // CH-18 (DEC-109, DEC-110): one tenant at a time, each behind its own catch, modelled
+    // on the boot sweep (DEC-102). A throw outside any run (the listing, for one) is logged
+    // and the next tenant still runs. It writes no row, and that tenant's window for this
+    // tick is not given back: `anterior` has already moved on (DEC-95).
     for (const fila of tenants) {
       const tenant: TenantActivo = { id: fila.id, nombre: fila.nombre };
-      // Awaited inside the callback, so every query starts inside this context.
-      await conTenantActivo(tenant, () => correrVencidas(desde, ahora));
+      try {
+        // Awaited inside the callback, so every query starts inside this context.
+        await conTenantActivo(tenant, () => correrVencidas(desde, ahora));
+      } catch (error) {
+        // Closed fields only (rule 5): the id from the tenant's own row and the error's
+        // class name, never its message, stack, or the tenant's name. `error` level, as the
+        // log is the only record of the lost window (DEC-109).
+        log.error(
+          { tenantId: tenant.id, error: 'error-interno', nombreError: nombreDeError(error) },
+          'scheduled tick failed for a tenant',
+        );
+      }
     }
   }
 

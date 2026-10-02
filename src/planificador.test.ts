@@ -250,14 +250,43 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     await planificador.ejecutarTick(hasta);
   }
 
+  /** CH-18: hooks on each tenant's automation listing, the first query a tick runs in it. */
+  interface OpcionesBarrido {
+    /**
+     * `automatizacion.findMany` throws in this tenant's context. Read on every listing, so a
+     * test can heal the tenant between two ticks.
+     */
+    fallaListadoEn?: string;
+    /** Awaited before each listing, so a test can hold one tenant's first query. */
+    antesDeListar?: (tenantId: string | undefined) => Promise<void>;
+  }
+
   /**
    * CH-17a: the client a sweep test hands the planner. `tenant.findMany` is narrowed to
    * `propios`, because node:test runs files in parallel and a real sweep would close every
    * other file's `en-curso` rows. Each `ejecucion.updateMany` records the tenant context it
    * ran in and its count; the one in `fallaEn`'s context throws instead.
+   *
+   * CH-18: each `automatizacion.findMany` records the tenant context it was called in, in
+   * call order, in `listados`; see `OpcionesBarrido` for the failure and the hold.
    */
-  function clienteDeBarrido(propios: string[], fallaEn?: string) {
+  function clienteDeBarrido(propios: string[], fallaEn?: string, opciones: OpcionesBarrido = {}) {
     const llamadas: { tenantId: string | undefined; cerradas: number }[] = [];
+    const listados: (string | undefined)[] = [];
+    const automatizacion = new Proxy(aislado.automatizacion, {
+      get: (destino, prop) =>
+        prop === 'findMany'
+          ? async (args: Parameters<typeof aislado.automatizacion.findMany>[0]) => {
+              const tenantId = tenantActivoOpcional()?.id;
+              listados.push(tenantId);
+              await opciones.antesDeListar?.(tenantId);
+              if (opciones.fallaListadoEn !== undefined && tenantId === opciones.fallaListadoEn) {
+                throw new Error('base caida secreta');
+              }
+              return aislado.automatizacion.findMany(args);
+            }
+          : Reflect.get(destino, prop),
+    });
     const ejecucion = new Proxy(aislado.ejecucion, {
       get: (destino, prop) =>
         prop === 'updateMany'
@@ -276,9 +305,26 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     };
     const cliente = new Proxy(aislado, {
       get: (destino, prop) =>
-        prop === 'tenant' ? tenantNarrowed : prop === 'ejecucion' ? ejecucion : Reflect.get(destino, prop),
+        prop === 'tenant'
+          ? tenantNarrowed
+          : prop === 'ejecucion'
+            ? ejecucion
+            : prop === 'automatizacion'
+              ? automatizacion
+              : Reflect.get(destino, prop),
     });
-    return { cliente, llamadas };
+    return { cliente, llamadas, listados };
+  }
+
+  /** CH-18: two new tenants, in the order a tick visits them (by id, as the database sorts). */
+  async function dosTenantsEnOrden(): Promise<[string, string]> {
+    const creados = [await tenant(), await tenant()];
+    const [primero, segundo] = await prisma.tenant.findMany({
+      where: { id: { in: creados } },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    return [primero.id, segundo.id];
   }
 
   /** A row a previous process left `en-curso`. */
@@ -1148,6 +1194,102 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'estado', 'error', 'intentos')), [
       { estado: 'fallo', error: 'interrumpida', intentos: null },
     ]);
+  });
+
+  /** CH-18: the fields pino adds to every line, set apart from the ones the planner chose. */
+  const CAMPOS_DE_PINO = ['hostname', 'level', 'msg', 'pid', 'time'];
+
+  test('CH-18 1.1 a tenant whose listing throws is logged with closed fields, and the next tenant still runs', async () => {
+    const [a, b] = await dosTenantsEnOrden();
+    const deA = await automatizacion(a, { lector: true, destinatario: 'ch18-11-a@example.com' });
+    const deB = await automatizacion(b, { lector: true, destinatario: 'ch18-11-b@example.com' });
+    const { nombre } = await prisma.tenant.findUniqueOrThrow({ where: { id: a } });
+    // The failing tenant is the lower id, so the tick visits it first.
+    const { cliente, listados } = clienteDeBarrido([a, b], undefined, { fallaListadoEn: a });
+    const falso = notificadorFalso();
+    const lineas: string[] = [];
+
+    await crearPlanificador({
+      prisma: cliente,
+      zonaHoraria: 'UTC',
+      log: registro(lineas),
+      reloj: relojFijo(EN('05:00:30')),
+      notificador: falso.notificador,
+    }).ejecutarTick(EN('05:01:30'));
+
+    // B was still entered after A failed, and its run went the whole way to the send.
+    assert.deepEqual(listados, [a, b]);
+    assert.deepEqual((await ejecuciones(deB)).map((f) => columnas(f, 'tenantId', 'estado', 'notificacion')), [
+      { tenantId: b, estado: 'ok', notificacion: 'enviada' },
+    ]);
+    assert.equal(falso.a('ch18-11-b@example.com').length, 1);
+    // A's failure happened before any run: no row, no send.
+    assert.equal((await ejecuciones(deA)).length, 0);
+    assert.equal(falso.a('ch18-11-a@example.com').length, 0);
+    // One line names a tenant, with closed fields only: no message, stack, or tenant name.
+    const avisos = lineas.map((l) => JSON.parse(l)).filter((l) => 'tenantId' in l);
+    assert.deepEqual(avisos.map((l) => columnas(l, 'level', 'msg', 'tenantId', 'error', 'nombreError')), [
+      { level: 50, msg: 'scheduled tick failed for a tenant', tenantId: a, error: 'error-interno', nombreError: 'Error' },
+    ]);
+    assert.deepEqual(
+      Object.keys(avisos[0]).filter((k) => !CAMPOS_DE_PINO.includes(k)).sort(),
+      ['error', 'nombreError', 'tenantId'],
+    );
+    for (const secreto of ['base caida secreta', nombre]) {
+      assert.ok(!lineas.join('\n').includes(secreto), secreto);
+    }
+  });
+
+  test('CH-18 1.2 a tenant that failed in one tick does not get that window back in the next (DEC-95)', async () => {
+    const [a, b] = await dosTenantsEnOrden();
+    const deA = await automatizacion(a, { cron: '0 9 * * *' });
+    const deB = await automatizacion(b, { cron: '0 9 * * *' });
+    const opciones: OpcionesBarrido = { fallaListadoEn: a };
+    const { cliente, listados } = clienteDeBarrido([a, b], undefined, opciones);
+    // Built at 08:59:30, so the first window is (08:59:30, 09:00:30] and holds the 09:00 fire.
+    const p = crearPlanificador({ prisma: cliente, zonaHoraria: 'UTC', log: registro(), reloj: relojFijo(EN('08:59:30')) });
+
+    await p.ejecutarTick(EN('09:00:30'));
+    // A is healthy again; the next window, (09:00:30, 09:01:30], holds no fire.
+    opciones.fallaListadoEn = undefined;
+    await p.ejecutarTick(EN('09:01:30'));
+
+    assert.deepEqual(listados, [a, b, a, b]);
+    assert.equal((await ejecuciones(deA)).length, 0, "A's 09:00 fire is lost, not caught up");
+    // B shows the 09:00 fire was due in the first window: it ran then, once.
+    assert.deepEqual((await ejecuciones(deB)).map((f) => columnas(f, 'tenantId', 'fase')), [
+      { tenantId: b, fase: 'conexion' },
+    ]);
+  });
+
+  test('CH-18 1.3 tenants run one at a time, each in its own context: the second waits for the first', async () => {
+    const [a, b] = await dosTenantsEnOrden();
+    const deA = await automatizacion(a);
+    const deB = await automatizacion(b);
+    let soltar!: () => void;
+    const retenido = new Promise<void>((resolve) => {
+      soltar = resolve;
+    });
+    const { cliente, listados } = clienteDeBarrido([a, b], undefined, {
+      antesDeListar: (tenantId) => (tenantId === a ? retenido : Promise.resolve()),
+    });
+
+    const corrida = crearPlanificador({ prisma: cliente, zonaHoraria: 'UTC', log: registro(), reloj: relojFijo(EN('05:10:30')) })
+      .ejecutarTick(EN('05:11:30'));
+    await esperarA(() => listados.length === 1);
+    // A's first query is held: a concurrent tenant would start in this time.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.deepEqual(listados, [a]);
+    assert.equal((await ejecuciones(deB)).length, 0);
+    soltar();
+    await corrida;
+
+    assert.deepEqual(listados, [a, b]);
+    for (const [id, duenio] of [[deA, a], [deB, b]]) {
+      assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, 'tenantId', 'fase')), [
+        { tenantId: duenio, fase: 'conexion' },
+      ]);
+    }
   });
 });
 
