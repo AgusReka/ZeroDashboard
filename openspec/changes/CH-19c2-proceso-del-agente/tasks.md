@@ -59,15 +59,15 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 3: Backoff, Control Loop, Classification, Watchdog (~355, stacked on 2; NO ROOM)
 
-- [ ] 3.1 Doc fix: edit the "Control message from the engine" row in `design.md` so a `sesionId` that fails `FORMATO_SESION` is IGNORED (local `mensaje-invalido`, nothing reported to the engine, connection kept, no 1008) per the spec's "Malformed sesionId" scenario; the 1008 close stays for non-text-JSON shape or key violations. Excluded from line counts.
-- [ ] 3.2 RED in new `src/agente-proceso/espera.test.ts`: sequence with `aleatorio` at 0 and 1 (1, 2, 4 ... capped at 60 s; each in `[tope/2, tope]`). GREEN `src/agente-proceso/espera.ts` (`esperaReconexion`).
-- [ ] 3.3 RED K1-K4 in new `src/agente-proceso/agente.test.ts` (fake engine): 401 and 403 are terminal with zero redials (`credenciales-rechazadas`); 404, 500 and a refused port retry; close 4002 gives `agente-revocado`, 4001 gives `reemplazado`, no retry; 1006 and 1000 retry.
-- [ ] 3.4 RED K5-K7: backoff sequence through the loop; stability reset after 30 s and not after 5 s; watchdog: no ping gives `sin-ping` and a redial, a ping at 40 s re-arms it.
-- [ ] 3.5 RED K8-K10: bad shape, binary and unknown `tipo` close with 1008 or 1003; malformed `sesionId` is ignored with `mensaje-invalido`, no `sesion-fallida` and the socket stays open (spec wins); `abrirSocket` spy sees control `maxPayload` 4096 and data 1 MiB with the TLS options; `detener` closes with 1001, never redials, is idempotent, first motive wins.
-- [ ] 3.6 GREEN `src/agente-proceso/log.ts`: add the PR 3 events (`control-conectado`, `sin-ping`, `mensaje-invalido`, `control-rechazado`, `control-cerrado`, `reconexion-programada`).
-- [ ] 3.7 GREEN `src/agente-proceso/agente.ts` (`MotivoFin`, `DependenciasAgente`, `iniciarAgente`): control loop rules of the design; `informar` only while `OPEN`; plain `setTimeout` default (not `unref`).
-- [ ] 3.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean.
-- [ ] 3.9 Line-count checkpoint (method above): at most 400. No further split is pre-approved: if over, STOP.
+- [x] 3.1 Doc fix: edit the "Control message from the engine" row in `design.md` so a `sesionId` that fails `FORMATO_SESION` is IGNORED (local `mensaje-invalido`, nothing reported to the engine, connection kept, no 1008) per the spec's "Malformed sesionId" scenario; the 1008 close stays for non-text-JSON shape or key violations. Excluded from line counts.
+- [x] 3.2 RED in new `src/agente-proceso/espera.test.ts`: sequence with `aleatorio` at 0 and 1 (1, 2, 4 ... capped at 60 s; each in `[tope/2, tope]`). GREEN `src/agente-proceso/espera.ts` (`esperaReconexion`).
+- [x] 3.3 RED K1-K4 in new `src/agente-proceso/agente.test.ts` (fake engine): 401 and 403 are terminal with zero redials (`credenciales-rechazadas`); 404, 500 and a refused port retry; close 4002 gives `agente-revocado`, 4001 gives `reemplazado`, no retry; 1006 and 1000 retry.
+- [x] 3.4 RED K5-K7: backoff sequence through the loop; stability reset after 30 s and not after 5 s; watchdog: no ping gives `sin-ping` and a redial, a ping at 40 s re-arms it.
+- [x] 3.5 RED K8-K10: bad shape, binary and unknown `tipo` close with 1008 or 1003; malformed `sesionId` is ignored with `mensaje-invalido`, no `sesion-fallida` and the socket stays open (spec wins); `abrirSocket` spy sees control `maxPayload` 4096 and data 1 MiB with the TLS options; `detener` closes with 1001, never redials, is idempotent, first motive wins.
+- [x] 3.6 GREEN `src/agente-proceso/log.ts`: add the PR 3 events (`control-conectado`, `sin-ping`, `mensaje-invalido`, `control-rechazado`, `control-cerrado`, `reconexion-programada`).
+- [x] 3.7 GREEN `src/agente-proceso/agente.ts` (`MotivoFin`, `DependenciasAgente`, `iniciarAgente`): control loop rules of the design; `informar` only while `OPEN`; plain `setTimeout` default (not `unref`).
+- [x] 3.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean.
+- [x] 3.9 Line-count checkpoint (method above): at most 400. Resolved by the orchestrator on 2026-10-03 (unit 3 measured 444): the code plus `espera.test.ts` (212) ship in one PR and `agente.test.ts` (232) in the next, as unit 1 was delivered. No further split is pre-approved: if over, STOP. **Measured 444** (code 190: `agente.ts` 163, `espera.ts` 12, `log.ts` +15; tests 254: `agente.test.ts` 232, `espera.test.ts` 22). STOPPED; awaiting the orchestrator.
 
 ## Unit 4: Entrypoint, Boundary, Packaging (~291, stacked on 3)
 

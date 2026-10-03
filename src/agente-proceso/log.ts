@@ -4,8 +4,9 @@ import type { CodigoErrorAgente } from '../agente-protocolo.js';
  * CH-19c2 (DEC-123, rule 5): the agent's own log, one JSON line per event. The event union
  * and each event's fields are closed: a line never carries the token, the URL, a host, a
  * port, a `sesionId`, frame bytes or any `error.message`. The union grows per PR; this one
- * holds the session events of PR 2, plus `mensaje-invalido` (the session table ignores a
- * malformed `sesionId`) and `error-interno` (its sanitized `nombreError` is case G3).
+ * holds the session events of PR 2, the control-loop events of PR 3, and `error-interno`
+ * (its sanitized `nombreError` is case G3). `estado` is the HTTP status of a refused
+ * upgrade and `codigoCierre` a WebSocket close code: numbers, never a text from the peer.
  */
 export type EventoLog =
   | { evento: 'sesion-abierta' }
@@ -14,6 +15,11 @@ export type EventoLog =
   | { evento: 'destino-no-permitido' }
   | { evento: 'tope-de-sesiones' }
   | { evento: 'mensaje-invalido' }
+  | { evento: 'control-conectado' }
+  | { evento: 'sin-ping' }
+  | { evento: 'control-rechazado'; estado: number }
+  | { evento: 'control-cerrado'; codigoCierre: number }
+  | { evento: 'reconexion-programada'; intento: number; esperaMs: number }
   | { evento: 'error-interno'; nombreError: string };
 
 export type Log = (e: EventoLog) => void;
@@ -32,6 +38,11 @@ const EVENTOS: { readonly [E in EventoLog['evento']]: readonly [Nivel, ...Campos
   'destino-no-permitido': ['warn'],
   'tope-de-sesiones': ['warn'],
   'mensaje-invalido': ['warn'],
+  'control-conectado': ['info'],
+  'sin-ping': ['warn'],
+  'control-rechazado': ['warn', 'estado'],
+  'control-cerrado': ['warn', 'codigoCierre'],
+  'reconexion-programada': ['info', 'intento', 'esperaMs'],
   'error-interno': ['error', 'nombreError'],
 };
 
