@@ -14,6 +14,7 @@ import { registerTenantRoutes } from './tenants.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
+import { registerAgenteRoutes } from './agentes-rutas.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { crearPlanificador } from './planificador.js';
@@ -77,6 +78,9 @@ registerPlantillaPruebaRoute(app, prisma);
 // The deployment zone (DEC-77) comes from this file's one `loadConfig()`, so a schedule
 // is accepted only in the zone the scheduler will read it in.
 registerAutomatizacionRoutes(app, prisma, config.zonaHoraria);
+// CH-19b (DEC-121): the tenant's agent and its token, scoped by the header like the routes
+// above and not exempt; the `/agente/` prefix stays reserved for the agent itself (DEC-116).
+registerAgenteRoutes(app, prisma);
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops
 // the scheduler before the process exits.
