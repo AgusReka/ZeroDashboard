@@ -329,4 +329,4 @@ This change is now closed. All artifacts are in `openspec/changes/archive/2026-1
 - `openspec/specs/connection-registration/spec.md` (enhanced)
 - `openspec/specs/domain-data-model/spec.md` (enhanced)
 
-Unit 2 PR is pending per the sequential delivery plan in the CH-19 change map. The SDD cycle for units 1a and 1b is complete.
+The unit 2 PR carries this archive. The SDD cycle for the whole change is complete once the three stacked PRs merge.
