@@ -21,6 +21,9 @@ export const ConexionPublica = {
   baseDeDatos: true,
   usuarioDb: true,
   soloLectura: true,
+  // CH-19b: the bound agent's id, or `null` for a direct connection (DEC-115). An id,
+  // not a personal field, and never the agent's token or its hash.
+  agenteId: true,
   creadaEn: true,
   actualizadaEn: true,
 } as const;
@@ -34,6 +37,7 @@ interface RegistroConexionBody {
   usuarioDb: string;
   credencial: string;
   soloLectura?: boolean;
+  agenteId?: string;
 }
 
 interface PruebaParams {
@@ -54,6 +58,9 @@ interface PruebaParams {
  * exercises both create routes rather than one. `additionalProperties: false` is kept
  * so the intent still reads at a glance, and the two lists must be kept in step when
  * a property is added.
+ *
+ * CH-19b added the optional `agenteId` to both lists (DEC-121). It is not required:
+ * omitting it registers a direct connection.
  */
 const registroConexionSchema = {
   type: 'object',
@@ -68,6 +75,7 @@ const registroConexionSchema = {
       'usuarioDb',
       'credencial',
       'soloLectura',
+      'agenteId',
     ],
   },
   required: [
@@ -88,6 +96,7 @@ const registroConexionSchema = {
     usuarioDb: { type: 'string', minLength: 1 },
     credencial: { type: 'string', minLength: 1 },
     soloLectura: { type: 'boolean' },
+    agenteId: { type: 'string', minLength: 1 },
   },
 } as const;
 
@@ -175,6 +184,22 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
       // `503 tenant-no-inicializado` this route used to raise is gone rather than
       // renamed: the condition it described is unreachable on this path.
       const body = request.body;
+
+      // CH-19b (DEC-121): the agent is resolved through the scoped client, so another
+      // tenant's id is `null` exactly like an unknown one and both get the same 404
+      // (rule 2). There is deliberately no `revocadoEn` filter: revocation is a state
+      // of the credential, not of ownership, so a revoked agent stays bindable and the
+      // binding survives a re-issue.
+      if (body.agenteId !== undefined) {
+        const agente = await prisma.agente.findUnique({
+          where: { id: body.agenteId },
+          select: { id: true },
+        });
+        if (agente === null) {
+          return reply.code(404).send({ error: 'agente-no-encontrado' });
+        }
+      }
+
       const conexion = await prisma.conexion.create({
         data: conTenantInyectado({
           nombre: body.nombre,
@@ -190,6 +215,7 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
           // rather than aspirational.
           credencial: cifrarCredencial(body.credencial),
           soloLectura: body.soloLectura ?? true,
+          agenteId: body.agenteId ?? null,
         }),
         select: ConexionPublica,
       });

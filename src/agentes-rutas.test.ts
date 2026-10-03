@@ -8,12 +8,18 @@ import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { hashTokenAgente } from './agente-token.js';
 import { registerAgenteRoutes } from './agentes-rutas.js';
+import { registerConexionRoutes } from './conexiones.js';
 
 /**
- * CH-19b unit 1b: the `/agentes` routes that read and write (R1-R8), against a live
- * PostgreSQL; skipped when none is reachable. The header and body checks that answer
- * before any read live in `agentes-rutas-sin-db.test.ts`.
+ * CH-19b: the `/agentes` routes that read and write (R1-R8, unit 1b) and the optional
+ * `agenteId` on `POST /conexiones` (C1-C5, unit 2), against a live PostgreSQL; skipped
+ * when none is reachable. The header and body checks that answer before any read live
+ * in `agentes-rutas-sin-db.test.ts`.
  */
+
+// `POST /conexiones` enciphers the credential, which needs a master key (DEC-17). The
+// same fixture literal the connection suites use.
+process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
 
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -66,6 +72,7 @@ describe('agent routes — emit, re-issue, list, revoke on a live PostgreSQL (CH
     aislado = extenderConAislamiento(prisma);
     registrarContextoTenant(app, aislado);
     registerAgenteRoutes(app, aislado);
+    registerConexionRoutes(app, aislado);
     await app.ready();
   });
 
@@ -200,5 +207,64 @@ describe('agent routes — emit, re-issue, list, revoke on a live PostgreSQL (CH
     assert.equal((await aislado.agente.buscarPorTokenHash(hashTokenAgente(tokenB)))?.tenantId, tenantB);
     assert.equal((await aislado.agente.buscarPorTokenHash(hashTokenAgente(tokenA)))?.tenantId, tenantA);
     assert.equal((await pedir('GET', '/agentes', tenantB)).json().agentes.length, 1);
+  });
+
+  /** Registers a connection for `tenantId`, carrying `agenteId` only when one is given. */
+  function registrarConexion(tenantId: string, nombre: string, agenteId?: string) {
+    const payload = {
+      nombre: `${marca} ${nombre}`,
+      motor: 'postgresql',
+      host: 'localhost',
+      puerto: 5432,
+      baseDeDatos: 'replica',
+      usuarioDb: 'lector',
+      credencial: 'credencial-de-prueba',
+      ...(agenteId === undefined ? {} : { agenteId }),
+    };
+    return app.inject({ method: 'POST', url: '/conexiones', headers: { 'x-tenant-id': tenantId }, payload });
+  }
+
+  /** The stored row for a marker name, read on the raw client, or `null` when none was written. */
+  function filaConexion(nombre: string) {
+    return prisma.conexion.findFirst({ where: { nombre: `${marca} ${nombre}` }, select: { tenantId: true, agenteId: true } });
+  }
+
+  test("C1 a connection bound to the tenant's own agent is 201 and stores the agenteId", async () => {
+    const { id } = await prisma.agente.findUniqueOrThrow({ where: { tenantId: tenantA } });
+    const respuesta = await registrarConexion(tenantA, 'C1', id);
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    assert.equal(respuesta.json().conexion.agenteId, id);
+    sinSecretos(respuesta.body, tokenA, hashTokenAgente(tokenA));
+    assert.deepEqual(await filaConexion('C1'), { tenantId: tenantA, agenteId: id });
+  });
+
+  test("C2 C3 another tenant's agent and an unknown id get the same 404 and write no row", async () => {
+    const { id: deB } = await prisma.agente.findUniqueOrThrow({ where: { tenantId: tenantB } });
+    for (const [nombre, agenteId] of [['C2', deB], ['C3', 'no-existe']]) {
+      const respuesta = await registrarConexion(tenantA, nombre, agenteId);
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'agente-no-encontrado' });
+      assert.equal(await filaConexion(nombre), null);
+    }
+  });
+
+  test("C4 the tenant's own revoked agent is still bindable", async () => {
+    const { id } = await prisma.agente.findUniqueOrThrow({ where: { tenantId: tenantA } });
+    assert.equal((await pedir('POST', `/agentes/${id}/revocar`, tenantA)).statusCode, 200);
+    const respuesta = await registrarConexion(tenantA, 'C4', id);
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    assert.deepEqual(await filaConexion('C4'), { tenantId: tenantA, agenteId: id });
+  });
+
+  test("C5 no agenteId is a direct connection with null; '' is 400 naming the field and writes no row", async () => {
+    const directa = await registrarConexion(tenantA, 'C5', undefined);
+    assert.equal(directa.statusCode, 201, directa.body);
+    assert.equal(directa.json().conexion.agenteId, null);
+    assert.deepEqual(await filaConexion('C5'), { tenantId: tenantA, agenteId: null });
+
+    const vacia = await registrarConexion(tenantA, 'C5 vacia', '');
+    assert.equal(vacia.statusCode, 400, vacia.body);
+    assert.deepEqual(vacia.json(), { error: 'solicitud-invalida', campos: ['/agenteId'] });
+    assert.equal(await filaConexion('C5 vacia'), null);
   });
 });

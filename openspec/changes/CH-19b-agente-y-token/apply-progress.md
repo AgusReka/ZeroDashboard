@@ -8,8 +8,8 @@
 | Unit | Tasks | State |
 |------|-------|-------|
 | 1a — Schema, isolation, lookup, token | 1.1-1.9 | Done (this batch) |
-| 1b — `/agentes` routes and wiring | 2.1-2.7 | 2.1-2.6 done; 2.7 stopped: 419 lines, over the 400 limit (batch 2) |
-| 2 — `agenteId` on `POST /conexiones` | 3.1-3.6 | Pending |
+| 1b — `/agentes` routes and wiring | 2.1-2.7 | Done. 2.7 first measured 419. The author moved the no-PostgreSQL suite to unit 2, which brought 1b to 357 (batch 2) |
+| 2 — `agenteId` on `POST /conexiones` | 3.1-3.6 | Done, 172 lines (batch 3) |
 
 No earlier apply-progress existed. This is the first batch.
 
@@ -103,6 +103,45 @@ No earlier apply-progress existed. This is the first batch.
 - Separately, commit `5b70212` (`docs(design): prompt para Claude Design...`, 109 lines) landed on `ch19b/rutas-agentes` during this session. It was not made by apply. Against the 1a branch, PR 1b's diff would therefore show about 528 lines unless that commit is moved off this branch.
 - Options for the orchestrator: accept `size:exception` for 1b (19 lines over), or move part of the test file (for example, the no-PostgreSQL suite) into unit 2's PR.
 
+**Resolution (recorded in `tasks.md` 2.7):** on 2026-10-03 the author moved the no-PostgreSQL suite to `src/agentes-rutas-sin-db.test.ts`, which belongs to unit 2. Unit 1b is now 357 lines, and the full suite passed 721/721 with tsc at 0.
+
+## Unit 2: Files Changed (batch 3, branch `ch19b/agenteid-en-conexiones`)
+
+| File | Action | What was done |
+|------|--------|---------------|
+| `src/conexiones.ts` | Modified | `agenteId?: string` added to `RegistroConexionBody`, to the `propertyNames` enum, and to `properties` (`minLength: 1`), so both lists stay in step. A scoped `prisma.agente.findUnique({ where: { id }, select: { id: true } })` runs before the create, with no `revocadoEn` filter. `null` gives 404 `agente-no-encontrado`. The create writes `agenteId: body.agenteId ?? null`. `ConexionPublica` gains `agenteId: true` |
+| `src/agentes-rutas.test.ts` | Modified | `registerConexionRoutes` is now registered on the same app. The fixture `CREDENTIAL_MASTER_KEY` is set (same literal as the connection suites, `??=`). Added C1, C2/C3 (one test, same 404 body for another tenant's id and an unknown one), C4 and C5. The header comment now covers both units |
+| `src/agentes-rutas-sin-db.test.ts` | Untracked (moved from 1b by the author) | Kept unchanged. It counts toward this unit |
+
+## TDD Cycle Evidence (2)
+
+| Task | RED | GREEN | REFACTOR |
+|------|-----|-------|----------|
+| 3.1 C1-C5 | `TEST_DB_PORT=5434 npx tsx --test src/agentes-rutas.test.ts`: 12 tests, 8 pass, 4 fail. C1 and C4 got 400 instead of 201 (`agenteId` was an unknown key). C2/C3 got 400 instead of 404. C5 got `agenteId` `undefined` instead of `null` (missing from the projection) | — | — |
+| 3.2 / 3.3 | — | Schema, scoped check, create field and projection. Focused run on both agent files: 14 tests, 14 pass, 0 fail | None needed |
+
+## Work Unit Evidence (2)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and result | `TEST_DB_PORT=5434 npx tsx --test src/agentes-rutas.test.ts src/agentes-rutas-sin-db.test.ts`: exit 0. `ℹ tests 14`, `ℹ pass 14`, `ℹ fail 0` |
+| Runtime harness | Live PostgreSQL 16 (`zd-ch09-testdb`, port 5434). C1-C5 send requests through `registrarContextoTenant`, `registerConexionRoutes` and the extended client, using `app.inject` with two tenants. Rows are checked on the raw client by marker name, across all tenants, so a row written under the wrong tenant would also be caught |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0. `ℹ tests 725`, `ℹ suites 106`, `ℹ pass 725`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0`. That is 721 plus 4. The existing connection suites pass without changes |
+| Typecheck | `npx tsc --noEmit`: exit 0 |
+| `.env` / `package.json` | `git diff --stat -- .env package.json package-lock.json`: empty |
+| Rollback boundary | Revert `src/conexiones.ts` and `src/agentes-rutas.test.ts`, and drop `src/agentes-rutas-sin-db.test.ts`. No schema change: the `Conexion.agenteId` column comes from unit 1a |
+
+## Line-Count Checkpoint (3.5)
+
+`git diff --numstat -- src`: `src/agentes-rutas.test.ts` 69 additions and 3 deletions, `src/conexiones.ts` 26 additions. Untracked: `src/agentes-rutas-sin-db.test.ts` 74 lines. **Total 172, within the 400 limit.** SDD artifacts are excluded, as before. Also excluded are `docs/design/` and `docs/verificacion-tesis-2026-10-01.md`: both are untracked and are not part of this change.
+
+## Deviations and Notes (2)
+
+- None from the design. The check is `findUnique` on the scoped client, as specified, and the error code is the one the revoke route already uses.
+- C2 and C3 share one test, because the spec requires the same answer for both cases. The test asserts an identical body for each.
+- An empty file named `r.statusCode` appeared at the repo root at 13:44:10, during this batch. No command in this batch redirected output to that name. The name matches the test-code fragment `(r) => r.statusCode` in `agentes-rutas.test.ts`, which suggests an outside process reads code text as a shell redirect. That fits the earlier `2.6` and `causa` files. It was deleted. `200` and `prisma;C` predate this session and were left untouched.
+- No architecture decision was taken. DEC-121 (c), option (a), is what was implemented.
+
 ## Next
 
-Orchestrator decision on the 1b line count (2.7). Then unit 2 (tasks 3.1-3.6), stacked on 1b.
+All tasks (1.1-3.6) are done. The orchestrator commits unit 2 on `ch19b/agenteid-en-conexiones` and then runs sdd-verify.
