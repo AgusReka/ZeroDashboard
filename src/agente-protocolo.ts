@@ -3,7 +3,7 @@
  * outbound agent shares this file with the engine (DEC-120): nothing here may pull a
  * dependency or a runtime value into the agent.
  *
- * The catalog holds exactly what DEC-113, DEC-114, DEC-117 and DEC-118 fix. Tokens,
+ * The catalog holds exactly what DEC-113, DEC-114, DEC-117, DEC-118 and DEC-122 fix. Tokens,
  * the session registry, agent states and failure categories belong to later slices,
  * and each one amends this file through its own delta.
  */
@@ -34,8 +34,26 @@ export interface Latido {
   tipo: 'latido';
 }
 
-/** Every message the control channel carries in this slice. */
-export type MensajeControl = AperturaSesion | Latido;
+/**
+ * Sent by the agent on the control channel when it cannot open the session's target
+ * (DEC-122). The engine destroys the pending channel with `codigo` before `'connect'`,
+ * so the replica-side failure keeps the category a direct dial would have given it.
+ */
+export interface SesionFallida {
+  tipo: 'sesion-fallida';
+  sesionId: string;
+  codigo: CodigoErrorAgente;
+}
+
+/** Every message the control channel carries. */
+export type MensajeControl = AperturaSesion | Latido | SesionFallida;
+
+/**
+ * The engine's own WebSocket close codes (DEC-122): 4001 closes a control socket that a
+ * newer one of the same agent replaced; 4002 closes every socket of an agent that was
+ * revoked or whose tenant was deactivated.
+ */
+export type CodigoCierre = 4001 | 4002;
 
 /**
  * The closed set of replica-side errors the agent reports (DEC-117). They are the same

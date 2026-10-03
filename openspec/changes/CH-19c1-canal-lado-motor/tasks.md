@@ -34,16 +34,16 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 1: `ws`, Catalog, `CanalAgente` (~326)
 
-- [ ] 1.1 FIRST. `npm view ws version` and `npm view @types/ws version`; pin latest 8.x and the matching types exactly in `package.json` (no `^`). Confirm `pause`, `resume`, `isPaused` exist in `node_modules/ws/lib/websocket.js` (read-only). If absent, STOP.
-- [ ] 1.2 RED `src/agente-protocolo.test.ts`: `SesionFallida` rejects a code outside the 7 (`@ts-expect-error`); no runtime exports. GREEN `src/agente-protocolo.ts`: add `SesionFallida`, `MensajeControl` union, close codes 4001/4002 as types.
-- [ ] 1.3 RED A1, A2 in new `src/canal-agente.test.ts`: `new pg.Client({stream})` calls the factory and never `pedirSesion`; `connect()` does not throw or call it synchronously; `'connect'` only after `adjuntar`.
-- [ ] 1.4 GREEN `src/canal-agente.ts`: `CODIGO_SIN_AGENTE`, `errorSinAgente`, `SolicitudSesion`, `PuertoDeSesion`, `AbridorDeCanales`, `CanalAgente` (constructor, `setNoDelay`, `connect`, `adjuntar`), per design.
-- [ ] 1.5 RED then GREEN A3: `SIN_AGENTES` with `probeConnection` and `ejecutarConsulta` gives `error-desconocido`, `ESINAGENTE`, `fase: 'conexion'`, and `esFalloReintentable` false.
-- [ ] 1.6 RED then GREEN A4-A6: destroy `ECONNREFUSED` gives `host-inalcanzable`; silent port gives `tiempo-agotado` and close returns; over a real ws pair `SELECT 1`, `PGSSLMODE=require` gives `ssl === false`, Q1 rows.
-- [ ] 1.7 RED then GREEN A7: `SELECT repeat('x',1000000) FROM generate_series(1,8)` with a slow consumer; `pause` seen, result complete, `_write` callback only after the `send` callback. GREEN `_read`, `_write` (1 MiB slices), `LIMITE_TRAMA_DATOS`.
-- [ ] 1.8 RED then GREEN A8-A10: far-side close reaches `'close'` and the process survives; `end()` while connecting reaches `'close'`; a text frame destroys the channel. GREEN `_final`, `_destroy`.
-- [ ] 1.9 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no `.env` change.
-- [ ] 1.10 Line-count checkpoint (method above): at most 400. **Fallback if over 400:** STOP; the pre-agreed cut is moving A8-A10 and `_final` coverage to unit 2 as a separate test file, subject to orchestrator approval.
+- [x] 1.1 FIRST. `npm view ws version` and `npm view @types/ws version`; pin latest 8.x and the matching types exactly in `package.json` (no `^`). Confirm `pause`, `resume`, `isPaused` exist in `node_modules/ws/lib/websocket.js` (read-only). If absent, STOP.
+- [x] 1.2 RED `src/agente-protocolo.test.ts`: `SesionFallida` rejects a code outside the 7 (`@ts-expect-error`); no runtime exports. GREEN `src/agente-protocolo.ts`: add `SesionFallida`, `MensajeControl` union, close codes 4001/4002 as types.
+- [x] 1.3 RED A1, A2 in new `src/canal-agente.test.ts`: `new pg.Client({stream})` calls the factory and never `pedirSesion`; `connect()` does not throw or call it synchronously; `'connect'` only after `adjuntar`.
+- [x] 1.4 GREEN `src/canal-agente.ts`: `CODIGO_SIN_AGENTE`, `errorSinAgente`, `SolicitudSesion`, `PuertoDeSesion`, `AbridorDeCanales`, `CanalAgente` (constructor, `setNoDelay`, `connect`, `adjuntar`), per design.
+- [x] 1.5 RED then GREEN A3: `SIN_AGENTES` with `probeConnection` and `ejecutarConsulta` gives `error-desconocido`, `ESINAGENTE`, `fase: 'conexion'`, and `esFalloReintentable` false.
+- [x] 1.6 RED then GREEN A4-A6 (A6 moved to unit 2, task 2.7): destroy `ECONNREFUSED` gives `host-inalcanzable`; silent port gives `tiempo-agotado` and close returns; over a real ws pair `SELECT 1`, `PGSSLMODE=require` gives `ssl === false`, Q1 rows.
+- [x] 1.7 RED then GREEN A7 (moved to unit 2, task 2.7): `SELECT repeat('x',1000000) FROM generate_series(1,8)` with a slow consumer; `pause` seen, result complete, `_write` callback only after the `send` callback. GREEN `_read`, `_write` (1 MiB slices), `LIMITE_TRAMA_DATOS`.
+- [x] 1.8 RED then GREEN A8-A10 (tests moved to unit 2, task 2.7): far-side close reaches `'close'` and the process survives; `end()` while connecting reaches `'close'`; a text frame destroys the channel. GREEN `_final`, `_destroy`.
+- [x] 1.9 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no `.env` change.
+- [x] 1.10 Line-count checkpoint (method above): at most 400. Resolved by user decision 2026-10-03: A6-A10 moved to unit 2 (task 2.7); unit 1 measures 331 changed lines (44 tracked + 287 untracked: `canal-agente.ts` 147, `canal-agente.test.ts` 75, `canal-agente-apoyo.ts` 65).
 
 ## Unit 2: In-Memory Registry (~227, stacked on 1)
 
@@ -53,6 +53,7 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 - [ ] 2.4 GREEN `src/registro-agentes.ts`: `LIMITES`, `CIERRE_REEMPLAZO`, `CIERRE_REVOCADO`, `crearRegistroAgentes`, the full `RegistroAgentes` interface and registry rules (`registrarControl`, `canalPara`, `pedirSesion`, `soltarSesion`, `reservarDatos`, `adjuntarDatos`, `sesionFallida`, `cerrarAgente`, `cerrarTenant`, `cerrarTodo`, `cerrando`). Session id: `randomBytes(16).toString('base64url')`.
 - [ ] 2.5 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no log of token, `tenantId`, `sesionId`, host or port.
 - [ ] 2.6 Line-count checkpoint (method above): at most 400.
+- [ ] 2.7 Tests A6-A10 (live PostgreSQL A6/A7, 1 MiB slicing, far-side close, `end()` while connecting, text frame 1003) belong to this unit: commit `src/canal-agente-ampliado.test.ts` here (it imports `src/canal-agente-apoyo.ts` from unit 1). Count it in 2.6.
 
 ## Unit 3a: Upgrade Listener (~317, stacked on 2)
 
