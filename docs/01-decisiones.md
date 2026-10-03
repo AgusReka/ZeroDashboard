@@ -2086,7 +2086,7 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 **Opciones.** Excepción cerrada y registrada, como DEC-24 y DEC-61, o rutas sin excepción con el tenant en el encabezado.
 
-**Decisión.** Excepción cerrada para `/agente/*`. El manejador entra a `conTenantActivo` desde la fila del token, igual que el planificador. Todo modelo nuevo de agente se agrega a `MODELOS_AISLADOS` o se justifica por escrito. El registro de sesiones es en memoria, coherente con la instancia única de DEC-75.
+**Decisión.** Excepción cerrada para `/agente/*`. El manejador entra a `conTenantActivo` desde la fila del token, igual que el planificador. Todo modelo nuevo de agente se agrega a `MODELOS_AISLADOS` o se justifica por escrito. El registro de sesiones es en memoria, coherente con la instancia única de DEC-75. *(Enmendado por DEC-122: el camino del upgrade no entra a `conTenantActivo`.)*
 
 **Por qué.** Evita aceptar el tenant desde el cliente y reutiliza el patrón ya probado.
 
@@ -2189,6 +2189,31 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 **Se resigna.** Sin historial de tokens ni rotación sin corte. No hay autenticación de operador: quien tenga un id de tenant válido puede emitir el token de ese tenant, igual que en el resto de las rutas de administración. Un lookup nuevo, visible en el tipo del cliente extendido, que debe devolver solo lo mínimo.
 
 **Fuera de esta decisión (diseño de CH-19b).** Formato del token (`zda_` más 32 bytes aleatorios en base64url, hash SHA-256 en hexadecimal), proyección pública sin `tokenHash`, `tenantId` ni token, y rutas `/agentes` acotadas por `X-Tenant-Id` sin excepción (el prefijo `/agente/*` queda reservado para las rutas del agente, DEC-116).
+
+**Decidido por:** el usuario, 2026-10-03, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-122 — CH-19c1: `ws` crudo con upgrade propio, autenticación solo por cabecera, fallos de réplica por el canal de control
+
+**Contexto.** CH-19c1 implementa el lado motor del canal (DEC-112, DEC-113): rutas WebSocket de control y de datos, registro de sesiones en memoria y `destinoDeConexion` devolviendo un canal. DEC-113 nombra `ws` pero no cómo integrarlo, y DEC-114, DEC-116 y DEC-117 dejan sin fijar la autenticación del upgrade, el contexto de tenant en ese camino, cómo informa el agente un fallo de réplica y qué pasa sin canal de control.
+
+**Opciones y decisión.**
+- **Integración (Q1).** (a) `ws` con `noServer` y un listener propio del evento `'upgrade'`; (b) `@fastify/websocket`. **Decisión: (a).** El token se valida antes del 101, Fastify nunca ve la petición y la lista cerrada de excepciones de `X-Tenant-Id` no cambia. Un `GET /agente/...` que no sea upgrade cae a Fastify y falla cerrado (400 `tenant-no-indicado`).
+- **Contexto de tenant (Q2).** (a) no entrar a `conTenantActivo` en el upgrade; (b) entrar leyendo `Tenant` por id; (c) ampliar el lookup con el nombre. **Decisión: (a), enmienda DEC-116.** El camino no toca ningún modelo con filtro (el lookup es sin filtro por diseño y `Tenant` no está aislado), así que sigue fallando cerrado ante cualquier consulta con filtro sin contexto. (c) queda descartada: rompe la spec y el test L2.
+- **Autenticación (Q3).** **Decisión:** solo `Authorization: Bearer zda_…`; nunca query ni subprotocolo. Hash, lookup y rechazo antes del 101: 401 igual para token ausente, desconocido o revocado; 403 con tenant desactivado. El canal de datos reautentica con el mismo token y la sesión debe pertenecer al agente; una sesión ajena o inexistente da el mismo 404. Un socket con error durante el lookup asíncrono lleva un listener de `'error'` (lección de DEC-111).
+- **Fallo de réplica (Q4).** (a) el agente cierra el socket de datos con un código de cierre; (b) mensaje de control nuevo `sesion-fallida` con uno de los siete códigos cerrados de DEC-117. **Decisión: (b).** El motor destruye el duplex pendiente antes de emitir `'connect'` (contrato C4 de CH-19a). Un código desconocido se clasifica como `error-desconocido`. Es una ampliación de tipos del catálogo, con delta MODIFIED sobre su requisito.
+- **Sin canal de control (Q5).** (a) `ECONNREFUSED`; (b) código interno propio; (c) la categoría `agente-desconectado` ya. **Decisión: (b), provisorio.** El duplex se destruye de forma asíncrona con un código interno del motor (nombre fijado en el diseño); se clasifica `error-desconocido`, no se reintenta y deja un código visible distinto. Cubre: sin socket de control, envío fallido, tope de sesiones por agente y vencimiento de la sesión pendiente. Nunca cae a conexión directa (`host` y `puerto` son «como los ve el agente», DEC-115), ni espera, ni encola (DEC-95, DEC-110). CH-19d2 solo agrega el mapeo a `agente-desconectado`.
+- **Revocación (Q6).** **Decisión:** además de recomprobar en cada upgrade, `POST /agentes/:id/revocar` y `/tenants/:id/baja` cierran los sockets del agente (código 4002) mediante el registro. Válido por instancia única (DEC-75).
+- **Proxy con TLS (Q7).** **Decisión:** el motor no configura ni documenta un proxy en 19c1 y no confía en `X-Forwarded-Proto`, que es falsificable si el puerto de la app es alcanzable. La exigencia de TLS queda en el agente (DEC-113). La nota de despliegue (el puerto de la app no se expone a redes no confiables; el timeout de inactividad del proxy debe superar el ping de 20 s) va en el fragmento de Compose de CH-19c2 y el runbook de CH-19e.
+
+**Por qué.** Cada decisión mantiene el motor sin capacidad nueva (regla 6), deja el tenant solo en la fila del token (regla 2), no registra ni guarda contenido de tramas (regla 5) y no mueve el planificador.
+
+**Se resigna.** DEC-116 se cumple por su intención, no por su letra. El fallo sin canal queda con una categoría provisoria hasta CH-19d2. Una inundación de upgrades sin autenticar cuesta un hash y una consulta cada uno: límite residual documentado, no resuelto acá. El motor no verifica TLS por sí mismo.
+
+**Fuera de esta decisión (diseño de CH-19c1).** Ids de sesión con `randomBytes(16)` en base64url y ligados al agente; registro en memoria con reemplazo del socket de control (el viejo se cierra con 4001); límites como constantes (tramas de datos 1 MiB, control 4 KiB, 8 sesiones por agente, vencimiento de sesión pendiente 30 s, `perMessageDeflate` apagado); ping cada 20 s sin tiempo de inactividad en datos; sin variables de entorno nuevas; el registro llega a `destinoDeConexion` como parámetro opcional con valor por defecto «sin agentes» que falla cerrado; verificación en el uso de que el `tenantId` del registro coincide con el tenant activo; cierre ordenado de los sockets en `preClose` (aclaración del diseño de CH-19c1: Fastify ejecuta los hooks `onClose` en orden inverso y su propio `server.close()` se registra último, así que corre antes y quedaría esperando a los sockets del upgrade; un hook `onClose` dejaría `app.close()` colgado).
 
 **Decidido por:** el usuario, 2026-10-03, eligiendo las opciones recomendadas. No inferido por el agente.
 
