@@ -25,6 +25,7 @@ model Tenant {
   vistasCanonicas    VistaCanonica[]
   automatizaciones   Automatizacion[]
   ejecuciones        Ejecucion[]
+  agente             Agente?
 }
 
 model Conexion {
@@ -43,6 +44,9 @@ model Conexion {
   actualizadaEn    DateTime         @updatedAt
   vistasCanonicas  VistaCanonica[]
   automatizaciones Automatizacion[]
+  // CH-19b (DEC-121): optional, set only at registration after a tenant-scoped check.
+  agenteId         String?
+  agente           Agente?          @relation(fields: [agenteId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
 }
@@ -206,4 +210,23 @@ model Ejecucion {
 
   @@index([tenantId])
   @@index([automatizacionId, iniciadaEn])
+}
+
+// CH-19b (DEC-114, DEC-115, DEC-121): a tenant's one agent and its token. Only the
+// SHA-256 hex of the token is stored; the token itself is shown once and never kept.
+// `tenantId` is unique with a full index (DEC-111), so a second agent per tenant is
+// refused by the database. Revoking sets `revocadoEn` and keeps the row; re-issuing
+// writes a new hash in place, so `Conexion.agenteId` stays stable. The model is in
+// `MODELOS_AISLADOS`; the only unscoped read is `agente.buscarPorTokenHash`.
+// Both relations are RESTRICT, written explicitly so that a later change between an
+// optional and a required relation cannot change the delete behavior silently.
+model Agente {
+  id             String     @id @default(uuid())
+  tenantId       String     @unique
+  tenant         Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tokenHash      String     @unique
+  creadoEn       DateTime   @default(now())
+  tokenEmitidoEn DateTime   @default(now())
+  revocadoEn     DateTime?
+  conexiones     Conexion[]
 }

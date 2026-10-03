@@ -2170,6 +2170,32 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-121 — CH-19b: un agente por tenant en una sola fila, token buscado por un lookup tipado dentro del módulo de aislamiento
+
+**Contexto.** CH-19b crea el modelo `Agente` y la emisión, listado y revocación de su token (DEC-114, DEC-115, DEC-116). El token se resuelve antes de que exista contexto de tenant, y un modelo que no figure en `MODELOS_AISLADOS` pasa sin filtrar.
+
+**Opciones.**
+- Búsqueda del token: (a) `Agente` fuera de `MODELOS_AISLADOS`; (b) segundo modelo sin filtro; (c) SQL crudo parametrizado; (d) `Agente` aislado más un lookup tipado agregado en `extenderConAislamiento`, que ya tiene el cliente crudo.
+- Modelo: (a) una fila `Agente` por tenant, baja lógica; (b) `Agente` más tabla de tokens.
+- `Conexion.agenteId`: (a) validado con búsqueda acotada al tenant en `POST /conexiones`; (b) clave foránea compuesta; (c) diferir a CH-19c1.
+
+**Decisión.**
+- Búsqueda: (d). `Agente` entra en `MODELOS_AISLADOS`. La búsqueda es por `tokenHash`, filtra `revocadoEn` nulo y devuelve solo `id`, `tenantId` y el estado del tenant. `tokenHash` aparece solo en ese lookup y en las escrituras de alta y reemisión. Si la extensión no funciona sobre el cliente encadenado, se cae a (c); eso no reabre esta decisión.
+- Modelo: (a). Una fila por tenant (`tenantId` único, índice completo, no parcial, por DEC-111), `tokenHash` único, `creadoEn`, `tokenEmitidoEn`, `revocadoEn`. Revocar marca la fecha y conserva la fila. `POST /agentes` crea si el tenant no tiene agente, reemite en el lugar (mismo id, hash nuevo) si está revocado, y responde 409 `agente-existente` si hay uno activo. Rotar es revocar y reemitir, con un corte breve aceptado (DEC-115). Sin historial de tokens ni rotación con solapamiento.
+- `Conexion.agenteId`: (a). Opcional en `POST /conexiones`; un id ajeno o inexistente responde 404 `agente-no-encontrado`. El chequeo no mira `revocadoEn`: la revocación es un estado de la credencial, no de la pertenencia. La clave foránea es `RESTRICT` explícita. Sin ruta para editar una conexión: pasar una directa a agente exige registrarla de nuevo.
+
+**Por qué.** (d) mantiene `Agente` fail-closed con un único escape auditable en el módulo que ya posee el cliente crudo, sin SQL crudo. Una fila alcanza porque DEC-115 fija un agente por tenant y mantiene estable `Conexion.agenteId` ante la reemisión; la tabla de tokens se parece a la tabla de eventos que DEC-87 rechazó. Validar `agenteId` ahora deja el chequeo de regla 2 fuera de CH-19c1, el corte más riesgoso.
+
+**Se resigna.** Sin historial de tokens ni rotación sin corte. No hay autenticación de operador: quien tenga un id de tenant válido puede emitir el token de ese tenant, igual que en el resto de las rutas de administración. Un lookup nuevo, visible en el tipo del cliente extendido, que debe devolver solo lo mínimo.
+
+**Fuera de esta decisión (diseño de CH-19b).** Formato del token (`zda_` más 32 bytes aleatorios en base64url, hash SHA-256 en hexadecimal), proyección pública sin `tokenHash`, `tenantId` ni token, y rutas `/agentes` acotadas por `X-Tenant-Id` sin excepción (el prefijo `/agente/*` queda reservado para las rutas del agente, DEC-116).
+
+**Decidido por:** el usuario, 2026-10-03, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -1228,8 +1229,10 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
   test('the model list is exactly the tenant models, Plantilla, and the CH-13 pair', () => {
     // Read from the generated client rather than by grepping `schema.prisma`: this is
     // the model list the extension actually sees at runtime. CH-13 (DEC-74, X2) adds
-    // `Automatizacion` and `Ejecucion`; the list still pins `Usuario` out.
+    // `Automatizacion` and `Ejecucion`, CH-19b (DEC-121) adds `Agente`; the list still
+    // pins `Usuario` out.
     assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
+      'Agente',
       'Automatizacion',
       'Conexion',
       'ConsultaGuardada',
@@ -1303,6 +1306,18 @@ describe('aislamiento — Automatizacion and Ejecucion fail closed outside a ten
     );
   });
 
+  test('CH-19b L1 Agente reads and writes with no active tenant throw ErrorSinTenantActivo', async () => {
+    await assert.rejects(() => aislado.agente.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () => aislado.agente.create({ data: { tokenHash: 'h' } } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () => aislado.agente.updateMany({ where: {}, data: { revocadoEn: new Date() } }),
+      ErrorSinTenantActivo,
+    );
+  });
+
   test('inside a tenant context the same query is scoped and handed on, not refused', async () => {
     // The control: with a context entered the extension lets the query through, so it
     // reaches the closed port and fails there. Without it, the rejections above would
@@ -1319,5 +1334,108 @@ describe('aislamiento — Automatizacion and Ejecucion fail closed outside a ten
     );
     assert.ok(error !== null, 'the closed port must refuse the scoped query');
     assert.ok(!(error instanceof ErrorSinTenantActivo), 'a context was entered');
+  });
+});
+
+// ---- CH-19b L2 the token lookup, the single audited unscoped read (DEC-121) ---------
+
+describe('aislamiento — agente.buscarPorTokenHash on a live PostgreSQL target (CH-19b)', {
+  skip: alcanzable ? false : motivoSkip,
+}, () => {
+  let db!: PrismaClient;
+  const tenantIds: string[] = [];
+  /** One agent per tenant (DEC-121), so every case below needs its own tenant. */
+  const hashes = { a: '', b: '', inactivo: '', revocado: '' };
+  const agentes: Record<keyof typeof hashes, string> = { a: '', b: '', inactivo: '', revocado: '' };
+
+  before(async () => {
+    db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    for (const clave of Object.keys(hashes) as (keyof typeof hashes)[]) {
+      const tenant = await db.tenant.create({
+        data: { nombre: `CH-19b L2 ${clave} ${Date.now()}`, activo: clave !== 'inactivo' },
+      });
+      tenantIds.push(tenant.id);
+      hashes[clave] = randomBytes(32).toString('hex');
+      const agente = await db.agente.create({
+        data: {
+          tenantId: tenant.id,
+          tokenHash: hashes[clave],
+          revocadoEn: clave === 'revocado' ? new Date() : null,
+        },
+      });
+      agentes[clave] = agente.id;
+    }
+  });
+
+  after(async () => {
+    // RESTRICT on both relations: connections first, then agents, then tenants.
+    await db.conexion.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.agente.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+    await db.$disconnect();
+  });
+
+  test('L2 with no context the lookup returns exactly id, tenantId and tenantActivo', async () => {
+    const aislado = extenderConAislamiento(db);
+    const encontrado = await aislado.agente.buscarPorTokenHash(hashes.a);
+    assert.deepEqual(encontrado, { id: agentes.a, tenantId: tenantIds[0], tenantActivo: true });
+    assert.deepEqual(Object.keys(encontrado ?? {}).sort(), ['id', 'tenantActivo', 'tenantId']);
+  });
+
+  test('L2 an unknown or revoked hash gives null; a deactivated tenant is reported', async () => {
+    const aislado = extenderConAislamiento(db);
+    assert.equal(await aislado.agente.buscarPorTokenHash(randomBytes(32).toString('hex')), null);
+    assert.equal(await aislado.agente.buscarPorTokenHash(hashes.revocado), null);
+    assert.deepEqual(await aislado.agente.buscarPorTokenHash(hashes.inactivo), {
+      id: agentes.inactivo,
+      tenantId: tenantIds[2],
+      tenantActivo: false,
+    });
+  });
+
+  test("L2 each token resolves to its own tenant, even inside the other tenant's context", async () => {
+    const aislado = extenderConAislamiento(db);
+    const deA = await conTenantActivo({ id: tenantIds[1], nombre: 'B' }, async () => {
+      return await aislado.agente.buscarPorTokenHash(hashes.a);
+    });
+    assert.equal(deA?.tenantId, tenantIds[0]);
+    assert.equal((await aislado.agente.buscarPorTokenHash(hashes.b))?.tenantId, tenantIds[1]);
+  });
+
+  test('L2 every other unscoped Agente operation still rejects', async () => {
+    await assert.rejects(() => extenderConAislamiento(db).agente.findMany({}), ErrorSinTenantActivo);
+  });
+
+  const conCodigo = (codigo: string) => (error: unknown) =>
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === codigo;
+
+  test('1.5 the database refuses a second agent, a shared hash, and deleting a bound agent', async () => {
+    // A fresh hash, so only the per-tenant unique index can be what refuses it.
+    await assert.rejects(
+      () => db.agente.create({ data: { tenantId: tenantIds[0], tokenHash: randomBytes(32).toString('hex') } }),
+      conCodigo('P2002'),
+    );
+    // A fresh tenant, so only the hash's unique index can be what refuses it.
+    const sinAgente = await db.tenant.create({ data: { nombre: `CH-19b 1.5 ${Date.now()}` } });
+    tenantIds.push(sinAgente.id);
+    await assert.rejects(
+      () => db.agente.create({ data: { tenantId: sinAgente.id, tokenHash: hashes.a } }),
+      conCodigo('P2002'),
+    );
+    await db.conexion.create({
+      data: {
+        tenantId: tenantIds[0],
+        agenteId: agentes.a,
+        nombre: 'CH-19b 1.5',
+        motor: 'postgres',
+        host: 'localhost',
+        puerto: 5432,
+        baseDeDatos: 'ninguna',
+        usuarioDb: 'nadie',
+        credencial: 'no-es-un-sobre',
+      },
+    });
+    await assert.rejects(() => db.agente.delete({ where: { id: agentes.a } }), conCodigo('P2003'));
+    assert.equal(await db.agente.count({ where: { id: agentes.a } }), 1, 'RESTRICT kept the agent');
   });
 });
