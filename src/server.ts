@@ -15,6 +15,8 @@ import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { registerAgenteRoutes } from './agentes-rutas.js';
+import { registrarServidorAgentes } from './agente-servidor.js';
+import { crearRegistroAgentes } from './registro-agentes.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { crearPlanificador } from './planificador.js';
@@ -81,6 +83,11 @@ registerAutomatizacionRoutes(app, prisma, config.zonaHoraria);
 // CH-19b (DEC-121): the tenant's agent and its token, scoped by the header like the routes
 // above and not exempt; the `/agente/` prefix stays reserved for the agent itself (DEC-116).
 registerAgenteRoutes(app, prisma);
+// CH-19c1 (DEC-122): the agent's own WebSocket upgrade, outside Fastify's routing, so the
+// tenant-context hooks and their exemption list above never see it. Its `preClose` hook
+// closes every agent socket before Fastify's `server.close()` waits on them.
+const registro = crearRegistroAgentes();
+registrarServidorAgentes({ app, prisma, registro });
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops
 // the scheduler before the process exits.

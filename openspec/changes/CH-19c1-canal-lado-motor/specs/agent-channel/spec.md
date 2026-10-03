@@ -106,7 +106,7 @@ The `'upgrade'` handler SHALL authenticate from the `Authorization: Bearer` head
 
 ### Requirement: Framing and Limits
 
-Control messages SHALL be text JSON of at most 4 KiB. Data frames SHALL be binary only, at most 1 MiB. `perMessageDeflate` MUST be off. The engine SHALL ping every 20 s and MUST NOT impose a data idle timeout. Any other frame or message MUST close the socket with 1008 (policy) or 1003 (wrong data type). The engine MUST NOT log or buffer frame contents.
+Control messages SHALL be text JSON of at most 4 KiB. Data frames SHALL be binary only, at most 1 MiB. `perMessageDeflate` MUST be off. The engine SHALL ping every 20 s and MUST NOT impose a data idle timeout. Any other frame or message MUST close the socket with 1008 (policy), 1003 (wrong data type) or 1009 (message too big; the `ws` limit closes with it before any engine code runs). The engine MUST NOT log or buffer frame contents.
 
 #### Scenario: Binary on control
 
@@ -123,7 +123,9 @@ Control messages SHALL be text JSON of at most 4 KiB. Data frames SHALL be binar
 #### Scenario: Oversized control or unknown message
 
 - GIVEN a control socket
-- WHEN a message over 4 KiB, or one not fixed by the catalog, arrives
+- WHEN a message over 4 KiB arrives
+- THEN the socket SHALL close with 1009
+- WHEN a message not fixed by the catalog arrives
 - THEN the socket SHALL close with 1008
 
 ### Requirement: No Control Channel Fails Asynchronously

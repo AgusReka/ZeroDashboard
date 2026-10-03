@@ -57,13 +57,13 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 3a: Upgrade Listener (~317, stacked on 2)
 
-- [ ] 3.1 RED U9 FIRST in new `src/agente-servidor.test.ts`: `app.close()` with live control and data sockets resolves under 2500 ms and the scheduler's `detener` still runs. Record it failing before any listener code exists.
-- [ ] 3.2 RED U1-U8: 401 (header missing, malformed, unknown, revoked; token in query ignored); 403 deactivated tenant; 404 (unknown path, foreign, unknown, taken session; B's token on A's `sesionId`); socket reset during a slow lookup does not crash; text-JSON/key violations close with 1008; binary on control closes with 1003 (spec); non-upgrade `GET /agente/control` gives 400 `tenant-no-indicado`; logs never contain token or `sesionId`.
-- [ ] 3.3 GREEN `src/agente-servidor.ts` `registrarServidorAgentes`: sync `socket.on('error', noop)`, ordered checks 1-6 of the design, refusal via `socket.end` with no body, two `WebSocketServer` instances (`maxPayload` 4 KiB / 1 MiB, `perMessageDeflate: false`), control message parsing, `ws.on('error')`.
-- [ ] 3.4 GREEN `app.addHook('preClose', ...)` calling `registro.cerrarTodo()`. MUST NOT use `onClose`. Mutation check: temporarily move it to `onClose` and confirm U9 fails (hang or over 2500 ms), then restore.
-- [ ] 3.5 GREEN wire `crearRegistroAgentes` and `registrarServidorAgentes` in `src/server.ts`; `contexto-tenant.ts` exemption list stays unchanged.
-- [ ] 3.6 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; existing suites unchanged.
-- [ ] 3.7 Line-count checkpoint (method above): at most 400. If over, STOP (no further split is pre-approved).
+- [x] 3.1 RED U9 FIRST in new `src/agente-servidor.test.ts`: `app.close()` with live control and data sockets resolves under 2500 ms and the scheduler's `detener` still runs. Record it failing before any listener code exists.
+- [x] 3.2 RED U1-U8: 401 (header missing, malformed, unknown, revoked; token in query ignored); 403 deactivated tenant; 404 (unknown path, foreign, unknown, taken session; B's token on A's `sesionId`); socket reset during a slow lookup does not crash; text-JSON/key violations close with 1008; binary on control closes with 1003 (spec); non-upgrade `GET /agente/control` gives 400 `tenant-no-indicado`; logs never contain token or `sesionId`.
+- [x] 3.3 GREEN `src/agente-servidor.ts` `registrarServidorAgentes`: sync `socket.on('error', noop)`, ordered checks 1-6 of the design, refusal via `socket.end` with no body, two `WebSocketServer` instances (`maxPayload` 4 KiB / 1 MiB, `perMessageDeflate: false`), control message parsing, `ws.on('error')`.
+- [x] 3.4 GREEN `app.addHook('preClose', ...)` calling `registro.cerrarTodo()`. MUST NOT use `onClose`. Mutation check: temporarily move it to `onClose` and confirm U9 fails (hang or over 2500 ms), then restore.
+- [x] 3.5 GREEN wire `crearRegistroAgentes` and `registrarServidorAgentes` in `src/server.ts`; `contexto-tenant.ts` exemption list stays unchanged.
+- [x] 3.6 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; existing suites unchanged.
+- [x] 3.7 Line-count checkpoint (method above): at most 400. If over, STOP (no further split is pre-approved). Measured 2026-10-03: **380** (`src/server.ts` +7 tracked; untracked `src/agente-servidor.ts` 135, `src/agente-servidor.test.ts` 238).
 
 ## Unit 3b: Ping and 4002 Close (~110, stacked on 3a)
 
