@@ -25,6 +25,12 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  * direct `tenantId`, and the scheduler reaches them only through this same extension,
  * inside a context entered from the tenant's own `Tenant` row — it never writes
  * `tenantId` into a `where` itself.
+ *
+ * CH-19b adds `Agente` (DEC-121). Every route reaches it through this extension like
+ * any other tenant model. Its one exception is `agente.buscarPorTokenHash` below: an
+ * agent's token is resolved before any tenant context exists, so that single typed
+ * lookup runs on the raw client and returns only `id`, `tenantId` and the tenant's
+ * state. It is the only unscoped read of a scoped model in this module, by design.
  */
 const MODELOS_AISLADOS = new Set([
   'Conexion',
@@ -32,6 +38,7 @@ const MODELOS_AISLADOS = new Set([
   'VistaCanonica',
   'Automatizacion',
   'Ejecucion',
+  'Agente',
 ]);
 
 /**
@@ -125,6 +132,33 @@ export function aplicarAlcance(
  */
 export function extenderConAislamiento(prisma: PrismaClient) {
   return prisma.$extends({
+    model: {
+      agente: {
+        /**
+         * CH-19b (DEC-121): the single audited unscoped read of a scoped model. An agent
+         * presents its token before any tenant context exists, so the tenant comes from
+         * the matched row and never from the request (rule 2). It takes the hash, never
+         * the token, finds only non-revoked agents, and returns the minimum: no hash and
+         * no other column. `tenantActivo` is returned rather than filtered here so the
+         * caller (19c1) can refuse a deactivated tenant explicitly.
+         *
+         * It runs on the raw client this function closes over, not on the extended one:
+         * through the extended client the read would reach `$allOperations` below and
+         * fail closed for want of a context. Every other `Agente` operation still does.
+         */
+        async buscarPorTokenHash(
+          tokenHash: string,
+        ): Promise<{ id: string; tenantId: string; tenantActivo: boolean } | null> {
+          const fila = await prisma.agente.findUnique({
+            where: { tokenHash, revocadoEn: null },
+            select: { id: true, tenantId: true, tenant: { select: { activo: true } } },
+          });
+          return fila === null
+            ? null
+            : { id: fila.id, tenantId: fila.tenantId, tenantActivo: fila.tenant.activo };
+        },
+      },
+    },
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {

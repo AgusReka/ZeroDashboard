@@ -34,15 +34,15 @@ No `size:exception` (user chose chained PRs on 2026-10-03). Hard limit: 400 chan
 
 ## Unit 1a: Schema, Isolation, Lookup, Token (~210)
 
-- [ ] 1.1 FIRST. RED L2 in `src/aislamiento.test.ts` (own tenants, cleanup): lookup with no context returns exactly `{id, tenantId, tenantActivo}`; unknown and revoked hashes give `null`; deactivated tenant gives `tenantActivo: false`; tenant B's context still resolves A's hash to A; `findMany` still rejects. Needs 1.2 first so the client compiles.
-- [ ] 1.2 `prisma/schema.prisma`: add `Agente`, `Tenant.agente`, `Conexion.agenteId` and `agente`, both `onDelete: Restrict`. Run `prisma migrate dev --create-only`, add the rollback header to `prisma/migrations/20261003000000_agente/migration.sql`, apply it, regenerate the client.
-- [ ] 1.3 GREEN L2 in `src/aislamiento-prisma.ts`: `agente.buscarPorTokenHash(tokenHash)` in the same `$extends`, `findUnique` on the closed-over raw client, filter `revocadoEn: null`, map to the three keys. STOP-AND-FALLBACK: if L2 fails on the chained client, keep the signature and switch the body to a tagged-template `$queryRaw` (`JOIN "Tenant"`, `"revocadoEn" IS NULL`) per DEC-121. Do not reopen DEC-121 and do not interpolate SQL.
-- [ ] 1.4 RED then GREEN L0, L1 in `src/aislamiento.test.ts`: the pin list adds `Agente`; outside any context `agente.findMany`, `create`, `updateMany` reject with `ErrorSinTenantActivo`. GREEN: add `Agente` to `MODELOS_AISLADOS`, update the module docs.
-- [ ] 1.5 RED then GREEN DB scenarios in `src/aislamiento.test.ts` (raw client): second `Agente` per tenant, duplicate `tokenHash`, and deleting a `Conexion`-bound `Agente` are all rejected.
-- [ ] 1.6 RED K1 `src/agente-token.test.ts`: token matches `^zda_[A-Za-z0-9_-]{43}$`; two calls differ; hash is 64 hex and deterministic.
-- [ ] 1.7 GREEN `src/agente-token.ts`: `generarTokenAgente()` and `hashTokenAgente(t)` (SHA-256 hex).
-- [ ] 1.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; `Grep` confirms `tokenHash` appears only in the lookup.
-- [ ] 1.9 Line-count checkpoint (method above): at most 400. Commit deferred to orchestrator.
+- [x] 1.1 FIRST. RED L2 in `src/aislamiento.test.ts` (own tenants, cleanup): lookup with no context returns exactly `{id, tenantId, tenantActivo}`; unknown and revoked hashes give `null`; deactivated tenant gives `tenantActivo: false`; tenant B's context still resolves A's hash to A; `findMany` still rejects. Needs 1.2 first so the client compiles.
+- [x] 1.2 `prisma/schema.prisma`: add `Agente`, `Tenant.agente`, `Conexion.agenteId` and `agente`, both `onDelete: Restrict`. Run `prisma migrate dev --create-only`, add the rollback header to `prisma/migrations/20261003000000_agente/migration.sql`, apply it, regenerate the client.
+- [x] 1.3 GREEN L2 in `src/aislamiento-prisma.ts`: `agente.buscarPorTokenHash(tokenHash)` in the same `$extends`, `findUnique` on the closed-over raw client, filter `revocadoEn: null`, map to the three keys. STOP-AND-FALLBACK: if L2 fails on the chained client, keep the signature and switch the body to a tagged-template `$queryRaw` (`JOIN "Tenant"`, `"revocadoEn" IS NULL`) per DEC-121. Do not reopen DEC-121 and do not interpolate SQL.
+- [x] 1.4 RED then GREEN L0, L1 in `src/aislamiento.test.ts`: the pin list adds `Agente`; outside any context `agente.findMany`, `create`, `updateMany` reject with `ErrorSinTenantActivo`. GREEN: add `Agente` to `MODELOS_AISLADOS`, update the module docs.
+- [x] 1.5 RED then GREEN DB scenarios in `src/aislamiento.test.ts` (raw client): second `Agente` per tenant, duplicate `tokenHash`, and deleting a `Conexion`-bound `Agente` are all rejected.
+- [x] 1.6 RED K1 `src/agente-token.test.ts`: token matches `^zda_[A-Za-z0-9_-]{43}$`; two calls differ; hash is 64 hex and deterministic.
+- [x] 1.7 GREEN `src/agente-token.ts`: `generarTokenAgente()` and `hashTokenAgente(t)` (SHA-256 hex).
+- [x] 1.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; `Grep` confirms `tokenHash` appears only in the lookup.
+- [x] 1.9 Line-count checkpoint (method above): at most 400. Commit deferred to orchestrator.
 
 ## Unit 1b: Routes and Wiring (~314, stacked on 1a)
 
