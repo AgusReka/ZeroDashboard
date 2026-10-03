@@ -2072,11 +2072,11 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 **Se resigna.** Un solo agente por tenant es un punto único de falla.
 
-**Pendiente.** Si el modo directo queda habilitado o se apaga por configuración en producción no está decidido; se resuelve antes de CH-19b.
+**Modo directo en producción.** Queda habilitado, sin bandera de configuración nueva. Los tests y el tenant de R0/R1 usan conexión directa, y una bandera es alcance nuevo sin un problema actual que resolver. C1 se cumple por tenant: el cliente no abre puertos entrantes cuando su tenant se da de alta con agente; un tenant directo es una excepción visible, límite del artefacto. Se reevalúa al cerrar CH-19e: si la tesis necesita afirmar que ningún tenant productivo usa conexión directa, la bandera se agrega entonces.
 
-**Decidido por:** el usuario, 2026-10-02, eligiendo la opción recomendada, salvo el punto pendiente.
+**Decidido por:** el usuario, 2026-10-02 (cardinalidad y lista de destinos, eligiendo la opción recomendada) y 2026-10-03 (modo directo, aceptando la recomendación). No inferido por el agente.
 
-**Estado:** firme, con un punto pendiente.
+**Estado:** firme.
 
 ---
 

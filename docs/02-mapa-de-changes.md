@@ -73,12 +73,26 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 |---|---|---|
 | CH-17 | Motor: solapamientos, reintentos, ejecuciones interrumpidas. Partido en CH-17a (X7, X4) y CH-17b (X5), ver DEC-101 | X4, X5, X7 |
 | CH-18 | Motor: control de notificaciones duplicadas y aislamiento de fallos entre tenants | X6, X8 |
-| CH-19 | Conectividad definitiva según D-2 | C1, C2, C3 |
+| CH-19 | Conectividad definitiva según D-2. Partido en seis cortes, ver abajo y DEC-112 a DEC-120 | C1, C2, C3 |
 | CH-20 | Auditoría de ejecución de consultas | A5 |
 | CH-21 | Catálogo: instanciación de plantillas y casos iniciales | D2, D3, N3 |
 | CH-22 | Panel del cliente: autenticación y vista de automatizaciones | T3, P1h, P3h |
 | CH-23 | Panel: ajuste de umbrales y horarios | P2h |
 | CH-24 | Frescura de datos por tenant y por plantilla | F1, F2 |
+
+### Partición de CH-19
+
+Cada corte apunta a unas 300 líneas estimadas. Las estimaciones de tests se multiplican por ~1,7: en CH-19a el código salió dentro de lo estimado y los tests se pasaron un 70%. El duplex falso y su fixture ya existen en `src/db-probe-canal.test.ts`; los cortes siguientes lo importan o lo extraen a un helper compartido, no lo recrean.
+
+| ID | Corte | Historias | Estado |
+|---|---|---|---|
+| CH-19a | Canal opcional en `iniciarConexion`, tipos del protocolo, spike con duplex falso | C1 | Archivado (PR #58, `size:exception`) |
+| CH-19b | Migración `Agente` y `Conexion.agenteId`, alta, listado y revocación de token con hash, aislamiento, prueba con dos tenants | C1 | Pendiente |
+| CH-19c1 | Lado motor: rutas WebSocket de control y datos, registro de sesiones, `destinoDeConexion` devuelve un canal. Extraer el duplex falso a un helper compartido. Riesgo de superar 400 líneas | C1 | Pendiente |
+| CH-19c2 | Proceso del agente: reconexión con espera creciente, lista de destinos, puente, imagen Docker y fragmento de Compose, prueba de punta a punta | C1 | Pendiente |
+| CH-19d1 | C2, parte 1: latido y sondeo TCP, columnas de estado, persistencia de transiciones | C2 | Pendiente |
+| CH-19d2 | C2, parte 2: categorías `agente-desconectado`, enmienda a DEC-97, endpoint de estado, indicador en consola, vista de automatizaciones en riesgo | C2 | Pendiente |
+| CH-19e | C3: `scripts/conectividad-alta.sql`, plantilla de bitácora, marca de DEC-88, runbook de alta. Cierre: reevaluar el modo directo (DEC-115) | C3 | Pendiente |
 
 ---
 
