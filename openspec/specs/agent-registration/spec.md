@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Each tenant has at most one agent, authenticated by its own token (DEC-114, DEC-115, DEC-121). This capability covers the `Agente` model and the emission, re-issue, listing and revocation of its token. The agent process and the WebSocket channel are out of scope (19c1, 19c2).
+Each tenant has at most one agent, authenticated by its own token (DEC-114, DEC-115, DEC-121). This capability covers the `Agente` model and the emission, re-issue, listing and revocation of its token. Revoke and tenant baja close the agent's live WebSocket sockets with 4002; the channel itself is described in agent-channel. The agent process is out of scope (19c2).
 
 ## Requirements
 
@@ -110,3 +110,25 @@ The system SHALL expose one typed lookup by `tokenHash` that finds only non-revo
 - GIVEN a re-issued agent
 - WHEN the old token's hash is looked up
 - THEN no agent SHALL be returned
+
+### Requirement: Revoke and Tenant Baja Close Live Sockets
+
+`POST /agentes/:id/revocar` and `POST /tenants/:id/baja` SHALL close the agent's live control and data sockets with 4002 through the session registry, in addition to writing the row. A later upgrade MUST be rechecked against the row.
+
+#### Scenario: Revoking closes sockets
+
+- GIVEN an agent with a live control socket and a data socket
+- WHEN the agent is revoked
+- THEN both sockets SHALL close with 4002
+
+#### Scenario: Baja closes sockets
+
+- GIVEN a tenant whose agent has live sockets
+- WHEN the tenant is deactivated
+- THEN the agent's sockets SHALL close with 4002
+
+#### Scenario: Revoking with no live sockets
+
+- GIVEN an agent with no live sockets
+- WHEN it is revoked
+- THEN the response SHALL be unchanged and no error SHALL occur

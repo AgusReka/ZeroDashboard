@@ -10,6 +10,7 @@ import {
   type ResultadoCorrida,
   type SalidaNotificacion,
 } from './automatizaciones.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { loadConfig } from './config.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from './consulta-ejecucion.js';
@@ -80,6 +81,8 @@ export interface DependenciasPlanificador {
   notificador?: Notificador | null;
   /** CH-17b: the connection retry policy (DEC-98). Absent means `SIN_REINTENTOS`. */
   reintentos?: PoliticaReintentos;
+  /** CH-19c1 (DEC-122): the agent session registry. Absent means `SIN_AGENTES`, which fails closed. */
+  canales?: AbridorDeCanales;
 }
 
 /**
@@ -203,6 +206,7 @@ export function crearPlanificador({
   reloj = relojDelSistema,
   notificador = null,
   reintentos = SIN_REINTENTOS,
+  canales = SIN_AGENTES,
 }: DependenciasPlanificador): Planificador {
   // The first window opens when the scheduler is built, so nothing that fell due before
   // the process started is caught up (DEC-75; no catch-up is an artifact limit, DEC-95).
@@ -237,7 +241,7 @@ export function crearPlanificador({
 
     let destino;
     try {
-      destino = await destinoDeConexion(prisma, automatizacion.conexionId);
+      destino = await destinoDeConexion(prisma, automatizacion.conexionId, canales);
     } catch (error) {
       if (error instanceof ErrorCredencialIlegible) {
         return { resultado: 'rechazo', categoria: 'credencial-ilegible' };

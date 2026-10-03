@@ -7,7 +7,9 @@ import { extenderConAislamiento, conTenantInyectado } from './aislamiento-prisma
 import { conTenantActivo } from './contexto-tenant.js';
 import { cifrarCredencial, ErrorCredencialIlegible } from './cripto-credencial.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
-import type { AbrirCanal } from './db-probe.js';
+import { probeConnection, type AbrirCanal } from './db-probe.js';
+import { generarTokenAgente, hashTokenAgente } from './agente-token.js';
+import type { SolicitudSesion } from './canal-agente.js';
 
 /** CH-19a, H1: the callers' one copy of the destination fields. No server needed. */
 describe('camposDeDestino — the channel is threaded without inspection', () => {
@@ -90,6 +92,8 @@ describe(
     let aislado!: ReturnType<typeof extenderConAislamiento>;
     let tenantPruebas!: string;
     let tenantAjeno!: string;
+    /** CH-19c1: the fixture tenant's one agent (DEC-115). */
+    let agentePruebas!: string;
 
     before(async () => {
       prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -98,11 +102,14 @@ describe(
       tenantPruebas = propio.id;
       tenantAjeno = ajeno.id;
       aislado = extenderConAislamiento(prisma);
+      const tokenHash = hashTokenAgente(generarTokenAgente());
+      agentePruebas = (await prisma.agente.create({ data: { tenantId: tenantPruebas, tokenHash } })).id;
     });
 
     after(async () => {
       for (const id of [tenantPruebas, tenantAjeno]) {
         await prisma.conexion.deleteMany({ where: { tenantId: id } });
+        await prisma.agente.deleteMany({ where: { tenantId: id } });
         await prisma.tenant.delete({ where: { id } });
       }
       await prisma.$disconnect();
@@ -114,7 +121,7 @@ describe(
      * cases below need a value the route can no longer produce: a legacy plaintext
      * credential and a corrupted envelope.
      */
-    async function sembrar(credencialAlmacenada: string, tenantId: string): Promise<string> {
+    async function sembrar(credencialAlmacenada: string, tenantId: string, agenteId: string | null = null): Promise<string> {
       const fila = await prisma.conexion.create({
         data: {
           nombre: `CH-07 destino ${Date.now()} ${Math.random()}`,
@@ -125,6 +132,7 @@ describe(
           usuarioDb: objetivo.user,
           credencial: credencialAlmacenada,
           tenantId,
+          agenteId,
         },
         select: { id: true },
       });
@@ -148,9 +156,40 @@ describe(
       assert.equal(destino?.database, objetivo.database);
       assert.equal(destino?.user, objetivo.user);
       assert.equal(destino?.password, CREDENCIAL, 'the credential must come back deciphered');
-      // CH-19a: no production path supplies a channel, so the resolved row carries none.
+      // CH-19c1 H1: a row with no agent carries no channel, so it is dialled directly.
       assert.ok(destino !== null && !('canal' in destino));
       assert.equal(destino.canal, undefined);
+    });
+
+    test('H1 an agent-bound row asks the opener with the active tenant and the row host and port', async () => {
+      const directa = await sembrar(cifrarCredencial(CREDENCIAL), tenantPruebas);
+      const conAgente = await sembrar(cifrarCredencial(CREDENCIAL), tenantPruebas, agentePruebas);
+      const pedidas: SolicitudSesion[] = [];
+      const canal: AbrirCanal = () => {
+        throw new Error('destinoDeConexion must never open the channel');
+      };
+      const canales = { canalPara: (solicitud: SolicitudSesion) => (pedidas.push(solicitud), canal) };
+
+      const sinAgente = await comoTenant(tenantPruebas, () => destinoDeConexion(aislado, directa, canales));
+      assert.ok(sinAgente !== null && !('canal' in sinAgente));
+      assert.deepEqual(pedidas, []);
+      const destino = await comoTenant(tenantPruebas, () => destinoDeConexion(aislado, conAgente, canales));
+      assert.equal(destino?.canal, canal);
+      assert.deepEqual(pedidas, [{ agenteId: agentePruebas, tenantId: tenantPruebas, host: objetivo.host, puerto: objetivo.port }]);
+    });
+
+    test('H1 with no registry the factory is inert and the probe fails with ESINAGENTE, never dialling', async () => {
+      // The row points at the reachable test server: a direct dial would succeed here.
+      const id = await sembrar(cifrarCredencial(objetivo.password), tenantPruebas, agentePruebas);
+      const destino = await comoTenant(tenantPruebas, () => destinoDeConexion(aislado, id));
+      assert.ok(destino?.canal !== undefined);
+      const inerte = destino.canal();
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(inerte.destroyed, false, 'building the channel asks for nothing');
+      inerte.destroy();
+
+      const prueba = await probeConnection(camposDeDestino(destino));
+      assert.deepEqual([prueba.resultado, prueba.categoria, prueba.codigo], ['fallo', 'error-desconocido', 'ESINAGENTE']);
     });
 
     test('the row itself never holds the plaintext (A2: a dump yields nothing readable)', async () => {
