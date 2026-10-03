@@ -36,13 +36,13 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 1: Limits, Config, TLS Policy, Allowlist (~345)
 
-- [ ] 1.1 RED C1-C6 in new `src/agente-proceso/config.test.ts`: missing or empty variable gives `ErrorConfig` naming it; bad token format; URL policy (`wss:` any host, `ws:` only `localhost`, `127.0.0.5`, `[::1]`; refuses `ws://10.0.0.1`, `http:`, userinfo, `#`, `?a`, path); no message contains the input (sentinel); `opcionesSocket` returns exactly the six options with `rejectUnauthorized: true` while `NODE_TLS_REJECT_UNAUTHORIZED=0`.
-- [ ] 1.2 GREEN `src/agente-proceso/limites.ts` (`LIMITES_AGENTE`, `FORMATO_TOKEN`, `FORMATO_SESION`) and `src/agente-proceso/politica-tls.ts` (`validarUrlServidor`, `opcionesSocket`).
-- [ ] 1.3 RED L1-L5 in new `src/agente-proceso/destinos.test.ts`: valid DNS, IPv4, `[::1]:5432`; refuses `*`, CIDR, range, missing port, port 0 or 65536, empty item, `127.1:5432`, `0x7f.0.0.1:1`; case, brackets and trailing dot normalize; `127.1` does not match `127.0.0.1`; string port does not match.
-- [ ] 1.4 GREEN `src/agente-proceso/destinos.ts` (`normalizarHost`, `leerDestinos`, `buscarDestino`, `Destino`, `ListaDestinos`).
-- [ ] 1.5 GREEN `src/agente-proceso/config.ts` (`ErrorConfig`, `ConfigAgente`, `leerConfig`; reads exactly three variables, never `loadConfig`); C1-C6 and L1-L5 pass.
-- [ ] 1.6 RED then GREEN P1 in new `src/agente-proceso/paridad.test.ts`: `tramaDatos === LIMITE_TRAMA_DATOS`; `tramaControl === LIMITES.tramaControl`; `sesiones > LIMITES.sesionesPorAgente`; `vigilanciaPingMs > 2 * LIMITES.pingMs`; 50 `generarTokenAgente()` values match `FORMATO_TOKEN`; a `sesionId` from `crearRegistroAgentes()` (fake control socket) matches `FORMATO_SESION`. Test-only imports of engine files are allowed.
-- [ ] 1.7 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no `.env` change; no agent file imports an engine module.
+- [x] 1.1 RED C1-C6 in new `src/agente-proceso/config.test.ts`: missing or empty variable gives `ErrorConfig` naming it; bad token format; URL policy (`wss:` any host, `ws:` only `localhost`, `127.0.0.5`, `[::1]`; refuses `ws://10.0.0.1`, `http:`, userinfo, `#`, `?a`, path); no message contains the input (sentinel); `opcionesSocket` returns exactly the six options with `rejectUnauthorized: true` while `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+- [x] 1.2 GREEN `src/agente-proceso/limites.ts` (`LIMITES_AGENTE`, `FORMATO_TOKEN`, `FORMATO_SESION`) and `src/agente-proceso/politica-tls.ts` (`validarUrlServidor`, `opcionesSocket`).
+- [x] 1.3 RED L1-L5 in new `src/agente-proceso/destinos.test.ts`: valid DNS, IPv4, `[::1]:5432`; refuses `*`, CIDR, range, missing port, port 0 or 65536, empty item, `127.1:5432`, `0x7f.0.0.1:1`; case, brackets and trailing dot normalize; `127.1` does not match `127.0.0.1`; string port does not match.
+- [x] 1.4 GREEN `src/agente-proceso/destinos.ts` (`normalizarHost`, `leerDestinos`, `buscarDestino`, `Destino`, `ListaDestinos`).
+- [x] 1.5 GREEN `src/agente-proceso/config.ts` (`ErrorConfig`, `ConfigAgente`, `leerConfig`; reads exactly three variables, never `loadConfig`); C1-C6 and L1-L5 pass.
+- [x] 1.6 RED then GREEN P1 in new `src/agente-proceso/paridad.test.ts`: `tramaDatos === LIMITE_TRAMA_DATOS`; `tramaControl === LIMITES.tramaControl`; `sesiones > LIMITES.sesionesPorAgente`; `vigilanciaPingMs > 2 * LIMITES.pingMs`; 50 `generarTokenAgente()` values match `FORMATO_TOKEN`; a `sesionId` from `crearRegistroAgentes()` (fake control socket) matches `FORMATO_SESION`. Test-only imports of engine files are allowed.
+- [x] 1.7 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no `.env` change; no agent file imports an engine module.
 - [ ] 1.8 Line-count checkpoint (method above): at most 400, else STOP.
 
 ## Unit 2: Logger, Bridge, Sessions (~380, stacked on 1; AT RISK)
