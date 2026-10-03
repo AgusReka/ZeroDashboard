@@ -56,12 +56,12 @@ No `size:exception` (user chose chained PRs on 2026-10-03). Hard limit: 400 chan
 
 ## Unit 2: `agenteId` on `POST /conexiones` (~114, stacked on 1b)
 
-- [ ] 3.1 RED C1-C5 in `src/agentes-rutas.test.ts` (with `registerConexionRoutes`): own agent gives 201 and stored `agenteId`; B's agent gives 404 `agente-no-encontrado` and no marker row; unknown id gives 404; own revoked agent gives 201; no `agenteId` gives 201 and `null`; `''` gives 400.
-- [ ] 3.2 GREEN `src/conexiones.ts`: add `agenteId?` to the body interface, `propertyNames` enum and `properties` (`minLength: 1`); scoped `prisma.agente.findUnique` with no `revocadoEn` filter before the create; write `agenteId: body.agenteId ?? null`.
-- [ ] 3.3 GREEN `ConexionPublica` in `src/conexiones.ts` gains `agenteId: true`.
-- [ ] 3.4 Checkpoint: full `npm test` green (existing connection suites unchanged), `npx tsc --noEmit` clean.
-- [ ] 3.5 Line-count checkpoint (method above): at most 400.
-- [ ] 3.6 Final: no `.env` or `package.json` diff. Commit deferred to orchestrator, which then runs verify and archive.
+- [x] 3.1 RED C1-C5 in `src/agentes-rutas.test.ts` (with `registerConexionRoutes`): own agent gives 201 and stored `agenteId`; B's agent gives 404 `agente-no-encontrado` and no marker row; unknown id gives 404; own revoked agent gives 201; no `agenteId` gives 201 and `null`; `''` gives 400.
+- [x] 3.2 GREEN `src/conexiones.ts`: add `agenteId?` to the body interface, `propertyNames` enum and `properties` (`minLength: 1`); scoped `prisma.agente.findUnique` with no `revocadoEn` filter before the create; write `agenteId: body.agenteId ?? null`.
+- [x] 3.3 GREEN `ConexionPublica` in `src/conexiones.ts` gains `agenteId: true`.
+- [x] 3.4 Checkpoint: full `npm test` green (existing connection suites unchanged), `npx tsc --noEmit` clean.
+- [x] 3.5 Line-count checkpoint (method above): at most 400.
+- [x] 3.6 Final: no `.env` or `package.json` diff. Commit deferred to orchestrator, which then runs verify and archive.
 
 ## Traceability
 
