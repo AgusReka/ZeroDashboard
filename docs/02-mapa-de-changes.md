@@ -87,7 +87,7 @@ Cada corte apunta a unas 300 líneas estimadas. Las estimaciones de tests se mul
 | ID | Corte | Historias | Estado |
 |---|---|---|---|
 | CH-19a | Canal opcional en `iniciarConexion`, tipos del protocolo, spike con duplex falso | C1 | Archivado (PR #58, `size:exception`) |
-| CH-19b | Migración `Agente` y `Conexion.agenteId`, alta, listado y revocación de token con hash, aislamiento, prueba con dos tenants | C1 | Pendiente |
+| CH-19b | Migración `Agente` y `Conexion.agenteId`, alta, listado y revocación de token con hash, aislamiento, prueba con dos tenants (DEC-121). Un change, tres PR encadenados (el diseño subió la unidad 1 de ~360 a ~524 líneas): 1a (esquema, migración, modelo aislado, lookup, módulo de token, ~210), 1b (tres rutas `/agentes` y su prueba con dos tenants, ~314) y 2 (`agenteId` en `POST /conexiones` con chequeo de tenant, ~114) | C1 | En curso |
 | CH-19c1 | Lado motor: rutas WebSocket de control y datos, registro de sesiones, `destinoDeConexion` devuelve un canal. Extraer el duplex falso a un helper compartido. Riesgo de superar 400 líneas | C1 | Pendiente |
 | CH-19c2 | Proceso del agente: reconexión con espera creciente, lista de destinos, puente, imagen Docker y fragmento de Compose, prueba de punta a punta | C1 | Pendiente |
 | CH-19d1 | C2, parte 1: latido y sondeo TCP, columnas de estado, persistencia de transiciones | C2 | Pendiente |
