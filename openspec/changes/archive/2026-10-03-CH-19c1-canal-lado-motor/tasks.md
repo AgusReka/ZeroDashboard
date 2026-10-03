@@ -84,7 +84,7 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Archive-time (orchestrator-owned)
 
-- [ ] 6.1 At archive, hand-edit the Purpose lines of the main specs `openspec/specs/agent-channel/spec.md` and `openspec/specs/agent-registration/spec.md` to match the delta Purpose text; do not rely on automatic merge.
+- [x] 6.1 At archive, hand-edit the Purpose lines of the main specs `openspec/specs/agent-channel/spec.md` and `openspec/specs/agent-registration/spec.md` to match the delta Purpose text; do not rely on automatic merge.
 
 ## Traceability
 
