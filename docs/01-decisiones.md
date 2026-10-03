@@ -2221,6 +2221,31 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-123 — CH-19c2: el agente vive en `src/agente-proceso/`, sale ante credenciales inválidas y solo habla con destinos listados literalmente
+
+**Contexto.** CH-19c2 construye el proceso que corre junto a la réplica del cliente (DEC-112, DEC-113, DEC-115, DEC-120, DEC-122). Esas decisiones fijan que el agente es un relay de bytes, que exige TLS salvo loopback, que la lista de destinos vive solo en él y que no usa `loadConfig`. Quedaban sin fijar dónde vive su código, cómo importa los tipos, qué hace ante rechazos del motor, cómo se escribe y compara la lista de destinos, qué informa al rechazar un destino, la regla de TLS en el código y dónde van los archivos de Compose.
+
+**Opciones y decisión.**
+- **Código y compilación (A1).** (a) mismo paquete en `src/agente-proceso/` con un segundo `tsconfig.agente.json`; (b) archivos planos; (c) paquete aparte. **Decisión: (a).** La imagen del agente copia solo `dist-agente` y `ws`. El script de test del paquete se entrecomilla (`"src/**/*.test.ts"`) porque, con un subdirectorio de tests, el patrón sin comillas se expande en POSIX a `src/*/*.test.ts` y descarta en silencio los tests planos; al aplicar se verifica que la cantidad de tests no baje.
+- **Imports (A2).** **Decisión:** solo `import type` desde `agente-protocolo.ts`. Un test de frontera admite únicamente `node:*`, `ws`, archivos del mismo directorio y ese archivo de tipos, y prohíbe `pg`, `@prisma/*`, `fastify`, `config`, `canal-agente`, `agente-token` y cualquier otro archivo del motor. Los límites de 1 MiB y 4 KiB se duplican en el agente con un test de paridad. El catálogo sigue exportando solo tipos.
+- **Salida o reintento (A3).** **Decisión:** 401, 403 o cierre 4002 terminan el proceso con código 2; un cierre 4001 en el socket vigente lo termina con código 3 (otra instancia usa el mismo token y reintentar haría que dos agentes se reemplacen sin fin). Todo lo demás (red, 404, 5xx, 1006, reinicio del motor) reintenta con espera creciente. Códigos de salida: 0 apagado limpio, 1 configuración, 2 credenciales, 3 reemplazado. Con `restart: unless-stopped` Docker hace visible la salida y acota la carga sobre el motor.
+- **Lista de destinos (A4).** **Decisión:** `AGENT_ALLOWED_TARGETS` es una lista separada por comas de `host:puerto` exactos. Host DNS, IPv4 o IPv6 entre corchetes; puerto obligatorio de 1 a 65535. Sin comodines, CIDR ni rangos (regla 6). Vacío o ausente corta el arranque. La coincidencia es exacta sobre host y puerto normalizados (minúsculas, sin corchetes, sin punto final) contra `apertura-sesion`, y `net.connect` usa exactamente esa cadena; formas como `127.1` u octales no están en la lista y se rechazan. Los nombres confían en el DNS del propio cliente: las IP literales son más estrictas.
+- **Rechazo de destino (A5).** (a) reutilizar `ECONNREFUSED` y registrar un evento local; (b) código nuevo en el catálogo. **Decisión: (a).** Se informa `ECONNREFUSED` (`host-inalcanzable`) y el agente registra localmente `destino-no-permitido` sin host ni puerto. Un código propio dejaría a un motor comprometido enumerar la lista, incluidos hosts caídos, y debilitaría DEC-115. Lo mismo cubre el tope de 16 sesiones del agente y un `host` o `puerto` mal formados. Los errores de red fuera de los siete códigos (`EADDRNOTAVAIL`, `EMFILE`, `EPERM`, `EAI_FAIL`) se informan como `EHOSTUNREACH`.
+- **TLS (A6).** **Decisión:** se acepta `wss:` siempre y `ws:` solo si el host es `localhost`, un `127.x.x.x` o `[::1]`. Se rechazan userinfo, fragmento, otro esquema y query no vacía. Se pasa `rejectUnauthorized: true` explícito, no se lee ninguna variable que lo desactive y no se siguen redirecciones (viajaría el `Authorization`). La URL se valida antes de `new WebSocket`, porque `ws` repite la URL en su error. Al aplicar se verifica que la opción explícita gane sobre `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+- **Compose (A7).** **Decisión:** archivos aparte, `docker-compose.agente.yml` y `.env.agente.example`, para que la máquina del cliente nunca necesite secretos del motor y `docker compose up` por defecto no cambie. Usa `${AGENT_TOKEN:?AGENT_TOKEN is required}` (no repite el valor), valores vacíos, `restart: unless-stopped`, `read_only`, `cap_drop: [ALL]`, `no-new-privileges` e `init: true`. Lleva `build:` con el contexto del repositorio, porque no hay un registro de imágenes definido. Los comentarios traen la nota de despliegue de DEC-122.
+
+**Por qué.** Cada decisión mantiene al agente sin capacidad nueva (regla 6), sin superficie SQL ni lectura de bytes (regla 1), sin conocer al tenant, solo un token (reglas 2 y 5), y sin credenciales de base propias (regla 3).
+
+**Se resigna.** Sin prueba TLS real de punta a punta, porque exigiría un certificado o una clave en el repositorio (regla 7); se cubre con pruebas de la política de URL y de las opciones, y la brecha queda para el runbook de CH-19e. Un rechazo de destino es indistinguible, desde la consola del motor, de un puerto rechazado. Los nombres de la lista confían en el DNS del cliente. Un token inválido o un duplicado detienen el agente hasta que el operador actúe. La imagen no tiene `HEALTHCHECK` (el estado del lado del agente es de CH-19d1).
+
+**Fuera de esta decisión (diseño de CH-19c2).** Variables `AGENT_SERVER_URL` (solo el origen), `AGENT_TOKEN` y `AGENT_ALLOWED_TARGETS`, el resto constantes; errores de configuración que nombran la variable y nunca el valor; espera exponencial de 1 a 60 s con variación igual y reinicio tras 30 s de control abierto; vigilancia de ping de 50 s; conexión a la réplica con tiempo de 10 s; `sesionId` validado contra `^[A-Za-z0-9_-]{22}$` antes de entrar a una URL; tope de 16 sesiones; puente propio y binario con contrapresión; apagado ordenado; registro propio en líneas JSON con eventos y campos cerrados, sin token, URL, host, puerto, `sesionId` ni bytes; imagen `node:22-alpine` con `USER node`; etapa `agente` antes de la etapa final del motor.
+
+**Decidido por:** el usuario, 2026-10-03, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
