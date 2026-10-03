@@ -66,3 +66,51 @@ Over the 400 limit by 61 on code alone. The pre-agreed fallback (move A8-A10 and
 - Shared fixtures extracted to non-test `src/canal-agente-apoyo.ts` (65 lines, stays in unit 1); `relevar` and `conRelevo` live only in the moved file.
 - Unit 1 line count (tracked diff 44 + untracked 147 + 75 + 65): **331** (limit 400). Checkpoint 1.10 resolved.
 - Verification: `npx tsc --noEmit` exit 0; focused `canal-agente.test.ts canal-agente-ampliado.test.ts agente-protocolo.test.ts`: tests 14, pass 14, fail 0, skipped 0; full `TEST_DB_PORT=5434 npm test`: tests 737, suites 109, pass 737, fail 0, cancelled 0, skipped 0.
+
+## Unit 2: In-Memory Registry (2026-10-03)
+
+**Branch**: `ch19c1/registro-de-sesiones` (stacked on `ch19c1/ws-y-canal-agente`). **Status**: implemented and green; **line-count checkpoint 2.6 FAILED (492 > 400). Stopped for an orchestrator decision; nothing trimmed, unit 3a not started.**
+
+### Tasks
+
+| Task | State | Notes |
+|---|---|---|
+| 2.1-2.3 | done | R1-R6 plus attach/close cases written first in `src/registro-agentes.test.ts`. RED: `ERR_MODULE_NOT_FOUND` for `./registro-agentes.js` (tests 1, fail 1) |
+| 2.4 | done | `src/registro-agentes.ts`: `LIMITES`, `CIERRE_REEMPLAZO`, `CIERRE_REVOCADO`, `RegistroAgentes`, `crearRegistroAgentes` (default `programar` = unref'd `setTimeout`; default `generarId` = `randomBytes(16).toString('base64url')`) |
+| 2.5 | done | `npx tsc --noEmit` exit 0; full suite green; the registry has no logger call at all |
+| 2.6 | **failed — STOP** | 492 changed lines (see below) |
+| 2.7 | done | `src/canal-agente-ampliado.test.ts` kept unchanged (152 lines) and counted in 2.6; commit is orchestrator-owned |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `TEST_DB_PORT=5434 npx tsx --test src/registro-agentes.test.ts src/canal-agente-ampliado.test.ts`: exit 0, `ℹ tests 17`, `ℹ pass 17`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` (11 registry + 6 A6-A10) |
+| Runtime harness | Injected `programar` (manual timers) and `generarId`; fake `EventEmitter` sockets; real `CanalAgente` instances, so `adjuntar`, `_destroy` -> `soltarSesion` and the `'connect'` emission run for real. The default-id case uses the real defaults (unref'd timer, `randomBytes`) |
+| Mutation checks | (1) removing `control.tenantId !== tenantId`: R6 fails (tests 11, fail 1). (2) removing the `entry.socket === socket` guard on control close: R1 fails (fail 1). The first run of mutant 1 hung on an unsettled promise; `codigoDe` now races a 1 s unref'd timer so a regression fails instead of hanging |
+| Type check | `npx tsc --noEmit`: exit 0, no output |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0, `ℹ tests 748`, `ℹ suites 111`, `ℹ pass 748`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` (baseline 737 + 11 new) |
+| Rollback boundary | Delete `src/registro-agentes.ts`, `src/registro-agentes.test.ts` (and `src/canal-agente-ampliado.test.ts` if unit 2 is reverted as a whole). Nothing is wired; no schema change |
+
+### Line-Count Checkpoint (2.6)
+
+Method: `git diff --stat` (empty: no tracked change) plus untracked files, excluding `package-lock.json`, `docs/design/`, `docs/verificacion-tesis-2026-10-01.md` and openspec files.
+
+| File | Lines |
+|---|---|
+| `src/registro-agentes.ts` (new) | 173 |
+| `src/registro-agentes.test.ts` (new) | 167 |
+| `src/canal-agente-ampliado.test.ts` (moved from unit 1, unchanged) | 152 |
+| **Total** | **492** |
+
+Over the limit by 92. The estimate was 227 for registry + tests; they came to 340 (+50%, same overshoot as earlier slices). Without the moved A6-A10 file, unit 2 alone is 340. Options for the orchestrator (not applied): (a) ship `canal-agente-ampliado.test.ts` as its own small PR (152) before or after the registry PR (340); (b) accept `size:exception`; (c) another split chosen by the user.
+
+### Deviations / Clarifications
+
+- `cerrarTenant` follows the design and tasks name (the launch prompt said `cerrarPorTenant`).
+- `cerrando` is a read-only getter on the registry (task 2.4 lists it; the design sketch omits it).
+- `cerrarAgente` closes the attached data socket with 4002 **and** destroys its channel with `ESINAGENTE` at once, so bytes stop without waiting for the close handshake. The design only says "control + data sockets 4002, pending -> ESINAGENTE". Design-level detail, no new architecture decision.
+- `registrarControl` while `cerrando` terminates the socket; `adjuntarDatos` while `cerrando` returns false. Guards for the window between the listener's step-4 check and the attach.
+- `adjuntarDatos` returns false whenever the session is no longer in the map, its channel is destroyed, it belongs to another agent, or a data socket is already attached. This covers the unit-1 risk (`CanalAgente.adjuntar` does not check `destroyed`).
+- Sessions keep their `tenantId` through `canal.solicitud.tenantId` (checked equal to the control entry's token-row tenant at `pedirSesion`); `cerrarTenant` uses both the control entries and the sessions.
+- No unregistered architecture decision was found.

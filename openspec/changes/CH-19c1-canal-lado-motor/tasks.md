@@ -47,13 +47,13 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 2: In-Memory Registry (~227, stacked on 1)
 
-- [ ] 2.1 RED R1 in new `src/registro-agentes.test.ts` (fake sockets, injected `programar` and `generarId`): replacing a control socket closes the old with 4001; the old socket's later close leaves the new entry.
-- [ ] 2.2 RED R2-R4: a 9th session gives `ESINAGENTE`; the 30 s TTL gives `ESINAGENTE` and removes the session; a failed `send` gives `ESINAGENTE`.
-- [ ] 2.3 RED R5, R6: `sesionFallida` copies only the 7 closed codes and drops unknown (no `code`); tenant mismatch (agent registered for A, request names B) gives `ESINAGENTE` and A's socket receives nothing.
-- [ ] 2.4 GREEN `src/registro-agentes.ts`: `LIMITES`, `CIERRE_REEMPLAZO`, `CIERRE_REVOCADO`, `crearRegistroAgentes`, the full `RegistroAgentes` interface and registry rules (`registrarControl`, `canalPara`, `pedirSesion`, `soltarSesion`, `reservarDatos`, `adjuntarDatos`, `sesionFallida`, `cerrarAgente`, `cerrarTenant`, `cerrarTodo`, `cerrando`). Session id: `randomBytes(16).toString('base64url')`.
-- [ ] 2.5 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no log of token, `tenantId`, `sesionId`, host or port.
-- [ ] 2.6 Line-count checkpoint (method above): at most 400.
-- [ ] 2.7 Tests A6-A10 (live PostgreSQL A6/A7, 1 MiB slicing, far-side close, `end()` while connecting, text frame 1003) belong to this unit: commit `src/canal-agente-ampliado.test.ts` here (it imports `src/canal-agente-apoyo.ts` from unit 1). Count it in 2.6.
+- [x] 2.1 RED R1 in new `src/registro-agentes.test.ts` (fake sockets, injected `programar` and `generarId`): replacing a control socket closes the old with 4001; the old socket's later close leaves the new entry.
+- [x] 2.2 RED R2-R4: a 9th session gives `ESINAGENTE`; the 30 s TTL gives `ESINAGENTE` and removes the session; a failed `send` gives `ESINAGENTE`.
+- [x] 2.3 RED R5, R6: `sesionFallida` copies only the 7 closed codes and drops unknown (no `code`); tenant mismatch (agent registered for A, request names B) gives `ESINAGENTE` and A's socket receives nothing.
+- [x] 2.4 GREEN `src/registro-agentes.ts`: `LIMITES`, `CIERRE_REEMPLAZO`, `CIERRE_REVOCADO`, `crearRegistroAgentes`, the full `RegistroAgentes` interface and registry rules (`registrarControl`, `canalPara`, `pedirSesion`, `soltarSesion`, `reservarDatos`, `adjuntarDatos`, `sesionFallida`, `cerrarAgente`, `cerrarTenant`, `cerrarTodo`, `cerrando`). Session id: `randomBytes(16).toString('base64url')`.
+- [x] 2.5 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no log of token, `tenantId`, `sesionId`, host or port.
+- [x] 2.6 Line-count checkpoint (method above): at most 400. **First measured 2026-10-03: 492 changed lines** (all untracked: `registro-agentes.ts` 173, `registro-agentes.test.ts` 167, `canal-agente-ampliado.test.ts` 152; tracked diff 0). Stopped for an orchestrator decision; nothing trimmed. Resolved by the orchestrator on 2026-10-03, following the author's no-`size:exception` preference: `canal-agente-ampliado.test.ts` (152) ships in its own PR (#65, between unit 1 and the registry); this unit is the registry only, 340 lines.
+- [x] 2.7 Tests A6-A10 (live PostgreSQL A6/A7, 1 MiB slicing, far-side close, `end()` while connecting, text frame 1003) were moved here from unit 1 but ship in their own PR (#65); `src/canal-agente-ampliado.test.ts` (it imports `src/canal-agente-apoyo.ts` from unit 1). Count it in 2.6.
 
 ## Unit 3a: Upgrade Listener (~317, stacked on 2)
 
