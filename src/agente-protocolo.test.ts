@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import type { AperturaSesion, CodigoErrorAgente } from './agente-protocolo.js';
+import type { AperturaSesion, CodigoCierre, CodigoErrorAgente, MensajeControl, SesionFallida } from './agente-protocolo.js';
 import { classifyConnectionError } from './db-probe.js';
 
 /**
@@ -30,6 +30,15 @@ const CODIGOS_AGENTE = [
 type Faltantes = Exclude<CodigoErrorAgente, (typeof CODIGOS_AGENTE)[number]>;
 const listaExhaustiva: [Faltantes] extends [never] ? true : false = true;
 
+/** CH-19c1 (DEC-122), type-level: `sesion-fallida` carries only one of the seven codes. */
+const fallida: SesionFallida = { tipo: 'sesion-fallida', sesionId: 's', codigo: 'ECONNREFUSED' };
+// @ts-expect-error a code outside the closed set must not type-check
+const fallidaAjena: SesionFallida = { tipo: 'sesion-fallida', sesionId: 's', codigo: 'EPERM' };
+const mensajes: MensajeControl[] = [fallida, fallidaAjena, { tipo: 'latido' }];
+const cierres: CodigoCierre[] = [4001, 4002];
+// @ts-expect-error only the two engine close codes are in the catalog
+const cierreAjeno: CodigoCierre = 4003;
+
 describe('agent protocol catalog (CH-19a, P1-P2)', () => {
   test('P1 the module exposes no runtime value', async () => {
     const modulo = await import('./agente-protocolo.js');
@@ -44,5 +53,10 @@ describe('agent protocol catalog (CH-19a, P1-P2)', () => {
       const { categoria } = classifyConnectionError({ code });
       assert.notEqual(categoria, 'error-desconocido', code);
     }
+  });
+
+  test('P3 sesion-fallida and the close codes stay types only (CH-19c1)', async () => {
+    assert.deepEqual(Object.keys(await import('./agente-protocolo.js')), []);
+    assert.deepEqual([mensajes.length, cierres, cierreAjeno], [3, [4001, 4002], 4003]);
   });
 });
