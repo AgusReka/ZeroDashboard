@@ -67,11 +67,11 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 3b: Ping and 4002 Close (~110, stacked on 3a)
 
-- [ ] 4.1 RED U10: with injected `programar`, a control socket with no pong is terminated after the 20 s ping. GREEN ping in `src/agente-servidor.ts`.
-- [ ] 4.2 RED U11, U12 in `src/agentes-rutas.test.ts` and `src/tenants.test.ts`: revoke and baja close control and data sockets with 4002; revoking with no live sockets leaves the response unchanged.
-- [ ] 4.3 GREEN `src/agentes-rutas.ts` and `src/tenants.ts`: optional `agentes: Pick<RegistroAgentes,'cerrarAgente'|'cerrarTenant'>` with a no-op default, called after a successful write. `src/server.ts` passes `registro`.
-- [ ] 4.4 Checkpoint: `npm test` green, `npx tsc --noEmit` clean.
-- [ ] 4.5 Line-count checkpoint (method above): at most 400.
+- [x] 4.1 RED U10: with injected `programar`, a control socket with no pong is terminated after the 20 s ping. GREEN ping in `src/agente-servidor.ts`.
+- [x] 4.2 RED U11, U12 in `src/agentes-rutas.test.ts` and `src/tenants.test.ts`: revoke and baja close control and data sockets with 4002; revoking with no live sockets leaves the response unchanged.
+- [x] 4.3 GREEN `src/agentes-rutas.ts` and `src/tenants.ts`: optional `agentes: Pick<RegistroAgentes,'cerrarAgente'|'cerrarTenant'>` with a no-op default, called after a successful write. `src/server.ts` passes `registro`.
+- [x] 4.4 Checkpoint: `npm test` green, `npx tsc --noEmit` clean.
+- [x] 4.5 Line-count checkpoint (method above): at most 400. Measured 2026-10-03: **201** (tracked +153 / -11 over 7 files; untracked `src/registro-agentes-apoyo.ts` 37).
 
 ## Unit 4: `destinoDeConexion` and Callers (~216, stacked on 3b)
 

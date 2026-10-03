@@ -162,3 +162,50 @@ U1 one identical 401 for: no header, `Basic`, malformed bearer, unknown, revoked
 - `prisma` is typed `{ agente: Pick<PrismaAislado['agente'], 'buscarPorTokenHash'> }` instead of the full `PrismaAislado` in the design sketch. `server.ts` passes the full client unchanged; the narrower type makes "no other model within reach of the upgrade path" structural and lets the tests use a fake lookup.
 - A data socket whose session vanished between reservation and attach (TTL or failure in that window) is `terminate`d after the 101. Design-level detail.
 - No unregistered architecture decision was found.
+
+## Unit 3b: Ping and 4002 Close (2026-10-03)
+
+**Branch**: `ch19c1/ping-y-cierre-al-revocar` (stacked on `ch19c1/upgrade-y-autenticacion`). **Status**: implemented and green; line-count checkpoint 4.5 passed (201). Unit 4 not started. Nothing committed.
+
+### Tasks
+
+| Task | State | Notes |
+|---|---|---|
+| 4.1 | done | U10 written first in `src/agente-servidor.test.ts`. RED: `relojes` empty (`actual: []`, `expected: [ 20000 ]`): no ping timer existed. GREEN: optional `programarPing` (repeating timer; default unref'd `setInterval`), one timer per server at `LIMITES.pingMs`, a `Map<WebSocket, boolean>` of every upgraded control and data socket; each tick terminates a socket that missed the last pong and pings the rest; `pong` marks it alive; `close` removes it; `preClose` cancels the timer before `cerrarTodo()`. No data idle timeout |
+| 4.2 | done | U11 appended to the live-PG suite in `src/agentes-rutas.test.ts`, U12 to the live-PG suite in `src/tenants.test.ts`. Each builds a second app with a real `crearRegistroAgentes()` and fake sockets (new shared fixture `src/registro-agentes-apoyo.ts`). RED (routes without the parameter): both failed on `actual: [ [], [] ]`, `expected: [ [ 4002 ], [ 4002 ] ]`; the no-socket revoke, the 404 and the 409 parts already passed |
+| 4.3 | done | `registerAgenteRoutes(app, prisma, agentes = SIN_REGISTRO)` calls `agentes.cerrarAgente(id)` only after the guarded `updateMany` matched (count > 0), before the projection read. `registerTenantRoutes(app, prisma, agentes = SIN_REGISTRO)` calls `agentes.cerrarTenant(id)` after the `update`. Status codes and bodies unchanged. `src/server.ts` builds the registry before the routes and passes it to both and to `registrarServidorAgentes` |
+| 4.4 | done | `npx tsc --noEmit` exit 0; full suite green twice (below) |
+| 4.5 | done | 201 changed lines (below) |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `TEST_DB_PORT=5434 npx tsx --test --test-timeout=15000 src/agente-servidor.test.ts src/agentes-rutas.test.ts src/tenants.test.ts`: exit 0, `ℹ tests 35`, `ℹ pass 35`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` (RED run of the same command: tests 35, pass 32, fail 3: U10, U11, U12) |
+| Runtime harness | U10: real Fastify on an ephemeral port, `ws` clients; two sockets with `autoPong: false` (B's control, one data socket of A) and two that auto-pong (A's control, an idle data socket of A); the injected timer is fired twice. U11/U12: `app.inject` against live PostgreSQL on 5434, real registry, fake sockets whose `close` keeps only the first code, like `ws` (a second `close` on a CLOSING socket returns; `node_modules/ws/lib/websocket.js:323`) |
+| Mutation check | `ws.on('pong', ...)` removed: U10 fails (the pong-answering sockets are terminated too, readyState `[3, 3]` instead of `[1, 1]`); restored. The route RED above is the no-op-default mutant |
+| Type check | `npx tsc --noEmit`: exit 0, no output |
+| Full suite | `TEST_DB_PORT=5434 npm test` run twice: exit 0 both times, `ℹ tests 760`, `ℹ suites 114`, `ℹ pass 760`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` (baseline 757 + 3 new; +1 suite for U10; U11/U12 sit inside existing suites). The pre-existing Mailpit live-delivery case still reports its environmental skip reason (`no Mailpit API at http://127.0.0.1:8026`) |
+| Rollback boundary | Revert the 7 tracked files and delete `src/registro-agentes-apoyo.ts`. Routes fall back to their pre-3b signatures; the listener loses the ping; no schema or env change |
+
+### Line-Count Checkpoint (4.5)
+
+| File | + / - |
+|---|---|
+| `src/agente-servidor.ts` | +31 / -2 |
+| `src/agente-servidor.test.ts` | +33 / -4 |
+| `src/agentes-rutas.ts` | +12 / -1 |
+| `src/agentes-rutas.test.ts` | +35 / -0 |
+| `src/tenants.ts` | +11 / -1 |
+| `src/tenants.test.ts` | +26 / -0 |
+| `src/server.ts` | +5 / -3 |
+| `src/registro-agentes-apoyo.ts` (new) | 37 |
+| **Total** | **201** |
+
+### Deviations / Open Points
+
+- Each route takes the narrowest `Pick`: `agentes-rutas.ts` takes `Pick<RegistroAgentes, 'cerrarAgente'>` and `tenants.ts` takes `Pick<RegistroAgentes, 'cerrarTenant'>`, instead of the design's shared `Pick<..., 'cerrarAgente' | 'cerrarTenant'>`. `server.ts` passes the same `registro` to both.
+- The injected timer is named `programarPing` (a repeating timer) so it is not confused with the registry's one-shot `programar`.
+- Shared test fixture `src/registro-agentes-apoyo.ts` (not a test file, like `canal-agente-apoyo.ts`) holds `SocketFalso` and `socketsVivos` for U11 and U12.
+- A ping tick logs nothing new: a terminated socket goes through the existing `'agent socket closed'` line (`{ canal, agenteId, codigoCierre: 1006 }`).
+- No unregistered architecture decision was found.

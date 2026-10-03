@@ -3,6 +3,7 @@ import { Prisma } from './generated/prisma/client.js';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
 import { generarTokenAgente, hashTokenAgente } from './agente-token.js';
 import { camposInvalidos } from './conexiones.js';
+import type { RegistroAgentes } from './registro-agentes.js';
 
 /**
  * CH-19b (DEC-114, DEC-115, DEC-121): the tenant's one agent and its token — emit,
@@ -49,7 +50,14 @@ function esViolacionDeUnicidad(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
-export function registerAgenteRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+/** Built without a session registry, revoking closes no socket (CH-19c1). */
+const SIN_REGISTRO: Pick<RegistroAgentes, 'cerrarAgente'> = { cerrarAgente: () => {} };
+
+export function registerAgenteRoutes(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  agentes: Pick<RegistroAgentes, 'cerrarAgente'> = SIN_REGISTRO,
+): void {
   /**
    * Creates the tenant's agent when it has none. The token is generated per request and
    * answered once with `Cache-Control: no-store`; only its hash reaches the database, and
@@ -140,6 +148,9 @@ export function registerAgenteRoutes(app: FastifyInstance, prisma: PrismaAislado
     if (count === 0) {
       return reply.code(409).send({ error: 'agente-revocado' });
     }
+    // The row is written, and the scoped write proves the id is this tenant's: the agent's
+    // live control and data sockets close with 4002 (DEC-122 Q6).
+    agentes.cerrarAgente(request.params.id);
     const agente = await prisma.agente.findUniqueOrThrow({
       where: { id: request.params.id },
       select: AgentePublico,

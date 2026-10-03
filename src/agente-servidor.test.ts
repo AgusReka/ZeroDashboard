@@ -26,7 +26,7 @@ const token = {
 };
 const HOST_REPLICA = 'replica-oculta';
 
-async function montar() {
+async function montar(programarPing?: (ms: number, fn: () => void) => () => void) {
   const lineas: string[] = [];
   const app = Fastify({ logger: { level: 'trace', stream: { write: (linea: string) => void lineas.push(linea) } } });
   const filas = new Map([
@@ -54,7 +54,7 @@ async function montar() {
   // A request with no `X-Tenant-Id` is refused before any read, so the fake is enough here.
   registrarContextoTenant(app, prisma as unknown as PrismaAislado);
   const registro = crearRegistroAgentes();
-  registrarServidorAgentes({ app, prisma, registro });
+  registrarServidorAgentes({ app, prisma, registro, programarPing });
   await app.listen({ port: 0, host: '127.0.0.1' });
   const puerto = (app.server.address() as net.AddressInfo).port;
   return { app, registro, lineas, consulta, estado, puerto };
@@ -64,8 +64,8 @@ type Banco = Awaited<ReturnType<typeof montar>>;
 const espera = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const cierre = (ws: WebSocket): Promise<number> => new Promise((resolve) => ws.once('close', resolve));
 
-function abrir(b: Banco, ruta: string, tk: string): Promise<WebSocket> {
-  const ws = new WebSocket(`ws://127.0.0.1:${b.puerto}${ruta}`, { headers: { authorization: `Bearer ${tk}` } });
+function abrir(b: Banco, ruta: string, tk: string, autoPong = true): Promise<WebSocket> {
+  const ws = new WebSocket(`ws://127.0.0.1:${b.puerto}${ruta}`, { headers: { authorization: `Bearer ${tk}` }, autoPong });
   ws.on('error', () => {});
   return new Promise((resolve, reject) => {
     ws.once('open', () => resolve(ws));
@@ -234,5 +234,34 @@ describe('agent upgrade listener — shutdown (CH-19c1 U9)', () => {
     assert.ok(Date.now() - inicio < 2500);
     assert.equal(b.estado.detenido, true);
     assert.equal(b.registro.cerrando, true);
+  });
+});
+
+describe('agent upgrade listener — ping (CH-19c1 U10)', () => {
+  test('U10 one 20 s ping for every socket; a missed pong terminates, an idle data socket that pongs stays', { timeout: 8000 }, async () => {
+    const relojes: { ms: number; fn: () => void; cancelado: boolean }[] = [];
+    const b = await montar((ms, fn) => {
+      const reloj = { ms, fn, cancelado: false };
+      relojes.push(reloj);
+      return () => void (reloj.cancelado = true);
+    });
+    try {
+      const mudo = await abrir(b, '/agente/control', token.b, false);
+      const control = await abrir(b, '/agente/control', token.a);
+      const ociosa = await abrir(b, `/agente/datos/${(await sesion(b, control)).sesionId}`, token.a);
+      const muda = await abrir(b, `/agente/datos/${(await sesion(b, control)).sesionId}`, token.a, false);
+      assert.deepEqual(relojes.map((r) => r.ms), [20_000]);
+      const pings = Promise.all([mudo, control, ociosa, muda].map((ws) => new Promise((resolve) => ws.once('ping', resolve))));
+      relojes[0].fn();
+      await pings;
+      await espera(100);
+      const cierres = Promise.all([cierre(mudo), cierre(muda)]);
+      relojes[0].fn();
+      assert.deepEqual(await cierres, [1006, 1006]);
+      assert.deepEqual([control.readyState, ociosa.readyState], [WebSocket.OPEN, WebSocket.OPEN]);
+    } finally {
+      await b.app.close();
+    }
+    assert.equal(relojes[0].cancelado, true);
   });
 });

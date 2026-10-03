@@ -52,6 +52,9 @@ const planificador = crearPlanificador({
 app.addHook('onClose', async () => {
   await planificador.detener();
 });
+// CH-19c1 (DEC-122): the in-memory agent session registry, built before the routes so the
+// revoke and baja routes can close an agent's live sockets with 4002.
+const registro = crearRegistroAgentes();
 
 // FIRST, before every `register*Routes` below. Fastify runs same-name hooks in
 // registration order, so this line's position is load-bearing: a route registered
@@ -59,7 +62,7 @@ app.addHook('onClose', async () => {
 registrarContextoTenant(app, prisma);
 
 registerHealthRoute(app, prisma);
-registerTenantRoutes(app, prisma);
+registerTenantRoutes(app, prisma, registro);
 registerConexionRoutes(app, prisma);
 registerConsultaRoutes(app, prisma);
 registerConsultaGuardadaRoutes(app, prisma);
@@ -82,11 +85,10 @@ registerPlantillaPruebaRoute(app, prisma);
 registerAutomatizacionRoutes(app, prisma, config.zonaHoraria);
 // CH-19b (DEC-121): the tenant's agent and its token, scoped by the header like the routes
 // above and not exempt; the `/agente/` prefix stays reserved for the agent itself (DEC-116).
-registerAgenteRoutes(app, prisma);
+registerAgenteRoutes(app, prisma, registro);
 // CH-19c1 (DEC-122): the agent's own WebSocket upgrade, outside Fastify's routing, so the
 // tenant-context hooks and their exemption list above never see it. Its `preClose` hook
 // closes every agent socket before Fastify's `server.close()` waits on them.
-const registro = crearRegistroAgentes();
 registrarServidorAgentes({ app, prisma, registro });
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops
