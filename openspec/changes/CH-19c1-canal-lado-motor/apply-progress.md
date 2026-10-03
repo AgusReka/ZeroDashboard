@@ -114,3 +114,51 @@ Over the limit by 92. The estimate was 227 for registry + tests; they came to 34
 - `adjuntarDatos` returns false whenever the session is no longer in the map, its channel is destroyed, it belongs to another agent, or a data socket is already attached. This covers the unit-1 risk (`CanalAgente.adjuntar` does not check `destroyed`).
 - Sessions keep their `tenantId` through `canal.solicitud.tenantId` (checked equal to the control entry's token-row tenant at `pedirSesion`); `cerrarTenant` uses both the control entries and the sessions.
 - No unregistered architecture decision was found.
+
+## Unit 3a: Upgrade Listener (2026-10-03)
+
+**Branch**: `ch19c1/upgrade-y-autenticacion` (stacked on `ch19c1/registro-de-sesiones`). **Status**: implemented and green; line-count checkpoint 3.7 passed (380). Units 3b and 4 not started. Nothing committed.
+
+### Tasks
+
+| Task | State | Notes |
+|---|---|---|
+| 3.1 | done | U9 written first, alone. RED: `ERR_MODULE_NOT_FOUND` for `./agente-servidor.js` (tests 1, fail 1) |
+| 3.2 | done | U1-U8 added. RED: same `ERR_MODULE_NOT_FOUND` (tests 1, fail 1) |
+| 3.3 | done | `src/agente-servidor.ts`: sync `socket.on('error', ignorar)`, checks 1-6 in design order, bare-status-line refusal then `destroy` on `'finish'`, two `noServer` servers (4 KiB / 1 MiB, deflate off, no client tracking), control parsing, `ws.on('error')`. With no close hook yet: U1-U8 pass, **U9 fails behaviorally** (`app.close() did not resolve within 2500 ms`) |
+| 3.4 | done | `app.addHook('preClose', ...)` -> `registro.cerrarTodo()`: tests 9, pass 9. Mutation: hook moved to `onClose` -> U9 fails (`did not resolve within 2500 ms`; tests 9, fail 1); restored |
+| 3.5 | done | `src/server.ts` builds `crearRegistroAgentes()` and calls `registrarServidorAgentes({ app, prisma, registro })` after the routes. `src/contexto-tenant.ts` unchanged (no diff) |
+| 3.6 | done | `npx tsc --noEmit` exit 0; full suite green (below) |
+| 3.7 | done | 380 changed lines (below) |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `npx tsx --test --test-timeout=15000 src/agente-servidor.test.ts`: exit 0, `ℹ tests 9`, `ℹ pass 9`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` |
+| Runtime harness | Real Fastify on `listen({ port: 0, host: '127.0.0.1' })`; the agent is a `ws` client; refusals read as raw bytes over `net.connect`, so "identical 401/404" compares whole responses; U7 uses `fetch` on the same port. The token lookup is a fake keyed by hash (no PostgreSQL needed); like the real one it returns `null` for unknown and revoked tokens, whose `revocadoEn` filter stays proven live in `aislamiento.test.ts` |
+| Mutation checks | (1) `preClose` -> `onClose`: U9 fails (2.5 s timeout). (2) The synchronous `socket.on('error', ...)` guard removed: U4's reset surfaces as an uncaught `read ECONNRESET` and the file fails. Both restored |
+| Type check | `npx tsc --noEmit`: exit 0, no output |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0, `ℹ tests 757`, `ℹ suites 113`, `ℹ pass 757`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` (baseline 748 + 9 new; 111 + 2 suites) |
+| Rollback boundary | Delete `src/agente-servidor.ts`, `src/agente-servidor.test.ts`; revert the 7 added lines in `src/server.ts`. The registry module stays unwired; no schema or env change |
+
+### Line-Count Checkpoint (3.7)
+
+| File | Lines |
+|---|---|
+| `src/server.ts` (tracked) | +7 / -0 |
+| `src/agente-servidor.ts` (new) | 135 |
+| `src/agente-servidor.test.ts` (new) | 238 |
+| **Total** | **380** |
+
+### Cases Covered
+
+U1 one identical 401 for: no header, `Basic`, malformed bearer, unknown, revoked, token only in the query, token only in `Sec-WebSocket-Protocol`, data path with no header; only the two well-formed tokens reach the lookup. U2 403 deactivated tenant; a throwing lookup is 500. U3 one identical 404 for: B's token on A's session, A's taken session, unknown id, malformed id, `/agente/otra`, `/otra`; a text frame on an attached data socket closes 1003. U4 reset during a slow lookup: no crash, server still answers. U5 control framing: binary 1003; bad JSON, extra key, agent-sent `apertura-sesion`, non-string `sesionId` 1008; 4097-byte text 1009. U6 `latido` keeps control open; `sesion-fallida` destroys the pending channel with `ECONNREFUSED` before `'connect'`. U7 non-upgrade `GET /agente/control` -> 400 `tenant-no-indicado`. U8 the lookup runs with `tenantActivoOpcional() === null`; the full log contains no token, hash, tenant id, replica host or session id. U9 shutdown under 2500 ms with live control and data sockets; the `onClose` stand-in for `detener` still runs.
+
+### Deviations / Open Points
+
+- **Oversized control frame closes with 1009, not 1008.** The spec scenario "Oversized control or unknown message" says 1008, but the design fixes `maxPayload` 4 KiB on the control server, and `ws` closes a frame over `maxPayload` with 1009 before any handler runs (`receiverOnError` -> `websocket.close(err[kStatusCode])`, `node_modules/ws/lib/websocket.js:1227`). U5 asserts the observed 1009. Spec text or design needs an orchestrator call; no code path in this module can turn it into 1008 while `maxPayload` stays 4 KiB.
+- **No 503.** The launch prompt mentions "503 for limits"; neither the design nor the spec has a 503 path. The 8-session cap is enforced at `pedirSesion` (`ESINAGENTE`), and a closing registry destroys the socket at step 4 (design). Not implemented; flagged for the orchestrator.
+- `prisma` is typed `{ agente: Pick<PrismaAislado['agente'], 'buscarPorTokenHash'> }` instead of the full `PrismaAislado` in the design sketch. `server.ts` passes the full client unchanged; the narrower type makes "no other model within reach of the upgrade path" structural and lets the tests use a fake lookup.
+- A data socket whose session vanished between reservation and attach (TTL or failure in that window) is `terminate`d after the 101. Design-level detail.
+- No unregistered architecture decision was found.

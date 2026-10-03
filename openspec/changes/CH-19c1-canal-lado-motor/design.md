@@ -103,7 +103,7 @@ export function destinoDeConexion(prisma: PrismaAislado, id: string, canales: Ab
 5. Data path only: `reservarDatos`. `false` gives 404, and an id that does not match `^[A-Za-z0-9_-]{22}$` gives the same 404.
 6. `handleUpgrade`, then attach a `ws.on('error')` listener.
 
-On control sockets: a binary frame closes the socket with 1003 (wrong data type, per the spec and DEC-122); invalid JSON or a key set other than the exact `latido` or `sesion-fallida` keys closes it with 1008. `latido` is a no-op (19d1).
+On control sockets: a binary frame closes the socket with 1003 (wrong data type, per the spec and DEC-122); invalid JSON or a key set other than the exact `latido` or `sesion-fallida` keys closes it with 1008; a message over 4 KiB closes with 1009 (the `ws` `maxPayload` limit closes before any engine code runs, found at apply of unit 3a). `latido` is a no-op (19d1).
 
 ## File Changes and Estimates (tests ×1.7, limit 400)
 
