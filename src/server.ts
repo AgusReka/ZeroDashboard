@@ -42,19 +42,21 @@ app.log.info({ correo: notificador === null ? 'no-configurado' : 'configurado' }
 // CH-17b (DEC-98, DEC-105, DEC-106): the connection retry policy from
 // `CONNECTION_RETRY_ATTEMPTS` and `CONNECTION_RETRY_PAUSE_MS`, already validated by
 // `loadConfig()` above. Only scheduled runs retry; the console paths never do.
+// CH-19c1 (DEC-122): the in-memory agent session registry, built before the scheduler and
+// the routes: the five paths that dial a connection open an agent-bound one through it,
+// and the revoke and baja routes close an agent's live sockets with 4002.
+const registro = crearRegistroAgentes();
 const planificador = crearPlanificador({
   prisma,
   zonaHoraria: config.zonaHoraria,
   log: app.log,
   notificador,
   reintentos: { intentos: config.connectionRetryAttempts, pausaMs: config.connectionRetryPauseMs },
+  canales: registro,
 });
 app.addHook('onClose', async () => {
   await planificador.detener();
 });
-// CH-19c1 (DEC-122): the in-memory agent session registry, built before the routes so the
-// revoke and baja routes can close an agent's live sockets with 4002.
-const registro = crearRegistroAgentes();
 
 // FIRST, before every `register*Routes` below. Fastify runs same-name hooks in
 // registration order, so this line's position is load-bearing: a route registered
@@ -63,11 +65,11 @@ registrarContextoTenant(app, prisma);
 
 registerHealthRoute(app, prisma);
 registerTenantRoutes(app, prisma, registro);
-registerConexionRoutes(app, prisma);
-registerConsultaRoutes(app, prisma);
+registerConexionRoutes(app, prisma, registro);
+registerConsultaRoutes(app, prisma, registro);
 registerConsultaGuardadaRoutes(app, prisma);
 registerVistaCanonicaRoutes(app, prisma);
-registerValidacionMapeoRoutes(app, prisma);
+registerValidacionMapeoRoutes(app, prisma, registro);
 registerConsolaRoute(app);
 // No client argument, like the console above it and unlike the four registrars before:
 // the catalog is static and identical for every tenant, so this route has no database to
@@ -78,7 +80,7 @@ registerContratoRoutes(app);
 registerPlantillaRoutes(app, prisma.plantilla);
 // The template test route is NOT exempt (DEC-62): it resolves a tenant-owned connection,
 // so it gets the full scoped client, like the tenant-scoped registrars above.
-registerPlantillaPruebaRoute(app, prisma);
+registerPlantillaPruebaRoute(app, prisma, registro);
 // CH-13: automations are tenant-owned, so the full scoped client, like the test route.
 // The deployment zone (DEC-77) comes from this file's one `loadConfig()`, so a schedule
 // is accepted only in the zone the scheduler will read it in.

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta } from './consulta-ejecucion.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
@@ -69,6 +70,7 @@ async function ejecutarPrueba(
   prisma: PrismaAislado,
   reply: FastifyReply,
   { plantilla, vistas, cuerpo }: PruebaAprobada,
+  canales: AbridorDeCanales,
 ) {
   // The stored declaration is re-checked here, not trusted (DEC-73), and the values are
   // checked against it: the same `400 {campos, problemas}` as `/consultas/ejecutar`.
@@ -86,7 +88,7 @@ async function ejecutarPrueba(
   // reject. It is tenant-scoped like the ownership check above (DEC-13).
   let destino;
   try {
-    destino = await destinoDeConexion(prisma, cuerpo.conexionId);
+    destino = await destinoDeConexion(prisma, cuerpo.conexionId, canales);
   } catch (error) {
     if (error instanceof ErrorCredencialIlegible) {
       // As on `/consultas/ejecutar`: the row exists but cannot be read under the current
@@ -125,7 +127,11 @@ async function ejecutarPrueba(
   return reply.code(200).send(ejecucion);
 }
 
-export function registerPlantillaPruebaRoute(app: FastifyInstance, prisma: PrismaAislado): void {
+export function registerPlantillaPruebaRoute(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  canales: AbridorDeCanales = SIN_AGENTES,
+): void {
   app.post<{ Params: PruebaParams; Body: PruebaBody }>(
     '/plantillas/:id/prueba',
     { schema: { body: pruebaSchema }, attachValidation: true },
@@ -175,7 +181,7 @@ export function registerPlantillaPruebaRoute(app: FastifyInstance, prisma: Prism
         plantilla,
         vistas: compuerta.vistas,
         cuerpo: request.body,
-      });
+      }, canales);
     },
   );
 }

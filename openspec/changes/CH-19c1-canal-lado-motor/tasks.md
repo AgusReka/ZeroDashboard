@@ -75,12 +75,12 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 4: `destinoDeConexion` and Callers (~216, stacked on 3b)
 
-- [ ] 5.1 RED H1 in `src/conexion-destino.test.ts`: `agenteId` null gives `canal` undefined; set with no registry gives an inert factory and `ESINAGENTE`.
-- [ ] 5.2 GREEN `src/conexion-destino.ts`: select `agenteId`; `canal` from `canales.canalPara({ agenteId, tenantId: exigirTenantActivo().id, host, puerto })`; third parameter `canales: AbridorDeCanales = SIN_AGENTES`.
-- [ ] 5.3 GREEN thread the optional `canales = SIN_AGENTES` through `src/conexiones.ts`, `src/consultas.ts`, `src/plantilla-prueba.ts` (via `ejecutarPrueba`), `src/validacion-mapeo-rutas.ts`; `src/planificador.ts` gains `canales?` in `DependenciasPlanificador`; `src/server.ts` passes `registro`.
-- [ ] 5.4 RED then GREEN E1-E5 in new `src/agente-e2e.test.ts`: probe succeeds via the fake agent using the row's host/port; no control socket with a reachable PG row gives `ESINAGENTE` (no direct dial); scheduler `intentos: 3` gives `intentos: 1`; two tenants (B's row forced to A's `agenteId`) gives `ESINAGENTE` with zero `apertura-sesion` at A; `sesion-fallida ECONNREFUSED` gives `host-inalcanzable`.
-- [ ] 5.5 Checkpoint: full `npm test` green (all existing suites unchanged), `npx tsc --noEmit` clean; no `.env` or `.env.example` diff.
-- [ ] 5.6 Line-count checkpoint (method above): at most 400.
+- [x] 5.1 RED H1 in `src/conexion-destino.test.ts`: `agenteId` null gives `canal` undefined; set with no registry gives an inert factory and `ESINAGENTE`.
+- [x] 5.2 GREEN `src/conexion-destino.ts`: select `agenteId`; `canal` from `canales.canalPara({ agenteId, tenantId: exigirTenantActivo().id, host, puerto })`; third parameter `canales: AbridorDeCanales = SIN_AGENTES`.
+- [x] 5.3 GREEN thread the optional `canales = SIN_AGENTES` through `src/conexiones.ts`, `src/consultas.ts`, `src/plantilla-prueba.ts` (via `ejecutarPrueba`), `src/validacion-mapeo-rutas.ts`; `src/planificador.ts` gains `canales?` in `DependenciasPlanificador`; `src/server.ts` passes `registro`.
+- [x] 5.4 RED then GREEN E1-E5 in new `src/agente-e2e.test.ts`: probe succeeds via the fake agent using the row's host/port; no control socket with a reachable PG row gives `ESINAGENTE` (no direct dial); scheduler `intentos: 3` gives `intentos: 1`; two tenants (B's row forced to A's `agenteId`) gives `ESINAGENTE` with zero `apertura-sesion` at A; `sesion-fallida ECONNREFUSED` gives `host-inalcanzable`.
+- [x] 5.5 Checkpoint: full `npm test` green (all existing suites unchanged), `npx tsc --noEmit` clean; no `.env` or `.env.example` diff.
+- [x] 5.6 Line-count checkpoint (method above): at most 400. Measured 2026-10-03: **328** (tracked +108 / -22 over 9 files; untracked `src/agente-e2e.test.ts` 198).
 
 ## Archive-time (orchestrator-owned)
 

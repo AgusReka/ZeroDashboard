@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { cifrarCredencial, ErrorCredencialIlegible } from './cripto-credencial.js';
 import { probeConnection } from './db-probe.js';
@@ -166,7 +167,11 @@ export function camposInvalidos(error: { validation?: unknown }): string[] {
   return [...new Set(campos)];
 }
 
-export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+export function registerConexionRoutes(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  canales: AbridorDeCanales = SIN_AGENTES,
+): void {
   app.post<{ Body: RegistroConexionBody }>(
     '/conexiones',
     { schema: { body: registroConexionSchema }, attachValidation: true },
@@ -231,7 +236,7 @@ export function registerConexionRoutes(app: FastifyInstance, prisma: PrismaAisla
       // sees the stored envelope and never names the column.
       let conexion;
       try {
-        conexion = await destinoDeConexion(prisma, request.params.id);
+        conexion = await destinoDeConexion(prisma, request.params.id, canales);
       } catch (error) {
         if (error instanceof ErrorCredencialIlegible) {
           // `409`, not `404` (the row exists) and not `500` (nothing is broken): the row

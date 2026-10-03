@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta, sanearSql } from './consulta-ejecucion.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
@@ -57,7 +58,11 @@ const ejecucionSchema = {
   },
 } as const;
 
-export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+export function registerConsultaRoutes(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  canales: AbridorDeCanales = SIN_AGENTES,
+): void {
   app.post<{ Body: EjecucionBody }>(
     '/consultas/ejecutar',
     { schema: { body: ejecucionSchema }, attachValidation: true },
@@ -100,7 +105,7 @@ export function registerConsultaRoutes(app: FastifyInstance, prisma: PrismaAisla
       // ever sent to that tenant's target.
       let conexion;
       try {
-        conexion = await destinoDeConexion(prisma, body.conexionId);
+        conexion = await destinoDeConexion(prisma, body.conexionId, canales);
       } catch (error) {
         if (error instanceof ErrorCredencialIlegible) {
           // Same verdict as the probe route: the row exists but cannot be read under the

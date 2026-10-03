@@ -34,7 +34,8 @@ export interface DestinoPostgres {
   password: string;
   /**
    * CH-19a (DEC-112, DEC-113): when present, the session's bytes travel over this
-   * channel instead of a direct TCP dial. No production path sets it yet.
+   * channel instead of a direct TCP dial. Since CH-19c1 `destinoDeConexion` sets it for an
+   * agent-bound connection.
    */
   canal?: AbrirCanal;
 }

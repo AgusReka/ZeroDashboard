@@ -209,3 +209,56 @@ U1 one identical 401 for: no header, `Basic`, malformed bearer, unknown, revoked
 - Shared test fixture `src/registro-agentes-apoyo.ts` (not a test file, like `canal-agente-apoyo.ts`) holds `SocketFalso` and `socketsVivos` for U11 and U12.
 - A ping tick logs nothing new: a terminated socket goes through the existing `'agent socket closed'` line (`{ canal, agenteId, codigoCierre: 1006 }`).
 - No unregistered architecture decision was found.
+
+## Unit 4: `destinoDeConexion` and Callers (2026-10-03)
+
+**Branch**: `ch19c1/destino-con-canal` (stacked on `ch19c1/ping-y-cierre-al-revocar`). **Status**: implemented and green; line-count checkpoint 5.6 passed (328). All implementation tasks of the change (1.1-5.6) are done; 6.1 is archive-time and orchestrator-owned. Nothing committed.
+
+### Tasks
+
+| Task | State | Notes |
+|---|---|---|
+| 5.1 | done | Two H1 cases added to the live-PG suite of `src/conexion-destino.test.ts` (the fixture tenant gets one `Agente`; `sembrar` takes an optional `agenteId`). RED: tests 11, pass 9, fail 2 (both H1 cases: `canal` undefined) |
+| 5.2 | done | `destinoDeConexion(prisma, id, canales = SIN_AGENTES)` selects `agenteId`. A row with no agent returns exactly the previous object (no `canal` key). An agent-bound row adds `canal: canales.canalPara({ agenteId, tenantId: exigirTenantActivo().id, host, puerto })`; host and port come from the row (as the agent sees them, DEC-115). The factory is inert; the session is asked for inside `connect()` |
+| 5.4 (RED) | done | `src/agente-e2e.test.ts` written before 5.3. RED against the unthreaded routes: tests 5, pass 3, fail 2 (E1 and E5 got `ESINAGENTE` from the default opener). E2, E3 and E4 passed already, as expected: the default fails closed |
+| 5.3 | done | Optional `canales: AbridorDeCanales = SIN_AGENTES` on `registerConexionRoutes`, `registerConsultaRoutes`, `registerValidacionMapeoRoutes`, `registerPlantillaPruebaRoute` (passed on to the private `ejecutarPrueba`); `canales?` in `DependenciasPlanificador` with the same default. `src/server.ts` builds `registro` before `crearPlanificador` (it was built after it in 3b), passes `canales: registro` to the scheduler and `registro` to the four routes |
+| 5.4 (GREEN) | done | Focused run: tests 16, pass 16 |
+| 5.5 | done | `npx tsc --noEmit` exit 0; full suite green twice; no `.env` / `.env.example` diff |
+| 5.6 | done | 328 changed lines (below) |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `TEST_DB_PORT=5434 npx tsx --test --test-timeout=15000 src/conexion-destino.test.ts src/agente-e2e.test.ts`: exit 0, `ℹ tests 16`, `ℹ suites 3`, `ℹ pass 16`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` |
+| Runtime harness | Real Fastify on `listen({ port: 0, host: '127.0.0.1' })` with the real registry, upgrade listener and `POST /conexiones/:id/prueba` (via `app.inject`); live PostgreSQL on 5434. The fake agent is a `ws` client on `/agente/control` with a generated token whose hash is stored in a real `Agente` row (real `buscarPorTokenHash`). On `apertura-sesion` it records `{host, puerto}`, dials them with `net.connect`, then opens `/agente/datos/<sesionId>` with the same token and relays both ways; in `fallar` mode it answers `sesion-fallida` with `ECONNREFUSED`. Every row points at the test server with valid credentials, so a direct dial would succeed |
+| Cases | E2: a direct row at the same coordinates probes `ok`, the agent-bound row with no control socket gives `fallo` / `error-desconocido` / `ESINAGENTE`. E3: one scheduler tick (tenants narrowed to A, `reintentos: { intentos: 3, pausaMs: 5000 }`, `canales: registro`, a clock whose `programar` throws) writes one `Ejecucion` row `{ fallo, conexion, error-desconocido, ESINAGENTE, intentos: 1 }`. E1: the probe is `ok` through the fake agent, which was asked once for exactly the row's host and port. E4: tenant B's row written with A's `agenteId` on the raw client (the route refuses it, DEC-121) gives `ESINAGENTE` while A's agent is live, and A receives no `apertura-sesion`. E5: `sesion-fallida ECONNREFUSED` gives `host-inalcanzable` / `ECONNREFUSED`. H1: a direct row with a spying opener never calls it and has no `canal`; an agent-bound row gets the opener's factory and the opener receives `{ agenteId, tenantId: active tenant, host, puerto }`; with no registry the factory builds an undestroyed channel without asking for anything, and the probe of a reachable row fails with `ESINAGENTE` |
+| Mutation checks | (1) `control.tenantId !== tenantId` removed from `registro-agentes.ts`: E4 fails (tests 5, fail 1); restored with `git checkout`. (2) `destinoDeConexion` returning the direct destination for agent-bound rows (direct-dial fallback): E1-E5 and both new H1 cases fail (tests 16, fail 7); restored |
+| Type check | `npx tsc --noEmit`: exit 0, no output |
+| Full suite | `TEST_DB_PORT=5434 npm test` run twice: exit 0 both times, `ℹ tests 767`, `ℹ suites 115`, `ℹ pass 767`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0` (baseline 760 + 7 new: 2 H1, 5 E; +1 suite) |
+| Rollback boundary | Revert the 9 tracked files and delete `src/agente-e2e.test.ts`. Agent-bound rows lose their channel (back to the pre-unit-4 direct dial, which the design names as the rollback); no schema or env change |
+
+### Line-Count Checkpoint (5.6)
+
+| File | + / - |
+|---|---|
+| `src/conexion-destino.ts` | +20 / -1 |
+| `src/conexion-destino.test.ts` | +42 / -3 |
+| `src/conexiones.ts` | +7 / -2 |
+| `src/consultas.ts` | +7 / -2 |
+| `src/plantilla-prueba.ts` | +9 / -3 |
+| `src/validacion-mapeo-rutas.ts` | +7 / -2 |
+| `src/planificador.ts` | +5 / -1 |
+| `src/server.ts` | +9 / -7 |
+| `src/db-probe.ts` | +2 / -1 |
+| `src/agente-e2e.test.ts` (new) | 198 |
+| **Total** | **328** |
+
+### Deviations / Open Points
+
+- Task order: the e2e file (5.4 RED) was written before the caller threading (5.3), so E1 and E5 could be recorded failing against the unthreaded routes. The tasks list 5.3 before 5.4.
+- `src/db-probe.ts`: the `canal` doc comment said "No production path sets it yet"; it now names `destinoDeConexion` (comment only).
+- `src/server.ts`: the registry construction moved above `crearPlanificador` (the scheduler needs it); the 3b comment was merged into the new one.
+- The e2e cleanup deletes across both tenants at once, because B's forced row references A's agent. The first two runs (RED and the first GREEN run) failed in `after` on that foreign key and left fixture rows; they were removed by hand from the test database (`zd-ch09-testdb`), and a later check found no `CH-19c1 e2e` or `CH-07` tenant left.
+- E3 narrows `tenant.findMany` to tenant A with a `Proxy`, as `planificador.test.ts` does, so other files' due automations never run in this tick.
+- No unregistered architecture decision was found.

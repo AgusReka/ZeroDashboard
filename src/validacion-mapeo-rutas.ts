@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { destinoDeConexion } from './conexion-destino.js';
 import { sondearEstructura } from './consulta-ejecucion.js';
 import { CONTRATO_CANONICO } from './contrato.js';
@@ -51,7 +52,11 @@ function ordenDelContrato(entidad: string): number {
   return CONTRATO_CANONICO.findIndex((e) => e.nombre === entidad);
 }
 
-export function registerValidacionMapeoRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+export function registerValidacionMapeoRoutes(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  canales: AbridorDeCanales = SIN_AGENTES,
+): void {
   /** Every mapping row of the connection, in the shape `informe()` reads. */
   function filasDelInforme(conexionId: string): Promise<FilaValidacion[]> {
     return prisma.vistaCanonica.findMany({ where: { conexionId }, select: SELECCION_INFORME });
@@ -74,7 +79,7 @@ export function registerValidacionMapeoRoutes(app: FastifyInstance, prisma: Pris
       // is read and before any socket is opened.
       let destino;
       try {
-        destino = await destinoDeConexion(prisma, conexionId);
+        destino = await destinoDeConexion(prisma, conexionId, canales);
       } catch (error) {
         if (error instanceof ErrorCredencialIlegible) {
           return reply.code(409).send({ error: 'credencial-ilegible' });
