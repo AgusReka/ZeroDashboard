@@ -8,7 +8,7 @@
 | Unit | Tasks | State |
 |------|-------|-------|
 | 1a — Schema, isolation, lookup, token | 1.1-1.9 | Done (this batch) |
-| 1b — `/agentes` routes and wiring | 2.1-2.7 | Pending |
+| 1b — `/agentes` routes and wiring | 2.1-2.7 | 2.1-2.6 done; 2.7 stopped: 419 lines, over the 400 limit (batch 2) |
 | 2 — `agenteId` on `POST /conexiones` | 3.1-3.6 | Pending |
 
 No earlier apply-progress existed. This is the first batch.
@@ -59,6 +59,50 @@ No earlier apply-progress existed. This is the first batch.
 - An empty file named `causa` appeared at the repo root during this session (13:22:06). No command in this session redirected output to it. It was deleted. `200` at the root predates this session and was left untouched.
 - No architecture decision was taken. DEC-121 was not reopened.
 
+## Unit 1b: Files Changed (batch 2, branch `ch19b/rutas-agentes`)
+
+| File | Action | What was done |
+|------|--------|---------------|
+| `src/agentes-rutas.ts` | Created | `registerAgenteRoutes(app, prisma)`, the `AgentePublico` projection, `POST /agentes` (201 create, 200 re-issue in place, 409 `agente-existente`, `P2002` gives 409), `GET /agentes`, `POST /agentes/:id/revocar` (404 `agente-no-encontrado`, 409 `agente-revocado`, guarded `updateMany` and read-back). `Cache-Control: no-store` on both token responses |
+| `src/agentes-rutas.test.ts` | Created | A suite with no PostgreSQL (all three routes exist and need `x-tenant-id`, R3 body rejection on a client that throws on any read), and a live suite (R1, R2, R4, R5, R6, R7, a concurrent re-issue, R8 with a concurrent create) |
+| `src/server.ts` | Modified | Imports and calls `registerAgenteRoutes(app, prisma)` after the automation routes. `contexto-tenant.ts` was not changed |
+
+## TDD Cycle Evidence (1b)
+
+| Task | RED | GREEN | REFACTOR |
+|------|-----|-------|----------|
+| 2.1 / 2.2 R1-R3 | The file failed to load: `./agentes-rutas.js` did not exist | R1, R2 and R3 passed. The route-existence test stayed red until 2.4 (`GET /agentes` not registered) | None |
+| 2.3 R7 | The re-issue test got `409` instead of `200`. The concurrent re-issue got `[409, 409]` instead of `[200, 409]`. Before the revoke route existed, the precondition revoked the row through the raw client | Guarded `updateMany` and read-back. Both R7 tests passed | In 2.4, the precondition was changed to revoke through the route |
+| 2.4 R4-R6, R8 | R4 and R5: `Route ... not found` (404). R6: the lookup still resolved because nothing had revoked the agent. R7 and R8 failed in cascade | `GET /agentes` and `POST /agentes/:id/revocar`. 10 of 10 passed | None |
+| 2.5 Wiring | N/A (one registration line) | `npx tsc --noEmit` exit 0. The real `src/server.ts` was booted in the smoke run below | — |
+
+## Work Unit Evidence (1b)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and result | `TEST_DB_PORT=5434 npx tsx --test src/agentes-rutas.test.ts`: 10 tests, 10 pass, 0 fail. It was run 3 more times to check the two concurrency tests for flakiness: 10 of 10 each time |
+| Runtime harness | `src/server.ts` booted with `npx tsx` on port 3917, against the test database on 5434. Results: `POST /tenants` gave 201. `POST /agentes` gave 201 with `cache-control: no-store`, the keys `creadoEn,id,revocadoEn,tokenEmitidoEn`, and a token starting `zda_`. A repeat gave 409 `agente-existente`. A body `{"tenantId":"x"}` gave 400 `["/tenantId"]`. `GET /agentes` gave 200. `GET /agentes` without the header gave 400 `tenant-no-indicado`. Revoke gave 200. Re-issue gave 200 with `no-store`. The server log has 0 lines containing `zda_` and does not contain the issued token. The smoke `Agente` and `Tenant` rows were deleted afterwards |
+| Full suite | `TEST_DB_PORT=5434 npm test`: exit 0. `ℹ tests 721`, `ℹ pass 721`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 0`. That is 711 from 1a plus 10. No scheduler-tick failures in this run |
+| Typecheck | `npx tsc --noEmit`: exit 0 |
+| `tokenHash` in non-test `src/` | The lookup (`aislamiento-prisma.ts`), the create and the re-issue `updateMany` (`agentes-rutas.ts`), and doc comments. Neither route module logs anything |
+| Rollback boundary | Revert `src/agentes-rutas.ts`, `src/agentes-rutas.test.ts` and the 4 lines in `src/server.ts`. No schema change |
+
+## Deviations and Notes (1b)
+
+- **`propertyNames: false`**, not `{ enum: [] }`. AJV 8.20 refuses the empty enum when the schema compiles (`data/propertyNames/enum must NOT have fewer than 1 items`). This is the fallback the design names. `camposInvalidos` still reports `['/tenantId']`.
+- **A bodyless `POST /agentes` is `400 solicitud-invalida` `['/']`.** The design's `type: 'object'` body schema needs a JSON object, so the operator sends `{}`. This was probed directly and is documented in the schema comment. Allowing an absent body would be a spec-level choice, so it was not made here.
+- `Cache-Control: no-store` is set only on the two responses that carry a token (201 and 200), as the design states.
+- No architecture decision was taken. `contexto-tenant.ts` and its exemption list are unchanged.
+- No stray root files (`2.6`, `causa`) were created in this batch. `200` and `prisma;C` at the root predate this session and were left untouched.
+
+## Line-Count Checkpoint (2.7): STOPPED
+
+`git diff --stat -- src`: `src/server.ts`, 4 insertions. Untracked: `src/agentes-rutas.ts` 149 lines, `src/agentes-rutas.test.ts` 266 lines. **Total 419. That is over the 400 limit, so apply stopped here as instructed.** SDD artifacts are excluded, as in 1a. Nothing was compressed or deleted to get under the limit.
+
+- The design estimated about 314 lines. The overrun comes from two things. One is tests beyond the design's R1-R8 rows: the no-PostgreSQL suite (route existence and header, plus R3 on a throwing client, about 60 lines with the shared helper) and the concurrent re-issue and create checks that exercise the design's race decisions. The other is route doc comments in the existing modules' style.
+- Separately, commit `5b70212` (`docs(design): prompt para Claude Design...`, 109 lines) landed on `ch19b/rutas-agentes` during this session. It was not made by apply. Against the 1a branch, PR 1b's diff would therefore show about 528 lines unless that commit is moved off this branch.
+- Options for the orchestrator: accept `size:exception` for 1b (19 lines over), or move part of the test file (for example, the no-PostgreSQL suite) into unit 2's PR.
+
 ## Next
 
-Unit 1b (tasks 2.1-2.7), stacked on the 1a branch.
+Orchestrator decision on the 1b line count (2.7). Then unit 2 (tasks 3.1-3.6), stacked on 1b.

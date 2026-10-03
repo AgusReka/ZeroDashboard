@@ -46,13 +46,13 @@ No `size:exception` (user chose chained PRs on 2026-10-03). Hard limit: 400 chan
 
 ## Unit 1b: Routes and Wiring (~314, stacked on 1a)
 
-- [ ] 2.1 RED R1, R2, R3 in new `src/agentes-rutas.test.ts` (tenants A and B, marker assertions, cleanup in FK order Conexion, Agente, Tenant): create gives 201, `no-store`, four-key projection, stored hash equals `sha256(token)`; repeat gives 409 `agente-existente` with the hash unchanged; body `{tenantId}` gives 400 `['/tenantId']`.
-- [ ] 2.2 GREEN `src/agentes-rutas.ts` `registerAgenteRoutes(app, prisma)`: `POST /agentes` with schema (`additionalProperties: false`, `propertyNames: { enum: [] }`, fallback `false`), scoped `findFirst`, create with `conTenantInyectado`, `P2002` gives 409.
-- [ ] 2.3 RED R7 then GREEN re-issue: revoked agent keeps `id` and `creadoEn`, new token; old token looks up `null`, new resolves to A; guarded `updateMany` (`revocadoEn: { not: null }`), count 0 gives 409; response 200 with `no-store`.
-- [ ] 2.4 RED R4, R5, R6, R8 then GREEN `GET /agentes` (ordered `creadoEn`, `id`) and `POST /agentes/:id/revocar` (scoped `findUnique`, 404, 409 `agente-revocado`, guarded `updateMany`, read-back). B's list is empty; B revoking A's id gives 404; revoked hash looks up `null`; each token resolves only to its own tenant. Responses omit token, hash and `tenantId`.
-- [ ] 2.5 GREEN wire `registerAgenteRoutes` in `src/server.ts`; the exemption list in `contexto-tenant.ts` stays unchanged.
-- [ ] 2.6 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no token or hash in any log or error path.
-- [ ] 2.7 Line-count checkpoint (method above): at most 400. Commit deferred to orchestrator.
+- [x] 2.1 RED R1, R2, R3 in new `src/agentes-rutas.test.ts` (tenants A and B, marker assertions, cleanup in FK order Conexion, Agente, Tenant): create gives 201, `no-store`, four-key projection, stored hash equals `sha256(token)`; repeat gives 409 `agente-existente` with the hash unchanged; body `{tenantId}` gives 400 `['/tenantId']`.
+- [x] 2.2 GREEN `src/agentes-rutas.ts` `registerAgenteRoutes(app, prisma)`: `POST /agentes` with schema (`additionalProperties: false`, `propertyNames: { enum: [] }`, fallback `false`), scoped `findFirst`, create with `conTenantInyectado`, `P2002` gives 409.
+- [x] 2.3 RED R7 then GREEN re-issue: revoked agent keeps `id` and `creadoEn`, new token; old token looks up `null`, new resolves to A; guarded `updateMany` (`revocadoEn: { not: null }`), count 0 gives 409; response 200 with `no-store`.
+- [x] 2.4 RED R4, R5, R6, R8 then GREEN `GET /agentes` (ordered `creadoEn`, `id`) and `POST /agentes/:id/revocar` (scoped `findUnique`, 404, 409 `agente-revocado`, guarded `updateMany`, read-back). B's list is empty; B revoking A's id gives 404; revoked hash looks up `null`; each token resolves only to its own tenant. Responses omit token, hash and `tenantId`.
+- [x] 2.5 GREEN wire `registerAgenteRoutes` in `src/server.ts`; the exemption list in `contexto-tenant.ts` stays unchanged.
+- [x] 2.6 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no token or hash in any log or error path.
+- [x] 2.7 Line-count checkpoint (method above): at most 400. Commit deferred to orchestrator. Apply measured 419 (over); the author decided on 2026-10-03 to move the no-PostgreSQL suite (`src/agentes-rutas-sin-db.test.ts`, ~75 lines) to unit 2. Unit 1b is now 357 lines (server.ts 4 + agentes-rutas.ts 149 + agentes-rutas.test.ts 204); full suite 721/721, tsc 0.
 
 ## Unit 2: `agenteId` on `POST /conexiones` (~114, stacked on 1b)
 
