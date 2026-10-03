@@ -8,6 +8,8 @@ import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { registerTenantRoutes } from './tenants.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
+import { crearRegistroAgentes } from './registro-agentes.js';
+import { socketsVivos } from './registro-agentes-apoyo.js';
 
 /**
  * CH-06 task 3.1 — T1's lifecycle: alta, listado, baja lógica, and what a frozen
@@ -341,6 +343,30 @@ describe(
         false,
         'the tenant must still be deactivated after every attempt',
       );
+    });
+
+    // ---- CH-19c1 U12: the baja closes the tenant's live agent sockets (DEC-122 Q6) ---
+
+    test("U12 a baja through the registry closes the tenant's agent sockets with 4002 and no other tenant's", async () => {
+      const registro = crearRegistroAgentes();
+      const aislado = extenderConAislamiento(db);
+      const conRegistro = Fastify({ logger: false });
+      registrarContextoTenant(conRegistro, aislado);
+      registerTenantRoutes(conRegistro, aislado, registro);
+      try {
+        const tenant = await alta(`CH-19c1 baja con agente ${Date.now()}`);
+        const propios = await socketsVivos(registro, { id: 'agente-u12', tenantId: tenant.id });
+        const ajenos = await socketsVivos(registro, { id: 'agente-ajeno', tenantId: 'otro-tenant' });
+
+        const respuesta = await conRegistro.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+
+        assert.equal(respuesta.statusCode, 200, respuesta.body);
+        assert.equal((respuesta.json() as { tenant: TenantPayload }).tenant.activo, false);
+        assert.deepEqual([propios.control.cierres, propios.datos.cierres], [[4002], [4002]]);
+        assert.deepEqual([ajenos.control.cierres, ajenos.datos.cierres], [[], []]);
+      } finally {
+        await conRegistro.close();
+      }
     });
   },
 );

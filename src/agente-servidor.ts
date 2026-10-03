@@ -42,14 +42,37 @@ export interface DependenciasServidorAgentes {
   /** The token lookup alone: no other model is within reach of the upgrade path. */
   prisma: { agente: Pick<PrismaAislado['agente'], 'buscarPorTokenHash'> };
   registro: RegistroAgentes;
+  /** A repeating timer that returns its cancel; the default is an unref'd `setInterval`. */
+  programarPing?: (ms: number, fn: () => void) => () => void;
 }
 
-export function registrarServidorAgentes({ app, prisma, registro }: DependenciasServidorAgentes): void {
+function repetirReloj(ms: number, fn: () => void): () => void {
+  const reloj = setInterval(fn, ms);
+  reloj.unref();
+  return () => clearInterval(reloj);
+}
+
+export function registrarServidorAgentes({ app, prisma, registro, programarPing = repetirReloj }: DependenciasServidorAgentes): void {
   const comunes = { noServer: true, perMessageDeflate: false, clientTracking: false } as const;
   const servidores = {
     control: new WebSocketServer({ ...comunes, maxPayload: LIMITES.tramaControl }),
     datos: new WebSocketServer({ ...comunes, maxPayload: LIMITE_TRAMA_DATOS }),
   };
+
+  // Every upgraded socket, control or data, and whether it answered the last ping. A
+  // socket that missed one is terminated at the next tick. There is no idle timeout: a
+  // data socket that carries nothing but answers pings stays open (DEC-122).
+  const vivos = new Map<WebSocket, boolean>();
+  const cancelarPing = programarPing(LIMITES.pingMs, () => {
+    for (const [ws, respondio] of vivos) {
+      if (!respondio) {
+        ws.terminate();
+        continue;
+      }
+      vivos.set(ws, false);
+      ws.ping();
+    }
+  });
 
   /** Mirrors `ws`'s own `abortHandshake`: a bare status line, no body, then the socket goes. */
   function rechazar(socket: Duplex, canal: string | null, estado: number): void {
@@ -109,7 +132,12 @@ export function registrarServidorAgentes({ app, prisma, registro }: Dependencias
     const { id: agenteId, tenantId } = agente;
     servidores[canal].handleUpgrade(peticion, socket, cabeza, (ws) => {
       ws.on('error', ignorar);
-      ws.on('close', (codigoCierre) => app.log.info({ canal, agenteId, codigoCierre }, 'agent socket closed'));
+      vivos.set(ws, true);
+      ws.on('pong', () => vivos.has(ws) && vivos.set(ws, true));
+      ws.on('close', (codigoCierre) => {
+        vivos.delete(ws);
+        app.log.info({ canal, agenteId, codigoCierre }, 'agent socket closed');
+      });
       if (canal === 'control') {
         registro.registrarControl({ id: agenteId, tenantId }, ws);
         ws.on('message', (trama, binaria) => leerControl(agenteId, ws, trama, binaria));
@@ -130,6 +158,7 @@ export function registrarServidorAgentes({ app, prisma, registro }: Dependencias
   // `onClose` hook and waits for the upgraded sockets, so closing them there would hang
   // `app.close()`. `preClose` runs first, inside that same close step (DEC-122).
   app.addHook('preClose', async () => {
+    cancelarPing();
     registro.cerrarTodo();
   });
 }

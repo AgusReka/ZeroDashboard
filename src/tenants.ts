@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
+import type { RegistroAgentes } from './registro-agentes.js';
 
 /**
  * The only projection any response path reads from `Tenant`.
@@ -54,12 +55,19 @@ const registroTenantSchema = {
   },
 } as const;
 
+/** Built without a session registry, a baja closes no socket (CH-19c1). */
+const SIN_REGISTRO: Pick<RegistroAgentes, 'cerrarTenant'> = { cerrarTenant: () => {} };
+
 /**
  * Takes the extended client like every other route module, even though `Tenant` is
  * deliberately absent from `MODELOS_AISLADOS`: there is no un-scoped handle anywhere
  * in the application, so this module cannot be the accidental escape hatch.
  */
-export function registerTenantRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+export function registerTenantRoutes(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  agentes: Pick<RegistroAgentes, 'cerrarTenant'> = SIN_REGISTRO,
+): void {
   app.post<{ Body: RegistroTenantBody }>(
     '/tenants',
     { schema: { body: registroTenantSchema }, attachValidation: true },
@@ -132,6 +140,8 @@ export function registerTenantRoutes(app: FastifyInstance, prisma: PrismaAislado
       data: { activo: false },
       select: TenantPublico,
     });
+    // The row is written: the tenant's agent sockets close with 4002 (DEC-122 Q6).
+    agentes.cerrarTenant(request.params.id);
 
     return reply.code(200).send({ tenant: actualizado });
   });

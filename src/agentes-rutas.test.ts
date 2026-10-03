@@ -9,6 +9,8 @@ import { registrarContextoTenant } from './contexto-tenant.js';
 import { hashTokenAgente } from './agente-token.js';
 import { registerAgenteRoutes } from './agentes-rutas.js';
 import { registerConexionRoutes } from './conexiones.js';
+import { crearRegistroAgentes } from './registro-agentes.js';
+import { socketsVivos } from './registro-agentes-apoyo.js';
 
 /**
  * CH-19b: the `/agentes` routes that read and write (R1-R8, unit 1b) and the optional
@@ -266,5 +268,38 @@ describe('agent routes — emit, re-issue, list, revoke on a live PostgreSQL (CH
     assert.equal(vacia.statusCode, 400, vacia.body);
     assert.deepEqual(vacia.json(), { error: 'solicitud-invalida', campos: ['/agenteId'] });
     assert.equal(await filaConexion('C5 vacia'), null);
+  });
+
+  test("U11 revoking through the registry closes the agent's control and data sockets with 4002; 404 and 409 close nothing", async () => {
+    const registro = crearRegistroAgentes();
+    const conRegistro = Fastify({ logger: false });
+    registrarContextoTenant(conRegistro, aislado);
+    registerAgenteRoutes(conRegistro, aislado, registro);
+    const revocar = (id: string, tenantId: string) =>
+      conRegistro.inject({ method: 'POST', url: `/agentes/${id}/revocar`, headers: { 'x-tenant-id': tenantId }, payload: {} });
+    try {
+      // No live socket: the same 200 and projection as without a registry, and no error.
+      assert.equal((await pedir('POST', '/agentes', tenantA)).statusCode, 200);
+      const { id: deA } = await prisma.agente.findUniqueOrThrow({ where: { tenantId: tenantA } });
+      const sinSockets = await revocar(deA, tenantA);
+      assert.equal(sinSockets.statusCode, 200, sinSockets.body);
+      assert.deepEqual(Object.keys(sinSockets.json().agente).sort(), CLAVES_PUBLICAS);
+      assert.notEqual(sinSockets.json().agente.revocadoEn, null);
+
+      const { id: deB } = await prisma.agente.findUniqueOrThrow({ where: { tenantId: tenantB } });
+      const vivosA = await socketsVivos(registro, { id: deA, tenantId: tenantA });
+      const vivosB = await socketsVivos(registro, { id: deB, tenantId: tenantB });
+      assert.equal((await revocar(deB, tenantA)).statusCode, 404);
+      assert.equal((await revocar(deA, tenantA)).statusCode, 409);
+      assert.deepEqual([vivosA.control.cierres, vivosA.datos.cierres, vivosB.control.cierres], [[], [], []]);
+
+      const propia = await revocar(deB, tenantB);
+      assert.equal(propia.statusCode, 200, propia.body);
+      assert.deepEqual(Object.keys(propia.json().agente).sort(), CLAVES_PUBLICAS);
+      assert.deepEqual([vivosB.control.cierres, vivosB.datos.cierres], [[4002], [4002]]);
+      assert.deepEqual([vivosA.control.cierres, vivosA.datos.cierres], [[], []]);
+    } finally {
+      await conRegistro.close();
+    }
   });
 });
