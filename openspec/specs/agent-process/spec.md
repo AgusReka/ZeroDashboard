@@ -157,7 +157,7 @@ After a control socket loss the agent MUST reconnect with exponential delay: min
 
 - GIVEN consecutive failures with random fixed at 1
 - WHEN delays are computed
-- THEN they are 1, 2, 4, ... capped at 60 s, and with equal jitter each lies within [d/2, d]
+- THEN the cap before jitter is min(60 s, 1 s * 2^(n+1)) and each delay lies within [cap/2, cap]: with random at 0 the delays are 1, 2, 4, ... up to 30 s, and with random at 1 they are 2, 4, 8, ... capped at 60 s
 
 #### Scenario: Reset
 

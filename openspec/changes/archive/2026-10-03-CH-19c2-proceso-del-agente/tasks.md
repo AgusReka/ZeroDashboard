@@ -43,7 +43,7 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 - [x] 1.5 GREEN `src/agente-proceso/config.ts` (`ErrorConfig`, `ConfigAgente`, `leerConfig`; reads exactly three variables, never `loadConfig`); C1-C6 and L1-L5 pass.
 - [x] 1.6 RED then GREEN P1 in new `src/agente-proceso/paridad.test.ts`: `tramaDatos === LIMITE_TRAMA_DATOS`; `tramaControl === LIMITES.tramaControl`; `sesiones > LIMITES.sesionesPorAgente`; `vigilanciaPingMs > 2 * LIMITES.pingMs`; 50 `generarTokenAgente()` values match `FORMATO_TOKEN`; a `sesionId` from `crearRegistroAgentes()` (fake control socket) matches `FORMATO_SESION`. Test-only imports of engine files are allowed.
 - [x] 1.7 Checkpoint: `npm test` green, `npx tsc --noEmit` clean; no `.env` change; no agent file imports an engine module.
-- [ ] 1.8 Line-count checkpoint (method above): at most 400, else STOP.
+- [x] 1.8 Line-count checkpoint (method above): at most 400, else STOP. Resolved by the orchestrator on 2026-10-03: unit 1 measured 429, the PR was split (code plus config test 320, destinos and parity tests 109).
 
 ## Unit 2: Logger, Bridge, Sessions (~380, stacked on 1; AT RISK)
 
@@ -98,7 +98,7 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Archive-time (orchestrator-owned)
 
-- [ ] 6.1 At archive, hand-edit the Purpose line of `openspec/specs/agent-channel/spec.md` that says the agent process is out of scope for 19c2, so it points to the `agent-process` capability.
+- [x] 6.1 At archive, hand-edit the Purpose line of `openspec/specs/agent-channel/spec.md` that says the agent process is out of scope for 19c2, so it points to the `agent-process` capability.
 - [ ] 6.2 Known design-level choice for the user to confirm: the crash handler (`uncaughtException`, `unhandledRejection`) exits 1, the same code as the configuration error of DEC-123. A distinct code would need a DEC-123 amendment; the design adds none.
 
 ## Traceability
