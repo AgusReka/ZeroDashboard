@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-agente",
+    "types": ["node"]
+  },
+  "include": ["src/agente-proceso/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

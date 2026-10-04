@@ -7,3 +7,5 @@ docs
 openspec
 .atl
 .claude
+dist-agente
+.env.agente
