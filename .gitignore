@@ -1,6 +1,8 @@
 node_modules/
 dist/
+dist-agente/
 .env
+.env.agente
 *.log
 
 /src/generated/prisma

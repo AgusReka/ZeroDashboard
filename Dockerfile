@@ -11,6 +11,23 @@ ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 RUN npx prisma generate
 RUN npm run build
 
+# CH-19c2 (DEC-120, DEC-123): the customer-side agent, built only with
+# `docker build --target agente .`. BuildKit skips these two stages for the default
+# target, so the engine image below is built exactly as before and stays the last stage.
+FROM build AS build-agente
+RUN npm run build:agente
+
+# Only the agent's compiled code and `ws`: no Prisma, pg, Fastify or engine code. The
+# generated package.json only marks the ES modules. No HEALTHCHECK (DEC-123).
+FROM node:22-alpine AS agente
+WORKDIR /app
+ENV NODE_ENV=production
+RUN echo '{"type":"module"}' > package.json
+COPY --from=build-agente /app/node_modules/ws ./node_modules/ws
+COPY --from=build-agente /app/dist-agente ./dist-agente
+USER node
+ENTRYPOINT ["node", "dist-agente/agente-proceso/main.js"]
+
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production

@@ -1,11 +1,14 @@
 import type { CodigoErrorAgente } from '../agente-protocolo.js';
+import type { MotivoFin } from './agente.js';
+import type { CodigoSalida } from './arranque.js';
+import type { VariableAgente } from './config.js';
 
 /**
  * CH-19c2 (DEC-123, rule 5): the agent's own log, one JSON line per event. The event union
  * and each event's fields are closed: a line never carries the token, the URL, a host, a
  * port, a `sesionId`, frame bytes or any `error.message`. The union grows per PR; this one
- * holds the session events of PR 2, the control-loop events of PR 3, and `error-interno`
- * (its sanitized `nombreError` is case G3). `estado` is the HTTP status of a refused
+ * holds the session events of PR 2, the control-loop events of PR 3, and the process events
+ * of PR 4 (`error-interno` came early: its sanitized `nombreError` is case G3). `estado` is the HTTP status of a refused
  * upgrade and `codigoCierre` a WebSocket close code: numbers, never a text from the peer.
  */
 export type EventoLog =
@@ -20,6 +23,9 @@ export type EventoLog =
   | { evento: 'control-rechazado'; estado: number }
   | { evento: 'control-cerrado'; codigoCierre: number }
   | { evento: 'reconexion-programada'; intento: number; esperaMs: number }
+  | { evento: 'configuracion-invalida'; variable: VariableAgente }
+  | { evento: 'apagado'; senal: 'SIGTERM' | 'SIGINT' }
+  | { evento: 'fin'; motivo: MotivoFin; codigoSalida: CodigoSalida }
   | { evento: 'error-interno'; nombreError: string };
 
 export type Log = (e: EventoLog) => void;
@@ -43,6 +49,9 @@ const EVENTOS: { readonly [E in EventoLog['evento']]: readonly [Nivel, ...Campos
   'control-rechazado': ['warn', 'estado'],
   'control-cerrado': ['warn', 'codigoCierre'],
   'reconexion-programada': ['info', 'intento', 'esperaMs'],
+  'configuracion-invalida': ['error', 'variable'],
+  apagado: ['info', 'senal'],
+  fin: ['info', 'motivo', 'codigoSalida'],
   'error-interno': ['error', 'nombreError'],
 };
 

@@ -243,3 +243,104 @@ No split was pre-approved for this unit. Possible splits that respect dependenci
 | `src/agente-proceso/log.ts` | Modified (5 PR 3 events) |
 | `openspec/changes/CH-19c2-proceso-del-agente/design.md` | Control-message row corrected (task 3.1) |
 | `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 3.1-3.8 marked `[x]`; 3.9 measurement recorded |
+
+---
+
+# Unit 4: Entrypoint, Boundary, Packaging
+
+**Branch**: `ch19c2/arranque-y-empaquetado` (stacked on `ch19c2/tests-bucle`). Nothing committed.
+**Mode**: Standard (`strict_tdd: false`), RED before GREEN for every file.
+
+## Status
+
+Tasks 4.1-4.12 done. Line-count checkpoint 399, within the 400 limit. Unit 5 not started.
+
+## Completed Tasks
+
+- [x] 4.1 RED M1-M5 (`src/agente-proceso/arranque.test.ts`)
+- [x] 4.2 GREEN `log.ts` (`configuracion-invalida`, `apagado`, `fin`; `error-interno` already existed), `arranque.ts`, `main.ts`
+- [x] 4.3 RED F1-F2 (`src/agente-proceso/frontera.test.ts`), with the temporary forbidden-import proof
+- [x] 4.4 GREEN `tsconfig.agente.json`, `build:agente` script; `tsconfig.json` unchanged (`include: ["src"]`)
+- [x] 4.5 Baseline before quoting: 816
+- [x] 4.6 Quoted glob: 816 -> 816
+- [x] 4.7 `Dockerfile`: `build-agente` and `agente` stages; engine stage unchanged and last
+- [x] 4.8 `docker-compose.agente.yml`, `.env.agente.example`, `.dockerignore`, `.gitignore`
+- [x] 4.9 Manual check A (agent image)
+- [x] 4.10 Manual check B (default engine image)
+- [x] 4.11 Checkpoint
+- [x] 4.12 Line-count checkpoint: 399
+
+## TDD Cycle Evidence
+
+| Task | RED | GREEN | REFACTOR |
+|------|-----|-------|----------|
+| 4.1/4.2 | `npx tsx --test src/agente-proceso/arranque.test.ts`: tests 1 pass 0 fail 1, `ERR_MODULE_NOT_FOUND` for `arranque.js` | Same command with `log.test.ts`: tests 8 pass 8 fail 0 | `nombreDe` returns `string` with an `'Error'` fallback instead of a cast; 5/5 again |
+| 4.3/4.4 | `npx tsx --test src/agente-proceso/frontera.test.ts`: tests 2 pass 1 fail 1 (F2: `TS5058`, `tsconfig.agente.json` does not exist; F1 already green on the existing files) | Same command: tests 2 pass 2 fail 0 | None |
+| 4.3 proof | Temporary first line in `limites.ts`: `import pg from 'pg';` makes F1 fail (`['pg']`); `import { LIMITE_TRAMA_DATOS } from '../canal-agente.js';` makes F1 fail (`['../canal-agente.js']`) and F2 fail (lists `src/cripto-credencial.ts`, `src/config.ts`, ...). File restored byte-identical (`cmp`), 2/2 green | | |
+| 4.6 | Count before quoting: 816 | Count after quoting: 816 | |
+
+Mutation check on `arranque.ts` (scratch backup, restored byte-identical with `cmp`, 5/5 green after): second signal not ignored (M3 fails); crash logs `String(e)` (M5 fails); `credenciales-rechazadas` mapped to 1 (M4 fails); no 5 s cap (M3 fails). A non-config error thrown at start treated as a config error survived at first, so M5 gained a case (start throws `RangeError`, giving `error-interno` `RangeError` and exit 1), which then killed it.
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/agente-proceso/arranque.test.ts src/agente-proceso/frontera.test.ts src/agente-proceso/log.test.ts`: exit 0, tests 10, pass 10, fail 0 |
+| Types | `npx tsc --noEmit`: exit 0, no output |
+| Builds | `npm run build`: exit 0; `npm run build:agente`: exit 0, emits `dist-agente/agente-proceso/*.js` (11) and `dist-agente/agente-protocolo.js` (output deleted after the check) |
+| Full suite | `TEST_DB_PORT=5434 npm test` (container `zd-ch09-testdb`): before quoting tests 816, suites 128, pass 816, fail 0, cancelled 0, skipped 0; after quoting the same; final run after the last edit the same. 809 + 7 new (M1-M5, F1-F2) = 816 |
+| Runtime harness (spawned) | A scratchpad script spawns the agent with an env of only `PATH`, `SystemRoot` and `AGENT_*`, a token generated in the script and a random sentinel. For both `node dist-agente/agente-proceso/main.js` and `node --import tsx src/agente-proceso/main.ts`: a userinfo URL, a missing token and a CIDR allowlist entry each exit 1, stdout empty, stderr one JSON line `configuracion-invalida` naming only the variable; sentinel, token and host absent from both streams |
+| Runtime harness (Docker) | `docker build --target agente .` exit 0 (check 4.9); default `docker build .` exit 0 and identical to the previous Dockerfile's image (check 4.10); `docker run` without `AGENT_TOKEN` exit 1, stderr `{"ts":...,"nivel":"error","evento":"configuracion-invalida","variable":"AGENT_TOKEN"}`, stdout empty. `docker compose -f docker-compose.agente.yml --env-file <file> config`: with `AGENT_TOKEN=` it fails with `required variable AGENT_TOKEN is missing a value: AGENT_TOKEN is required`; with `.env.agente.example` it names all three variables; no value echoed. The three images built for the checks were removed; no running container was touched |
+| Rollback boundary | Delete `src/agente-proceso/arranque.ts`, `arranque.test.ts`, `main.ts`, `frontera.test.ts`, `tsconfig.agente.json`, `docker-compose.agente.yml`, `.env.agente.example`; revert the `log.ts` hunk (3 events), the two `Dockerfile` stages, the `package.json` script lines and the two ignore-file pairs. The engine image is unaffected either way |
+
+## Line-count checkpoint (task 4.12)
+
+Method: `git diff --stat` plus untracked files, excluding `package-lock.json`, `docs/design/`, `docs/verificacion-tesis-2026-10-01.md` and OpenSpec files.
+
+| File | Lines |
+|---|---|
+| `src/agente-proceso/log.ts` (diff) | 13 |
+| `Dockerfile` (diff) | 17 |
+| `package.json` (diff) | 3 |
+| `.gitignore`, `.dockerignore` (diff) | 4 |
+| `src/agente-proceso/arranque.ts` | 98 |
+| `src/agente-proceso/main.ts` | 4 |
+| `tsconfig.agente.json` | 9 |
+| `docker-compose.agente.yml` | 37 |
+| `.env.agente.example` | 17 |
+| `src/agente-proceso/arranque.test.ts` | 124 |
+| `src/agente-proceso/frontera.test.ts` | 73 |
+| **Total** | **399** (code 202, tests 197; estimate was 291) |
+
+## Known design-level choice (for the user to confirm; task 6.2)
+
+The crash handler (`uncaughtException`, `unhandledRejection`) logs `error-interno` with the class name only (never `error.message`, which can carry a host and a port) and exits 1, the same code as a configuration error (DEC-123 A3 defines codes 0-3 only). A distinct code would need a DEC-123 amendment; none was added.
+
+## Deviations from Design
+
+- Configuration and crash lines go to **stderr** through a second sink (`escribirError`, default `process.stderr.write`); every other event stays on stdout. The spec's "Missing or invalid variable" scenario says stderr names the variable; the design had a single stdout sink. The stderr line is still a JSON line of the closed union (Logging requirement), so no plain-text message is printed.
+- The agent image follows the launch instructions rather than the design snippet: it generates `package.json` (`{"type":"module"}`) instead of copying the repository's, and uses `ENTRYPOINT` instead of `CMD`. It still holds only `dist-agente`, `node_modules/ws` and that file.
+- The default `salir` flushes stdout and stderr (empty writes with callbacks) before `process.exit`, because pipes can be asynchronous and the last `fin` or `configuracion-invalida` line must not be lost.
+- After the first exit request, later crashes, signals and the agent's own end are ignored (the process exits once). At the 5 s cap the line `fin` is logged with `motivo: 'detenido'`, `codigoSalida: 0`.
+- `ejecutarAgente` also catches a non-`ErrorConfig` exception thrown by `iniciarAgente` at start and routes it to the crash path (`error-interno`, exit 1), so a top-level throw never reaches Node's printout.
+- `docker-compose.agente.yml` sets a top-level `name: zerodashboard-agente`, so on a development machine that also runs `docker-compose.yml` the two projects do not share a name and `down --remove-orphans` on one cannot remove the other's containers. It also carries a commented `extra_hosts` line for reaching a replica on the same Linux host.
+- Exported `DependenciasArranque` beyond the design's inline parameter type.
+- F1 also checks the scan itself on synthetic snippets (`pg`, `../canal-agente.js`, a value import of `../agente-protocolo.js`, a `../agente-token.js` re-export, a dynamic `fastify`, a side-effect `@prisma/client`, `require`), in addition to the temporary-edit proof the task asks for. A `pg` import fails F1 only, not F2: F2 lists files under `src/`, and `pg` lives in `node_modules` (the image's missing `pg` is the third guard).
+
+## Files Changed (unit 4)
+
+| File | Action |
+|---|---|
+| `src/agente-proceso/arranque.ts` | Created |
+| `src/agente-proceso/arranque.test.ts` | Created |
+| `src/agente-proceso/main.ts` | Created |
+| `src/agente-proceso/frontera.test.ts` | Created |
+| `src/agente-proceso/log.ts` | Modified (3 PR 4 events) |
+| `tsconfig.agente.json` | Created |
+| `docker-compose.agente.yml` | Created |
+| `.env.agente.example` | Created |
+| `Dockerfile` | Modified (`build-agente` and `agente` stages before the engine stage) |
+| `package.json` | Modified (`build:agente`, quoted test glob) |
+| `.dockerignore` | Modified (`dist-agente`, `.env.agente`) |
+| `.gitignore` | Modified (`dist-agente/`, `.env.agente`) |
+| `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 4.1-4.12 marked `[x]` with recorded results |
