@@ -344,3 +344,74 @@ The crash handler (`uncaughtException`, `unhandledRejection`) logs `error-intern
 | `.dockerignore` | Modified (`dist-agente`, `.env.agente`) |
 | `.gitignore` | Modified (`dist-agente/`, `.env.agente`) |
 | `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 4.1-4.12 marked `[x]` with recorded results |
+
+---
+
+# Unit 5: End-to-End Matrix, Spawned Process, TLS Options
+
+**Branch**: `ch19c2/e2e-con-agente-real` (stacked on `ch19c2/arranque-y-empaquetado`). Nothing committed.
+**Mode**: Standard (`strict_tdd: false`). Tests only; no production file changed. The production code already existed, so RED is shown by mutation runs (scratch backups, each file restored byte-identical with `cmp`).
+
+## Status
+
+Tasks 5.1-5.9 done. Line-count checkpoint 342, within the 400 limit. All implementation units of the change are complete; 6.1-6.2 are orchestrator-owned archive items.
+
+## Completed Tasks
+
+- [x] 5.1 Fixtures in `src/agente-proceso/proceso-e2e.test.ts`: Prisma, `registrarContextoTenant`, `registerConexionRoutes`, `registrarServidorAgentes`, generated token, `listen({ port: 0, host: '127.0.0.1' })`, TCP forwarder (cut = destroy every live pair), upgrade-path spy (`prependListener('upgrade')`), recorded session ids (`generarId` injected into `crearRegistroAgentes`), skip when PG is absent. `src/agente-e2e.test.ts` untouched
+- [x] 5.2 A1-A3
+- [x] 5.3 A4-A7
+- [x] 5.4 A8-A9
+- [x] 5.5 S1-S3
+- [x] 5.6 X1 (`src/agente-proceso/tls.test.ts`)
+- [x] 5.7 Node source line recorded in `tasks.md` (v24.19.0; Node 22 not verified)
+- [x] 5.8 Checkpoint: 829 tests
+- [x] 5.9 Line-count checkpoint: 342
+
+## TDD Cycle Evidence
+
+| Task | RED | GREEN | REFACTOR |
+|------|-----|-------|----------|
+| 5.6 X1 | Mutation: `rejectUnauthorized: true` line removed from `politica-tls.ts`; `npx tsx --test src/agente-proceso/tls.test.ts`: tests 1 pass 0 fail 1 (`actual: undefined, expected: true`). Restored, `cmp` equal | Same command: tests 1 pass 1. Two test-side fixes before GREEN: `events.once(ws, 'close')` rejects on the refusal's `'error'` (replaced by a `'close'` promise); `ws` passes the port as a string (compared with `Number`) | None |
+| 5.1-5.5 | Mutations, one at a time, against `TEST_DB_PORT=5434 npx tsx --test src/agente-proceso/proceso-e2e.test.ts`: allowlist bypass in `sesiones.ts` (miss dials the engine's host) -> A2 and A9 fail; 4001 removed from the terminal map in `agente.ts` -> A6 fails (10 s bound); close 1006 made terminal -> A3 fails; `control-conectado` logged with the URL plus `log.ts` copying every key -> A9 fails. Each run 11 or 10 pass, the named cases fail; all files restored, `cmp` equal | Same command: tests 12 pass 12 fail 0; with `tls.test.ts`, 13/13 three runs in a row | None |
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `TEST_DB_PORT=5434 npx tsx --test src/agente-proceso/proceso-e2e.test.ts src/agente-proceso/tls.test.ts`: exit 0, tests 13, pass 13, fail 0 (three consecutive runs). Without PG (`TEST_DB_PORT=1`): S1 passes, the suite is reported skipped with its reason |
+| Types | `npx tsc --noEmit`: exit 0, no output (also proves `CAMPOS` lists every `EventoLog` event and no other) |
+| Full suite | `TEST_DB_PORT=5434 npm test` (container `zd-ch09-testdb`): exit 0, tests 829, suites 129, pass 829, fail 0, cancelled 0, skipped 0. Baseline 816 + 13 new = 829 |
+| Runtime harness | Real agent (`ejecutarAgente` -> `iniciarAgente`) in process with an `EventEmitter` as `proceso`; real Fastify, registry and upgrade listener on an ephemeral loopback port; live PostgreSQL through a TCP forwarder; spawned `process.execPath --import tsx src/agente-proceso/main.ts` with an env of only `PATH`, `SystemRoot` and `AGENT_*` |
+| Rollback boundary | Delete `src/agente-proceso/proceso-e2e.test.ts` and `src/agente-proceso/tls.test.ts`. Nothing else changed outside this change's OpenSpec documents |
+
+## Line-count checkpoint (task 5.9)
+
+Method: `git diff --stat` (only `openspec/.../tasks.md`, excluded) plus untracked files, excluding `package-lock.json`, `docs/design/`, `docs/verificacion-tesis-2026-10-01.md` and OpenSpec files.
+
+| File | Lines |
+|---|---|
+| `src/agente-proceso/proceso-e2e.test.ts` | 301 |
+| `src/agente-proceso/tls.test.ts` | 41 |
+| **Total** | **342** (tests only; estimate was 330) |
+
+## Node source citation (task 5.7)
+
+`node --version`: v24.19.0. On this binary `lib/_tls_wrap.js` is only `const { TLSSocket, Server, createServer, connect } = require('internal/tls/wrap');` plus its export. In `lib/internal/tls/wrap.js`, `exports.connect` is at line 1832, `const allowUnauthorized = getAllowUnauthorized();` at 1836, and the merge `options = { rejectUnauthorized: !allowUnauthorized, ciphers: tls.DEFAULT_CIPHERS, checkServerIdentity: tls.checkServerIdentity, minDHSize: 1024, ...options };` at lines 1838-1844. `getAllowUnauthorized` (`lib/internal/options.js`, line 154) returns `process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0'` and emits the warning once. Source read from the running binary via `process.binding('natives')`. **Not verified against Node 22**: no fetch tool was available in this apply, and a different remote read was not authorized; the design's Node 22 location (`lib/_tls_wrap.js`, `connect`) and line need confirmation in the 19e runbook.
+
+## Deviations from Design
+
+- The in-process agent is started through `ejecutarAgente` (which calls the real `iniciarAgente`) with an `EventEmitter` as `proceso`, an injected `salir` and real timers that are `unref`'d, instead of `iniciarAgente` with `detener()` in `finally`. Cleanup is a SIGTERM and a bounded wait for the exit code. This adds exit-code assertions to the terminal cases (A4 2, A5 2, A6 3) and tests graceful shutdown with a real engine in process (A1 exit 0 with `fin detenido`; A8 SIGTERM with a live session: exit 0 and the pg client sees `'end'` within 6 s), as the launch asked, since `child.kill()` is a hard kill on Windows. The `unref` keeps the 5 s shutdown cap from holding the test process open; the 1 s reconnect wait of A3 runs on the same real timer.
+- A8 follows task 5.4 (`SELECT $1::text` with 1.5 MiB, both directions), not the launch's `SELECT repeat('x', 1000000)`: 1,000,000 bytes is below 1 MiB (1,048,576), so it would fit in one frame. "Many frames" is proven by the limits, not by counting: both ends set `maxPayload` to 1 MiB, so a larger value can only cross in several frames.
+- A9 checks the in-process lines plus the stdout and stderr of S2 and S3; S1 checks its own streams (sentinel, token, host). The forbidden strings are the token, the forwarder URL and its `host:port`, the replica's `host:port`, the closed port's `host:port` and every recorded `sesionId`. The closed key set is per event (`Record<EventoLog['evento'], ...>`), stricter than one global key set.
+- A2 and A7 also assert the data-upgrade count does not change; A2 asserts exactly one `destino-no-permitido`; A7 asserts the single `sesion-fallida` carries `ECONNREFUSED`. On this machine the refused loopback dial of A7 took about 50 ms, not the 2 s the design expected.
+- X1 also asserts the host and port `ws` hands to `tls.connect`. Setting the variable makes Node print its one-time insecure-TLS warning to the test's stderr; expected.
+- S1 lives outside the PG-gated suite (no PG needed); S2 and S3 need the engine and the token lookup, so they are inside it.
+
+## Files Changed (unit 5)
+
+| File | Action |
+|---|---|
+| `src/agente-proceso/proceso-e2e.test.ts` | Created |
+| `src/agente-proceso/tls.test.ts` | Created |
+| `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 5.1-5.9 marked `[x]` with recorded results |

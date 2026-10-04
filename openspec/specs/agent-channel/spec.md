@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Type catalog for the agent protocol, the optional channel seam, and the engine side of the outbound agent channel: in-memory session registry, authenticated WebSocket upgrade for control and data channels, and the channel through which a database session is carried instead of a direct TCP dial (DEC-112, DEC-113, DEC-122). The agent process is out of scope (19c2).
+Type catalog for the agent protocol, the optional channel seam, and the engine side of the outbound agent channel: in-memory session registry, authenticated WebSocket upgrade for control and data channels, and the channel through which a database session is carried instead of a direct TCP dial (DEC-112, DEC-113, DEC-122). The agent process is defined by the `agent-process` capability (CH-19c2).
 
 ## Requirements
 
