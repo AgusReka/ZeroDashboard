@@ -162,3 +162,84 @@ Nothing was trimmed and no file was moved. Dependency order: `puente.ts` imports
 | `src/agente-proceso/sesiones.ts` | Created |
 | `src/agente-proceso/sesiones.test.ts` | Created |
 | `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 2.1-2.8 marked `[x]` |
+
+---
+
+# Unit 3: Backoff, Control Loop, Classification, Watchdog
+
+**Branch**: `ch19c2/bucle-de-control` (stacked on `ch19c2/sesiones`). Nothing committed.
+**Mode**: Standard (`strict_tdd: false`), RED before GREEN for every file.
+
+## Status
+
+Tasks 3.1-3.8 done. Task 3.9 (line-count checkpoint) FAILED at 444 lines against a 400 limit. Work stopped there per the stop rule; no test was trimmed and no file was moved. Units 4-5 not started.
+
+## Completed Tasks
+
+- [x] 3.1 Doc fix: the "Control message from the engine" row of `design.md` now says a well-shaped message with a malformed `sesionId` is ignored (`mensaje-invalido`, nothing reported, connection kept, no 1008); 1008 stays for non-JSON, wrong key set or unknown `tipo`
+- [x] 3.2 RED then GREEN `espera.test.ts` / `espera.ts`
+- [x] 3.3 RED K1-K4 (`agente.test.ts`; K4 = 1006/1000 retry, inside the K3 case table)
+- [x] 3.4 RED K5-K7
+- [x] 3.5 RED K8-K10 (K10 is two tests: options spy plus URL check, and `detener`)
+- [x] 3.6 GREEN `log.ts`: `control-conectado`, `sin-ping`, `control-rechazado`, `control-cerrado`, `reconexion-programada` (`mensaje-invalido` already existed from unit 2)
+- [x] 3.7 GREEN `agente.ts` (`MotivoFin`, `DependenciasAgente`, `Agente`, `iniciarAgente`)
+- [x] 3.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean
+- [ ] 3.9 Line-count checkpoint: 444 > 400, STOP (see below)
+
+## TDD Cycle Evidence
+
+| Task | RED | GREEN | REFACTOR |
+|------|-----|-------|----------|
+| 3.2 | `npx tsx --test src/agente-proceso/espera.test.ts`: tests 1 pass 0 fail 1, `ERR_MODULE_NOT_FOUND` for `espera.js` | Same command: tests 2 pass 2 fail 0 | None |
+| 3.3-3.7 | `npx tsx --test src/agente-proceso/agente.test.ts`: tests 1 pass 0 fail 1, `ERR_MODULE_NOT_FOUND` for `agente.js` | `npx tsx --test src/agente-proceso/agente.test.ts src/agente-proceso/espera.test.ts src/agente-proceso/log.test.ts`: tests 15 pass 15 fail 0; `agente.test.ts` alone 5 runs in a row, 10/10 each | Waits in `agente.test.ts` made bounded (5 s per poll, 30 s suite timeout) after a mutation run showed a regression would hang instead of failing |
+
+Mutation check (each applied to a scratch copy of `agente.ts`, restored byte-identical with `cmp`, then 10/10 green again): 4001 not terminal (K3 timeout, exit 1); no re-arm on ping (K7 fails); stability timer not resetting (K6 fails); `informar` never sends (K9 fails); binary not closed with 1003 (K8 fails); 403 not terminal (K1 timeout, exit 1). All six killed.
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/agente-proceso/agente.test.ts src/agente-proceso/espera.test.ts src/agente-proceso/log.test.ts`: exit 0, tests 15, suites 3, pass 15, fail 0 |
+| Types | `npx tsc --noEmit`: exit 0, no output |
+| Full suite | `TEST_DB_PORT=5434 npm test` (container `zd-ch09-testdb`): exit 0, tests 809, suites 126, pass 809, fail 0, cancelled 0, skipped 0. Baseline 797 + 12 new (2 espera, 10 agente) = 809 |
+| Runtime harness | Fake engine `WebSocketServer({ port: 0, verifyClient })` on loopback with real `ws` client sockets: refusals by status (401, 403, 404, 500), a closed port, server closes 4001/4002/1000 and terminate (1006), server pings, text and binary control frames, and a data upgrade refused with 404. Timers are a fake `programar` fired by the test |
+| Rollback boundary | Delete `src/agente-proceso/espera.ts`, `espera.test.ts`, `agente.ts`, `agente.test.ts`; revert the `log.ts` hunk (5 events, header comment). Nothing imports `agente.ts` yet |
+
+## Line-count checkpoint (task 3.9) — FAILED
+
+Method: `git diff --stat` (`log.ts` 13+/2-; OpenSpec files excluded) plus untracked files, excluding `package-lock.json`, `docs/design/`, `docs/verificacion-tesis-2026-10-01.md` and OpenSpec files.
+
+| File | Lines |
+|---|---|
+| `src/agente-proceso/log.ts` (diff) | 15 |
+| `src/agente-proceso/espera.ts` | 12 |
+| `src/agente-proceso/agente.ts` | 163 |
+| `src/agente-proceso/espera.test.ts` | 22 |
+| `src/agente-proceso/agente.test.ts` | 232 |
+| **Total** | **444** (code 190, tests 254; estimate was 355) |
+
+No split was pre-approved for this unit. Possible splits that respect dependencies (none applied, orchestrator's decision): code with `espera.test.ts` (212) then `agente.test.ts` (232) in the next PR, as unit 1 was delivered; or `espera` plus `log.ts` (49) then `agente.ts` with its test (395).
+
+## Deviations from Design
+
+- Backoff formula follows the design (`tope = min(60 s, 1 s * 2^(intento + 1))`, delay in `[tope/2, tope]`): with `aleatorio` at 0 the delays are 1, 2, 4 ... 30 s and at 1 they are 2, 4, 8 ... 60 s. The spec's wording "random fixed at 1 gives 1, 2, 4" cannot hold together with its own 1 s minimum under equal jitter; the design's reading keeps every delay within 1 s to 60 s (DEC-123). Needs confirmation, not a new decision.
+- `programar` and `aleatorio` are optional in `DependenciasAgente` (defaults: plain `setTimeout`, `Math.random`), because task 3.7 puts the default timer in `agente.ts`. The design interface lists them as required.
+- `iniciarAgente` re-validates `config.servidor` with `validarUrlServidor` before any socket and throws `ErrorConfig` synchronously on a bad origin (prompt rule "validate the control URL with the TLS policy before new WebSocket"). K10 covers it.
+- `control-cerrado` is logged on every control close that is not a stop, including terminal ones and the 1006 that follows a refused upgrade; `control-rechazado` precedes it for refusals.
+- A binary control frame closes with 1003 without logging `mensaje-invalido` (design row: binary 1003, "anything else logs").
+- `terminado` resolves after `sesiones.cerrarTodas` settles; it does not wait for the control socket's closing handshake. `arranque` (unit 4) bounds the wait to 5 s.
+- A close of a socket that is no longer `control` is ignored (only the current socket can end the agent with 4001); with one dial at a time this is a guard, not a reachable path.
+- Exported `Agente` interface (the return type of `iniciarAgente`) beyond the design's signatures.
+- Not covered by a unit-3 test: sessions surviving a control drop (by construction, a control close never touches the session table). No planned case asserts it either: e2e A3 (unit 5) checks reconnection and a fresh probe only.
+
+## Files Changed (unit 3)
+
+| File | Action |
+|---|---|
+| `src/agente-proceso/espera.ts` | Created |
+| `src/agente-proceso/espera.test.ts` | Created |
+| `src/agente-proceso/agente.ts` | Created |
+| `src/agente-proceso/agente.test.ts` | Created |
+| `src/agente-proceso/log.ts` | Modified (5 PR 3 events) |
+| `openspec/changes/CH-19c2-proceso-del-agente/design.md` | Control-message row corrected (task 3.1) |
+| `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 3.1-3.8 marked `[x]`; 3.9 measurement recorded |
