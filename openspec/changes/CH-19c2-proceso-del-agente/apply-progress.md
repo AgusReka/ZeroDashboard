@@ -82,3 +82,83 @@ Per the stop rule nothing was trimmed. Decision needed from the orchestrator. Po
 | `src/agente-proceso/destinos.test.ts` | Created |
 | `src/agente-proceso/paridad.test.ts` | Created |
 | `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 1.1-1.7 marked `[x]` |
+
+---
+
+# Unit 2: Logger, Bridge, Sessions
+
+**Branch**: `ch19c2/logger-y-puente` (stacked on the unit 1 tests branch). Nothing committed.
+**Mode**: Standard, RED before GREEN for every file.
+
+## Status
+
+Tasks 2.1-2.8 done. Task 2.9 (line-count checkpoint) FAILED at 616 lines against a 400 limit. Work stopped there per the stop rule. Units 3-5 not started. The pre-agreed fallback (moving `sesiones.ts` and its test, 143 lines, to PR 2b) is NOT enough on its own: the remaining logger plus bridge measure 473.
+
+## Completed Tasks
+
+- [x] 2.1 RED G1-G3 (`src/agente-proceso/log.test.ts`)
+- [x] 2.2 GREEN `log.ts`
+- [x] 2.3 RED B1-B4 (`src/agente-proceso/puente.test.ts`)
+- [x] 2.4 RED B5-B8 (same file), plus B9 (data-socket watchdog, see deviations)
+- [x] 2.5 GREEN `puente.ts`
+- [x] 2.6 RED T1-T3 (`src/agente-proceso/sesiones.test.ts`)
+- [x] 2.7 GREEN `sesiones.ts`
+- [x] 2.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean
+- [ ] 2.9 Line-count checkpoint: 616 > 400, STOP (see below)
+
+## TDD Cycle Evidence
+
+| Task | RED | GREEN | REFACTOR |
+|------|-----|-------|----------|
+| 2.1/2.2 | `npx tsx --test src/agente-proceso/log.test.ts`: tests 1 pass 0 fail 1, `ERR_MODULE_NOT_FOUND` for `log.js` | Same command: tests 3 pass 3 fail 0 | None |
+| 2.3/2.4/2.5 | `npx tsx --test src/agente-proceso/puente.test.ts`: fail 1, `ERR_MODULE_NOT_FOUND` for `puente.js` | Same command: tests 9 pass 9 fail 0 (B1-B9) | None |
+| 2.6/2.7 | `npx tsx --test src/agente-proceso/sesiones.test.ts`: tests 1 fail 1, `ERR_MODULE_NOT_FOUND` for `sesiones.js` | Three files together: tests 15 pass 15 fail 0 | None |
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/agente-proceso/log.test.ts src/agente-proceso/puente.test.ts src/agente-proceso/sesiones.test.ts`: exit 0, tests 15, suites 3, pass 15, fail 0 |
+| Types | `npx tsc --noEmit`: exit 0, no output |
+| Full suite | `TEST_DB_PORT=5434 npm test` (container `zd-ch09-testdb`): exit 0, tests 797, suites 124, pass 797, fail 0, cancelled 0, skipped 0. Baseline 782 + 15 new = 797 |
+| Runtime harness | B1-B4, B7-B9 run the real bridge against a local `net` replica server and a local `WebSocketServer({ port: 0, maxPayload: 1 MiB, perMessageDeflate: false })`; B2 moves 4 MiB each way with a paused consumer and checks byte equality and frames of at most 1 MiB |
+| Rollback boundary | Delete `src/agente-proceso/log.ts`, `log.test.ts`, `puente.ts`, `puente.test.ts`, `sesiones.ts`, `sesiones.test.ts`. Nothing imports them; no existing file changed except this change's OpenSpec documents |
+
+## Line-count checkpoint (task 2.9) — FAILED
+
+Method: `git diff --stat` (only `openspec/.../tasks.md`, excluded) plus untracked files, excluding `package-lock.json`, `docs/design/`, `docs/verificacion-tesis-2026-10-01.md` and OpenSpec files.
+
+| File | Lines |
+|---|---|
+| `src/agente-proceso/log.ts` | 55 |
+| `src/agente-proceso/log.test.ts` | 50 |
+| `src/agente-proceso/puente.ts` | 166 |
+| `src/agente-proceso/puente.test.ts` | 202 |
+| `src/agente-proceso/sesiones.ts` | 69 |
+| `src/agente-proceso/sesiones.test.ts` | 74 |
+| **Total** | **616** (code 290, tests 326; estimate was 380) |
+
+Nothing was trimmed and no file was moved. Dependency order: `puente.ts` imports the `Log` type from `log.ts`; `sesiones.ts` imports `puente.ts`. Splits that respect it and fit 400 each (none applied, orchestrator's decision): log (105) -> bridge (368) -> sessions (143); or log plus bridge code with tests in a following PR, as unit 1 was delivered.
+
+## Deviations from Design
+
+- `log.ts` already holds `mensaje-invalido` (listed for PR 3) and `error-interno` (listed for PR 4). `mensaje-invalido` is the event `sesiones.abrir` records for a malformed `sesionId`; `error-interno` is the only event with `nombreError`, so G3 can be tested through the public type. Tasks 3.6 and 4.2 then add five and three events instead of six and four.
+- `sesiones.abrir` validates `sesionId` against `FORMATO_SESION` itself (spec "Malformed sesionId": ignored, `mensaje-invalido`, nothing reported, no replica). The control loop of unit 3 can rely on it; K8-K10 still apply at the loop level.
+- Cap refusal logs `tope-de-sesiones` AND `destino-no-permitido`. The spec (Error Reporting) requires `destino-no-permitido` for the cap, allowlist and malformed `host`/`puerto`; task 2.6 requires `tope-de-sesiones` for the cap. Both are emitted to satisfy both literally; needs the orchestrator's confirmation.
+- The bridge arms the 50 s ping watchdog on the data socket (spec Ping Watchdog: "a control or data socket"); no task named it, so it is covered by an extra case B9. It logs nothing of its own; the session's end logs `sesion-cerrada`.
+- The data-dial 10 s handshake timeout is not enforced in the bridge: it comes from the injected `abrirDatos`, which in unit 3 must build the socket with `opcionesSocket(token, LIMITES_AGENTE.tramaDatos)` (`handshakeTimeout` 10 s, `maxPayload` 1 MiB, `perMessageDeflate: false`).
+- Close handling: when the data socket closes after it opened, the replica gets `destroySoon()` (pending bytes such as the client's `Terminate` reach the replica); on a failed data dial, a text frame, `cerrar()` or a replica failure it gets `destroy()`. A replica close closes the data socket with 1000.
+- `abrirReplica` throwing synchronously is reported through `codigoDeError` (for example `EMFILE` -> `EHOSTUNREACH`); `abrirDatos` throwing synchronously is a data-dial failure (replica destroyed, nothing reported). This is how `abrir` never throws.
+- Named exports beyond the design's signatures: `DependenciasPuente`, `Puente`, `DependenciasSesiones`.
+
+## Files Changed (unit 2)
+
+| File | Action |
+|---|---|
+| `src/agente-proceso/log.ts` | Created |
+| `src/agente-proceso/log.test.ts` | Created |
+| `src/agente-proceso/puente.ts` | Created |
+| `src/agente-proceso/puente.test.ts` | Created |
+| `src/agente-proceso/sesiones.ts` | Created |
+| `src/agente-proceso/sesiones.test.ts` | Created |
+| `openspec/changes/CH-19c2-proceso-del-agente/tasks.md` | 2.1-2.8 marked `[x]` |

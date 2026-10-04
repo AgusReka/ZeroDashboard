@@ -47,15 +47,15 @@ No `size:exception` (user decision 2026-10-03). Hard limit: 400 changed lines pe
 
 ## Unit 2: Logger, Bridge, Sessions (~380, stacked on 1; AT RISK)
 
-- [ ] 2.1 RED G1-G3 in new `src/agente-proceso/log.test.ts`: one JSON line per event; a spread extra key is dropped; `nombreError` sanitized to `Error` when it fails `^[A-Za-z]{1,40}$`.
-- [ ] 2.2 GREEN `src/agente-proceso/log.ts` (`EventoLog` with the PR 2 events only, `Log`, `crearLog`; fixed per-event key list, fixed `nivel` map, default sink `process.stdout.write`).
-- [ ] 2.3 RED B1-B4 in new `src/agente-proceso/puente.test.ts` (local `net` replica plus local `WebSocketServer`): relay both ways; pause observed in both directions with a slow consumer, payload intact; text frame gives 1003 and destroys the replica; each side's close reaches the other.
-- [ ] 2.4 RED B5-B8: replica timeout gives `ETIMEDOUT` (injected `programar`); `EADDRNOTAVAIL` and `EMFILE` map to `EHOSTUNREACH`; replica first, no data dial before the replica connects; a data-dial failure destroys the replica and sends no `sesion-fallida`.
-- [ ] 2.5 GREEN `src/agente-proceso/puente.ts` (`Programar`, `codigoDeError`, `abrirPuente`): 1 MiB slices with `{ binary: true }`, no `createWebSocketStream`, no-op `'error'` listeners, bytes never read or logged.
-- [ ] 2.6 RED T1-T3 in new `src/agente-proceso/sesiones.test.ts`: 17th session gives `ECONNREFUSED` and `tope-de-sesiones`; unlisted target or malformed host/puerto gives `ECONNREFUSED`, `destino-no-permitido` without host or port, and zero `abrirReplica` calls; an active replayed `sesionId` is ignored; `cerrarTodas` resolves.
-- [ ] 2.7 GREEN `src/agente-proceso/sesiones.ts` (`crearSesiones`; cap checked before allowlist; `net.connect` uses the allowlist entry's normalized host; `abrir` never throws).
-- [ ] 2.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean.
-- [ ] 2.9 Line-count checkpoint (method above). If over 400, STOP and report. Pre-agreed fallback, to apply only on the orchestrator's go: move `src/agente-proceso/sesiones.ts` and `src/agente-proceso/sesiones.test.ts` (tasks 2.6-2.7, ~96 lines) to a sixth PR "2b" between PR 2 and PR 3. PR 3 cannot absorb them.
+- [x] 2.1 RED G1-G3 in new `src/agente-proceso/log.test.ts`: one JSON line per event; a spread extra key is dropped; `nombreError` sanitized to `Error` when it fails `^[A-Za-z]{1,40}$`.
+- [x] 2.2 GREEN `src/agente-proceso/log.ts` (`EventoLog` with the PR 2 events only, `Log`, `crearLog`; fixed per-event key list, fixed `nivel` map, default sink `process.stdout.write`).
+- [x] 2.3 RED B1-B4 in new `src/agente-proceso/puente.test.ts` (local `net` replica plus local `WebSocketServer`): relay both ways; pause observed in both directions with a slow consumer, payload intact; text frame gives 1003 and destroys the replica; each side's close reaches the other.
+- [x] 2.4 RED B5-B8: replica timeout gives `ETIMEDOUT` (injected `programar`); `EADDRNOTAVAIL` and `EMFILE` map to `EHOSTUNREACH`; replica first, no data dial before the replica connects; a data-dial failure destroys the replica and sends no `sesion-fallida`.
+- [x] 2.5 GREEN `src/agente-proceso/puente.ts` (`Programar`, `codigoDeError`, `abrirPuente`): 1 MiB slices with `{ binary: true }`, no `createWebSocketStream`, no-op `'error'` listeners, bytes never read or logged.
+- [x] 2.6 RED T1-T3 in new `src/agente-proceso/sesiones.test.ts`: 17th session gives `ECONNREFUSED` and `tope-de-sesiones`; unlisted target or malformed host/puerto gives `ECONNREFUSED`, `destino-no-permitido` without host or port, and zero `abrirReplica` calls; an active replayed `sesionId` is ignored; `cerrarTodas` resolves.
+- [x] 2.7 GREEN `src/agente-proceso/sesiones.ts` (`crearSesiones`; cap checked before allowlist; `net.connect` uses the allowlist entry's normalized host; `abrir` never throws).
+- [x] 2.8 Checkpoint: `npm test` green, `npx tsc --noEmit` clean.
+- [x] 2.9 Line-count checkpoint (method above). **Measured 616** (code 290, tests 326): log 105, bridge 368, sessions 143. The pre-agreed fallback alone (sessions to a PR 2b) was not enough because log plus bridge are 473. Resolved by the orchestrator on 2026-10-03 as three chained PRs: log, then bridge, then sessions, each under 400. If over 400, STOP and report. Pre-agreed fallback, to apply only on the orchestrator's go: move `src/agente-proceso/sesiones.ts` and `src/agente-proceso/sesiones.test.ts` (tasks 2.6-2.7, ~96 lines) to a sixth PR "2b" between PR 2 and PR 3. PR 3 cannot absorb them.
 
 ## Unit 3: Backoff, Control Loop, Classification, Watchdog (~355, stacked on 2; NO ROOM)
 
