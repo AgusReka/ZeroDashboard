@@ -1,4 +1,5 @@
 import { PrismaPg } from '@prisma/adapter-pg';
+import { CATALOGO_INICIAL, sembrarCatalogoInicial } from '../dist/catalogo-inicial.js';
 import { PrismaClient } from '../dist/generated/prisma/client.js';
 
 function requiredEnv(name: string): string {
@@ -20,7 +21,7 @@ const prisma = new PrismaClient({ adapter });
  * used to raise — that response is gone. The row is created only so a fresh database
  * gives the console something to select in its tenant picker on first load.
  */
-async function main(): Promise<void> {
+async function sembrarTenant(): Promise<void> {
   const count = await prisma.tenant.count();
   if (count > 0) {
     console.log(`Seed skipped: ${count} tenant row(s) already present.`);
@@ -32,6 +33,24 @@ async function main(): Promise<void> {
     `Seed: created tenant "${tenant.nombre}" (${tenant.id}). ` +
       'It is selectable in the console; nothing depends on it existing.',
   );
+}
+
+/**
+ * CH-21b (DEC-125): the initial template catalog, on every run, whether or not the tenant
+ * step returned early. Create-if-absent by fixed id: an existing row is never read,
+ * updated or deleted (DEC-68). A rejection is not swallowed: it reaches `Seed failed:`
+ * below, `exitCode` becomes 1, and the entrypoint's `set -e` stops before the server starts.
+ */
+async function sembrarCatalogo(): Promise<void> {
+  const creadas = await sembrarCatalogoInicial(prisma.plantilla);
+  console.log(
+    `Seed: template catalog, ${creadas} of ${CATALOGO_INICIAL.length} created; existing rows left as they are.`,
+  );
+}
+
+async function main(): Promise<void> {
+  await sembrarTenant();
+  await sembrarCatalogo();
 }
 
 main()
