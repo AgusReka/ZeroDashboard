@@ -30,9 +30,14 @@ class Nodo {
   hidden = false;
   disabled = false;
   selectedIndex = 0;
+  // CH-21c: fields the wizard's later steps set (radio cards, the read-only cron field).
+  checked = false;
+  name = '';
+  readOnly = false;
   hijos: Nodo[] = [];
   private texto = '';
   private valorPropio = '';
+  private atributos = new Map<string, string>();
   private oyentes = new Map<string, Array<(evento: { preventDefault: () => void }) => void>>();
 
   constructor(tagName: string) {
@@ -76,6 +81,19 @@ class Nodo {
 
   /** Loading a saved query focuses the editor; there is no focus to model here. */
   focus(): void {}
+
+  /** CH-21c: the stepper's aria-current is the only attribute the script sets by name. */
+  setAttribute(nombre: string, valor: string): void {
+    this.atributos.set(nombre, String(valor));
+  }
+
+  removeAttribute(nombre: string): void {
+    this.atributos.delete(nombre);
+  }
+
+  getAttribute(nombre: string): string | null {
+    return this.atributos.get(nombre) ?? null;
+  }
 
   appendChild(hijo: Nodo): Nodo {
     this.hijos.push(hijo);
@@ -141,7 +159,21 @@ const IDS = [
   'auto-crear',
   'auto-lista',
   'auto-ejecuciones',
+  // CH-21c: the creation wizard (DEC-129).
+  'auto-nueva',
+  'auto-alta',
+  'auto-marca-1',
+  'auto-marca-2',
+  'auto-paso-1',
+  'auto-paso-2',
+  'auto-aviso',
+  'auto-siguiente',
+  'auto-resumen',
+  'auto-volver',
 ] as const;
+
+/** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
+const IDS_OCULTOS = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -327,14 +359,30 @@ describe('the console document, served by the real route', () => {
     assert.ok(!script.includes('zd-'), 'the script assigns no shared class (CH-21c)');
   });
 
+  /** CH-21c PR2a: what IDS_OCULTOS mirrors, read from the markup itself. */
+  test('CH-21c the wizard markup starts closed, on step 1, with type="button" on every button', () => {
+    const seccion = marcado().slice(marcado().indexOf('id="automatizaciones"'));
+    for (const id of IDS_OCULTOS) {
+      assert.match(seccion, new RegExp('id="' + id + '"[^>]*\\bhidden\\b'), id + ' starts hidden');
+    }
+    assert.match(seccion, /<li id="auto-marca-1"[^>]*aria-current="step"/, 'step 1 is current');
+    assert.ok(!/<li id="auto-marca-2"[^>]*aria-current/.test(seccion), 'step 2 is not current');
+    assert.match(seccion, /<button id="auto-siguiente"[^>]*disabled/, 'Siguiente starts disabled');
+    const botonesSeccion = seccion.match(/<button[^>]*>/g) ?? [];
+    assert.ok(botonesSeccion.length >= 5);
+    assert.ok(botonesSeccion.every((etiqueta) => etiqueta.includes('type="button"')), 'no button submits');
+  });
+
   // ---- behavioural cases: the script is run, not grepped ----------------------------
 
   /** Boots the console with the tenants already selectable, then returns the scenario. */
   async function arrancar(tenants = [{ id: 't-1', nombre: 'Food Store' }]): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
+      // CH-21c PR2a: auto-plantilla stays a select and auto-conexion a text field (a div here).
       const nodo = new Nodo(id === 'tenant' || id === 'auto-plantilla' ? 'select' : 'div');
       nodo.id = id;
+      nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
     }
     const escenario: Escenario = {

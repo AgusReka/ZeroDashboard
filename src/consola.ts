@@ -102,6 +102,13 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
     border-bottom: var(--border-width) solid var(--border-1); }
   #guardadas .ayuda { margin: 0; }
+  /* CH-21c wizard. The script moves aria-current only, so step 1 reads as done whenever
+     it is not the current step (the shared sheet's done look needs a class the script
+     does not assign). */
+  #auto-alta { margin-top: var(--space-5); }
+  #auto-alta .zd-form-actions { margin-top: var(--space-6); }
+  #auto-marca-1:not([aria-current]) { color: var(--text-2); }
+  #auto-marca-1:not([aria-current]) .zd-step__n { border-color: var(--accent); color: var(--accent-text); }
 </style>
 </head>
 <body class="zd-root">
@@ -185,21 +192,46 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   <h2 class="zd-h2">Automatizaciones</h2>
   <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. No se puede editar ni reactivar una automatización: para corregirla, se desactiva y se crea otra.</p>
 
-  <label for="auto-plantilla" class="zd-label">Plantilla</label>
-  <select id="auto-plantilla" class="zd-select"></select>
-  <div id="auto-valores"></div>
+  <button id="auto-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
 
-  <label for="auto-conexion" class="zd-label">Identificador de la conexión registrada</label>
-  <input id="auto-conexion" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false">
+  <!--
+    CH-21c (DEC-129): creation is a two-step wizard. The stepper and both panels are static
+    markup; the script only toggles hidden and aria-current on them, never their classes.
+  -->
+  <div id="auto-alta" class="zd-card zd-form" hidden>
+    <ol class="zd-steps" aria-label="Pasos del alta">
+      <li id="auto-marca-1" class="zd-step" aria-current="step"><span class="zd-step__n">1</span><span>Conexión y plantilla</span></li>
+      <li id="auto-marca-2" class="zd-step"><span class="zd-step__n">2</span><span>Parámetros y horario</span></li>
+    </ol>
 
-  <label for="auto-cron" class="zd-label">Horario (minuto hora día-del-mes mes día-de-la-semana)</label>
-  <input id="auto-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *">
+    <div id="auto-paso-1">
+      <label for="auto-conexion" class="zd-label">Identificador de la conexión registrada</label>
+      <input id="auto-conexion" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false">
+      <p id="auto-aviso" class="ayuda" hidden></p>
 
-  <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional; no se puede cambiar después)</label>
-  <input id="auto-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
+      <label for="auto-plantilla" class="zd-label">Plantilla</label>
+      <select id="auto-plantilla" class="zd-select"></select>
 
-  <div class="controles">
-    <button id="auto-crear" class="zd-btn zd-btn--secondary" type="button">Crear automatización</button>
+      <div class="zd-form-actions">
+        <button id="auto-siguiente" class="zd-btn zd-btn--primary" type="button" disabled>Siguiente</button>
+      </div>
+    </div>
+
+    <div id="auto-paso-2" hidden>
+      <p id="auto-resumen" class="ayuda"></p>
+      <div id="auto-valores"></div>
+
+      <label for="auto-cron" class="zd-label">Horario (minuto hora día-del-mes mes día-de-la-semana)</label>
+      <input id="auto-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *">
+
+      <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional; no se puede cambiar después)</label>
+      <input id="auto-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
+
+      <div class="zd-form-actions">
+        <button id="auto-volver" class="zd-btn zd-btn--secondary" type="button">Volver</button>
+        <button id="auto-crear" class="zd-btn zd-btn--primary" type="button">Crear automatización</button>
+      </div>
+    </div>
   </div>
 
   <div class="zd-table-wrap zd-table-scroll"><table id="auto-lista" class="zd-table"></table></div>
