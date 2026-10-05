@@ -2265,6 +2265,76 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 **Estado:** firme.
 
+### DEC-125 — CH-21b: el catálogo inicial llega a una instalación nueva con una siembra que solo crea lo que falta
+
+**Contexto.** `Plantilla` está vacía en una instalación nueva: la migración solo crea la tabla y `prisma/seed.ts` solo crea el tenant "Food Store". D3 pide que el catálogo inicial cubra los casos validados y el selector de plantillas de la consola queda sin opciones. DEC-61 persistió el catálogo porque P1 lo escribe por API, y DEC-68 reemplaza en el lugar, sin versiones. Exploración: `openspec/changes/CH-21b-catalogo-inicial/exploration.md`.
+
+**Opciones.** (a) Siembra con ids fijos que crea la fila solo si falta, llamada desde `prisma/seed.ts` (que corre en cada arranque del contenedor), con la lógica en `src/`. (b) Migración de datos `INSERT ... ON CONFLICT DO NOTHING`. (c) Upsert al arrancar el servidor. (d) Sin siembra: cuerpos `POST /plantillas` documentados.
+
+**Decisión.** (a).
+
+**Por qué.** Sigue el precedente de la siembra del tenant, no pisa las ediciones del operador (DEC-68) y la lógica queda en `src/`, donde se compila y se prueba. (c) pisaría esas ediciones; (b) es inmutable una vez aplicada; (d) deja la demo con el selector vacío.
+
+**Se resigna.** Una corrección posterior al SQL sembrado no llega a las filas ya creadas: se aplica por `PUT` o con una decisión nueva. Quien tenga acceso a la API puede editar las filas sembradas (riesgo preexistente: escritura del catálogo sin autorización).
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-126 — CH-21b: `reporte-diario` queda fuera del catálogo inicial y se documenta como límite del artefacto
+
+**Contexto.** DEC-29 y DEC-69 dejaron `reporte-diario` sin consulta canónica. En `master` no hay vistas `v_pedido` ni `v_item_pedido` verificadas para Food Store (Medusa tiene la definición, sin `total` y sin pedidos sembrados), y el experimento `experimento/reporte-diario` no está fusionado. El motor ejecuta una consulta por corrida (DEC-85), no tiene parámetro de fecha relativa (DEC-50) y no envía con cero filas (DEC-84); el reporte original enviaba el día vacío y tenía tres bloques.
+
+**Opciones.** (a) Fuera, documentado como límite del artefacto; el catálogo inicial son dos plantillas verificadas. (b) Incluirla con una consulta de un solo bloque, lo que exige antes decidir el vocabulario canónico de `pedido.estado`, la zona y el tipo de `fechaCreacion`, la moneda y `precioUnitario`, y verificarla contra datos reales.
+
+**Decisión.** (a).
+
+**Por qué.** Una plantilla que no se pudo verificar produciría reportes plausibles y falsos (riesgo 6 del mapa de historias), y adaptar el motor para cubrirla va contra la regla 6. El experimento queda registrado como pista para un corte futuro; si se retoma, sus decisiones se renumeran desde la siguiente libre, porque sus propuestas DEC-39 a DEC-44 chocan con las de `master`.
+
+**Se resigna.** D3 queda cubierto en dos de tres casos. El reporte diario del estudio previo (tres bloques, día vacío enviado) no se reproduce y se documenta como límite del artefacto para el Cap. 6.
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-127 — CH-21b: la plantilla `stock-fisico` conserva la exclusión de productos con receta y declara `receta_componente`
+
+**Contexto.** La consulta verificada en CH-16d lee `v_receta_componente`, entidad opcional que el contrato etiqueta solo para `stock-producible`. El informe M4 da `stock-fisico` por aplicable aunque esa entidad no esté mapeada, pero la compuerta de DEC-71 rechaza (409, o rechazo en una corrida) la plantilla que la declara cuando la conexión no tiene la vista válida.
+
+**Opciones.** (a) Etiquetar también `STOCK_FISICO` en `receta_componente.productoId` (como DEC-36, el contrato se ajusta a la consulta). (b) Conservar la consulta verificada, declarar la entidad y documentar que `stock-fisico` exige `receta_componente` mapeada; una vista vacía es un mapeo válido para un tenant sin recetas. (c) Quitar el `NOT EXISTS`.
+
+**Decisión.** (b).
+
+**Por qué.** Conserva la semántica validada contra el original sobre Food Store real. (a) volvería inaplicable la plantilla para tenants sin recetas; (c) cambiaría lo validado y reabriría la divergencia entre stock declarado y producible (DEC-28, DEC-36).
+
+**Se resigna.** Un tenant sin recetas debe registrar una vista vacía. El informe M4 y la compuerta de DEC-71 difieren para esta plantilla, así que el "deshabilitada con motivo" de CH-21c se deriva de las entidades de la propia plantilla y no solo de la etiqueta de M4.
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-128 — CH-21b: sin descripción ni ícono en el modelo; tolerancias iniciales provisorias
+
+**Contexto.** C-12 de la skill de diseño pide `descripcion` e `icono`; el modelo no los tiene. El panel (P-02) necesitará título y descripción en lenguaje de negocio, distintos del texto de la consola. La tolerancia de frescura existe en el modelo (DEC-66) y no se aplica hasta CH-24.
+
+**Opciones.** (a) Sin columnas nuevas en CH-21b; el primer consumidor (CH-21c) resuelve el texto, como `TEMAS` en `src/correo.ts`. (b) Migración aditiva con `descripcion` e `icono` opcionales.
+
+**Decisión.** (a). Las tolerancias iniciales sembradas son 60 minutos para `stock-fisico` y 120 para `stock-producible`, tomadas de la maqueta del diseño, **provisorias**: no hay otra fuente en el repositorio y se revisan al llegar CH-24.
+
+**Por qué.** Evita fijar en el modelo un texto de consola que el panel va a necesitar distinto, y no agrega migración.
+
+**Se resigna.** `GET /plantillas` no trae descripción ni ícono hasta que un consumidor lo decida.
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas; los valores de tolerancia son provisorios por falta de fuente. No inferido por el agente.
+
+**Estado:** firme.
+
 ---
 
 ## Compuertas abiertas
