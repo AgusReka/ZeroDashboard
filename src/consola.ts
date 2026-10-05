@@ -45,9 +45,11 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   body.zd-root { padding-bottom: var(--space-10); }
   body.zd-root > :not(#barra-tenant) { margin-inline: max(var(--space-8), calc((100% - 58rem) / 2)); }
   /* T4: sticky and violet from the shared bar; amber while no tenant is selected, with
-     the text saying so. Without :has() the bar stays violet and the text still states it. */
+     the text saying so. Without :has() the bar stays violet, so the no-tenant text keeps its own
+     underline to stay distinct from the active-tenant state. */
   #barra-tenant { flex-wrap: wrap; padding-block: var(--space-2); }
   #tenant-activo { margin-left: auto; text-align: right; font-size: var(--text-md); font-weight: var(--weight-bold); }
+  #tenant-activo.sin-tenant { text-decoration: underline; text-decoration-color: var(--warn); text-decoration-thickness: 2px; text-underline-offset: 3px; }
   .zd-tenantbar:has(#tenant-activo.sin-tenant) { background: var(--warn-soft); color: var(--warn-text); box-shadow: inset 0 -2px 0 var(--warn); }
   #barra-tenant .zd-select { width: auto; max-width: 18rem; min-height: var(--control-h-sm); }
   #barra-tenant .zd-select:focus-visible { outline-color: var(--tenant-on); border-color: var(--tenant-on); }

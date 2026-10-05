@@ -190,3 +190,9 @@ Check in light and dark, at about 360 px and 1280 px wide, in Chromium and Firef
 - [ ] Disabled buttons look disabled
 
 Firefox note: the amber no-tenant bar needs `:has()` (Firefox 121 or later). On an older Firefox the bar stays violet while its text still states no tenant; the proposal accepts this fallback.
+
+## PR2 verification addendum (orchestrator, 2026-10-05)
+
+- `bash scripts/smoke.sh` against the real Compose stack (Docker up, the project's own `zerodashboard-*` containers): `SMOKE TEST PASSED`, 36 OK lines, including `/ui/styles.css` and `/ui/components/components.css` -> 200 `text/css` with no tenant header and `/consola links /ui/styles.css`. This closes the PR1b gap (image boots and serves the stylesheet).
+- Independent verifier (fresh context): PASS WITH WARNINGS, 0 CRITICAL. W1 fixed in this PR: a non-`:has()` underline for `#tenant-activo.sin-tenant` so the no-tenant state stays distinct without `:has()` (script block hash unchanged, `300f0cf9...`; `npx tsx --test src/consola.test.ts` 31/31; `npx tsc --noEmit` clean). W2 remains: the manual light/dark screenshot checklist (task 2.6).
+- `npm test` full run is red on this machine for an environment reason only: the Saleor stack holds port 5432, so the live-database suites try to log in with the wrong credentials. Not related to this change.
