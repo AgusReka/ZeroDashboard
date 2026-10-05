@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from './generated/prisma/client.js';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
-import { cronValido } from './automatizaciones.js';
+import { cronValido, proximaEjecucion } from './automatizaciones.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
 import { LIMITE_LISTADO } from './consultas-guardadas.js';
@@ -180,7 +180,14 @@ export function registerAutomatizacionRoutes(
         }),
         select: AutomatizacionCompleta,
       });
-      return reply.code(201).send({ automatizacion });
+      // CH-21c (DEC-129): two additive fields. The first run is computed from the stored
+      // `creadaEn`, the scheduler's own lower edge, and sent as a UTC instant with the
+      // zone it was resolved in, so the client formats it in that zone, not its own.
+      return reply.code(201).send({
+        automatizacion,
+        proximaEjecucion: proximaEjecucion(cron, automatizacion.creadaEn, zonaHoraria).toISOString(),
+        zonaHoraria,
+      });
     },
   );
 

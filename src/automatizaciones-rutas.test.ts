@@ -7,6 +7,7 @@ import { PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { destinatarioDe, registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
+import { proximaEjecucion } from './automatizaciones.js';
 
 /**
  * CH-13 units 3 and 5: create, list, get and deactivate an automation (tasks 3.1–3.5),
@@ -216,6 +217,21 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id: automatizacion.id } });
     assert.equal(fila.tenantId, tenantA);
     assert.equal(fila.cron, '0 8 * * 1-5');
+  });
+
+  test('CH-21c R1 the 201 adds the first run and the zone; the automation itself is unchanged', async () => {
+    const respuesta = await crear(cuerpo());
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    const cuerpo201 = respuesta.json();
+    assert.deepEqual(Object.keys(cuerpo201).sort(), ['automatizacion', 'proximaEjecucion', 'zonaHoraria']);
+    assert.deepEqual(
+      Object.keys(cuerpo201.automatizacion).sort(),
+      ['activo', 'conexionId', 'creadaEn', 'cron', 'destinatario', 'id', 'plantillaId', 'valores'],
+    );
+    const { creadaEn, cron } = cuerpo201.automatizacion;
+    assert.equal(cuerpo201.proximaEjecucion, proximaEjecucion(cron, new Date(creadaEn), 'UTC').toISOString());
+    assert.ok(new Date(cuerpo201.proximaEjecucion).getTime() > new Date(creadaEn).getTime());
+    assert.equal(cuerpo201.zonaHoraria, 'UTC');
   });
 
   test('CH-14 6.1 a valid recipient persists trimmed and is returned by create and get', async () => {

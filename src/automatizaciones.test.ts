@@ -7,6 +7,7 @@ import {
   decidirNotificacion,
   esFalloReintentable,
   estaVencida,
+  proximaEjecucion,
   type CategoriaEnvio,
   type CierreNotificado,
   type MarcaNotificacion,
@@ -159,6 +160,55 @@ describe('estaVencida — a fire inside (desde, hasta] makes the automation due'
     const hasta = t('2026-09-29T09:00:00Z');
     assert.throws(() => estaVencida('@daily', desde, hasta, UTC));
     assert.throws(() => estaVencida('* * * * * *', desde, hasta, UTC));
+  });
+});
+
+// ---- CH-21c: the first scheduled run reported by the create response (DEC-129) -----
+
+describe('proximaEjecucion — the first fire strictly after creation, in the configured zone', () => {
+  test('N1-N4 weekday ranges, weekends and the configured zone', () => {
+    // 2026-10-02 is a Friday and 2026-10-03 a Saturday.
+    const casos: [string, string, string, string][] = [
+      // Spec "First run after creation": created at 10:00 UTC, fires 08:30 the next day.
+      ['30 8 * * *', '2026-10-02T10:00:00Z', UTC, '2026-10-03T08:30:00.000Z'],
+      // N1: Monday to Friday, created on Friday after the fire, skips the weekend.
+      ['30 8 * * 1-5', '2026-10-02T12:00:00Z', UTC, '2026-10-05T08:30:00.000Z'],
+      // N2: Monday to Saturday, the same instant, fires on Saturday.
+      ['30 8 * * 1-6', '2026-10-02T12:00:00Z', UTC, '2026-10-03T08:30:00.000Z'],
+      // N3: Monday to Friday (and to Saturday), created on Saturday after the fire.
+      ['30 8 * * 1-5', '2026-10-03T09:00:00Z', UTC, '2026-10-05T08:30:00.000Z'],
+      ['30 8 * * 1-6', '2026-10-03T09:00:00Z', UTC, '2026-10-05T08:30:00.000Z'],
+      // N4: the fields resolve in the configured zone (UTC-3 all year), not in UTC.
+      ['30 8 * * *', '2026-10-02T12:00:00Z', BUENOS_AIRES, '2026-10-03T11:30:00.000Z'],
+      ['0 8 * * *', '2026-10-02T12:00:00Z', BUENOS_AIRES, '2026-10-03T11:00:00.000Z'],
+    ];
+    for (const [cron, desde, zona, esperada] of casos) {
+      assert.equal(
+        proximaEjecucion(cron, t(desde), zona).toISOString(),
+        esperada,
+        `${cron} from ${desde} in ${zona}`,
+      );
+    }
+  });
+
+  test('N5 a creation exactly at a fire minute reports the next one, as the scheduler reads it', () => {
+    const cron = '30 8 * * *';
+    const creadaEn = t('2026-10-02T08:30:00.000Z');
+    const proxima = proximaEjecucion(cron, creadaEn, UTC);
+    assert.equal(proxima.toISOString(), '2026-10-03T08:30:00.000Z');
+    // The scheduler's window starts at `creadaEn`, exclusive: the reported instant is
+    // the first one it would find due, and nothing before it is.
+    assert.equal(estaVencida(cron, creadaEn, proxima, UTC), true);
+    assert.equal(estaVencida(cron, creadaEn, new Date(proxima.getTime() - 1), UTC), false);
+  });
+
+  test('N6 an expression outside standard cron throws instead of guessing', () => {
+    const desde = t('2026-10-02T12:00:00Z');
+    for (const cron of ['@daily', '0 30 8 * * *']) {
+      assert.throws(() => proximaEjecucion(cron, desde, UTC), {
+        message: 'proximaEjecucion: horario fuera de cron estándar',
+      });
+    }
   });
 });
 
