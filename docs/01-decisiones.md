@@ -2335,6 +2335,76 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 **Estado:** firme.
 
+### DEC-129 — CH-21c: el alta en la consola traduce frecuencia y hora a cron en el cliente y el servidor calcula la primera ejecución
+
+**Contexto.** La skill de diseño define el horario como frecuencia más hora (C-11); la consola y el modelo usan cron estándar de cinco campos (DEC-76), en una zona horaria global (DEC-77, `UTC` por defecto). El navegador no puede usar `cron-parser` (no hay build) ni conoce la zona del despliegue. El panel (CH-23, P-04) necesitará hora y días, y nunca debería recibir cron del cliente. Exploración: `openspec/changes/CH-21c-alta-en-dos-pasos/exploration.md`.
+
+**Opciones.** (a) Solo el campo cron. (b) Valores predefinidos de frecuencia y hora que el script traduce a cron, con una opción "personalizado" que muestra el campo cron. (c) Endpoint de vista previa en el servidor. (d) `POST /automatizaciones` acepta `frecuencia` y `hora` y traduce en el servidor. Primera ejecución: (P0) no se muestra; (P1) el cuerpo 201 trae `proximaEjecucion` y `zonaHoraria`; (P2) vista previa en vivo.
+
+**Decisión.** (b) con (P1). Frecuencias de la consola: `diaria` (`M H * * *`), `lun-vie` (`M H * * 1-5`), `lun-sab` (`M H * * 1-6`) y `personalizado` (campo cron).
+
+**Por qué.** No agrega rutas ni exenciones y el servidor sigue validando todo cron con `cronValido`. La traducción son tres líneas con tres conjuntos de días; su duplicación en el panel es barata y se fija con vectores de prueba. La primera ejecución sale del servidor, que conoce la zona, y sirve además de contraste con lo que el operador eligió.
+
+**Se resigna.** Antes de crear, el formulario solo puede decir "en la zona horaria configurada del despliegue"; la zona aparece en la respuesta. "Cada N horas" queda dentro de "personalizado". El cuerpo 201 crece con dos campos aditivos. La primera ejecución es un horario, no una promesa (DEC-95).
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-130 — CH-21c: los campos de C-11 sin respaldo en el modelo quedan como límite del artefacto
+
+**Contexto.** C-11 lista `nombre`, `consulta_guardada_id`, `destinatarios` (lista) y parámetros opcionales. El modelo tiene un único `destinatario` (DEC-82), no tiene nombre por automatización (DEC-79, sin edición), toda plantilla es dueña de su SQL (DEC-85) y todo parámetro es obligatorio (DEC-50).
+
+**Opciones.** (a) Omitirlos y documentar el límite. (b) Columna aditiva `nombre` opcional. (c) Cambiar el motor para aceptar consulta guardada o varios destinatarios.
+
+**Decisión.** (a).
+
+**Por qué.** (c) amplía el motor (regla 6). (b) cabe, pero agrega migración, esquema y proyección sin que la demo la necesite.
+
+**Se resigna.** La lista identifica una automatización por plantilla, conexión y horario. Un solo destinatario por automatización. Material para el Cap. 6 como límite del artefacto.
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-131 — CH-21c: N3 se cumple con el tema por etiqueta y una vista previa de solo lectura; la descripción de la consola vive en un mapa del cliente
+
+**Contexto.** N3 pide un formato de correo asociado a la plantilla. El formato ya está asociado por etiqueta (DEC-65, DEC-85 a) y `texto_sin_datos` contradice DEC-84. DEC-128 dejó la descripción y el ícono al primer consumidor.
+
+**Opciones.** (a) Vista previa de solo lectura en el paso 2 (asunto, título, color, nota sobre las columnas), armada con nodos y `textContent`, más un mapa del cliente por etiqueta para la descripción. (b) Agregar a `Plantilla` los campos configurables de C-13. (c) Resolver el HTML en el servidor y mostrarlo en el cliente.
+
+**Decisión.** (a), sin íconos ni tolerancia en la tarjeta.
+
+**Por qué.** (b) cambia el renderizador, el esquema estricto de plantillas y las semillas, y toca el camino de DEC-107 y DEC-108. (c) rompe el límite de `textContent` de la consola.
+
+**Se resigna.** El contenido del correo no es configurable por plantilla. El panel necesitará su propio texto de negocio.
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-132 — CH-21c: `GET /conexiones` lista las conexiones del tenant activo para el desplegable del paso 1
+
+**Contexto.** El alta pide una conexión y hoy se escribe su UUID a mano porque no existe una ruta de listado (`conexiones.ts` solo registra `POST /conexiones` y `POST /conexiones/:id/prueba`). La plantilla "deshabilitada con motivo" (DEC-127) necesita la conexión elegida en el paso 1.
+
+**Opciones.** (a) Ruta nueva `GET /conexiones` con alcance de tenant que devuelve `id` y `nombre`. (b) Seguir con el UUID a mano.
+
+**Decisión.** (a). La proyección nunca incluye `credencial` ni otros campos sensibles; exige `X-Tenant-Id` como el resto de las rutas con alcance (DEC-15) y suma su fila al barrido de aislamiento T2.
+
+**Por qué.** Evita pegar UUID en la consola y se ve terminado en la demo grabada. La proyección segura ya existe (`ConexionPublica`).
+
+**Se resigna.** Una ruta más y su prueba de dos tenants (regla 2). Un tope de filas como el del resto de los listados.
+
+**Decidido por:** el usuario, 2026-10-05, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
 ---
 
 ## Compuertas abiertas
