@@ -214,6 +214,7 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 
       <div class="zd-form-actions">
         <button id="auto-siguiente" class="zd-btn zd-btn--primary" type="button" disabled>Siguiente</button>
+        <button id="auto-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
       </div>
     </div>
 
@@ -402,6 +403,7 @@ var pasoAlta1 = document.getElementById('auto-paso-1');
 var pasoAlta2 = document.getElementById('auto-paso-2');
 var avisoAlta = document.getElementById('auto-aviso');
 var botonSiguienteAuto = document.getElementById('auto-siguiente');
+var botonCancelarAuto = document.getElementById('auto-cancelar');
 var resumenAlta = document.getElementById('auto-resumen');
 var botonVolverAuto = document.getElementById('auto-volver');
 
@@ -1255,12 +1257,14 @@ async function cargarCatalogoPlantillas() {
 // controlDeValor exactly as the query editor builds them.
 async function elegirPlantilla() {
   var id = selectorPlantilla.value;
+  var g = generacionAlta;
   vaciar(contenedorValoresAuto);
   filasValoresAuto = [];
   if (id === '') { return; }
   var resultado = await pedirAutomatizacion('/plantillas/' + encodeURIComponent(id));
-  // A later choice made while this one was in flight wins.
-  if (resultado === null || selectorPlantilla.value !== id) { return; }
+  // A later choice made while this one was in flight wins, and so does any wizard reset
+  // (a tenant switch included) that happened in between.
+  if (resultado === null || g !== generacionAlta || selectorPlantilla.value !== id) { return; }
   if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
   var parametros = resultado.cuerpo.plantilla.parametros;
   (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
@@ -1424,6 +1428,10 @@ entradaConexionAuto.addEventListener('input', function () {
 
 botonNuevaAuto.addEventListener('click', function () {
   abrirAlta();
+});
+
+botonCancelarAuto.addEventListener('click', function () {
+  cerrarAlta();
 });
 
 // Re-checks the gate before moving, so a stale enabled state cannot skip step 1.

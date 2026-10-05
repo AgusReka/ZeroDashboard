@@ -168,6 +168,7 @@ const IDS = [
   'auto-paso-2',
   'auto-aviso',
   'auto-siguiente',
+  'auto-cancelar',
   'auto-resumen',
   'auto-volver',
 ] as const;
@@ -1120,6 +1121,55 @@ describe('the console document, served by the real route', () => {
 
     abrirAlta(escenario);
     assert.deepEqual(pasoVisible(escenario), [1, 1], 'reopening starts on step 1');
+  });
+
+  /** Design PR2a W7: Cancelar closes and resets. */
+  test('CH-21c W7 Cancelar closes the wizard and resets it', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    abrirAlta(escenario);
+    await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-3');
+    nodo(escenario, 'auto-cron').value = '0 6 * * *';
+    nodo(escenario, 'auto-volver').disparar('click');
+
+    const pedidas = escenario.peticiones.length;
+    nodo(escenario, 'auto-cancelar').disparar('click');
+    assert.equal(escenario.peticiones.length, pedidas, 'Cancelar sends nothing');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
+
+    abrirAlta(escenario);
+    assert.deepEqual(pasoVisible(escenario), [1, 1]);
+    for (const id of ['auto-conexion', 'auto-cron', 'auto-plantilla']) {
+      assert.equal(nodo(escenario, id).value, '', id + ' is reset');
+    }
+    assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0);
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
+  });
+
+  /** Spec "Late response after a tenant switch is ignored" (template detail half). */
+  test('CH-21c W10 a template detail answered after a tenant switch builds no value control', async () => {
+    const escenario = await arrancar([
+      { id: 't-1', nombre: 'Food Store' },
+      { id: 't-2', nombre: 'Otra tienda' },
+    ]);
+    await elegirTenant(escenario, [], [], 't-1');
+    abrirAlta(escenario);
+    let responder!: (cuerpo: unknown) => void;
+    const diferido = new Promise((resolver) => { responder = resolver; });
+    const plantilla = nodo(escenario, 'auto-plantilla');
+    plantilla.value = 'p-1';
+    escenario.respuestas.push({ status: 200, cuerpo: diferido });
+    plantilla.disparar('change');
+    await asentar();
+
+    // Tenant B's catalog carries the same template id, so only the wizard token can tell.
+    await elegirTenant(escenario, [], [], 't-2');
+    abrirAlta(escenario);
+    plantilla.value = 'p-1';
+    responder({ plantilla: { parametros: [{ nombre: 'n', tipo: 'numero' }] } });
+    await asentar();
+    assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, "A's late detail is dropped");
   });
 
   /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */
