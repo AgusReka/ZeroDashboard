@@ -104,6 +104,27 @@ export function estaVencida(cron: string, desde: Date, hasta: Date, zona: string
   return siguiente.getTime() <= hasta.getTime();
 }
 
+/**
+ * CH-21c (DEC-129): the first fire of `cron` strictly after `desde`, resolved in the
+ * deployment's configured zone `zona` (DEC-77). The create response reports it with
+ * `desde = creadaEn`, the same lower edge and the same library call `estaVencida` uses, so
+ * the reported instant is exactly the first one the scheduler finds due. It is read-side
+ * only: nothing is persisted, and it is a schedule, not a promise (DEC-95).
+ *
+ * There is no catch: the route already accepted `cron` with `cronValido` in this same zone,
+ * and a five-field expression has no year, so a valid one always has a next fire. An
+ * expression outside standard cron is a caller error and throws, as in `estaVencida`.
+ */
+export function proximaEjecucion(cron: string, desde: Date, zona: string): Date {
+  const campos = camposCron(cron);
+  if (campos === null) {
+    throw new Error('proximaEjecucion: horario fuera de cron estándar');
+  }
+  return CronExpressionParser.parse(campos.join(' '), { currentDate: desde, tz: zona })
+    .next()
+    .toDate();
+}
+
 // ---- closing a run (X2) -------------------------------------------------------------
 
 /** Why a run stopped before anything was dialed. Nothing reached the tenant connection. */

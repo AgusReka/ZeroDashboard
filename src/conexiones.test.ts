@@ -5,9 +5,10 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { registerConexionRoutes } from './conexiones.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { cifrarCredencial } from './cripto-credencial.js';
+import { LIMITE_LISTADO } from './listados.js';
 
 /**
  * Integration cases for CH-03 (tasks 5.1–5.4, plus two cases added after verify to
@@ -94,6 +95,48 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
   });
 }
 
+/**
+ * CH-21c R2: a client on which every model method throws, except the tenant lookup the
+ * hooks make (the `clienteSoloTenant` idiom of `automatizaciones-rutas.test.ts`). A route
+ * that answers before any read is proven here with no database at all.
+ */
+function clienteSoloTenant(tenant: { id: string; nombre: string; activo: boolean }): PrismaAislado {
+  const modeloQueLanza = (modelo: string) =>
+    new Proxy({}, {
+      get: (_objetivo, metodo) => async () => {
+        throw new Error(`the route read ${modelo}.${String(metodo)} too early`);
+      },
+    });
+  return new Proxy({}, {
+    get: (_objetivo, modelo) =>
+      modelo === 'tenant' ? { findUnique: async () => tenant } : modeloQueLanza(String(modelo)),
+  }) as PrismaAislado;
+}
+
+describe('GET /conexiones — tenant header, no database (CH-21c R2)', () => {
+  let sinLecturas!: FastifyInstance;
+
+  before(async () => {
+    sinLecturas = Fastify({ logger: false });
+    const cliente = clienteSoloTenant({ id: 't-activo', nombre: 'Activo', activo: true });
+    registrarContextoTenant(sinLecturas, cliente);
+    registerConexionRoutes(sinLecturas, cliente);
+    await sinLecturas.ready();
+  });
+
+  after(async () => {
+    await sinLecturas.close();
+  });
+
+  test('R2 the listing exists and, with no x-tenant-id, answers 400 tenant-no-indicado', async () => {
+    // Not exempt (DEC-132): connections are tenant data, so the hook refuses first.
+    assert.equal(sinLecturas.hasRoute({ method: 'GET', url: '/conexiones' }), true);
+    const respuesta = await sinLecturas.inject({ method: 'GET', url: '/conexiones' });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+  });
+});
+
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
@@ -119,6 +162,8 @@ describe(
      * instead of depending on how the target database was brought up.
      */
     let tenantPruebas!: string;
+    /** CH-21c: fresh tenants for the listing cases, so each one sees only its own rows. */
+    const tenantsListado: string[] = [];
 
     before(async () => {
       prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -144,6 +189,10 @@ describe(
       // before the tenant itself can.
       await prisma.conexion.deleteMany({ where: { tenantId: tenantPruebas } });
       await prisma.tenant.delete({ where: { id: tenantPruebas } });
+      if (tenantsListado.length > 0) {
+        await prisma.conexion.deleteMany({ where: { tenantId: { in: tenantsListado } } });
+        await prisma.tenant.deleteMany({ where: { id: { in: tenantsListado } } });
+      }
       await prisma.$disconnect();
       await app.close();
     });
@@ -463,6 +512,82 @@ describe(
 
       assert.equal(respuesta.statusCode, 404, respuesta.body);
       assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
+    });
+
+    // ---- CH-21c: the connection listing for the console's step 1 (DEC-132) ---------
+
+    /** A tenant of its own for one listing case; the suite's `after` removes it. */
+    async function tenantListado(etiqueta: string): Promise<string> {
+      const { id } = await prisma.tenant.create({ data: { nombre: `CH-21c ${etiqueta} ${Date.now()}` } });
+      tenantsListado.push(id);
+      return id;
+    }
+
+    function listar(tenantId: string) {
+      return app.inject({ method: 'GET', url: '/conexiones', headers: { 'x-tenant-id': tenantId } });
+    }
+
+    /** One fixture row, written with the raw client: the listing never dials it. */
+    const filaFixture = (tenantId: string, nombre: string, credencial: string) => ({
+      tenantId,
+      nombre,
+      motor: 'postgres',
+      host: 'host-del-listado-ch21c.invalid',
+      puerto: 5432,
+      baseDeDatos: 'nunca-se-disca',
+      usuarioDb: 'nadie',
+      credencial,
+    });
+
+    test("C1 the listing has exactly the tenant's rows, id and nombre only, by nombre then id", async () => {
+      const tenantId = await tenantListado('C1');
+      const secreto = `clave-del-listado-ch21c-${Date.now()}`;
+      const sobre = cifrarCredencial(secreto);
+      // Written in reverse name order, so the order asserted below is the route's.
+      const beta = await prisma.conexion.create({ data: filaFixture(tenantId, 'Replica Beta', sobre) });
+      const alfa = await prisma.conexion.create({ data: filaFixture(tenantId, 'Replica Alfa', sobre) });
+
+      const respuesta = await listar(tenantId);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const cuerpo = respuesta.json() as { conexiones: Record<string, unknown>[]; truncado: boolean };
+      assert.deepEqual(cuerpo, {
+        conexiones: [
+          { id: alfa.id, nombre: 'Replica Alfa' },
+          { id: beta.id, nombre: 'Replica Beta' },
+        ],
+        truncado: false,
+      });
+      for (const fila of cuerpo.conexiones) {
+        assert.deepEqual(Object.keys(fila), ['id', 'nombre']);
+      }
+      // Rules 5 and 7: no credential key, value or envelope, and no other column either.
+      for (const fuga of ['credencial', secreto, sobre, 'host-del-listado-ch21c.invalid', tenantId]) {
+        assert.ok(!respuesta.body.includes(fuga), `the listing leaked ${fuga === secreto ? 'the secret' : fuga}`);
+      }
+    });
+
+    test(`C2 a tenant with more than ${LIMITE_LISTADO} connections gets the cap and truncado`, async () => {
+      const tenantId = await tenantListado('C2');
+      // One name for every row, so the order falls to the `id` tie-break.
+      await prisma.conexion.createMany({
+        data: Array.from({ length: LIMITE_LISTADO + 1 }, () =>
+          filaFixture(tenantId, 'Replica repetida', 'nunca-se-descifra'),
+        ),
+      });
+
+      const respuesta = await listar(tenantId);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const { conexiones, truncado } = respuesta.json() as { conexiones: { id: string }[]; truncado: boolean };
+      assert.equal(conexiones.length, LIMITE_LISTADO);
+      assert.equal(truncado, true);
+      const ids = conexiones.map((fila) => fila.id);
+      assert.deepEqual(ids, [...ids].sort());
+    });
+
+    test('C3 a tenant with no connections gets an empty, untruncated list', async () => {
+      const respuesta = await listar(await tenantListado('C3'));
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.deepEqual(respuesta.json(), { conexiones: [], truncado: false });
     });
   },
 );

@@ -38,6 +38,10 @@ import type { Notificador } from './notificador.js';
  * is missing from it is an obvious omission in review, which a hand-written case per
  * route is not.
  *
+ * Listing routes (`GET /consultas-guardadas`, `GET /automatizaciones`, CH-21c's
+ * `GET /conexiones`) have no foreign id to refuse, so the 404 table cannot express them:
+ * each is proven by its own two-direction listing test below instead.
+ *
  * The target is the project's own Compose `db` service. `docker-compose.yml` does not
  * publish its port, so either publish it with a local override or point these
  * variables at the running server (defaults match `.env.example`):
@@ -524,6 +528,30 @@ describe(
           `${llamante.nombre} must not see ${duenio.nombre}'s saved query`,
         );
         assert.ok(!respuesta.body.includes(duenio.tenantId));
+      }
+    });
+
+    test("CH-21c T2-L the connection listing never shows the other tenant's connection", async () => {
+      for (const [llamante, duenio] of [
+        [a, b],
+        [b, a],
+      ] as const) {
+        const respuesta = await app.inject({
+          method: 'GET',
+          url: '/conexiones',
+          headers: cabeceras(llamante),
+        });
+        assert.equal(respuesta.statusCode, 200, respuesta.body);
+        const ids = (respuesta.json() as { conexiones: { id: string }[] }).conexiones.map((f) => f.id);
+        assert.ok(ids.includes(llamante.conexionId), 'the caller must see its own connection');
+        assert.ok(!ids.includes(duenio.conexionId), `${llamante.nombre} saw ${duenio.nombre}'s connection`);
+        // Neither the owner's id nor its name (`Replica A` / `Replica B`, set in
+        // `montarTenant`), nor any tenant id or credential, may reach the body.
+        const nombreDuenio = duenio === a ? 'Replica A' : 'Replica B';
+        assert.ok(!respuesta.body.includes(duenio.conexionId));
+        assert.ok(!respuesta.body.includes(nombreDuenio), `${llamante.nombre} saw ${nombreDuenio}`);
+        assert.ok(!respuesta.body.includes(duenio.tenantId));
+        assert.ok(!respuesta.body.includes(objetivo.password));
       }
     });
 

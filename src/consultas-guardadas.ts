@@ -4,6 +4,7 @@ import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
+import { LIMITE_LISTADO } from './listados.js';
 import { analizarSentencia, TIPOS_PARAMETRO, validarDeclaracion } from './parametros.js';
 
 /**
@@ -36,13 +37,10 @@ export const ConsultaGuardadaCompleta = {
 } as const;
 
 /**
- * Hard cap on the list. DEC-10 removes delete, so this table only ever grows and an
- * uncapped `findMany` would be unbounded over the product's life. 200 matches the
- * `limite` ceiling of `/consultas/ejecutar`. There is no pagination parameter to see
- * past it (DEC-10), which is exactly why the response says `truncado` out loud
- * instead of silently returning a short list.
+ * The list cap now lives in `listados.ts` (CH-21c). It is imported for this module's own
+ * list and re-exported, so every existing importer of it from here keeps working.
  */
-export const LIMITE_LISTADO = 200;
+export { LIMITE_LISTADO };
 
 interface RegistroConsultaGuardadaBody {
   nombre: string;
