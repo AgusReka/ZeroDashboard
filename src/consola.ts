@@ -32,73 +32,100 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZeroDashboard — Consola de consultas</title>
+<!--
+  CH-21a (DEC-124): the shared stylesheet, served by exact exempt GET routes. The style
+  element below is the console's bridge, not a second design: it styles the nodes the
+  script builds or renames (their className is the script's, so they carry no zd-*
+  class) and lays out what the shared components do not cover. Tokens only.
+-->
+<link rel="stylesheet" href="/ui/styles.css">
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 62rem; padding: 1.5rem; line-height: 1.5; }
-  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
-  /* Sticky so T4's "permanent and unambiguous" survives scrolling. The z-index is
-     above the sticky table headers below, which share the same top edge. */
-  #barra-tenant { position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
-    flex-wrap: wrap; gap: .6rem; margin: -1.5rem -1.5rem 1rem; padding: .6rem 1.5rem;
-    background: Canvas; border-bottom: 1px solid rgba(128,128,128,.4); }
-  #barra-tenant label { margin: 0; }
-  #barra-tenant select { font: inherit; padding: .25rem .4rem; max-width: 18rem; }
-  #tenant-activo { margin-left: auto; text-align: right; }
-  #tenant-activo.sin-tenant { color: #b3261e; }
-  h2 { font-size: 1.1rem; margin: 2rem 0 .25rem; }
-  .ayuda { margin: 0 0 1.25rem; opacity: .75; font-size: .9rem; }
-  label { display: block; font-size: .85rem; font-weight: 600; margin: .75rem 0 .25rem; }
-  input, textarea { width: 100%; box-sizing: border-box; font: inherit; padding: .4rem .5rem; }
-  textarea { font-family: ui-monospace, monospace; resize: vertical; }
-  .controles { display: flex; align-items: flex-end; gap: .75rem; margin-top: .75rem; }
-  .controles label { margin: 0 0 .25rem; }
+  [hidden] { display: none !important; }
+  /* The bar spans the page; everything else sits in one centered column. */
+  body.zd-root { padding-bottom: var(--space-10); }
+  body.zd-root > :not(#barra-tenant) { margin-inline: max(var(--space-8), calc((100% - 58rem) / 2)); }
+  /* T4: sticky and violet from the shared bar; amber while no tenant is selected, with
+     the text saying so. Without :has() the bar stays violet, so the no-tenant text keeps its own
+     underline to stay distinct from the active-tenant state. */
+  #barra-tenant { flex-wrap: wrap; padding-block: var(--space-2); }
+  #tenant-activo { margin-left: auto; text-align: right; font-size: var(--text-md); font-weight: var(--weight-bold); }
+  #tenant-activo.sin-tenant { text-decoration: underline; text-decoration-color: var(--warn); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .zd-tenantbar:has(#tenant-activo.sin-tenant) { background: var(--warn-soft); color: var(--warn-text); box-shadow: inset 0 -2px 0 var(--warn); }
+  #barra-tenant .zd-select { width: auto; max-width: 18rem; min-height: var(--control-h-sm); }
+  #barra-tenant .zd-select:focus-visible { outline-color: var(--tenant-on); border-color: var(--tenant-on); }
+  .zd-tenantbar:has(#tenant-activo.sin-tenant) .zd-select:focus-visible { outline-color: var(--warn-text); border-color: var(--warn-text); }
+  .zd-h1 { margin: var(--space-8) 0 var(--space-2); }
+  .zd-h2 { margin: var(--space-9) 0 var(--space-2); }
+  .zd-label { display: block; margin: var(--space-5) 0 var(--space-2); }
+  .ayuda { margin: 0 0 var(--space-6); font-size: var(--text-help); color: var(--text-2); }
+  /* Parameter rows and automation values, built by the script. */
+  .parametro { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); margin-top: var(--space-4); }
+  .parametro label, #auto-valores label, .parametro-leyenda { font-size: var(--text-label); font-weight: var(--weight-semibold); color: var(--text-1); }
+  .parametro label, #auto-valores label { display: flex; flex: 1 1 8rem; flex-direction: column; gap: var(--space-2); min-width: 0; }
+  #auto-valores label { margin-top: var(--space-5); }
+  .parametro-nombre, .parametro-tipo, .parametro-valor { width: 100%; min-height: var(--control-h); padding: 0 var(--space-4);
+    border: var(--border-width) solid var(--border-2); border-radius: var(--radius-md); background: var(--surface-card);
+    color: var(--text-1); font: inherit; font-size: var(--text-body); font-weight: var(--weight-regular); }
+  .parametro-nombre:hover, .parametro-tipo:hover, .parametro-valor:hover { border-color: var(--border-strong); }
+  .parametro-nombre:focus-visible, .parametro-tipo:focus-visible, .parametro-valor:focus-visible {
+    outline: var(--focus-width) solid var(--focus-ring); outline-offset: 0; border-color: var(--focus-ring); }
+  #agregar-parametro { margin-top: var(--space-4); }
+  .controles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-5); margin-top: var(--space-5); }
   .controles > div { width: 10rem; }
-  button { font: inherit; padding: .45rem 1rem; cursor: pointer; }
-  button[disabled] { cursor: not-allowed; opacity: .5; }
-  .banner { margin: 1rem 0 0; padding: .7rem .9rem; border-left: .3rem solid #b3261e; background: rgba(179,38,30,.12); white-space: pre-wrap; }
-  .banner.exito { border-left-color: #1a7f37; background: rgba(26,127,55,.12); }
-  .estado { margin: 1rem 0 .25rem; font-size: .85rem; opacity: .8; }
+  .controles .zd-label { margin: 0 0 var(--space-2); }
+  .paginacion { margin-top: var(--space-5); }
+  /* Script-built buttons (Quitar, Cargar, Ver ejecuciones, Desactivar): small secondary. */
+  button:not(.zd-btn) { display: inline-flex; align-items: center; justify-content: center; height: var(--control-h-sm);
+    padding: 0 var(--space-4); border: var(--border-width) solid var(--border-2); border-radius: var(--radius-md);
+    background: var(--surface-card); color: var(--text-1); font: inherit; font-size: var(--text-xs);
+    font-weight: var(--weight-semibold); white-space: nowrap; cursor: pointer; }
+  button:not(.zd-btn):hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
+  button:not(.zd-btn):disabled { cursor: not-allowed; opacity: .5; }
+  .ver-ejecuciones + .desactivar { margin-left: var(--space-3); }
+  /* One alert region; a multi-line refusal keeps its line breaks. */
+  .banner { margin: var(--space-6) 0 0; padding: var(--space-5) var(--space-6); border: var(--border-width) solid var(--error-border);
+    border-left: var(--space-2) solid var(--error); border-radius: var(--radius-md); background: var(--error-soft);
+    color: var(--text-1); white-space: pre-wrap; }
+  .banner.exito { border-color: var(--ok-border); border-left-color: var(--ok); background: var(--ok-soft); }
+  .estado { margin: var(--space-6) 0 var(--space-2); font-size: var(--text-sm); color: var(--text-2); }
   /* The row-cap cut, styled so it cannot be mistaken for the pagination line it sits
-     next to: its own block, its own colour, and full opacity against the dimmed
-     status text. DEC-18 separates the two verdicts in the API; this separates them
-     on screen. */
-  .estado .corte { display: block; margin-top: .35rem; color: #b3261e; opacity: 1; }
-  .tabla-contenedor { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-  th, td { border: 1px solid rgba(128,128,128,.4); padding: .3rem .5rem; text-align: left; vertical-align: top; white-space: pre-wrap; }
-  th { position: sticky; top: 0; background: rgba(128,128,128,.15); }
-  td.nulo { opacity: .5; font-style: italic; }
-  .paginacion { display: flex; gap: .75rem; margin-top: .75rem; }
-  #guardadas { list-style: none; padding: 0; margin: .75rem 0 0; }
-  #guardadas li { display: flex; align-items: baseline; gap: .6rem; padding: .4rem 0; border-bottom: 1px solid rgba(128,128,128,.25); }
-  #guardadas li .ayuda { margin: 0; }
-  .parametro { display: flex; align-items: flex-end; gap: .6rem; }
-  .parametro label { flex: 1; }
-  select { font: inherit; padding: .4rem .5rem; }
+     next to or for the pager buttons: its own block, its own rule and colour, and
+     semibold against the quiet status text. DEC-18 separates the two verdicts in the
+     API; this separates them on screen. */
+  .estado .corte { display: block; margin-top: var(--space-3); padding-left: var(--space-4);
+    border-left: var(--space-2) solid var(--warn); color: var(--warn-text); font-weight: var(--weight-semibold); }
+  .zd-table-wrap { margin-top: var(--space-5); }
+  .zd-table-wrap:not(:has(th, td)) { border: 0; }
+  .zd-table td { white-space: pre-wrap; vertical-align: top; }
+  .zd-table td.nulo { color: var(--text-3); font-style: italic; }
+  #guardadas { list-style: none; padding: 0; margin: var(--space-5) 0 0; }
+  #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
+    border-bottom: var(--border-width) solid var(--border-1); }
+  #guardadas .ayuda { margin: 0; }
 </style>
 </head>
-<body>
+<body class="zd-root">
 <!--
   T4: the active tenant is named here at all times, above everything else and sticky,
   so no action is ever performed against a tenant the operator cannot see. The name is
   written with textContent — a tenant nombre is operator-authored but persisted and
   replayed later, which makes it a stored-input surface (regla 7).
 -->
-<header id="barra-tenant">
-  <label for="tenant">Tenant activo</label>
-  <select id="tenant"></select>
+<header id="barra-tenant" class="zd-tenantbar">
+  <label for="tenant" class="zd-tenantbar__label">Tenant activo</label>
+  <select id="tenant" class="zd-select"></select>
   <strong id="tenant-activo" class="sin-tenant">Ningún tenant seleccionado</strong>
 </header>
 
-<h1>Consola de consultas</h1>
+<h1 class="zd-h1">Consola de consultas</h1>
 <p class="ayuda">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
 
 <form id="formulario">
-  <label for="conexion">Identificador de la conexión registrada</label>
-  <input id="conexion" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0f1c…" required>
+  <label for="conexion" class="zd-label">Identificador de la conexión registrada</label>
+  <input id="conexion" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0f1c…" required>
 
-  <label for="sql">Sentencia SQL</label>
-  <textarea id="sql" rows="8" spellcheck="false" required>SELECT 1</textarea>
+  <label for="sql" class="zd-label">Sentencia SQL</label>
+  <textarea id="sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false" required>SELECT 1</textarea>
 
   <!--
     CH-11: one row per :nombre the statement uses (DEC-48). The page does no scanning:
@@ -107,7 +134,7 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   -->
   <p class="ayuda">Parámetros: declare cada :nombre que use la sentencia. Un valor vacío no se envía.</p>
   <div id="parametros"></div>
-  <button id="agregar-parametro" type="button">Agregar parámetro</button>
+  <button id="agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
 
   <div class="controles">
     <div>
@@ -118,10 +145,10 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
         so the cut could never happen, leaving the operator unable to observe from the
         only surface they have that a limit exists at all.
       -->
-      <label for="limite">Filas por página</label>
-      <input id="limite" type="number" min="1" value="50">
+      <label for="limite" class="zd-label">Filas por página</label>
+      <input id="limite" class="zd-input" type="number" min="1" value="50">
     </div>
-    <button id="ejecutar" type="submit">Ejecutar</button>
+    <button id="ejecutar" class="zd-btn zd-btn--primary" type="submit">Ejecutar</button>
   </div>
 </form>
 
@@ -133,17 +160,17 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   instead of saving it.
 -->
 <section id="guardado">
-  <h2>Consultas guardadas</h2>
+  <h2 class="zd-h2">Consultas guardadas</h2>
   <p class="ayuda">Guarda la sentencia que está ahora en el editor. No se puede editar ni borrar una consulta guardada: para corregirla, se guarda otra.</p>
 
-  <label for="nombre">Nombre</label>
-  <input id="nombre" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
+  <label for="nombre" class="zd-label">Nombre</label>
+  <input id="nombre" class="zd-input" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
 
-  <label for="descripcion">Descripción (opcional)</label>
-  <input id="descripcion" type="text" autocomplete="off">
+  <label for="descripcion" class="zd-label">Descripción (opcional)</label>
+  <input id="descripcion" class="zd-input" type="text" autocomplete="off">
 
   <div class="controles">
-    <button id="guardar" type="button">Guardar consulta</button>
+    <button id="guardar" class="zd-btn zd-btn--secondary" type="button">Guardar consulta</button>
   </div>
 
   <ul id="guardadas"></ul>
@@ -155,41 +182,41 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   purpose: a mistaken automation is deactivated and created again.
 -->
 <section id="automatizaciones">
-  <h2>Automatizaciones</h2>
+  <h2 class="zd-h2">Automatizaciones</h2>
   <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. No se puede editar ni reactivar una automatización: para corregirla, se desactiva y se crea otra.</p>
 
-  <label for="auto-plantilla">Plantilla</label>
-  <select id="auto-plantilla"></select>
+  <label for="auto-plantilla" class="zd-label">Plantilla</label>
+  <select id="auto-plantilla" class="zd-select"></select>
   <div id="auto-valores"></div>
 
-  <label for="auto-conexion">Identificador de la conexión registrada</label>
-  <input id="auto-conexion" type="text" autocomplete="off" spellcheck="false">
+  <label for="auto-conexion" class="zd-label">Identificador de la conexión registrada</label>
+  <input id="auto-conexion" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false">
 
-  <label for="auto-cron">Horario (minuto hora día-del-mes mes día-de-la-semana)</label>
-  <input id="auto-cron" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *">
+  <label for="auto-cron" class="zd-label">Horario (minuto hora día-del-mes mes día-de-la-semana)</label>
+  <input id="auto-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *">
 
-  <label for="auto-destinatario">Correo del destinatario (opcional; no se puede cambiar después)</label>
-  <input id="auto-destinatario" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
+  <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional; no se puede cambiar después)</label>
+  <input id="auto-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
 
   <div class="controles">
-    <button id="auto-crear" type="button">Crear automatización</button>
+    <button id="auto-crear" class="zd-btn zd-btn--secondary" type="button">Crear automatización</button>
   </div>
 
-  <div class="tabla-contenedor"><table id="auto-lista"></table></div>
-  <h2>Ejecuciones</h2>
-  <div class="tabla-contenedor"><table id="auto-ejecuciones"></table></div>
+  <div class="zd-table-wrap zd-table-scroll"><table id="auto-lista" class="zd-table"></table></div>
+  <h2 class="zd-h2">Ejecuciones</h2>
+  <div class="zd-table-wrap zd-table-scroll"><table id="auto-ejecuciones" class="zd-table"></table></div>
 </section>
 
 <p id="banner" class="banner" role="alert" hidden></p>
 <p id="estado" class="estado" hidden></p>
 
-<div class="tabla-contenedor">
-  <table id="resultados"><thead></thead><tbody></tbody></table>
+<div class="zd-table-wrap zd-table-scroll">
+  <table id="resultados" class="zd-table"><thead></thead><tbody></tbody></table>
 </div>
 
-<div class="paginacion">
-  <button id="anterior" type="button" disabled>Página anterior</button>
-  <button id="siguiente" type="button" disabled>Página siguiente</button>
+<div class="zd-form-actions paginacion">
+  <button id="anterior" class="zd-btn zd-btn--secondary" type="button" disabled>Página anterior</button>
+  <button id="siguiente" class="zd-btn zd-btn--secondary" type="button" disabled>Página siguiente</button>
 </div>
 
 <script>

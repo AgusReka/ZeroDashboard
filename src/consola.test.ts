@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { registerConsolaRoute } from './consola.js';
+import { RUTAS_ESTILOS } from './estilos-rutas.js';
 
 /**
  * Cases for CH-07 task 4.1/4.2 (spec `query-console`).
@@ -142,6 +143,22 @@ const IDS = [
   'auto-ejecuciones',
 ] as const;
 
+/**
+ * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
+ * the bar the T4 comment names and the three containers the script reaches by selector
+ * or the smoke greps for.
+ */
+const IDS_GUARDADOS = [...IDS, 'barra-tenant', 'resultados', 'guardado', 'automatizaciones'];
+
+/** Throws naming the first guarded id that is missing, renamed or duplicated. */
+function verificarIds(marcado: string): void {
+  for (const id of IDS_GUARDADOS) {
+    // Not preceded by a word character or a dash, so a data-id or aria-*id never counts.
+    const veces = marcado.match(new RegExp('(?<![\\w-])id="' + id + '"', 'g'))?.length ?? 0;
+    assert.equal(veces, 1, 'id="' + id + '" must appear exactly once in the markup, found ' + veces);
+  }
+}
+
 interface Escenario {
   nodos: Map<string, Nodo>;
   encabezado: Nodo;
@@ -266,6 +283,48 @@ describe('the console document, served by the real route', () => {
   test('the credencial-ilegible message exists and never names key material', () => {
     assert.ok(documento.includes("'credencial-ilegible':"), 'the entry must exist');
     assert.ok(!documento.includes('CREDENTIAL_MASTER_KEY'), 'no key variable on this page');
+  });
+
+  // ---- CH-21a guards: the restyle may not move what the script depends on -----------
+
+  /** The markup only: everything before the inline script. */
+  function marcado(): string {
+    return documento.slice(0, documento.indexOf('<script>'));
+  }
+
+  /** Spec `query-console`: "All ids present once" and "Requesting the console page". */
+  test('CH-21a G1 every id the script depends on appears exactly once in the markup', () => {
+    verificarIds(marcado());
+    assert.match(marcado(), /<textarea id="sql"/, 'the SQL input control stays');
+    assert.match(marcado(), /<button id="ejecutar"[^>]*type="submit"/, 'the execute control stays');
+  });
+
+  /** Spec `query-console`: "A renamed id fails the guard". */
+  test('CH-21a G1 the id guard fails naming a renamed or a duplicated id', () => {
+    assert.throws(() => verificarIds(marcado().replace('id="estado"', 'id="estados"')), /id="estado"/);
+    assert.throws(() => verificarIds(marcado() + '<p id="guardar"></p>'), /id="guardar"/);
+  });
+
+  /** Spec `query-console`: "Limit attributes preserved"; the script-managed nodes keep their markup. */
+  test('CH-21a G2 the script-managed nodes and the limit input keep their exact attributes', () => {
+    assert.ok(documento.includes('<p id="banner" class="banner" role="alert" hidden></p>'));
+    assert.ok(documento.includes('<strong id="tenant-activo" class="sin-tenant">'));
+    assert.ok(documento.includes('<p id="estado" class="estado" hidden></p>'));
+    const limite = marcado().match(/<input id="limite"[^>]*>/)?.[0] ?? '';
+    assert.match(limite, /min="1"/, 'the lower bound stays');
+    assert.ok(!/\bmax=/.test(limite), 'the limite input must carry no max');
+  });
+
+  /** Spec `query-console`: "Page links the shared stylesheet". */
+  test('CH-21a G3 the page links the shared stylesheet before its one bridge style', () => {
+    const enlace = '<link rel="stylesheet" href="/ui/styles.css">';
+    assert.equal(documento.split(enlace).length - 1, 1, 'exactly one link to the shared stylesheet');
+    assert.ok(RUTAS_ESTILOS.includes('/ui/styles.css'), 'the href is a served stylesheet route');
+    assert.equal(documento.split('<style').length - 1, 1, 'exactly one style element');
+    assert.ok(documento.indexOf(enlace) < documento.indexOf('<style'), 'the bridge overrides the sheet');
+    assert.ok(!documento.includes('max-width: 62rem'), 'the former inline body rule is gone');
+    assert.ok(!documento.includes('#barra-tenant { position: sticky'), 'the former inline bar rule is gone');
+    assert.ok(!script.includes('zd-'), 'the script assigns no shared class (CH-21c)');
   });
 
   // ---- behavioural cases: the script is run, not grepped ----------------------------
