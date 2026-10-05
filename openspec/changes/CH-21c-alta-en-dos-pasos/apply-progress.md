@@ -148,7 +148,74 @@ Tests written first. Before production code, `npx tsx --test src/consola.test.ts
 
 Later PRs: "Late response after a tenant switch is ignored" (fully PR2b: W10 and W5), "Tenant has no connections", "Connections fetch fails", the `GET /conexiones` half of "Wizard opens on step 1" (PR2b); "Known label", "Unknown label" (PR2c); the schedule scenarios and "Success banner shows first run and zone" (PR3); availability (PR4); preview (PR5).
 
-## PR2b-PR5
+## PR2b: Connection dropdown (`ch21c/asistente-conexion`)
+
+Status: implemented, verified and committed (not pushed). Authored 299 lines. 2b.4 (manual visual review) stays open for a human.
+
+### Commits
+
+| Commit | Content |
+|---|---|
+| b34d468 | `feat(ch21c)`: task 2b.0, the items moved from PR2a: Cancelar (`auto-cancelar` markup, `IDS` entry, `botonCancelarAuto` and its listener), W7, the `elegirPlantilla` token guard, W10. `pr2a-moved-to-pr2b.patch` applied cleanly with `git apply` (tests first, then code) |
+| 1204650 | `feat(ch21c)`: the connection dropdown, `cargarConexiones`, `renderizarConexiones`, W2, W4, W5, W9, and RW1-RW3, W3, W6, W7, W10 adapted to the dropdown |
+| (docs) | `docs(ch21c)`: `tasks.md` and this file |
+
+### Completed Tasks
+
+- [x] 2b.0 Moved items from PR2a (see the first commit).
+- [x] 2b.1 Harness: `arrancar()` creates `auto-conexion` as a `select`; `abrirAlta` is async, queues the `GET /conexiones` answer (default `CONEXIONES`, one row per connection id the tests pick, or a pending `Promise` to keep it in flight) and settles; new helpers `opcionesConexion` and `elegirPlantillaAlta`; `completarPaso1` picks the connection with a `change` event and asserts it is offered. W2, W4, W5, W9 written; RW1-RW3, W3, W6, W7, W10 pick from the dropdown.
+- [x] 2b.2 `#auto-conexion` is `<select class="zd-select">` labeled "Conexión"; `cargarConexiones()` is called by `abrirAlta` through `pedirAutomatizacion('/conexiones')` with the `g === generacionAlta` guard; `renderizarConexiones` builds the `''` placeholder ("Elegí una conexión", or "No hay conexiones registradas" for an empty list) and one option per row with text `nombre (id.slice(0, 8)…)` through `textContent`; empty list and `truncado` notices in `#auto-aviso`; a non-200 calls `mostrarRechazo`; a `change` listener replaces the `input` listener; `reiniciarAlta` rebuilds the dropdown with only the placeholder.
+- [x] 2b.3 Verification (below).
+- [ ] 2b.4 Manual visual review: human only.
+- [x] 2b.5 Line-count checkpoint: 299 authored (`consola.ts` +68/-11, `consola.test.ts` +196/-24).
+
+### RED evidence
+
+- 2b.0: with only the test half of the patch applied, `npx tsx --test src/consola.test.ts`: 36 tests, 3 fail (G1 for the missing `auto-cancelar`, W7, W10). With the code half: 36/36.
+- 2b.1: before 2b.2, 40 tests, 29 pass, 11 fail (RW1, RW2, RW3, W3, W6, W7, W10 through the dropdown; W2, W4, W5, W9). After 2b.2: 40/40.
+- Mutation check: removing the `g !== generacionAlta` line from `cargarConexiones` fails W5 only (39/40); restored.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/consola.test.ts`: 40/40 pass |
+| Full suite | `TEST_DB_PORT=5434 TEST_DB_PASSWORD=<from .env> npm test`: 882 tests, 882 pass, 0 fail, 0 skipped tests; one suite skipped by design (Mailpit live delivery, no Mailpit on 127.0.0.1:8026). Live target 127.0.0.1:5434 (Compose `db`); port 5432 never used |
+| Row counts | Tenant 1, Conexion 4, Automatizacion 0, Plantilla 2, equal before and after the full run |
+| Build | `npx tsc --noEmit` clean; `npm run build` exit 0; `sh -n scripts/smoke.sh` OK (smoke not run, orchestrator-owned) |
+| Page hazards | Added lines carry no backtick, no `${`, no backslash, no markup-assigning property and no `className` assignment; the script still contains no `zd-` (G3 unchanged and passing); one `<style>`, one closing script tag (guards passing) |
+| Runtime harness | Manual visual review (2b.4), human only |
+| Rollback boundary | Revert the two PR2b commits (console only); PR2b must be reverted before PR1 because the dropdown needs `GET /conexiones` |
+
+### Spec Coverage (PR2b)
+
+| Scenario | Test |
+|---|---|
+| Wizard opens on step 1 (request half: one `GET /conexiones` with the active tenant) | W2, W3 |
+| Tenant has no connections | W4 (also the `truncado` notice) |
+| Connections fetch fails | W9 |
+| Late response after a tenant switch is ignored (`GET /conexiones` and template-detail halves) | W5, W10 |
+| Tenant switch wipes the wizard (no connection of A stays selectable) | W6 |
+| Tenant load keeps three requests | W6 |
+| Creating from the console, with a recipient, invalid recipient, POST body unchanged | RW1-RW3 through the dropdown |
+| All ids present once (with `auto-cancelar`) | G1 |
+
+Later PRs: "Known label", "Unknown label" and W8 (PR2c); the schedule scenarios and "Success banner shows first run and zone" (PR3); availability and the validation half of "Late response after a tenant switch is ignored" (PR4); preview (PR5).
+
+### Ids and guards
+
+- Added: `auto-cancelar` (markup, `IDS`). Changed: `auto-conexion` is now a `select` (same id). No id removed.
+- G1, G2, G3 and the wizard markup guard are unchanged in code and pass; the markup guard now also sees Cancelar among the `type="button"` buttons.
+
+### Deviations
+
+- On a failed `GET /conexiones` (non-200, or a null result such as a network failure) `#auto-aviso` also says "No se pudieron cargar las conexiones. Cancelá y volvé a abrir el alta para reintentar." next to the banner, so the retry path is stated in the wizard. The design named only the banner.
+- The step-2 summary names the connection by its option text (`nombre (id prefix…)`) instead of the raw id.
+- `crearAutomatizacion` sends `selectorConexionAuto.value` without `.trim()`: the value is an option id, so the POST body is unchanged.
+- The script variable `entradaConexionAuto` is renamed `selectorConexionAuto`; helpers `mostrarAviso` and `opcionDe` are added.
+- Commit trailer uses `Claude Sonnet 5.5` plus `Claude-Session`, as the launch prompt requested.
+
+## PR2c-PR5
 
 Not started.
 
@@ -158,3 +225,9 @@ Not started.
 - Commit trailers of the apply agent were rewritten from `Claude Opus 5.5` to `Claude Sonnet 5.5` before pushing (unpushed commits, identical diff).
 - Independent verifier: PASS WITH WARNINGS, 0 CRITICAL. W1: the C2 `id` tie-break is compared against a JavaScript sort (valid for uuid ids, passed live). W2: live-DB evidence rests on the author's run; the smoke now closes S1. Suggestions not applied: a non-UTC route-level assertion in R1 and a guard against `ConexionListada` gaining fields.
 - Side effect of the smoke: the stack was brought down afterwards without removing volumes; the project database keeps its seeded catalog rows.
+
+## PR2b verification addendum (orchestrator, 2026-10-05)
+
+- `bash scripts/smoke.sh` on the PR2b tip against the project's Compose stack: SMOKE TEST PASSED (38 OK). Full `npm test` against the Compose db at port 5434: 882/882 (author's run).
+- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL. W1: a network failure (or unreadable body) raises the generic banner inside `pedirAutomatizacion` before the caller's `generacionAlta` check, so a stale network failure can still show a banner (the non-200 path is guarded); W2: no test drives the network-failure branch of `cargarConexiones` or a cancel/reopen while the fetch is in flight. Suggestions: a retry button instead of "cancel and reopen" is a later UX choice.
+- Visual review with headless Chrome (light/dark, 1280 and 360 px) against the running stack with 4 real connections: dropdown lists `nombre (id8…)` options after the "Elegí una conexión" placeholder, Cancelar visible next to Siguiente, Siguiente enabled after choosing a connection and a template, step 2 shows the connection's name in the summary, a 400 for an invalid cron keeps the wizard on step 2, Volver keeps the values, Cancelar closes and resets the dropdown to the placeholder; no horizontal scroll. Not reviewed: empty list, `truncado` notice and failure banner (not reproducible against this tenant), Firefox.

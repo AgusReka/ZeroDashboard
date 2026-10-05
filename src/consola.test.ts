@@ -168,6 +168,7 @@ const IDS = [
   'auto-paso-2',
   'auto-aviso',
   'auto-siguiente',
+  'auto-cancelar',
   'auto-resumen',
   'auto-volver',
 ] as const;
@@ -379,8 +380,8 @@ describe('the console document, served by the real route', () => {
   async function arrancar(tenants = [{ id: 't-1', nombre: 'Food Store' }]): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
-      // CH-21c PR2a: auto-plantilla stays a select and auto-conexion a text field (a div here).
-      const nodo = new Nodo(id === 'tenant' || id === 'auto-plantilla' ? 'select' : 'div');
+      // CH-21c: auto-conexion is a select from PR2b; auto-plantilla stays one until PR2c.
+      const nodo = new Nodo(id === 'tenant' || id === 'auto-plantilla' || id === 'auto-conexion' ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -825,20 +826,44 @@ describe('the console document, served by the real route', () => {
     return escenario.nodos.get(id) as Nodo;
   }
 
-  /** CH-21c: opens the wizard the way the operator does, with Nueva. PR2a sends no request. */
-  function abrirAlta(escenario: Escenario): void {
+  /** CH-21c PR2b: what `GET /conexiones` answers by default, one row per connection id the tests pick. */
+  const CONEXIONES = ['c-1', 'c-2', 'c-3', 'c-7', 'c-9', 'c-A'].map((id) => ({ id, nombre: 'Réplica ' + id }));
+
+  /**
+   * CH-21c: opens the wizard the way the operator does, with Nueva. Opening asks for the
+   * connections (PR2b), answered with `cuerpo` and `status`; a pending `Promise` as `cuerpo`
+   * keeps that answer in flight.
+   */
+  async function abrirAlta(
+    escenario: Escenario,
+    cuerpo: unknown = { conexiones: CONEXIONES, truncado: false },
+    status = 200,
+  ): Promise<void> {
+    escenario.respuestas.push({ status, cuerpo });
     nodo(escenario, 'auto-nueva').disparar('click');
+    await asentar();
   }
 
-  /** CH-21c step 1: picks the template (its detail answered with `parametros`), types the connection. */
-  async function completarPaso1(escenario: Escenario, parametros: unknown[] = [], conexion = 'c-1'): Promise<void> {
+  /** CH-21c: the connection dropdown as `[value, text]` pairs, placeholder first. */
+  function opcionesConexion(escenario: Escenario): string[][] {
+    return nodo(escenario, 'auto-conexion').options.map((opcion) => [opcion.value, opcion.textContent]);
+  }
+
+  /** CH-21c step 1: picks the template, its detail answered with `parametros`. */
+  async function elegirPlantillaAlta(escenario: Escenario, parametros: unknown[] = []): Promise<void> {
     const plantilla = nodo(escenario, 'auto-plantilla');
     plantilla.value = 'p-1';
     escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros } } });
     plantilla.disparar('change');
     await asentar();
+  }
+
+  /** CH-21c step 1: picks the template, then the connection from the dropdown. */
+  async function completarPaso1(escenario: Escenario, parametros: unknown[] = [], conexion = 'c-1'): Promise<void> {
+    await elegirPlantillaAlta(escenario, parametros);
+    assert.ok(opcionesConexion(escenario).some(([valor]) => valor === conexion), conexion + ' is offered');
     nodo(escenario, 'auto-conexion').value = conexion;
-    nodo(escenario, 'auto-conexion').disparar('input');
+    nodo(escenario, 'auto-conexion').disparar('change');
   }
 
   /** CH-21c: step 1 completed, then Siguiente, landing on step 2. */
@@ -890,7 +915,7 @@ describe('the console document, served by the real route', () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
 
-    abrirAlta(escenario);
+    await abrirAlta(escenario);
     await avanzar(escenario, [{ nombre: 'desde', tipo: 'fecha' }, { nombre: 'n', tipo: 'numero' }], 'c-2');
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
 
@@ -966,7 +991,7 @@ describe('the console document, served by the real route', () => {
   test('CH-14 6.4 the recipient is sent as destinatario only when one is entered', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
-    abrirAlta(escenario);
+    await abrirAlta(escenario);
     await avanzar(escenario);
     (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
     (escenario.nodos.get('auto-destinatario') as Nodo).value = ' ops@example.com ';
@@ -983,7 +1008,7 @@ describe('the console document, served by the real route', () => {
 
     // Blank (spaces only): no destinatario key at all, so the automation is created without one.
     // The 201 closed the wizard, so the second one is opened and walked again.
-    abrirAlta(escenario);
+    await abrirAlta(escenario);
     await avanzar(escenario);
     (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
     (escenario.nodos.get('auto-destinatario') as Nodo).value = '   ';
@@ -999,7 +1024,7 @@ describe('the console document, served by the real route', () => {
   test('CH-14 6.4 a rejected recipient is one legible sentence naming the field, never a raw error', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
-    abrirAlta(escenario);
+    await abrirAlta(escenario);
     await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-9');
     const [control] = nodo(escenario, 'auto-valores').porClase('parametro-valor');
     control.value = '5';
@@ -1036,18 +1061,19 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-21c PR2a: the wizard shell (spec `query-console`, DEC-129) ---------------
 
-  /** Spec "Wizard opens on step 1" (its request half is PR2b's) and "Step navigation". */
+  /** Spec "Wizard opens on step 1" (its request half is W2) and "Step navigation". */
   test('CH-21c W3 Siguiente waits for a connection and a template; Volver keeps both; aria-current moves', async () => {
     const escenario = await arrancar();
-    // No tenant: Nueva says so and opens nothing.
-    abrirAlta(escenario);
+    // No tenant: Nueva says so, opens nothing and asks for nothing.
+    nodo(escenario, 'auto-nueva').disparar('click');
     assert.match(nodo(escenario, 'banner').textContent, /Elegí un tenant/);
     assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(escenario.peticiones.length, 1, 'only the boot request');
 
     await elegirTenant(escenario, [], [automatizacion()]);
     const pedidas = escenario.peticiones.length;
-    abrirAlta(escenario);
-    assert.equal(escenario.peticiones.length, pedidas, 'the PR2a shell sends no request on opening');
+    await abrirAlta(escenario);
+    assert.equal(escenario.peticiones.length, pedidas + 1, 'opening asks for the connections only');
     assert.equal(nodo(escenario, 'auto-alta').hidden, false);
     assert.equal(nodo(escenario, 'auto-nueva').hidden, true);
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
@@ -1060,16 +1086,18 @@ describe('the console document, served by the real route', () => {
     plantilla.disparar('change');
     await asentar();
     assert.equal(siguiente.disabled, true, 'a template without a connection');
-    nodo(escenario, 'auto-conexion').value = '   ';
-    nodo(escenario, 'auto-conexion').disparar('input');
-    assert.equal(siguiente.disabled, true, 'blanks are no connection');
     nodo(escenario, 'auto-conexion').value = 'c-7';
-    nodo(escenario, 'auto-conexion').disparar('input');
+    nodo(escenario, 'auto-conexion').disparar('change');
     assert.equal(siguiente.disabled, false);
+    nodo(escenario, 'auto-conexion').value = '';
+    nodo(escenario, 'auto-conexion').disparar('change');
+    assert.equal(siguiente.disabled, true, 'the placeholder is no connection');
+    nodo(escenario, 'auto-conexion').value = 'c-7';
+    nodo(escenario, 'auto-conexion').disparar('change');
 
     siguiente.disparar('click');
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
-    assert.equal(nodo(escenario, 'auto-resumen').textContent, 'Plantilla: Stock diario · Conexión: c-7');
+    assert.equal(nodo(escenario, 'auto-resumen').textContent, 'Plantilla: Stock diario · Conexión: Réplica c-7 (c-7…)');
     nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value = '12';
 
     nodo(escenario, 'auto-volver').disparar('click');
@@ -1087,7 +1115,7 @@ describe('the console document, served by the real route', () => {
     await asentar();
     siguiente.disparar('click');
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
-    assert.equal(escenario.peticiones.length, pedidas + 1, 'only the template detail was requested');
+    assert.equal(escenario.peticiones.length, pedidas + 2, 'only the connections and the template detail');
   });
 
   /** Spec "Tenant switch wipes the wizard" and "Tenant load keeps three requests". */
@@ -1097,7 +1125,7 @@ describe('the console document, served by the real route', () => {
       { id: 't-2', nombre: 'Otra tienda' },
     ]);
     await elegirTenant(escenario, [], [], 't-1');
-    abrirAlta(escenario);
+    await abrirAlta(escenario);
     await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-A');
     nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value = '3';
     nodo(escenario, 'auto-cron').value = '0 6 * * *';
@@ -1115,11 +1143,155 @@ describe('the console document, served by the real route', () => {
       assert.equal(nodo(escenario, id).value, '', id + ' is wiped');
     }
     assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, 'no value control of A survives');
+    assert.deepEqual(opcionesConexion(escenario), [['', 'Elegí una conexión']], 'no connection of A stays selectable');
     assert.equal(nodo(escenario, 'auto-resumen').textContent, '');
     assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
 
-    abrirAlta(escenario);
+    await abrirAlta(escenario);
     assert.deepEqual(pasoVisible(escenario), [1, 1], 'reopening starts on step 1');
+  });
+
+  /** Design PR2a W7: Cancelar closes and resets. */
+  test('CH-21c W7 Cancelar closes the wizard and resets it', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    await abrirAlta(escenario);
+    await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-3');
+    nodo(escenario, 'auto-cron').value = '0 6 * * *';
+    nodo(escenario, 'auto-volver').disparar('click');
+
+    const pedidas = escenario.peticiones.length;
+    nodo(escenario, 'auto-cancelar').disparar('click');
+    assert.equal(escenario.peticiones.length, pedidas, 'Cancelar sends nothing');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
+
+    await abrirAlta(escenario);
+    assert.deepEqual(pasoVisible(escenario), [1, 1]);
+    for (const id of ['auto-conexion', 'auto-cron', 'auto-plantilla']) {
+      assert.equal(nodo(escenario, id).value, '', id + ' is reset');
+    }
+    assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0);
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
+  });
+
+  /** Spec "Late response after a tenant switch is ignored" (template detail half). */
+  test('CH-21c W10 a template detail answered after a tenant switch builds no value control', async () => {
+    const escenario = await arrancar([
+      { id: 't-1', nombre: 'Food Store' },
+      { id: 't-2', nombre: 'Otra tienda' },
+    ]);
+    await elegirTenant(escenario, [], [], 't-1');
+    await abrirAlta(escenario);
+    let responder!: (cuerpo: unknown) => void;
+    const diferido = new Promise((resolver) => { responder = resolver; });
+    const plantilla = nodo(escenario, 'auto-plantilla');
+    plantilla.value = 'p-1';
+    escenario.respuestas.push({ status: 200, cuerpo: diferido });
+    plantilla.disparar('change');
+    await asentar();
+
+    // Tenant B's catalog carries the same template id, so only the wizard token can tell.
+    await elegirTenant(escenario, [], [], 't-2');
+    await abrirAlta(escenario);
+    plantilla.value = 'p-1';
+    responder({ plantilla: { parametros: [{ nombre: 'n', tipo: 'numero' }] } });
+    await asentar();
+    assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, "A's late detail is dropped");
+  });
+
+  // ---- CH-21c PR2b: the connection dropdown (spec `query-console`, DEC-132) ---------
+
+  /** Spec "Wizard opens on step 1" (request half): one GET /conexiones, the dropdown filled as text. */
+  test('CH-21c W2 opening asks GET /conexiones for the active tenant and lists each by name and short id', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    const antes = escenario.peticiones.length;
+    const norte = { id: '0f8e2c4a-1111-4222-8333-944455556666', nombre: 'Réplica <b>norte</b>' };
+    const sur = { id: '7a1b9c3d-aaaa-4bbb-8ccc-dddddddddddd', nombre: 'Réplica norte' };
+    await abrirAlta(escenario, { conexiones: [norte, sur], truncado: false });
+
+    assert.deepEqual(
+      escenario.peticiones.slice(antes).map((peticion) => [peticion.url, peticion.tenant, peticion.cuerpo]),
+      [['/conexiones', 't-1', null]],
+    );
+    // A name that looks like markup stays text, and the short id tells repeated names apart.
+    assert.deepEqual(opcionesConexion(escenario), [
+      ['', 'Elegí una conexión'],
+      [norte.id, 'Réplica <b>norte</b> (0f8e2c4a…)'],
+      [sur.id, 'Réplica norte (7a1b9c3d…)'],
+    ]);
+    assert.ok(nodo(escenario, 'auto-conexion').options.every((opcion) => opcion.hijos.length === 0), 'text only');
+    assert.equal(nodo(escenario, 'auto-conexion').value, '', 'nothing is chosen for the operator');
+    assert.equal(nodo(escenario, 'auto-aviso').hidden, true);
+    assert.equal(nodo(escenario, 'banner').hidden, true);
+  });
+
+  /** Spec "Tenant has no connections"; design: the capped list says so too. */
+  test('CH-21c W4 an empty connection list explains itself and keeps Siguiente disabled', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario, { conexiones: [], truncado: false });
+
+    assert.deepEqual(opcionesConexion(escenario), [['', 'No hay conexiones registradas']]);
+    const aviso = nodo(escenario, 'auto-aviso');
+    assert.equal(aviso.hidden, false);
+    assert.match(aviso.textContent, /no tiene conexiones registradas/);
+    assert.equal(nodo(escenario, 'banner').hidden, true, 'not an error');
+    await elegirPlantillaAlta(escenario);
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, true, 'a template alone does not open step 2');
+
+    nodo(escenario, 'auto-cancelar').disparar('click');
+    await abrirAlta(escenario, { conexiones: CONEXIONES, truncado: true });
+    assert.equal(opcionesConexion(escenario).length, CONEXIONES.length + 1);
+    assert.equal(aviso.hidden, false);
+    assert.equal(aviso.textContent, 'Se muestran solo las primeras 6 conexiones, en orden alfabético.');
+  });
+
+  /** Spec "Late response after a tenant switch is ignored" (GET /conexiones half). */
+  test('CH-21c W5 a GET /conexiones answered after a tenant switch adds no option', async () => {
+    const escenario = await arrancar([
+      { id: 't-1', nombre: 'Food Store' },
+      { id: 't-2', nombre: 'Otra tienda' },
+    ]);
+    await elegirTenant(escenario, [], [], 't-1');
+    let responder!: (cuerpo: unknown) => void;
+    await abrirAlta(escenario, new Promise((resolver) => { responder = resolver; }));
+    assert.equal(escenario.peticiones.at(-1)?.tenant, 't-1');
+
+    await elegirTenant(escenario, [], [], 't-2');
+    await abrirAlta(escenario, { conexiones: [{ id: 'c-B', nombre: 'Réplica B' }], truncado: false });
+    responder({ conexiones: [{ id: 'c-A', nombre: 'Réplica A' }], truncado: true });
+    await asentar();
+
+    assert.deepEqual(opcionesConexion(escenario), [['', 'Elegí una conexión'], ['c-B', 'Réplica B (c-B…)']]);
+    assert.equal(nodo(escenario, 'auto-aviso').hidden, true, "A's truncado notice is dropped too");
+  });
+
+  /** Spec "Connections fetch fails": a legible notice, and the wizard and the console keep working. */
+  test('CH-21c W9 a failed GET /conexiones shows the banner, keeps step 1 usable, and reopening retries', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    await abrirAlta(escenario, { statusCode: 500, error: 'Internal Server Error', message: 'boom' }, 500);
+
+    const banner = nodo(escenario, 'banner');
+    assert.equal(banner.hidden, false);
+    assert.equal(banner.textContent, 'La aplicación respondió HTTP 500.');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, false, 'the wizard stays open');
+    assert.deepEqual(pasoVisible(escenario), [1, 1]);
+    assert.deepEqual(opcionesConexion(escenario), [['', 'Elegí una conexión']]);
+    assert.match(nodo(escenario, 'auto-aviso').textContent, /No se pudieron cargar las conexiones/);
+    await elegirPlantillaAlta(escenario);
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
+
+    nodo(escenario, 'auto-cancelar').disparar('click');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true, 'Cancelar still closes it');
+    const antes = escenario.peticiones.length;
+    await abrirAlta(escenario);
+    assert.deepEqual(escenario.peticiones.slice(antes).map((peticion) => peticion.url), ['/conexiones']);
+    assert.equal(opcionesConexion(escenario).length, CONEXIONES.length + 1, 'the retry fills the dropdown');
+    assert.equal(nodo(escenario, 'auto-aviso').hidden, true);
+    assert.equal(banner.hidden, true);
   });
 
   /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */
