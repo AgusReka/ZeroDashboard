@@ -1,0 +1,22 @@
+/* Espaciado, radios, bordes, sombras, movimiento y densidad por superficie. */
+:root{
+--space-0:0;--space-1:2px;--space-2:4px;--space-3:6px;--space-4:8px;--space-5:12px;--space-6:16px;--space-7:20px;--space-8:24px;--space-9:32px;--space-10:40px;--space-11:48px;--space-12:64px;
+--radius-xs:3px;--radius-sm:4px;--radius-md:6px;--radius-lg:10px;--radius-xl:14px;--radius-pill:999px;
+--border-width:1px;--focus-width:2px;--focus-offset:2px;
+--shadow-1:0 1px 2px rgba(16,24,32,.06),0 0 0 1px rgba(16,24,32,.02);
+--shadow-2:0 2px 6px rgba(16,24,32,.08),0 1px 2px rgba(16,24,32,.06);
+--shadow-3:0 8px 24px rgba(16,24,32,.14),0 2px 6px rgba(16,24,32,.08);
+--dur-fast:120ms;/* @kind other */
+--dur:180ms;/* @kind other */
+--dur-slow:280ms;/* @kind other */
+--ease:cubic-bezier(.2,0,0,1);/* @kind other */
+
+--control-h-sm:28px;--control-h:34px;--control-h-lg:44px;
+--tenantbar-h:40px;--sidebar-w:232px;--content-max:1280px;--panel-max:960px;
+--gap-section:var(--space-8);--pad-card:var(--space-6);
+}
+/* Superficie PANEL (cliente): más aire, cuerpo 16px, controles táctiles de 44px. */
+[data-surface="panel"]{
+--text-body:var(--text-md);--text-label:var(--text-base);--text-help:var(--text-sm);--text-h1:var(--text-2xl);--text-h2:var(--text-xl);
+--control-h:var(--control-h-lg);--gap-section:var(--space-9);--pad-card:var(--space-8);
+}

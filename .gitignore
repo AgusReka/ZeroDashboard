@@ -7,6 +7,9 @@ dist-agente/
 
 /src/generated/prisma
 
-# Reference skill files dropped by `prisma init`, not part of this project
-/.claude/
-
+# Reference skill files dropped by `prisma init`, not part of this project (ver excepción al final)
+# Skill de diseño de ZeroDashboard: versionada, el resto de .claude/ sigue ignorado
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/zerodashboard-design/
