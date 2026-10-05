@@ -205,8 +205,9 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
     </ol>
 
     <div id="auto-paso-1">
-      <label for="auto-conexion" class="zd-label">Identificador de la conexión registrada</label>
-      <input id="auto-conexion" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false">
+      <!-- CH-21c (DEC-132): the script fills it from GET /conexiones each time the wizard opens. -->
+      <label for="auto-conexion" class="zd-label">Conexión</label>
+      <select id="auto-conexion" class="zd-select"></select>
       <p id="auto-aviso" class="ayuda" hidden></p>
 
       <label for="auto-plantilla" class="zd-label">Plantilla</label>
@@ -389,7 +390,7 @@ var encabezado = document.querySelector('#resultados thead');
 var cuerpoTabla = document.querySelector('#resultados tbody');
 var selectorPlantilla = document.getElementById('auto-plantilla');
 var contenedorValoresAuto = document.getElementById('auto-valores');
-var entradaConexionAuto = document.getElementById('auto-conexion');
+var selectorConexionAuto = document.getElementById('auto-conexion');
 var entradaCron = document.getElementById('auto-cron');
 var entradaDestinatario = document.getElementById('auto-destinatario');
 var botonCrearAuto = document.getElementById('auto-crear');
@@ -1146,7 +1147,54 @@ function limpiarAutomatizaciones() {
 // Siguiente needs a connection and a chosen template; the values have their own
 // legible server-side errors on step 2.
 function actualizarSiguiente() {
-  botonSiguienteAuto.disabled = entradaConexionAuto.value.trim() === '' || selectorPlantilla.value === '';
+  botonSiguienteAuto.disabled = selectorConexionAuto.value === '' || selectorPlantilla.value === '';
+}
+
+function mostrarAviso(texto) {
+  avisoAlta.textContent = texto;
+  avisoAlta.hidden = false;
+}
+
+function opcionDe(valor, texto) {
+  var opcion = document.createElement('option');
+  opcion.value = valor;
+  opcion.textContent = texto;
+  return opcion;
+}
+
+// Rebuilds the connection dropdown as text only (regla 7): the '' placeholder, then one
+// option per row. The short id tells apart connections that share a name (the T4 idiom).
+function renderizarConexiones(filas, textoVacio) {
+  vaciar(selectorConexionAuto);
+  selectorConexionAuto.appendChild(opcionDe('', textoVacio));
+  filas.forEach(function (fila) {
+    var id = String(fila.id);
+    selectorConexionAuto.appendChild(opcionDe(id, String(fila.nombre) + ' (' + id.slice(0, 8) + '…)'));
+  });
+  selectorConexionAuto.value = '';
+}
+
+// DEC-132: asked each time the wizard opens, never on tenant load, so that load stays at
+// three requests. A failure leaves step 1 open with only the placeholder; Cancelar and
+// reopening retry.
+async function cargarConexiones() {
+  var g = generacionAlta;
+  var resultado = await pedirAutomatizacion('/conexiones');
+  // Dropped when the wizard was reset meanwhile (cancelled, reopened or a tenant switch).
+  if (g !== generacionAlta) { return; }
+  if (resultado !== null && resultado.status !== 200) { mostrarRechazo(resultado); }
+  if (resultado === null || resultado.status !== 200) {
+    mostrarAviso('No se pudieron cargar las conexiones. Cancelá y volvé a abrir el alta para reintentar.');
+    return;
+  }
+  var filas = Array.isArray(resultado.cuerpo.conexiones) ? resultado.cuerpo.conexiones : [];
+  renderizarConexiones(filas, filas.length === 0 ? 'No hay conexiones registradas' : 'Elegí una conexión');
+  if (filas.length === 0) {
+    mostrarAviso('Este tenant no tiene conexiones registradas. Registrá una para poder crear una automatización.');
+  } else if (resultado.cuerpo.truncado === true) {
+    mostrarAviso('Se muestran solo las primeras ' + filas.length + ' conexiones, en orden alfabético.');
+  }
+  actualizarSiguiente();
 }
 
 function marcarPaso(marca, actual) {
@@ -1167,7 +1215,8 @@ function reiniciarAlta() {
   selectorPlantilla.value = '';
   vaciar(contenedorValoresAuto);
   filasValoresAuto = [];
-  entradaConexionAuto.value = '';
+  // Options and choice both go: no connection of the previous tenant stays selectable.
+  renderizarConexiones([], 'Elegí una conexión');
   entradaCron.value = '';
   entradaDestinatario.value = '';
   resumenAlta.textContent = '';
@@ -1186,6 +1235,7 @@ function abrirAlta() {
   altaAuto.hidden = false;
   botonNuevaAuto.hidden = true;
   irAPaso(1);
+  cargarConexiones();
 }
 
 function cerrarAlta() {
@@ -1310,7 +1360,7 @@ async function crearAutomatizacion() {
   // No tenant here: the header names it (DEC-15), and the route refuses one in the body.
   var alta = {
     plantillaId: selectorPlantilla.value,
-    conexionId: entradaConexionAuto.value.trim(),
+    conexionId: selectorConexionAuto.value,
     valores: valoresDe(filasValoresAuto),
     cron: entradaCron.value.trim()
   };
@@ -1421,8 +1471,7 @@ selectorPlantilla.addEventListener('change', function () {
   elegirPlantilla();
 });
 
-// CH-21c: the connection is still a text field here; a later PR makes it a select.
-entradaConexionAuto.addEventListener('input', function () {
+selectorConexionAuto.addEventListener('change', function () {
   actualizarSiguiente();
 });
 
@@ -1440,7 +1489,7 @@ botonSiguienteAuto.addEventListener('click', function () {
   if (botonSiguienteAuto.disabled) { return; }
   var nombre = nombresPlantilla[selectorPlantilla.value];
   resumenAlta.textContent = 'Plantilla: ' + (nombre === undefined ? selectorPlantilla.value : nombre) +
-    ' · Conexión: ' + entradaConexionAuto.value.trim();
+    ' · Conexión: ' + selectorConexionAuto.options[selectorConexionAuto.selectedIndex].textContent;
   irAPaso(2);
 });
 
