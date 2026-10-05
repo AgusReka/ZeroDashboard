@@ -59,7 +59,7 @@ Branch `ch21c/servidor-conexiones`. RED tests first (1.1-1.4), then GREEN (1.5-1
 - [x] 1.7 GREEN `src/automatizaciones-rutas.ts`: 201 body `{ automatizacion, proximaEjecucion: proximaEjecucion(cron, automatizacion.creadaEn, zonaHoraria).toISOString(), zonaHoraria }` plus import. Satisfies R1.
 - [x] 1.8 GREEN `src/conexiones.ts`: `ConexionListada = { id: true, nombre: true }` and `app.get('/conexiones', ...)` with `orderBy: [{ nombre: 'asc' }, { id: 'asc' }]`, `take: LIMITE_LISTADO + 1`, body `{ conexiones, truncado }`, no `where` (extension scopes), no exemption in `src/contexto-tenant.ts`. Satisfies R2, C1-C3, T2-L.
 - [x] 1.9 `scripts/smoke.sh` S1 (+12): without the header `GET /conexiones` is 400; with the smoke tenant it is 200, contains the registered smoke connection id, and does not contain `credencial`. Verify: `bash -n scripts/smoke.sh` here; the full run is in 1.10.
-- [ ] 1.10 Verification (LIVE): `npx tsc --noEmit`, `npx tsx --test src/automatizaciones.test.ts src/automatizaciones-rutas.test.ts src/conexiones.test.ts src/aislamiento.test.ts`, full `npm test`, `npm run build`, `bash scripts/smoke.sh` (after `docker compose restart app`). Report ran vs skipped and counts.
+- [x] 1.10 (done 2026-10-05: smoke PASSED on the PR1 tip) Verification (LIVE): `npx tsc --noEmit`, `npx tsx --test src/automatizaciones.test.ts src/automatizaciones-rutas.test.ts src/conexiones.test.ts src/aislamiento.test.ts`, full `npm test`, `npm run build`, `bash scripts/smoke.sh` (after `docker compose restart app`). Report ran vs skipped and counts.
 - [x] 1.11 Line-count checkpoint (method above): authored at most 400 excluding docs (forecast ~250).
 
 ## PR2a: Wizard shell (~330 authored, no new request)

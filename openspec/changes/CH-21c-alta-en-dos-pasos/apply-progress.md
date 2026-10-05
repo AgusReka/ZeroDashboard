@@ -72,3 +72,10 @@ Status: implementation complete; 1.10 open only for the smoke run (`bash scripts
 ## PR2a-PR5
 
 Not started.
+
+## PR1 verification addendum (orchestrator, 2026-10-05)
+
+- `bash scripts/smoke.sh` on the PR1 tip against the project's Compose stack: SMOKE TEST PASSED, including "CH-21c: GET /conexiones ... no header -> 400; tenant A -> 200 with its connection and no credential" (task 1.10).
+- Commit trailers of the apply agent were rewritten from `Claude Opus 5.5` to `Claude Sonnet 5.5` before pushing (unpushed commits, identical diff).
+- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL. W1: the C2 `id` tie-break is compared against a JavaScript sort (valid for uuid ids, passed live). W2: live-DB evidence rests on the author's run; the smoke now closes S1. Suggestions not applied: a non-UTC route-level assertion in R1 and a guard against `ConexionListada` gaining fields.
+- Side effect of the smoke: the stack was brought down afterwards without removing volumes; the project database keeps its seeded catalog rows.
