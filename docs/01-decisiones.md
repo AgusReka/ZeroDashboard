@@ -2244,6 +2244,27 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 **Estado:** firme.
 
+### DEC-124 — CH-21a: la hoja de estilos compartida se sirve como archivos fijos; las páginas siguen siendo strings de TypeScript
+
+**Contexto.** La consola (`src/consola.ts`) es un documento HTML, CSS y JS dentro de un template literal de TypeScript. DEC-07 decidió que la consola existe, pero la forma de servirla nunca se registró: solo quedó en el comentario del archivo y en la bitácora de CH-04, que descartó `@fastify/static` "para un solo archivo". CH-21a incorpora el sistema visual de la skill `zerodashboard-design` (`styles.css` más tokens y componentes, CSS plano sin build) y CH-22 sumará un segundo documento (panel) que debe usar las mismas hojas. `tsc` no copia archivos que no son TypeScript, y la etapa final de la imagen del motor copia solo `dist`, `node_modules`, `prisma` y los archivos del paquete. Exploración: `openspec/changes/CH-21a-sistema-visual-compartido/exploration.md`.
+
+**Opciones y decisión.**
+- **Mecanismo (A1).** (a) CSS dentro de strings de TypeScript, interpolado en cada página; (b) archivos `.css` en un directorio rastreado, leídos al arrancar por un registrador con lista fija y rutas `GET` exactas, sin dependencia; (c) `@fastify/static`; (d) paso de build que genere TypeScript desde el CSS. **Decisión: (b).**
+- **Origen del código visual (A2).** Copia literal de los cinco archivos CSS de la skill en `public/ui/`, sin concatenar ni modificar; los íconos quedan como SVG inline. **Decisión: copia literal.**
+- **Exención de `X-Tenant-Id` (A3).** Filas exactas `GET` por archivo, derivadas de la misma lista que registra las rutas; sin prefijo, sin comodín y sin `HEAD`. Un archivo nuevo exige editar la lista y su prueba. **Decisión: filas exactas.**
+- **Imagen Docker (A4).** Una línea `COPY --from=build /app/public ./public` en la etapa del motor; la etapa del agente no cambia. **Decisión: esta.**
+- **Alcance (A5).** Solo la hoja de estilos sale del string. HTML y JS de las páginas siguen en TypeScript (el test y el smoke inspeccionan el script inline). Moverlos a archivos queda sin decidir hasta CH-22. **Decisión: este alcance.**
+
+**Por qué.** Los activos son idénticos para todo tenant y sus manejadores no tienen cliente de Prisma, el mismo argumento estructural de DEC-24 y DEC-61 (regla 2). Una lista fija evita que un archivo futuro herede una exención. Sin dependencia nueva, como DEC-09.
+
+**Se resigna.** El arranque depende de que los archivos existan (falla cerrada). La copia de la skill puede desviarse de su fuente. Sin CSP, el script y los estilos inline siguen permitidos. Una URL de activo inexistente responde `400 tenant-no-indicado` y no 404.
+
+**Fuera de esta decisión (alcance de CH-21a).** La adopción en la consola es solo CSS puente, sin cambios en el JS, con clases `zd-*` únicamente en el HTML estático; ponerlas en nodos armados por el script exige una versión de `porClase` tolerante a clases y queda para CH-21c. Entrega en tres PR encadenados: la DEC, el mecanismo (con `size:exception` por las líneas copiadas de la skill) y la adopción.
+
+**Decidido por:** el usuario, 2026-10-04, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
 ---
 
 ## Compuertas abiertas
