@@ -820,6 +820,41 @@ describe('the console document, served by the real route', () => {
     await new Promise((resolver) => setImmediate(resolver));
   }
 
+  /** CH-21c: one wizard node by id. */
+  function nodo(escenario: Escenario, id: string): Nodo {
+    return escenario.nodos.get(id) as Nodo;
+  }
+
+  /** CH-21c: opens the wizard the way the operator does, with Nueva. PR2a sends no request. */
+  function abrirAlta(escenario: Escenario): void {
+    nodo(escenario, 'auto-nueva').disparar('click');
+  }
+
+  /** CH-21c step 1: picks the template (its detail answered with `parametros`), types the connection. */
+  async function completarPaso1(escenario: Escenario, parametros: unknown[] = [], conexion = 'c-1'): Promise<void> {
+    const plantilla = nodo(escenario, 'auto-plantilla');
+    plantilla.value = 'p-1';
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros } } });
+    plantilla.disparar('change');
+    await asentar();
+    nodo(escenario, 'auto-conexion').value = conexion;
+    nodo(escenario, 'auto-conexion').disparar('input');
+  }
+
+  /** CH-21c: step 1 completed, then Siguiente, landing on step 2. */
+  async function avanzar(escenario: Escenario, parametros: unknown[] = [], conexion = 'c-1'): Promise<void> {
+    await completarPaso1(escenario, parametros, conexion);
+    nodo(escenario, 'auto-siguiente').disparar('click');
+  }
+
+  /** CH-21c: which panel is showing and which marker is current, as `[paso, marca]`. */
+  function pasoVisible(escenario: Escenario): [number, number] {
+    const paso = [1, 2].filter((n) => !nodo(escenario, 'auto-paso-' + n).hidden);
+    const marca = [1, 2].filter((n) => nodo(escenario, 'auto-marca-' + n).getAttribute('aria-current') === 'step');
+    assert.ok(paso.length <= 1 && marca.length <= 1, 'one panel and one current marker at most');
+    return [paso[0] ?? 0, marca[0] ?? 0];
+  }
+
   /** Spec "Viewing the automations list" and "Deactivating from the console". */
   test('the list shows plantilla, connection, schedule and state; deactivating reloads it', async () => {
     const escenario = await arrancar();
@@ -847,25 +882,22 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(botones(desactivada).map((nodo) => nodo.textContent), ['Ver ejecuciones']);
   });
 
-  /** Spec "Creating an automation from the console"; design: values reuse controlDeValor. */
+  /**
+   * Spec "Creating an automation from the console", "Parameters of the chosen template" and
+   * "POST body is unchanged"; design: values reuse controlDeValor. CH-21c RW1: through the wizard.
+   */
   test('create builds value controls from the template and submits scoped to the active tenant', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
 
-    const plantilla = escenario.nodos.get('auto-plantilla') as Nodo;
-    plantilla.value = 'p-1';
-    escenario.respuestas.push({
-      status: 200,
-      cuerpo: { plantilla: { parametros: [{ nombre: 'desde', tipo: 'fecha' }, { nombre: 'n', tipo: 'numero' }] } },
-    });
-    plantilla.disparar('change');
-    await asentar();
+    abrirAlta(escenario);
+    await avanzar(escenario, [{ nombre: 'desde', tipo: 'fecha' }, { nombre: 'n', tipo: 'numero' }], 'c-2');
+    assert.deepEqual(pasoVisible(escenario), [2, 2]);
 
     const controles = (escenario.nodos.get('auto-valores') as Nodo).porClase('parametro-valor');
     assert.equal(controles.length, 2, 'one control per declared parameter');
     controles[0].value = '2026-01-01';
     controles[1].value = ' 10 ';
-    (escenario.nodos.get('auto-conexion') as Nodo).value = 'c-2';
     (escenario.nodos.get('auto-cron') as Nodo).value = '30 7 * * 1';
 
     const nueva = automatizacion({ id: 'a-2', conexionId: 'c-2', cron: '30 7 * * 1' });
@@ -885,6 +917,11 @@ describe('the console document, served by the real route', () => {
     const filas = filasDe(escenario, 'auto-lista', 'automatizacion');
     assert.equal(filas.length, 2);
     assert.ok(filas[0].textContent.includes('30 7 * * 1'), 'the new automation is listed');
+    // The 201 closes and resets the wizard, and says so in the success banner.
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
+    assert.equal(nodo(escenario, 'auto-conexion').value, '');
+    assert.equal(nodo(escenario, 'banner').className, 'banner exito');
   });
 
   /** Spec "Viewing an automation's runs"; X2: only closed categories reach the page. */
@@ -925,29 +962,48 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-14: recipient and notification outcome (spec `query-console`) -------------
 
-  /** Spec "Creating with a recipient": sent trimmed, and only when not empty. */
+  /** Spec "Creating with a recipient": sent trimmed, and only when not empty. CH-21c RW2: through the wizard. */
   test('CH-14 6.4 the recipient is sent as destinatario only when one is entered', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
-    (escenario.nodos.get('auto-conexion') as Nodo).value = 'c-1';
+    abrirAlta(escenario);
+    await avanzar(escenario);
     (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
     (escenario.nodos.get('auto-destinatario') as Nodo).value = ' ops@example.com ';
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
     await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
     assert.equal(escenario.peticiones[escenario.peticiones.length - 2].url, '/automatizaciones');
-    assert.equal((escenario.peticiones[escenario.peticiones.length - 2].cuerpo as Record<string, unknown>).destinatario, 'ops@example.com');
+    assert.deepEqual(escenario.peticiones[escenario.peticiones.length - 2].cuerpo, {
+      plantillaId: 'p-1',
+      conexionId: 'c-1',
+      valores: {},
+      cron: '0 6 * * *',
+      destinatario: 'ops@example.com',
+    });
 
     // Blank (spaces only): no destinatario key at all, so the automation is created without one.
+    // The 201 closed the wizard, so the second one is opened and walked again.
+    abrirAlta(escenario);
+    await avanzar(escenario);
+    (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
     (escenario.nodos.get('auto-destinatario') as Nodo).value = '   ';
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
     await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
     assert.equal('destinatario' in (escenario.peticiones[escenario.peticiones.length - 2].cuerpo as object), false);
   });
 
-  /** Spec "Invalid recipient shown legibly". */
+  /**
+   * Spec "Invalid recipient shown legibly" and "Server 400 shown in the banner".
+   * CH-21c RW3: through the wizard, which stays on step 2 with every typed value.
+   */
   test('CH-14 6.4 a rejected recipient is one legible sentence naming the field, never a raw error', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
+    abrirAlta(escenario);
+    await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-9');
+    const [control] = nodo(escenario, 'auto-valores').porClase('parametro-valor');
+    control.value = '5';
+    (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
     (escenario.nodos.get('auto-destinatario') as Nodo).value = 'ops@example.com, otro@example.com';
     await enviar(
       escenario,
@@ -962,6 +1018,108 @@ describe('the console document, served by the real route', () => {
     assert.ok(!banner.includes('/destinatario'), 'the JSON pointer is translated');
     assert.ok(!banner.includes('direccionValida'), 'no stack trace reaches the page');
     assert.ok(!banner.includes('solicitud-invalida'), 'no raw error code reaches the page');
+    assert.deepEqual(ultimoCuerpo(escenario), {
+      plantillaId: 'p-1',
+      conexionId: 'c-9',
+      valores: { n: 5 },
+      cron: '0 6 * * *',
+      destinatario: 'ops@example.com, otro@example.com',
+    });
+    // The 400 keeps the wizard open on step 2, with what was typed.
+    assert.equal(nodo(escenario, 'auto-alta').hidden, false);
+    assert.deepEqual(pasoVisible(escenario), [2, 2]);
+    assert.equal(nodo(escenario, 'auto-destinatario').value, 'ops@example.com, otro@example.com');
+    assert.equal(nodo(escenario, 'auto-cron').value, '0 6 * * *');
+    assert.equal(nodo(escenario, 'auto-conexion').value, 'c-9');
+    assert.equal(nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value, '5');
+  });
+
+  // ---- CH-21c PR2a: the wizard shell (spec `query-console`, DEC-129) ---------------
+
+  /** Spec "Wizard opens on step 1" (its request half is PR2b's) and "Step navigation". */
+  test('CH-21c W3 Siguiente waits for a connection and a template; Volver keeps both; aria-current moves', async () => {
+    const escenario = await arrancar();
+    // No tenant: Nueva says so and opens nothing.
+    abrirAlta(escenario);
+    assert.match(nodo(escenario, 'banner').textContent, /Elegí un tenant/);
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const pedidas = escenario.peticiones.length;
+    abrirAlta(escenario);
+    assert.equal(escenario.peticiones.length, pedidas, 'the PR2a shell sends no request on opening');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, false);
+    assert.equal(nodo(escenario, 'auto-nueva').hidden, true);
+    assert.deepEqual(pasoVisible(escenario), [1, 1]);
+    const siguiente = nodo(escenario, 'auto-siguiente');
+    assert.equal(siguiente.disabled, true, 'nothing chosen yet');
+
+    const plantilla = nodo(escenario, 'auto-plantilla');
+    plantilla.value = 'p-1';
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros: [{ nombre: 'n', tipo: 'numero' }] } } });
+    plantilla.disparar('change');
+    await asentar();
+    assert.equal(siguiente.disabled, true, 'a template without a connection');
+    nodo(escenario, 'auto-conexion').value = '   ';
+    nodo(escenario, 'auto-conexion').disparar('input');
+    assert.equal(siguiente.disabled, true, 'blanks are no connection');
+    nodo(escenario, 'auto-conexion').value = 'c-7';
+    nodo(escenario, 'auto-conexion').disparar('input');
+    assert.equal(siguiente.disabled, false);
+
+    siguiente.disparar('click');
+    assert.deepEqual(pasoVisible(escenario), [2, 2]);
+    assert.equal(nodo(escenario, 'auto-resumen').textContent, 'Plantilla: Stock diario · Conexión: c-7');
+    nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value = '12';
+
+    nodo(escenario, 'auto-volver').disparar('click');
+    assert.deepEqual(pasoVisible(escenario), [1, 1]);
+    assert.equal(plantilla.value, 'p-1');
+    assert.equal(nodo(escenario, 'auto-conexion').value, 'c-7');
+    siguiente.disparar('click');
+    assert.deepEqual(pasoVisible(escenario), [2, 2]);
+    assert.equal(nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value, '12', 'Volver kept the value');
+
+    // Siguiente re-checks: with the template unchosen it does not move.
+    nodo(escenario, 'auto-volver').disparar('click');
+    plantilla.value = '';
+    plantilla.disparar('change');
+    await asentar();
+    siguiente.disparar('click');
+    assert.deepEqual(pasoVisible(escenario), [1, 1]);
+    assert.equal(escenario.peticiones.length, pedidas + 1, 'only the template detail was requested');
+  });
+
+  /** Spec "Tenant switch wipes the wizard" and "Tenant load keeps three requests". */
+  test('CH-21c W6 a tenant switch hides and wipes the wizard, and the load stays at three requests', async () => {
+    const escenario = await arrancar([
+      { id: 't-1', nombre: 'Food Store' },
+      { id: 't-2', nombre: 'Otra tienda' },
+    ]);
+    await elegirTenant(escenario, [], [], 't-1');
+    abrirAlta(escenario);
+    await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-A');
+    nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value = '3';
+    nodo(escenario, 'auto-cron').value = '0 6 * * *';
+    nodo(escenario, 'auto-destinatario').value = 'ops@example.com';
+
+    const antes = escenario.peticiones.length;
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.deepEqual(
+      escenario.peticiones.slice(antes).map((peticion) => [peticion.url, peticion.tenant]),
+      [['/consultas-guardadas', 't-2'], ['/plantillas', 't-2'], ['/automatizaciones', 't-2']],
+    );
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
+    for (const id of ['auto-conexion', 'auto-cron', 'auto-destinatario', 'auto-plantilla']) {
+      assert.equal(nodo(escenario, id).value, '', id + ' is wiped');
+    }
+    assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, 'no value control of A survives');
+    assert.equal(nodo(escenario, 'auto-resumen').textContent, '');
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
+
+    abrirAlta(escenario);
+    assert.deepEqual(pasoVisible(escenario), [1, 1], 'reopening starts on step 1');
   });
 
   /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */

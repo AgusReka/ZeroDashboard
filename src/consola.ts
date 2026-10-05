@@ -364,6 +364,9 @@ var ETIQUETAS_NOTIFICACION = {
 
 var CLAVE_TENANT = 'zerodashboard.tenantActivo';
 
+// Shared by pedir() and the wizard's Nueva: both refuse to act without an active tenant.
+var SIN_TENANT = 'Elegí un tenant en la barra superior antes de operar. No se envió ninguna solicitud.';
+
 var selectorTenant = document.getElementById('tenant');
 var indicadorTenant = document.getElementById('tenant-activo');
 var formulario = document.getElementById('formulario');
@@ -391,11 +394,25 @@ var entradaDestinatario = document.getElementById('auto-destinatario');
 var botonCrearAuto = document.getElementById('auto-crear');
 var tablaAutomatizaciones = document.getElementById('auto-lista');
 var tablaEjecuciones = document.getElementById('auto-ejecuciones');
+var botonNuevaAuto = document.getElementById('auto-nueva');
+var altaAuto = document.getElementById('auto-alta');
+var marcaAlta1 = document.getElementById('auto-marca-1');
+var marcaAlta2 = document.getElementById('auto-marca-2');
+var pasoAlta1 = document.getElementById('auto-paso-1');
+var pasoAlta2 = document.getElementById('auto-paso-2');
+var avisoAlta = document.getElementById('auto-aviso');
+var botonSiguienteAuto = document.getElementById('auto-siguiente');
+var resumenAlta = document.getElementById('auto-resumen');
+var botonVolverAuto = document.getElementById('auto-volver');
 
 // The template catalog by id, for naming each automation's plantilla in the list, and
 // the value controls of the template chosen in the create form.
 var nombresPlantilla = Object.create(null);
 var filasValoresAuto = [];
+
+// CH-21c: the wizard's stale-response token. Every reset (open, cancel, created, tenant
+// switch) moves it, and a response that started under an older value is dropped.
+var generacionAlta = 0;
 
 var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
 
@@ -612,7 +629,7 @@ async function cargarTenants() {
  */
 function pedir(url, opciones) {
   if (tenantActivo === null) {
-    mostrarBanner('Elegí un tenant en la barra superior antes de operar. No se envió ninguna solicitud.');
+    mostrarBanner(SIN_TENANT);
     return Promise.resolve(null);
   }
 
@@ -1114,10 +1131,65 @@ function renderizarTabla(tabla, columnas, filas, claseFila, aviso) {
 function limpiarAutomatizaciones() {
   vaciar(tablaAutomatizaciones);
   vaciar(tablaEjecuciones);
-  vaciar(contenedorValoresAuto);
   vaciar(selectorPlantilla);
-  filasValoresAuto = [];
   nombresPlantilla = Object.create(null);
+  // The wizard goes too, values and all: nothing typed for one tenant survives the switch.
+  cerrarAlta();
+}
+
+// --- Creation wizard (CH-21c, DEC-129) ------------------------------------------
+// Two static panels and a static stepper. The script only flips hidden and the step
+// markers' aria-current; no class is assigned here and no markup is written.
+
+// Siguiente needs a connection and a chosen template; the values have their own
+// legible server-side errors on step 2.
+function actualizarSiguiente() {
+  botonSiguienteAuto.disabled = entradaConexionAuto.value.trim() === '' || selectorPlantilla.value === '';
+}
+
+function marcarPaso(marca, actual) {
+  if (actual) { marca.setAttribute('aria-current', 'step'); } else { marca.removeAttribute('aria-current'); }
+}
+
+function irAPaso(n) {
+  pasoAlta1.hidden = n !== 1;
+  pasoAlta2.hidden = n !== 2;
+  marcarPaso(marcaAlta1, n === 1);
+  marcarPaso(marcaAlta2, n === 2);
+}
+
+// Empties every wizard field and moves the token, so a response still in flight for
+// the previous wizard lands nowhere.
+function reiniciarAlta() {
+  generacionAlta += 1;
+  selectorPlantilla.value = '';
+  vaciar(contenedorValoresAuto);
+  filasValoresAuto = [];
+  entradaConexionAuto.value = '';
+  entradaCron.value = '';
+  entradaDestinatario.value = '';
+  resumenAlta.textContent = '';
+  avisoAlta.textContent = '';
+  avisoAlta.hidden = true;
+  actualizarSiguiente();
+}
+
+function abrirAlta() {
+  if (tenantActivo === null) {
+    mostrarBanner(SIN_TENANT);
+    return;
+  }
+  ocultarBanner();
+  reiniciarAlta();
+  altaAuto.hidden = false;
+  botonNuevaAuto.hidden = true;
+  irAPaso(1);
+}
+
+function cerrarAlta() {
+  altaAuto.hidden = true;
+  reiniciarAlta();
+  botonNuevaAuto.hidden = false;
 }
 
 // The shared head of every automations call: null when the page has already said why,
@@ -1230,6 +1302,7 @@ async function cargarAutomatizaciones() {
 async function crearAutomatizacion() {
   ocultarBanner();
   botonCrearAuto.disabled = true;
+  var g = generacionAlta;
   // No tenant here: the header names it (DEC-15), and the route refuses one in the body.
   var alta = {
     plantillaId: selectorPlantilla.value,
@@ -1246,7 +1319,9 @@ async function crearAutomatizacion() {
     body: JSON.stringify(alta)
   });
   botonCrearAuto.disabled = false;
-  if (resultado === null) { return; }
+  // Dropped when the wizard was reset meanwhile (a tenant switch): it no longer exists.
+  if (resultado === null || g !== generacionAlta) { return; }
+  // A 400 leaves the wizard on step 2 with every value as typed.
   if (resultado.status === 400) {
     var campos = Array.isArray(resultado.cuerpo.campos) ? resultado.cuerpo.campos : [];
     mostrarBanner(campos.indexOf('/cron') !== -1
@@ -1257,6 +1332,7 @@ async function crearAutomatizacion() {
     return;
   }
   if (resultado.status !== 201) { mostrarRechazo(resultado); return; }
+  cerrarAlta();
   mostrarConfirmacion('Se creó la automatización y ya aparece en la lista.');
   await listarAutomatizaciones();
 }
@@ -1337,7 +1413,31 @@ selectorTenant.addEventListener('change', function () {
 });
 
 selectorPlantilla.addEventListener('change', function () {
+  actualizarSiguiente();
   elegirPlantilla();
+});
+
+// CH-21c: the connection is still a text field here; a later PR makes it a select.
+entradaConexionAuto.addEventListener('input', function () {
+  actualizarSiguiente();
+});
+
+botonNuevaAuto.addEventListener('click', function () {
+  abrirAlta();
+});
+
+// Re-checks the gate before moving, so a stale enabled state cannot skip step 1.
+botonSiguienteAuto.addEventListener('click', function () {
+  actualizarSiguiente();
+  if (botonSiguienteAuto.disabled) { return; }
+  var nombre = nombresPlantilla[selectorPlantilla.value];
+  resumenAlta.textContent = 'Plantilla: ' + (nombre === undefined ? selectorPlantilla.value : nombre) +
+    ' · Conexión: ' + entradaConexionAuto.value.trim();
+  irAPaso(2);
+});
+
+botonVolverAuto.addEventListener('click', function () {
+  irAPaso(1);
 });
 
 botonCrearAuto.addEventListener('click', function () {
