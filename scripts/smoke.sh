@@ -51,9 +51,25 @@ check_health 200 ready
 echo "== migration idempotency (Own Database via Migrations) =="
 docker compose restart app >/dev/null
 wait_for_app
-docker compose logs app 2>&1 | tail -20 | grep -q "No pending migrations to apply." || fail "second migrate run was not a no-op"
+# The log window of exactly this boot. StartedAt and the log timestamps both come from the
+# Docker daemon clock, so there is no host/VM skew, whatever the number of boot lines.
+INICIO_APP=$(docker inspect -f '{{.State.StartedAt}}' "$(docker compose ps -q app)")
+docker compose logs --since "$INICIO_APP" app >/tmp/smoke-arranque.log 2>&1
+grep -q "No pending migrations to apply." /tmp/smoke-arranque.log || fail "second migrate run was not a no-op"
 check_health 200 ready
 echo "OK: migrate deploy re-run was a no-op"
+
+echo "== CH-21b: initial template catalog, seeded on every boot (DEC-125) =="
+# A tenant certainly exists on this restart, so the tenant step returns early; the catalog
+# step must run anyway.
+grep -q "Seed skipped:" /tmp/smoke-arranque.log || fail "the restart did not reach the tenant seed step"
+grep -q "Seed: template catalog" /tmp/smoke-arranque.log || fail "the catalog seed step did not run on restart"
+code=$(curl -s -o /tmp/smoke-plantillas.json -w '%{http_code}' http://localhost:3000/plantillas --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 listing templates with no header, got $code"
+for id in 21b00000-0000-4000-8000-000000000001 21b00000-0000-4000-8000-000000000002; do
+  grep -q "\"id\":\"$id\"" /tmp/smoke-plantillas.json || fail "catalog template $id is missing from GET /plantillas"
+done
+echo "OK: both catalog templates listed headerless; the catalog step ran although the tenant step was skipped"
 
 echo "== degrade + recover (Verifiable Application Skeleton, failure path) =="
 docker compose stop db >/dev/null
