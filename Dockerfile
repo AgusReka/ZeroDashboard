@@ -33,6 +33,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# CH-21a (DEC-124 A4): the five shared stylesheet files. The server reads them at boot
+# and refuses to start without them; `tsc` does not copy non-TypeScript files into dist.
+COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build /app/package*.json ./

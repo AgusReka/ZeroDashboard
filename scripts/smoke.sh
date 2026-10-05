@@ -280,6 +280,17 @@ grep -q "id=\"ejecutar\"" /tmp/smoke-consola.html || fail "/consola has no execu
 if grep -q "innerHTML" /tmp/smoke-consola.html; then fail "/consola must never use innerHTML"; fi
 echo "OK: /consola -> 200 with a SQL input, an execute control and no innerHTML"
 
+echo "-- shared stylesheet (CH-21a, DEC-124: Engine Image Includes the Assets) --"
+# Headerless, like the console page that links it: the five files are exempt by exact GET
+# row. Two routes: the entry sheet and one file its @import chain reaches.
+for ruta in /ui/styles.css /ui/components/components.css; do
+  code=$(curl -s -o /tmp/smoke-estilos.css -D /tmp/smoke-estilos.h -w '%{http_code}' \
+    "http://localhost:3000$ruta" --max-time 10)
+  [ "$code" = "200" ] || fail "expected HTTP 200 from $ruta with no header, got $code"
+  grep -qi '^content-type: text/css' /tmp/smoke-estilos.h || fail "$ruta is not served as text/css"
+done
+echo "OK: /ui/styles.css and /ui/components/components.css -> 200 text/css with no header"
+
 echo "-- credential never logged (Credential Value Never Exposed During Execution) --"
 if docker compose logs app 2>&1 | grep -q -e "$LECTOR_CLAVE" -e "$ESCRITOR_CLAVE"; then
   fail "a submitted credential appeared in the app logs"
