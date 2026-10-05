@@ -290,6 +290,10 @@ for ruta in /ui/styles.css /ui/components/components.css; do
   grep -qi '^content-type: text/css' /tmp/smoke-estilos.h || fail "$ruta is not served as text/css"
 done
 echo "OK: /ui/styles.css and /ui/components/components.css -> 200 text/css with no header"
+# The console page fetched above is the one that links the entry sheet (query-console).
+grep -qF '<link rel="stylesheet" href="/ui/styles.css">' /tmp/smoke-consola.html ||
+  fail "/consola does not link the shared stylesheet /ui/styles.css"
+echo "OK: /consola links /ui/styles.css"
 
 echo "-- credential never logged (Credential Value Never Exposed During Execution) --"
 if docker compose logs app 2>&1 | grep -q -e "$LECTOR_CLAVE" -e "$ESCRITOR_CLAVE"; then
