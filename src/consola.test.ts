@@ -357,7 +357,22 @@ describe('the console document, served by the real route', () => {
     assert.ok(documento.indexOf(enlace) < documento.indexOf('<style'), 'the bridge overrides the sheet');
     assert.ok(!documento.includes('max-width: 62rem'), 'the former inline body rule is gone');
     assert.ok(!documento.includes('#barra-tenant { position: sticky'), 'the former inline bar rule is gone');
-    assert.ok(!script.includes('zd-'), 'the script assigns no shared class (CH-21c)');
+  });
+
+  /**
+   * Spec "Script may reference the shared classes". CH-21c G3': the script names exactly
+   * these shared classes, each assigned alone: `porClase` compares by strict equality, so
+   * a new class or a second class on one node is a deliberate edit of this list.
+   */
+  test("CH-21c G3' the script assigns only the picker's shared classes, one per className", () => {
+    const tokens = [...new Set(script.match(/zd-[\w-]+/g) ?? [])].sort();
+    assert.deepEqual(tokens, ['zd-template', 'zd-template__desc', 'zd-template__name']);
+    const asignaciones = script.match(/className = '[^']*'/g) ?? [];
+    const compartidas = asignaciones.filter((asignacion) => asignacion.includes('zd-'));
+    assert.equal(compartidas.length, 3, 'each shared class is assigned once');
+    for (const asignacion of compartidas) {
+      assert.ok(!/'[^']* [^']*'/.test(asignacion), 'single class: ' + asignacion);
+    }
   });
 
   /** CH-21c PR2a: what IDS_OCULTOS mirrors, read from the markup itself. */
@@ -369,6 +384,9 @@ describe('the console document, served by the real route', () => {
     assert.match(seccion, /<li id="auto-marca-1"[^>]*aria-current="step"/, 'step 1 is current');
     assert.ok(!/<li id="auto-marca-2"[^>]*aria-current/.test(seccion), 'step 2 is not current');
     assert.match(seccion, /<button id="auto-siguiente"[^>]*disabled/, 'Siguiente starts disabled');
+    // PR2c: the picker is a radio group the script fills with cards; no label points at it.
+    assert.ok(seccion.includes('<div id="auto-plantilla" class="zd-templates" role="radiogroup" aria-label="Plantilla"></div>'));
+    assert.ok(!seccion.includes('for="auto-plantilla"'), 'a label for a div names nothing');
     const botonesSeccion = seccion.match(/<button[^>]*>/g) ?? [];
     assert.ok(botonesSeccion.length >= 5);
     assert.ok(botonesSeccion.every((etiqueta) => etiqueta.includes('type="button"')), 'no button submits');
@@ -380,8 +398,8 @@ describe('the console document, served by the real route', () => {
   async function arrancar(tenants = [{ id: 't-1', nombre: 'Food Store' }]): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
-      // CH-21c: auto-conexion is a select from PR2b; auto-plantilla stays one until PR2c.
-      const nodo = new Nodo(id === 'tenant' || id === 'auto-plantilla' || id === 'auto-conexion' ? 'select' : 'div');
+      // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c.
+      const nodo = new Nodo(id === 'tenant' || id === 'auto-conexion' ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -409,12 +427,13 @@ describe('the console document, served by the real route', () => {
     guardadas: unknown[] = [],
     automatizaciones: unknown[] = [],
     id = 't-1',
+    plantillas: unknown[] = [{ id: 'p-1', nombre: 'Stock diario' }],
   ): Promise<void> {
     const selector = escenario.nodos.get('tenant') as Nodo;
     selector.value = id;
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } },
-      { status: 200, cuerpo: { plantillas: [{ id: 'p-1', nombre: 'Stock diario' }], truncado: false } },
+      { status: 200, cuerpo: { plantillas, truncado: false } },
       { status: 200, cuerpo: { automatizaciones, truncado: false } },
     );
     selector.disparar('change');
@@ -849,12 +868,35 @@ describe('the console document, served by the real route', () => {
     return nodo(escenario, 'auto-conexion').options.map((opcion) => [opcion.value, opcion.textContent]);
   }
 
-  /** CH-21c step 1: picks the template, its detail answered with `parametros`. */
+  /** CH-21c PR2c: the template cards of the picker, in catalog order. */
+  function tarjetas(escenario: Escenario): Nodo[] {
+    return nodo(escenario, 'auto-plantilla').porClase('zd-template');
+  }
+
+  /** CH-21c PR2c: the radio input inside one card. */
+  function radioDe(tarjeta: Nodo): Nodo {
+    return tarjeta.hijos.find((hijo) => hijo.tagName === 'input') as Nodo;
+  }
+
+  /**
+   * CH-21c PR2c: chooses a card as a click on its label does in a browser: that radio
+   * becomes the group's only checked one, then it fires `change`. The fake DOM has no
+   * radio groups, so the unchecking of the others is done here.
+   */
+  function elegirTarjeta(escenario: Escenario, id: string): void {
+    const radios = tarjetas(escenario).map(radioDe);
+    const elegido = radios.find((radio) => radio.value === id);
+    assert.ok(elegido !== undefined, id + ' has a card');
+    for (const radio of radios) {
+      radio.checked = radio === elegido;
+    }
+    elegido.disparar('change');
+  }
+
+  /** CH-21c step 1: picks the template's card, its detail answered with `parametros`. */
   async function elegirPlantillaAlta(escenario: Escenario, parametros: unknown[] = []): Promise<void> {
-    const plantilla = nodo(escenario, 'auto-plantilla');
-    plantilla.value = 'p-1';
     escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros } } });
-    plantilla.disparar('change');
+    elegirTarjeta(escenario, 'p-1');
     await asentar();
   }
 
@@ -1080,11 +1122,7 @@ describe('the console document, served by the real route', () => {
     const siguiente = nodo(escenario, 'auto-siguiente');
     assert.equal(siguiente.disabled, true, 'nothing chosen yet');
 
-    const plantilla = nodo(escenario, 'auto-plantilla');
-    plantilla.value = 'p-1';
-    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros: [{ nombre: 'n', tipo: 'numero' }] } } });
-    plantilla.disparar('change');
-    await asentar();
+    await elegirPlantillaAlta(escenario, [{ nombre: 'n', tipo: 'numero' }]);
     assert.equal(siguiente.disabled, true, 'a template without a connection');
     nodo(escenario, 'auto-conexion').value = 'c-7';
     nodo(escenario, 'auto-conexion').disparar('change');
@@ -1102,17 +1140,16 @@ describe('the console document, served by the real route', () => {
 
     nodo(escenario, 'auto-volver').disparar('click');
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
-    assert.equal(plantilla.value, 'p-1');
+    assert.equal(radioDe(tarjetas(escenario)[0]).checked, true, 'the card stays chosen');
     assert.equal(nodo(escenario, 'auto-conexion').value, 'c-7');
     siguiente.disparar('click');
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
     assert.equal(nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value, '12', 'Volver kept the value');
 
-    // Siguiente re-checks: with the template unchosen it does not move.
+    // Siguiente re-checks: with the connection unchosen it does not move (a chosen radio
+    // card cannot be unchosen by the operator).
     nodo(escenario, 'auto-volver').disparar('click');
-    plantilla.value = '';
-    plantilla.disparar('change');
-    await asentar();
+    nodo(escenario, 'auto-conexion').value = '';
     siguiente.disparar('click');
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
     assert.equal(escenario.peticiones.length, pedidas + 2, 'only the connections and the template detail');
@@ -1139,9 +1176,11 @@ describe('the console document, served by the real route', () => {
     );
     assert.equal(nodo(escenario, 'auto-alta').hidden, true);
     assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
-    for (const id of ['auto-conexion', 'auto-cron', 'auto-destinatario', 'auto-plantilla']) {
+    for (const id of ['auto-conexion', 'auto-cron', 'auto-destinatario']) {
       assert.equal(nodo(escenario, id).value, '', id + ' is wiped');
     }
+    assert.equal(tarjetas(escenario).length, 1, "B's catalog");
+    assert.ok(tarjetas(escenario).every((tarjeta) => !radioDe(tarjeta).checked), 'no card stays chosen');
     assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, 'no value control of A survives');
     assert.deepEqual(opcionesConexion(escenario), [['', 'Elegí una conexión']], 'no connection of A stays selectable');
     assert.equal(nodo(escenario, 'auto-resumen').textContent, '');
@@ -1168,9 +1207,10 @@ describe('the console document, served by the real route', () => {
 
     await abrirAlta(escenario);
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
-    for (const id of ['auto-conexion', 'auto-cron', 'auto-plantilla']) {
+    for (const id of ['auto-conexion', 'auto-cron']) {
       assert.equal(nodo(escenario, id).value, '', id + ' is reset');
     }
+    assert.ok(tarjetas(escenario).every((tarjeta) => !radioDe(tarjeta).checked), 'no card stays chosen');
     assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0);
     assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
   });
@@ -1185,16 +1225,17 @@ describe('the console document, served by the real route', () => {
     await abrirAlta(escenario);
     let responder!: (cuerpo: unknown) => void;
     const diferido = new Promise((resolver) => { responder = resolver; });
-    const plantilla = nodo(escenario, 'auto-plantilla');
-    plantilla.value = 'p-1';
     escenario.respuestas.push({ status: 200, cuerpo: diferido });
-    plantilla.disparar('change');
+    elegirTarjeta(escenario, 'p-1');
     await asentar();
 
-    // Tenant B's catalog carries the same template id, so only the wizard token can tell.
+    // Tenant B's catalog carries the same template id and B chooses it too (its own detail
+    // stays in flight), so only the wizard token can tell the two answers apart.
     await elegirTenant(escenario, [], [], 't-2');
     await abrirAlta(escenario);
-    plantilla.value = 'p-1';
+    escenario.respuestas.push({ status: 200, cuerpo: new Promise(() => {}) });
+    elegirTarjeta(escenario, 'p-1');
+    await asentar();
     responder({ plantilla: { parametros: [{ nombre: 'n', tipo: 'numero' }] } });
     await asentar();
     assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, "A's late detail is dropped");
@@ -1292,6 +1333,108 @@ describe('the console document, served by the real route', () => {
     assert.equal(opcionesConexion(escenario).length, CONEXIONES.length + 1, 'the retry fills the dropdown');
     assert.equal(nodo(escenario, 'auto-aviso').hidden, true);
     assert.equal(banner.hidden, true);
+  });
+
+  // ---- CH-21c PR2c: the template picker (spec `query-console`, DEC-131) -------------
+
+  /** Spec "Known label" and "Unknown label": a card per template, described by its label. */
+  test('CH-21c W1 one text-only card per template, described by its label, with a neutral fallback', async () => {
+    const escenario = await arrancar();
+    const neutra = 'Plantilla del catálogo, sin descripción en la consola.';
+    const catalogo = [
+      { id: 'p-f', nombre: 'Alerta de stock físico', automatizacion: 'stock-fisico', toleranciaFrescuraMinutos: 60 },
+      { id: 'p-p', nombre: 'Alerta de stock producible', automatizacion: 'stock-producible', toleranciaFrescuraMinutos: 120 },
+      { id: 'p-o', nombre: 'Reporte <b>diario</b>', automatizacion: 'otra' },
+      { id: 'p-c', nombre: 'Constructor', automatizacion: 'constructor' },
+      // The elegirTenant fixture's shape: no automatizacion at all.
+      { id: 'p-1', nombre: 'Stock diario' },
+    ];
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', catalogo);
+    // An unknown label does not stop the load: the list after the catalog still renders.
+    assert.equal(filasDe(escenario, 'auto-lista', 'automatizacion').length, 1);
+
+    const cartas = tarjetas(escenario);
+    assert.equal(nodo(escenario, 'auto-plantilla').hijos.length, catalogo.length, 'nothing but the cards');
+    assert.deepEqual(
+      cartas.map((tarjeta) => [tarjeta.tagName, ...tarjeta.hijos.map((hijo) => hijo.tagName + '.' + hijo.className)]),
+      catalogo.map(() => ['label', 'input.', 'span.zd-template__name', 'span.zd-template__desc']),
+      'name and description only: no icon, no tolerance, no check mark',
+    );
+    assert.deepEqual(
+      cartas.map((tarjeta) => [tarjeta.hijos[1].textContent, tarjeta.hijos[2].textContent]),
+      [
+        ['Alerta de stock físico', 'Avisa cuando un producto queda por debajo del mínimo.'],
+        ['Alerta de stock producible', 'Avisa cuando los insumos no alcanzan para producir.'],
+        ['Reporte <b>diario</b>', neutra],
+        ['Constructor', neutra],
+        ['Stock diario', neutra],
+      ],
+    );
+    assert.ok(cartas.every((tarjeta) => tarjeta.hijos.every((hijo) => hijo.hijos.length === 0)), 'text only');
+    assert.ok(!cartas.some((tarjeta) => /60|120/.test(tarjeta.textContent)), 'no tolerance on the card');
+    // One radio group: the same name on every input, so the browser's arrow keys move the choice.
+    assert.deepEqual(
+      cartas.map(radioDe).map((radio) => [radio.type, radio.name, radio.value, radio.checked]),
+      catalogo.map((fila) => ['radio', 'auto-plantilla-opcion', fila.id, false]),
+    );
+  });
+
+  /** Spec "Parameters of the chosen template"; design PR2c W8: of two choices in flight, the later wins. */
+  test('CH-21c W8 the later card wins over an earlier detail still in flight, and its id is what is sent', async () => {
+    const escenario = await arrancar();
+    const catalogo = [{ id: 'p-1', nombre: 'Primera' }, { id: 'p-2', nombre: 'Segunda' }];
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', catalogo);
+    await abrirAlta(escenario);
+    const antes = escenario.peticiones.length;
+    let responderPrimera!: (cuerpo: unknown) => void;
+    let responderSegunda!: (cuerpo: unknown) => void;
+    escenario.respuestas.push(
+      { status: 200, cuerpo: new Promise((resolver) => { responderPrimera = resolver; }) },
+      { status: 200, cuerpo: new Promise((resolver) => { responderSegunda = resolver; }) },
+    );
+    elegirTarjeta(escenario, 'p-1');
+    await asentar();
+    elegirTarjeta(escenario, 'p-2');
+    await asentar();
+    assert.deepEqual(
+      escenario.peticiones.slice(antes).map((peticion) => [peticion.url, peticion.tenant]),
+      [['/plantillas/p-1', 't-1'], ['/plantillas/p-2', 't-1']],
+    );
+
+    // The later answer lands first, the earlier one after it: the earlier is dropped.
+    const controles = (): number => nodo(escenario, 'auto-valores').porClase('parametro-valor').length;
+    responderSegunda({ plantilla: { parametros: [{ nombre: 'segunda', tipo: 'texto' }] } });
+    await asentar();
+    responderPrimera({ plantilla: { parametros: [{ nombre: 'a', tipo: 'texto' }, { nombre: 'b', tipo: 'texto' }] } });
+    await asentar();
+    assert.equal(controles(), 1, "only Segunda's one control");
+    assert.match(nodo(escenario, 'auto-valores').textContent, /segunda/);
+    assert.deepEqual(tarjetas(escenario).map((tarjeta) => radioDe(tarjeta).checked), [false, true]);
+
+    // The detail is kept for this wizard: choosing Primera again asks for nothing.
+    const pedidas = escenario.peticiones.length;
+    elegirTarjeta(escenario, 'p-1');
+    await asentar();
+    assert.equal(escenario.peticiones.length, pedidas, 'answered from the cache');
+    assert.equal(controles(), 2);
+    elegirTarjeta(escenario, 'p-2');
+    await asentar();
+
+    nodo(escenario, 'auto-conexion').value = 'c-1';
+    nodo(escenario, 'auto-conexion').disparar('change');
+    nodo(escenario, 'auto-siguiente').disparar('click');
+    assert.deepEqual(pasoVisible(escenario), [2, 2]);
+    assert.match(nodo(escenario, 'auto-resumen').textContent, /^Plantilla: Segunda · /);
+    nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value = 'x';
+    nodo(escenario, 'auto-cron').value = '0 6 * * *';
+    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
+    await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+    assert.deepEqual(escenario.peticiones[escenario.peticiones.length - 2].cuerpo, {
+      plantillaId: 'p-2',
+      conexionId: 'c-1',
+      valores: { segunda: 'x' },
+      cron: '0 6 * * *',
+    });
   });
 
   /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */
