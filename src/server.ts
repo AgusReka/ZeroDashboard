@@ -10,6 +10,7 @@ import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
 import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 import { registerConsolaRoute } from './consola.js';
 import { registerContratoRoutes } from './contrato-rutas.js';
+import { cargarEstilos, registerEstilosRoutes } from './estilos-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
@@ -24,6 +25,10 @@ import { crearNotificadorSmtp } from './notificador.js';
 import { registrarApagado } from './apagado.js';
 
 const config = loadConfig();
+// CH-21a (DEC-124): the five shared stylesheet files are read once, here, before any
+// database client, scheduler or listener exists. A missing or unreadable file throws
+// naming it (`public/ui/<file>`), so the process stops the same way `loadConfig()` does.
+const estilos = cargarEstilos();
 const app = Fastify({ logger: true });
 const adapter = new PrismaPg({ connectionString: config.databaseUrl });
 // The raw client is consumed on this line and never bound to a name: `prisma` is the
@@ -71,6 +76,9 @@ registerConsultaGuardadaRoutes(app, prisma);
 registerVistaCanonicaRoutes(app, prisma);
 registerValidacionMapeoRoutes(app, prisma, registro);
 registerConsolaRoute(app);
+// CH-21a (DEC-124): the loaded sheets and the app, no client, like the console and the
+// contract around it: the assets are identical for every tenant, exempt by exact GET row.
+registerEstilosRoutes(app, estilos);
 // No client argument, like the console above it and unlike the four registrars before:
 // the catalog is static and identical for every tenant, so this route has no database to
 // reach (DEC-21) — which is exactly what makes its header exemption safe (DEC-24).
