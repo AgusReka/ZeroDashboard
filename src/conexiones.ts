@@ -5,6 +5,7 @@ import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { cifrarCredencial, ErrorCredencialIlegible } from './cripto-credencial.js';
 import { probeConnection } from './db-probe.js';
+import { LIMITE_LISTADO } from './listados.js';
 
 /**
  * The only projection any response path is allowed to read from `Conexion`.
@@ -27,6 +28,16 @@ export const ConexionPublica = {
   agenteId: true,
   creadaEn: true,
   actualizadaEn: true,
+} as const;
+
+/**
+ * CH-21c (DEC-132): the listing projection for the console's connection picker. Only `id`
+ * and `nombre`: the picker needs nothing else, so host, user, engine and the agent binding
+ * stay out as well (rule 5), and `credencial` is never fetched (rule 7).
+ */
+export const ConexionListada = {
+  id: true,
+  nombre: true,
 } as const;
 
 interface RegistroConexionBody {
@@ -228,6 +239,26 @@ export function registerConexionRoutes(
       return reply.code(201).send({ conexion });
     },
   );
+
+  /**
+   * CH-21c (DEC-132): the active tenant's connections, for the console's step 1. Not
+   * exempt from `x-tenant-id`, and no `where`: the isolation extension conjoins the
+   * resolved tenant to this `findMany` (DEC-13), as on every scoped list. Ordered by name,
+   * as the template picker's feed is, with `id` as the tie-break; `LIMITE_LISTADO + 1`
+   * decides the page and `truncado` in one query.
+   */
+  app.get('/conexiones', async (_request, reply) => {
+    const filas = await prisma.conexion.findMany({
+      select: ConexionListada,
+      orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
+      take: LIMITE_LISTADO + 1,
+    });
+    const truncado = filas.length > LIMITE_LISTADO;
+    return reply.code(200).send({
+      conexiones: truncado ? filas.slice(0, LIMITE_LISTADO) : filas,
+      truncado,
+    });
+  });
 
   app.post<{ Params: PruebaParams }>(
     '/conexiones/:id/prueba',
