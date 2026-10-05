@@ -69,7 +69,86 @@ Status: implementation complete; 1.10 open only for the smoke run (`bash scripts
 - C2 also asserts the `id` tie-break (all 201 rows share one name, so the order falls to `id`).
 - Commit trailer uses the harness attribution (`Claude Opus 5.5` plus `Claude-Session`), not the `Claude Sonnet 5.5` line in the launch prompt.
 
-## PR2a-PR5
+## PR2a: Wizard shell (`ch21c/asistente-base`)
+
+Status: implemented, verified and committed (not pushed). Authored 396 lines after the budget split (2a.8). 2a.7 (manual visual review) stays open for a human.
+
+First attempt: 458 lines for the full slice, then 427 after the documented fallback (Cancelar and W7 out), so apply stopped before committing. Orchestrator decision (auto-chain, split instead of `size:exception`): also move W10 and the `elegirPlantilla` token guard to PR2b. Result: 396. No further trimming was needed.
+
+### Commits
+
+| Commit | Content |
+|---|---|
+| 3d784ff | `feat(ch21c)`: wizard markup, bridge CSS, harness (`Nodo` attributes, ids, `IDS_OCULTOS`), wizard markup guard test. The staged state was tested alone: 32/32, tsc clean |
+| 43706e4 | `feat(ch21c)`: wizard script, helpers, RW1-RW3 through the wizard, W3, W6 |
+| (docs) | `docs(ch21c)`: `tasks.md` and this file |
+
+### Moved to PR2b (task 2b.0)
+
+Cancelar (`auto-cancelar` markup, `IDS` entry, `botonCancelarAuto` and its listener), W7, the `elegirPlantilla` token guard, and W10. The code and tests are kept as `pr2a-moved-to-pr2b.patch` in the PR2a apply session's scratchpad (`C:\Users\messi\AppData\Local\Temp\claude\C--Users-messi-OneDrive-Documentos-Proyectos-ZeroDashboard\43c807ad-2eaf-40ba-8fa3-0782bc58424a\scratchpad\`), 112 lines. `git apply --check` passes on the PR2a tree. The scratchpad is temporary, so the patch content is also described in `tasks.md` 2b.0.
+
+### Completed Tasks
+
+- [x] 2a.1 Harness: `Nodo` gains `setAttribute`/`removeAttribute`/`getAttribute` (a `Map`), `checked`, `name`, `readOnly`; 10 wizard ids in `IDS` (11 with `auto-cancelar`, moved to PR2b); helpers `abrirAlta`, `completarPaso1`, `avanzar`, `nodo`, `pasoVisible`; `arrancar()` keeps `auto-plantilla` a `select` and `auto-conexion` a `div`, and starts `IDS_OCULTOS` (`auto-alta`, `auto-paso-2`, `auto-aviso`) hidden as the markup does.
+- [x] 2a.2 RW1, RW2, RW3 rewritten through Nueva, step 1, Siguiente, step 2, each asserting the full POST body (keys unchanged). RW1 also asserts the 201 closes and resets the wizard; RW3 asserts step 2 stays visible with every typed value after the 400.
+- [x] 2a.3 W3, W6. W7 and W10 moved to PR2b (budget split).
+- [x] 2a.4 Markup (`#auto-nueva`, `#auto-alta` card, `zd-steps` stepper, two panels, every button `type="button"`) and bridge CSS (`#auto-alta`, `#auto-alta .zd-form-actions`, two `#auto-marca-1:not([aria-current])` rules).
+- [x] 2a.5 Script: `SIN_TENANT`, `generacionAlta`, `actualizarSiguiente`, `marcarPaso`, `irAPaso`, `reiniciarAlta`, `abrirAlta`, `cerrarAlta`; Siguiente, Volver, Nueva and connection `input` listeners; `limpiarAutomatizaciones` calls `cerrarAlta`; `crearAutomatizacion` guarded by `g === generacionAlta` (the `elegirPlantilla` guard moved to PR2b); the 201 calls `cerrarAlta`, `mostrarConfirmacion`, then the list reload.
+- [x] 2a.6 Verification (below).
+- [ ] 2a.7 Manual visual review: human only.
+- [x] 2a.8 Line-count checkpoint: 396 authored after the split (see below).
+
+### RED evidence
+
+Tests written first. Before production code, `npx tsx --test src/consola.test.ts`: 36 tests, 28 pass, 8 fail (G1 ids, the wizard-markup guard, RW1, RW3, W3, W6, W7, W10). RW2 already passed in the fake DOM, which does not model visibility. Mutation check after GREEN: removing `g !== generacionAlta` from `elegirPlantilla` fails W10 only. Both then moved to PR2b, where W10 must be written RED again before the guard.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/consola.test.ts` on the final tree: 34/34 pass (36/36 with W7 and W10, before the split) |
+| Full suite | `TEST_DB_PORT=1 npm test` on the committed tip: 570 tests, 570 pass, 0 fail; live DB suites SKIPPED (the Compose db was not running on 127.0.0.1:5434; port 5432 never used). No table touched |
+| Build | `npx tsc --noEmit` clean; `npm run build` exit 0; `sh -n scripts/smoke.sh` OK (smoke not run, orchestrator-owned) |
+| Page hazards | One `</script>`, one `<style>`, no backtick, no `${`, no literal backslash-d, no `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`srcdoc`, no `zd-` in the script, no new `className` assignment |
+| Runtime harness | Manual visual review (2a.7), human only |
+| Rollback boundary | Revert the PR2a diff of `src/consola.ts` and `src/consola.test.ts`; restores the flat form |
+
+### Line count (2a.8)
+
+| Variant | `src/consola.ts` | `src/consola.test.ts` | Authored |
+|---|---|---|---|
+| Full slice (with Cancelar and W7) | +157/-17 | +270/-14 | 458 |
+| After the fallback (Cancelar and W7 out) | +151/-17 | +245/-14 | 427 |
+| Final, committed (W10 and the `elegirPlantilla` guard also out) | +147/-15 | +220/-14 | **396** |
+
+`git diff --stat master...HEAD` on the code commits: 2 files, 367 insertions, 29 deletions. The full-slice diff is also saved as `pr2a-full-with-cancelar.patch` in the same scratchpad. The test side outgrew the design forecast (+150/-30): full-body assertions in RW2 and RW3, the step and stepper assertions in W3, W6 and RW3, and one markup guard test that backs `IDS_OCULTOS`.
+
+### Deviations
+
+- Added test "CH-21c the wizard markup starts closed, on step 1, with type=\"button\" on every button" and `IDS_OCULTOS` in the harness: the fake DOM does not parse markup, so the hidden start state is mirrored and the mirror is pinned against the markup.
+- Extra helpers `completarPaso1`, `nodo` and `pasoVisible` next to the design's `abrirAlta` and `avanzar`.
+- `reiniciarAlta` also hides and empties `#auto-aviso` and empties `#auto-resumen` (wizard state reset).
+- `auto-crear` became primary (design), from secondary.
+- PR2a has no Cancelar: until PR2b, the open wizard closes only on a 201 or a tenant switch.
+- In PR2a `elegirPlantilla` keeps only the pre-existing "later choice wins" check. Every reset clears the select, so a late detail from the previous tenant is dropped, unless a template with the same id is chosen again before that detail arrives (the case W10 covers). The token guard that the spec scenario requires, and W10, land in PR2b.
+
+### Spec Coverage (PR2a)
+
+| Scenario | Test |
+|---|---|
+| Requesting the console page, Page links the shared stylesheet, Script hazards, Script may reference the shared classes | existing guards plus G1/G3, all passing |
+| Viewing the automations list | existing list test, passing |
+| Creating an automation from the console, Parameters of the chosen template, POST body is unchanged | RW1 |
+| Creating with a recipient | RW2 |
+| Invalid recipient shown legibly, Server 400 shown in the banner (step 2 kept) | RW3 |
+| Wizard opens on step 1 (stepper half; the `GET /conexiones` half is PR2b) | W3 |
+| Step navigation | W3 |
+| Tenant switch wipes the wizard, Tenant load keeps three requests | W6 |
+| All ids present once, A renamed id fails the guard, Limit attributes preserved | G1, G2 with the wizard ids; the wizard markup guard |
+
+Later PRs: "Late response after a tenant switch is ignored" (fully PR2b: W10 and W5), "Tenant has no connections", "Connections fetch fails", the `GET /conexiones` half of "Wizard opens on step 1" (PR2b); "Known label", "Unknown label" (PR2c); the schedule scenarios and "Success banner shows first run and zone" (PR3); availability (PR4); preview (PR5).
+
+## PR2b-PR5
 
 Not started.
 
