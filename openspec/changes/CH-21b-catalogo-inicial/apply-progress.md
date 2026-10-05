@@ -122,3 +122,10 @@ The orchestrator or user decides between the split and a `size:exception`.
 | Focused test | `TEST_DB_PORT=5434 TEST_DB_PASSWORD=*** npx tsx --test src/catalogo-inicial.test.ts`: 10/10 pass |
 | Runtime harness | `bash scripts/smoke.sh`: pending, orchestrator-owned (needs the app container and a free db) |
 | Rollback boundary | Revert the four commits. Seeded rows (none in the compose db yet) are removed only with the design's rollback SQL, after the revert |
+
+## Verification addendum (orchestrator, 2026-10-05)
+
+- Split: PR1 was 473 authored lines, so it ships as PR1a (`ch21b/semilla-modulo`: module, unit tests, seed, 305) and PR1b (`ch21b/catalogo-semilla`: live tests and smoke, 170). Final tree identical to the single-branch result (kept locally as `ch21b/respaldo-pr1-completo`).
+- `bash scripts/smoke.sh` on the PR1b tip against the project's Compose stack: SMOKE TEST PASSED (37 OK lines), including "both catalog templates listed headerless; the catalog step ran although the tenant step was skipped". This closes the scenarios "Existing tenant does not skip catalog seeding" and "Fresh install lists both templates".
+- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL. W3 (live tests default to 5432 where another PostgreSQL may live) is inherited from `plantillas-rutas.test.ts`; set `TEST_DB_PORT` explicitly. Suggestions S1-S3 (fixed /tmp paths in the smoke, tolerance assertion only in C1, compact-JSON grep) are recorded, not applied.
+- Side effect of the smoke: the project's Compose database now holds the two seeded catalog rows (the smoke exercises the real seed); the stack was brought down afterwards without removing volumes.
