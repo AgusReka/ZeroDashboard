@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
+import pg from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
+import { registrarContextoTenant } from './contexto-tenant.js';
+import { sentenciaPaginada } from './consulta-ejecucion.js';
 import { prepararSentencia } from './parametros.js';
 import { componerSentencia, evaluarVistas } from './plantillas.js';
 import { datosDePlantilla, PlantillaCompleta, registerPlantillaRoutes } from './plantillas-rutas.js';
@@ -127,5 +133,149 @@ describe('initial catalog — content and save-time checks (CH-21b, no database)
       ok: true,
       vistas: [{ entidad: 'producto', sql: producto.sql }, { entidad: 'receta_componente', sql: vacia }],
     });
+  });
+});
+
+// ---- live PostgreSQL: the same TEST_DB_* gate as plantillas-rutas.test.ts ------------
+
+const objetivo = {
+  host: process.env.TEST_DB_HOST ?? 'localhost',
+  port: Number(process.env.TEST_DB_PORT ?? '5432'),
+  user: process.env.TEST_DB_USER ?? 'zerodashboard',
+  password: process.env.TEST_DB_PASSWORD ?? 'change-me',
+  database: process.env.TEST_DB_NAME ?? 'zerodashboard',
+};
+const databaseUrl =
+  `postgresql://${encodeURIComponent(objetivo.user)}:${encodeURIComponent(objetivo.password)}` +
+  `@${objetivo.host}:${objetivo.port}/${objetivo.database}`;
+
+/** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
+function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const cerrar = (alcanzable: boolean): void => {
+      socket.destroy();
+      resolve(alcanzable);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => cerrar(true));
+    socket.once('timeout', () => cerrar(false));
+    socket.once('error', () => cerrar(false));
+  });
+}
+
+const motivoSkip: string | false = (await esAlcanzable(objetivo.host, objetivo.port, 1000))
+  ? false
+  : `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — set TEST_DB_*`;
+
+describe('initial catalog — create-if-absent seeding (CH-21b L1-L3)', { skip: motivoSkip }, () => {
+  let app!: FastifyInstance;
+  let prisma!: PrismaClient;
+  const marca = `CH-21b test ${Date.now()}`;
+  const prueba = CATALOGO_INICIAL.map((e) => ({ ...e, id: randomUUID(), nombre: `${marca} ${e.nombre}` }));
+  const ids = prueba.map((e) => e.id);
+  const limpiar: string[] = [...ids];
+  const sembrar = () => sembrarCatalogoInicial(prisma.plantilla, prueba);
+  const leer = () => Promise.all(ids.map((id) => prisma.plantilla.findUnique({ where: { id } })));
+
+  before(async () => {
+    prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    const aislado = extenderConAislamiento(prisma);
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, aislado);
+    registerPlantillaRoutes(app, aislado.plantilla);
+    await app.ready();
+  });
+
+  after(async () => {
+    await prisma.plantilla.deleteMany({ where: { id: { in: limpiar } } });
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  test('L1 the first seed creates both rows, the second creates none and modifies none', async () => {
+    assert.equal(await sembrar(), 2);
+    assert.deepEqual(await leer(), prueba.map(fila));
+    assert.equal(await sembrar(), 0);
+    assert.deepEqual(await leer(), prueba.map(fila));
+  });
+
+  test('L2 an operator edit and an unrelated stock-fisico template survive a seed', async () => {
+    const editada = { ...cuerpo(prueba[0]), nombre: `${marca} editada`, sql: 'SELECT pr.nombre FROM v_producto pr WHERE pr."stockDisponible" <= :umbral' };
+    const put = await app.inject({ method: 'PUT', url: `/plantillas/${ids[0]}`, payload: editada });
+    assert.equal(put.statusCode, 200, put.body);
+    const post = await app.inject({ method: 'POST', url: '/plantillas', payload: { ...cuerpo(prueba[0]), nombre: `${marca} ajena` } });
+    assert.equal(post.statusCode, 201, post.body);
+    const ajena = (post.json() as { plantilla: { id: string } }).plantilla;
+    limpiar.push(ajena.id);
+    assert.equal(await sembrar(), 0);
+    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: ids[0] } }), put.json().plantilla);
+    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: ajena.id } }), ajena);
+    assert.equal(await prisma.plantilla.count({ where: { nombre: { startsWith: marca } } }), 3);
+  });
+
+  test('L3 an absent row is recreated by id only, the other is untouched, both answer get-by-id', async () => {
+    const [editada] = await leer();
+    await prisma.plantilla.delete({ where: { id: ids[1] } });
+    assert.equal(await sembrar(), 1);
+    const filas = await leer();
+    assert.deepEqual(filas, [editada, fila(prueba[1])]);
+    const respuestas = await Promise.all(ids.map((id) => app.inject({ method: 'GET', url: `/plantillas/${id}` })));
+    assert.deepEqual(respuestas.map((r) => [r.statusCode, r.json()]), filas.map((plantilla) => [200, { plantilla }]));
+  });
+});
+
+/** Miniature views. The rows are deliberately out of order, so a kept order is the template's. */
+const VISTAS: Record<string, string> = {
+  producto: `SELECT * FROM (VALUES ('d','Donas',6,true),('b','Budin',4,true),('g','Galleta',0,false),
+    ('c','Chipa',2,true),('e','Empanada',1,true),('f','Fugazza',9,true),('a','Alfajor',2,true))
+    AS t(id, nombre, "stockDisponible", activo)`,
+  insumo: `SELECT * FROM (VALUES ('h','Harina',10),('u','Huevo',3)) AS t(id, nombre, "stockDisponible")`,
+  receta_componente: `SELECT * FROM (VALUES ('e','h',2),('e','u',1),('f','h',1)) AS t("productoId", "insumoId", "cantidadPorUnidad")`,
+};
+const SIN_RECETAS = 'SELECT NULL::text AS "productoId", NULL::text AS "insumoId", 1 AS "cantidadPorUnidad" WHERE false';
+
+describe('initial catalog — read-only execution on a VALUES fixture (CH-21b C1, C2, L4)', { skip: motivoSkip }, () => {
+  let cliente!: pg.Client;
+  before(async () => {
+    cliente = new pg.Client(objetivo);
+    await cliente.connect();
+  });
+  after(async () => {
+    await cliente.end();
+  });
+
+  async function ejecutar(e: EntradaCatalogo, umbral: number, vistas = VISTAS, limite = 50) {
+    const compuesta = componerSentencia(e.sql, e.entidades.map((entidad) => ({ entidad, sql: vistas[entidad] })));
+    const preparada = prepararSentencia(compuesta, e.parametros, { umbral });
+    assert.ok(preparada.ok, JSON.stringify(preparada));
+    await cliente.query('BEGIN READ ONLY');
+    try {
+      const r = await cliente.query({ ...sentenciaPaginada(preparada.valor, limite, 0), rowMode: 'array' });
+      return { columnas: r.fields.map((f) => f.name), filas: r.rows };
+    } finally {
+      await cliente.query('ROLLBACK');
+    }
+  }
+
+  test('C1 stock-fisico: at or below umbral, active, without a recipe; a decimal umbral binds', async () => {
+    const cinco = await ejecutar(FISICO, 5);
+    assert.deepEqual(cinco, { columnas: ['Producto', 'Stock disponible'], filas: [['Alfajor', 2], ['Chipa', 2], ['Budin', 4]] });
+    assert.deepEqual((await ejecutar(FISICO, 2.5)).filas, [['Alfajor', 2], ['Chipa', 2]]);
+    assert.deepEqual((await ejecutar(FISICO, 5, { ...VISTAS, receta_componente: SIN_RECETAS })).filas[0], ['Empanada', 1]);
+    // The stored tolerance reaches no execution path (DEC-66, DEC-128).
+    assert.deepEqual(await ejecutar(con(FISICO, { toleranciaFrescuraMinutos: 0 }), 5), cinco);
+  });
+
+  test('C2 stock-producible: umbral filters producible units; the limiting ingredient comes with its stock', async () => {
+    const r = await ejecutar(PRODUCIBLE, 5);
+    assert.deepEqual(r.columnas, ['Producto', 'Stock producible', 'Insumo limitante', 'Stock del insumo limitante']);
+    assert.deepEqual(r.filas, [['Empanada', '3', 'Huevo', 3]]);
+    assert.deepEqual((await ejecutar(PRODUCIBLE, 10)).filas, [['Empanada', '3', 'Huevo', 3], ['Fugazza', '10', 'Harina', 10]]);
+  });
+
+  test('L4 the template ORDER BY survives the engine nesting, so LIMIT keeps the lowest rows', async () => {
+    // Limit 2 fetches 3 rows (the probe row); Donas (6) is the row the LIMIT must cut.
+    assert.deepEqual((await ejecutar(FISICO, 100, VISTAS, 2)).filas, [['Alfajor', 2], ['Chipa', 2], ['Budin', 4]]);
   });
 });
