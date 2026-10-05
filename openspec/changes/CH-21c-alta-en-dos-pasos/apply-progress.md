@@ -215,7 +215,74 @@ Later PRs: "Known label", "Unknown label" and W8 (PR2c); the schedule scenarios 
 - The script variable `entradaConexionAuto` is renamed `selectorConexionAuto`; helpers `mostrarAviso` and `opcionDe` are added.
 - Commit trailer uses `Claude Sonnet 5.5` plus `Claude-Session`, as the launch prompt requested.
 
-## PR2c-PR5
+## PR2c: Template picker (`ch21c/asistente-plantillas`)
+
+Status: implemented, verified and committed (not pushed). Authored 316 lines. 2c.4 (manual visual review) stays open for a human.
+
+### Commits
+
+| Commit | Content |
+|---|---|
+| e653420 | `feat(ch21c)`: the card picker (markup, `DESCRIPCIONES_PLANTILLA`, `catalogoPlantillas`, `plantillaElegida`, `detallesPlantilla`, `tarjetaPlantilla`, `renderizarPicker`, `elegirPlantilla(id)`), G3', W1, W8, the markup guard for the radiogroup, and RW1-RW3, W3, W6, W7, W10 adapted to pick a card |
+| (docs) | `docs(ch21c)`: `tasks.md` and this file |
+
+### Completed Tasks
+
+- [x] 2c.1 Harness: `arrancar()` creates `auto-plantilla` as a `div`; `elegirTenant` takes an optional catalog; new helpers `tarjetas`, `radioDe`, `elegirTarjeta` (checks one radio, unchecks the others as a browser radio group does, fires `change`); `elegirPlantillaAlta` picks the `p-1` card. G3' replaces the `!script.includes('zd-')` assertion (moved out of the CH-21a G3 test into its own test). W1, W8 written; RW1-RW3, W3, W6, W7, W10 pick a card.
+- [x] 2c.2 `#auto-plantilla` is `<div class="zd-templates" role="radiogroup" aria-label="Plantilla">`; the visible heading is `<p class="zd-label" aria-hidden="true">Plantilla</p>` (a `label for` a div names nothing). Script: `DESCRIPCIONES_PLANTILLA` and `DESCRIPCION_NEUTRA`, `catalogoPlantillas`, `plantillaElegida`, `detallesPlantilla` (cleared in `reiniciarAlta`, which also redraws the cards unchosen), `tarjetaPlantilla`, `renderizarPicker`, `elegirPlantilla(id)` guarded by `g === generacionAlta` and `plantillaElegida === id`; `crearAutomatizacion` sends `plantillaId: plantillaElegida`; `selectorPlantilla` and its listener removed.
+- [x] 2c.3 Verification (below).
+- [ ] 2c.4 Manual visual review: human only.
+- [x] 2c.5 Line-count checkpoint: 316 authored (`consola.ts` +88/-35, `consola.test.ts` +168/-25).
+
+### RED evidence
+
+- Before 2c.2, `npx tsx --test src/consola.test.ts`: 43 tests, 30 pass, 13 fail (G3', the wizard markup guard, RW1, RW2, RW3, W1, W3, W4, W6, W7, W8, W9, W10). After 2c.2: 43/43.
+- Mutation checks (each applied alone to the committed code, then restored byte-identical): dropping `g !== generacionAlta` from `elegirPlantilla` fails W10 only; dropping the `plantillaElegida !== id` check fails W8 only; a plain `DESCRIPCIONES_PLANTILLA[etiqueta] || DESCRIPCION_NEUTRA` lookup fails W1 only (the `constructor` label); a two-class card fails G3', W1 and every test that picks a card; no cache fails W8 only; not clearing the cache in `reiniciarAlta` fails RW2; not redrawing the cards in `reiniciarAlta` fails W7.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/consola.test.ts`: 43/43 pass |
+| Full suite | `TEST_DB_PORT=5434 TEST_DB_PASSWORD=<from .env> npm test`: 885 tests, 885 pass, 0 fail, 0 skipped tests; one suite skipped by design (Mailpit live delivery, no Mailpit on 127.0.0.1:8026). Live target 127.0.0.1:5434 (Compose `db`); port 5432 never used |
+| Row counts | Tenant 1, Conexion 4, Automatizacion 0, Plantilla 2, equal before and after the full run |
+| Build | `npx tsc --noEmit` clean; `npm run build` exit 0; `sh -n scripts/smoke.sh` OK (smoke not run, orchestrator-owned) |
+| Page hazards | Added lines carry no backtick, no `${`, no backslash and no markup-assigning property; the only `zd-` tokens in the script are the three G3' ones, each assigned alone; one `<style>`, one closing script tag (guards passing) |
+| Runtime harness | Manual visual review (2c.4), human only |
+| Rollback boundary | Revert e653420 (console only): restores the template `<select>` |
+
+### Spec Coverage (PR2c)
+
+| Scenario | Test |
+|---|---|
+| Known label | W1 (`stock-fisico`, `stock-producible`) |
+| Unknown label | W1 (`otra`, `constructor`, and the fixture row with no `automatizacion`; the list after the catalog still renders) |
+| Script may reference the shared classes | G3' |
+| Parameters of the chosen template | W8 (the later card's controls), RW1 |
+| POST body is unchanged (`plantillaId` is the chosen card's id) | W8 (`p-2`), RW1-RW3 |
+| Late response after a tenant switch is ignored (template-detail half, through a card) | W10 |
+| Tenant switch wipes the wizard (no card stays chosen), Tenant load keeps three requests | W6 |
+| Step navigation (the chosen card is kept by Volver) | W3 |
+
+Later PRs: the schedule scenarios and "Success banner shows first run and zone" (PR3); availability, disabled cards and the validation half of "Late response after a tenant switch is ignored" (PR4); preview (PR5).
+
+### Ids and guards
+
+- No id added or removed. `auto-plantilla` is now a `div` (same id, still in `IDS`); the `label for="auto-plantilla"` is gone.
+- G3 (CH-21a) keeps the stylesheet checks; its `!script.includes('zd-')` line is replaced by the new G3' test (exact set `['zd-template', 'zd-template__desc', 'zd-template__name']`, each `className = '...zd-...'` single-class and assigned once).
+- The wizard markup guard also pins `<div id="auto-plantilla" class="zd-templates" role="radiogroup" aria-label="Plantilla"></div>` and the absence of `for="auto-plantilla"`.
+
+### Deviations
+
+- No bridge CSS: `public/ui/components/components.css` already styles `.zd-templates` (grid), `.zd-template` (card, hover, checked through `:has(input:checked)`, focus ring through `:has(input:focus-visible)`) and hides the radio (`.zd-template input`). The disabled-card style is PR4's.
+- `zd-sr` and `zd-template__check` are not used: the group is named by `aria-label` (no `fieldset`/`legend`), and the check mark is an icon (DEC-131: no icons on the card).
+- The details cache stores a 200 detail whenever the wizard token still matches, even when a later choice already won; that later choice is still the one rendered.
+- W3's final re-check of Siguiente now empties the connection instead of unchoosing the template, because a chosen radio card cannot be unchosen by the operator.
+- G3' is its own test instead of an edit inside the CH-21a G3 test.
+- No notice when the catalog is empty: the picker is an empty group and Siguiente stays disabled, as the empty select behaved before.
+- Commit trailer uses `Claude Sonnet 5.5` plus `Claude-Session`, as the launch prompt requested.
+
+## PR3-PR5
 
 Not started.
 
