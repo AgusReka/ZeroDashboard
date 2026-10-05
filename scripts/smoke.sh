@@ -156,6 +156,16 @@ id=$(registrar reachable db "$DB_NAME" "$DB_PASSWORD")
 probar "$id" "$DB_PASSWORD" '"resultado":"ok"' '"categoria":null' '"codigo":null'
 echo "OK: reachable target -> resultado ok"
 
+echo "-- CH-21c: GET /conexiones lists the tenant's connections, id and nombre only --"
+code=$(curl -s -o /tmp/smoke-conexiones.json -w '%{http_code}' http://localhost:3000/conexiones --max-time 10)
+[ "$code" = "400" ] || fail "expected HTTP 400 listing connections with no X-Tenant-Id, got $code"
+code=$(curl -s -o /tmp/smoke-conexiones.json -w '%{http_code}' \
+  http://localhost:3000/conexiones -H "X-Tenant-Id: $TENANT_A" --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 listing connections, got $code ($(cat /tmp/smoke-conexiones.json))"
+grep -q "\"id\":\"$id\"" /tmp/smoke-conexiones.json || fail "the registered connection is missing from the listing"
+if grep -q -e 'credencial' -e "$DB_PASSWORD" /tmp/smoke-conexiones.json; then fail "the listing exposed a credential"; fi
+echo "OK: no header -> 400; tenant A -> 200 with its connection and no credential"
+
 echo "-- wrong password (Distinguishable Failure Categories) --"
 id=$(registrar bad-password db "$DB_NAME" "$CREDENCIAL_INVALIDA")
 probar "$id" "$CREDENCIAL_INVALIDA" '"resultado":"fallo"' '"categoria":"credenciales-invalidas"' '"codigo":"28P01"'
