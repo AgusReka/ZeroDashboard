@@ -1,0 +1,18 @@
+<!-- @dsCard group="Components" viewport="700x330" name="Campos" subtitle="etiqueta asociada · ayuda · error · sufijo · select · SQL" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:20px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.col{display:grid;gap:14px}</style></head>
+<body class="zd-root"><div id="root"></div>
+<script type="text/babel">
+const { Field } = window.ZeroDashboardDesignSystem_589ca0;
+
+function App(){return <div className="col">
+<div className="zd-form-row"><Field label="Avisarme cuando queden menos de" type="number" defaultValue={20} suffix="unidades" help="Rige desde la próxima ejecución."/><Field label="Hora de envío" as="select" defaultValue="08:00"><option>07:00</option><option>08:00</option><option>12:00</option></Field></div>
+<div className="zd-form-row"><Field label="Correo de destino" type="email" defaultValue="compras@dontito" error="Revisá el correo: le falta el dominio (por ejemplo, .com.ar)."/><Field label="Descripción" optional placeholder="Para qué sirve esta consulta"/></div>
+<Field label="Consulta (solo lectura)" as="textarea" mono rows={2} defaultValue={"SELECT sku, nombre, stock_actual FROM productos WHERE stock_actual < :umbral"}/>
+</div>}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

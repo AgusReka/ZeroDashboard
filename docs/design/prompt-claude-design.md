@@ -69,7 +69,7 @@ Leyenda de estado:
 | Aviso de falla en lenguaje de negocio | P3h | CH-22 | PENDIENTE |
 | Ajuste de umbrales y horarios (rige desde la próxima ejecución). Sin campos de SQL | P2h | CH-23 | PENDIENTE |
 | Advertencia al activar algo que la frescura no sostiene (decide el cliente, informado) | F3 | CH-26 | PENDIENTE |
-| Último resultado como tabla o gráfico, sin SQL a la vista | P4h | CH-27 (sujeto a D-1) | PENDIENTE |
+| Último resultado como tabla o gráfico | P4h | CH-27 | FUERA DE ALCANCE (DEC-93: no se persisten las filas) |
 
 ### CORREO
 Reporte HTML con versión "sin datos" (degradación elegante: mensaje claro, sin campos rotos), compatible con clientes de correo: tablas y estilos inline. Historias N1 y N2, CH-14, EXISTE: rediseñalo manteniendo su contenido.
