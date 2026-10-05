@@ -15,6 +15,7 @@ import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma
 import { registerHealthRoute } from './health.js';
 import { registerConsolaRoute } from './consola.js';
 import { registerContratoRoutes } from './contrato-rutas.js';
+import { RUTAS_ESTILOS, cargarEstilos, registerEstilosRoutes } from './estilos-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 
@@ -294,6 +295,81 @@ describe('contexto de tenant — /plantillas exemption rows (CH-12, DEC-61)', ()
       const respuesta = await app.inject({ method, url });
 
       assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    });
+  }
+});
+
+// ---- CH-21a 1.4 the stylesheet exemption rows, still with no database in sight ----
+
+/**
+ * DEC-124 exempts the five stylesheet routes by one exact `GET` row each, built from the
+ * same list that registers them. The real registrar is mounted here, not stubs, so the
+ * rows are matched against the patterns production actually registers. The client handed
+ * to the hooks is the same throwing stub: an exempt asset never resolves a tenant, and a
+ * refused URL is refused before it could.
+ *
+ * "A valid tenant id" in the spec is stood in for by an unknown one, the same argument the
+ * `/contrato` 3.1 test makes: an exempt route returns before the lookup, so whether the id
+ * would have resolved is never consulted, and the throwing stub proves it was not.
+ */
+describe('contexto de tenant — /ui/ stylesheet exemption rows (CH-21a, DEC-124)', () => {
+  let app!: FastifyInstance;
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    registerEstilosRoutes(app, cargarEstilos());
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  for (const url of RUTAS_ESTILOS) {
+    test(`E1 GET ${url} answers 200 headerless and with an unknown tenant id, byte-identical`, async () => {
+      const sinEncabezado = await app.inject({ method: 'GET', url });
+      const conTenantInexistente = await app.inject({
+        method: 'GET',
+        url,
+        headers: { 'x-tenant-id': '11111111-2222-3333-4444-555555555555' },
+      });
+
+      assert.equal(sinEncabezado.statusCode, 200, sinEncabezado.body);
+      assert.equal(conTenantInexistente.statusCode, 200, conTenantInexistente.body);
+      assert.ok(
+        sinEncabezado.rawPayload.equals(conTenantInexistente.rawPayload),
+        `${url} must answer the same bytes with and without a tenant`,
+      );
+    });
+  }
+
+  const rechazadas = [
+    // Unlisted names, a bare folder, and a case variant: no pattern, so no exemption.
+    { method: 'GET', url: '/ui/unknown.css' },
+    { method: 'GET', url: '/ui/tokens/' },
+    { method: 'GET', url: '/ui/Styles.css' },
+    // Look-alikes: a name that merely starts with `/ui` is scoped like everything else.
+    { method: 'GET', url: '/ui-falso/styles.css' },
+    { method: 'GET', url: '/uix/styles.css' },
+    // Traversal: there is no path to the filesystem, only five closed-over buffers.
+    { method: 'GET', url: '/ui/../package.json' },
+    { method: 'GET', url: '/ui/%2e%2e/package.json' },
+    // Only `GET` is exempt: no automatic `HEAD`, and no write verb.
+    { method: 'HEAD', url: '/ui/styles.css' },
+    { method: 'POST', url: '/ui/styles.css' },
+  ] as const;
+
+  for (const { method, url } of rechazadas) {
+    test(`E2 ${method} ${url} with no header is refused 400 tenant-no-indicado`, async () => {
+      const respuesta = await app.inject({ method, url });
+
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      if (method === 'HEAD') {
+        // A `HEAD` reply carries no body to parse; the status is the refusal.
+        return;
+      }
       assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
     });
   }

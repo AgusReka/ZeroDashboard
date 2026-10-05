@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
+import { RUTAS_ESTILOS } from './estilos-rutas.js';
 
 /**
  * The per-request active tenant (DEC-13 + DEC-15), and the two `onRequest` hooks that
@@ -112,6 +113,13 @@ export function conTenantActivo<T>(tenant: TenantActivo, fn: () => Promise<T>): 
  * also exempt `POST /plantillas/:id/prueba`, which resolves a tenant-owned `Conexion`
  * and must stay scoped (DEC-62). `DELETE` and `PATCH` are not listed because a template
  * is replaced in place and never deleted (DEC-68).
+ *
+ * The shared stylesheet joins under DEC-124 with five exact `GET` rows, one per file,
+ * built from `RUTAS_ESTILOS`: the same list `src/estilos-rutas.ts` registers the routes
+ * from, so a route and its row cannot diverge and a new file inherits nothing. The assets
+ * are identical for every tenant and their registrar receives no database client, the
+ * DEC-24 argument again. There is no `/ui/` prefix row and no `HEAD` row: an unlisted
+ * URL, a look-alike such as `/ui-falso/...`, and any other method stay scoped.
  */
 const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
   'GET /plantillas',
@@ -119,6 +127,14 @@ const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
   'GET /plantillas/:id',
   'PUT /plantillas/:id',
 ]);
+
+/**
+ * The stylesheet rows (DEC-124 A3). Exported only so `src/estilos-rutas.test.ts` can
+ * assert they equal the registered routes exactly; nothing else reads it.
+ */
+export const ESTILOS_EXENTOS: ReadonlySet<string> = new Set(
+  RUTAS_ESTILOS.map((ruta) => 'GET ' + ruta),
+);
 
 function esExenta(metodo: string, patron: string | undefined): boolean {
   if (patron === undefined) {
@@ -136,6 +152,10 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
   }
   // The template catalog is shared by every tenant (DEC-61); see PLANTILLAS_EXENTAS.
   if (PLANTILLAS_EXENTAS.has(`${metodo} ${patron}`)) {
+    return true;
+  }
+  // The shared stylesheet is the same for every tenant (DEC-124); see ESTILOS_EXENTOS.
+  if (ESTILOS_EXENTOS.has(`${metodo} ${patron}`)) {
     return true;
   }
   // Bootstrap: requiring a tenant in order to create the first tenant is unsatisfiable.

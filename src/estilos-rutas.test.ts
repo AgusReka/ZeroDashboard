@@ -11,6 +11,7 @@ import {
   cargarEstilos,
   registerEstilosRoutes,
 } from './estilos-rutas.js';
+import { ESTILOS_EXENTOS } from './contexto-tenant.js';
 
 /**
  * CH-21a tasks 1.2-1.3 (spec `shared-visual-system`, DEC-124): the fixed-list stylesheet
@@ -107,8 +108,8 @@ describe('stylesheet registrar — the five vendored files (CH-21a, DEC-124)', (
   });
 });
 
-describe('stylesheet registrar — route table (R3)', () => {
-  test('R3 the registered /ui/ routes are exactly GET RUTAS_ESTILOS', async () => {
+describe('stylesheet registrar — route table and exemption rows (R3)', () => {
+  test('R3 the registered /ui/ routes are exactly GET RUTAS_ESTILOS, and so are the exempt rows', async () => {
     const app = Fastify({ logger: false });
     const capturadas: string[] = [];
     app.addHook('onRoute', (opciones) => {
@@ -124,6 +125,15 @@ describe('stylesheet registrar — route table (R3)', () => {
     const esperadas = RUTAS_ESTILOS.map((ruta) => 'GET ' + ruta);
     // Every route this registrar adds, any method: no automatic HEAD, no prefix, no extra.
     assert.deepEqual([...capturadas].sort(), [...esperadas].sort());
+
+    // The exemption is built from the same list, so the two cannot diverge.
+    assert.equal(ESTILOS_EXENTOS.size, esperadas.length);
+    for (const fila of esperadas) {
+      assert.ok(ESTILOS_EXENTOS.has(fila), `missing exempt row ${fila}`);
+    }
+    for (const fila of ESTILOS_EXENTOS) {
+      assert.ok(esperadas.includes(fila), `extra exempt row ${fila}`);
+    }
   });
 });
 
