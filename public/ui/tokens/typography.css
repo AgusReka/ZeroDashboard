@@ -1,0 +1,10 @@
+/* Tipografía: system-ui para interfaz, monoespaciada del sistema para SQL, ids y cifras técnicas. Sin webfonts. */
+:root{
+--font-sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+--font-mono:ui-monospace,Menlo,Consolas,monospace;
+--text-xs:12px;--text-sm:13px;--text-base:14px;--text-md:16px;--text-lg:18px;--text-xl:20px;--text-2xl:24px;--text-3xl:30px;
+--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;
+--leading-tight:1.25;--leading-snug:1.4;--leading-normal:1.5;--leading-code:1.6;
+--tracking-caps:0.06em;
+--text-body:var(--text-base);--text-label:var(--text-sm);--text-help:var(--text-xs);--text-h1:var(--text-xl);--text-h2:var(--text-lg);--text-code:var(--text-sm);
+}
