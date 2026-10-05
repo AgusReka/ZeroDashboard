@@ -75,8 +75,8 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-18 | Motor: control de notificaciones duplicadas y aislamiento de fallos entre tenants | X6, X8 |
 | CH-19 | Conectividad definitiva según D-2. Partido en seis cortes, ver abajo y DEC-112 a DEC-120 | C1, C2, C3 |
 | CH-20 | Auditoría de ejecución de consultas | A5 |
-| CH-21 | Catálogo: instanciación de plantillas y casos iniciales | D2, D3, N3 |
-| CH-22 | Panel del cliente: autenticación y vista de automatizaciones | T3, P1h, P3h |
+| CH-21 | Catálogo: instanciación de plantillas y casos iniciales. Partido en CH-21a, CH-21b y CH-21c, ver abajo | D2, D3, N3 |
+| CH-22 | Panel del cliente: autenticación y vista de automatizaciones. Partido en CH-22a, CH-22b y CH-22c, ver abajo | T3, P1h, P3h |
 | CH-23 | Panel: ajuste de umbrales y horarios | P2h |
 | CH-24 | Frescura de datos por tenant y por plantilla | F1, F2 |
 
@@ -87,12 +87,32 @@ Cada corte apunta a unas 300 líneas estimadas. Las estimaciones de tests se mul
 | ID | Corte | Historias | Estado |
 |---|---|---|---|
 | CH-19a | Canal opcional en `iniciarConexion`, tipos del protocolo, spike con duplex falso | C1 | Archivado (PR #58, `size:exception`) |
-| CH-19b | Migración `Agente` y `Conexion.agenteId`, alta, listado y revocación de token con hash, aislamiento, prueba con dos tenants (DEC-121). Un change, tres PR encadenados (el diseño subió la unidad 1 de ~360 a ~524 líneas): 1a (esquema, migración, modelo aislado, lookup, módulo de token, ~210), 1b (tres rutas `/agentes` y su prueba con dos tenants, ~314) y 2 (`agenteId` en `POST /conexiones` con chequeo de tenant, ~114) | C1 | En curso |
-| CH-19c1 | Lado motor (DEC-122). Un change, seis PR encadenados (el diseño subió el PR 3 a ~434 líneas y se partió en 3a y 3b; los tests ampliados de `CanalAgente` salieron a su propio PR): 1) dependencia `ws`, tipos del catálogo, `CanalAgente` y pruebas de contrato (331); 1b) tests ampliados de `CanalAgente` (152); 2) registro de sesiones (340); 3a) listener de upgrade, autenticación, rechazos, alta en el registro y cierre en `preClose` (~317); 3b) ping de 20 s y cierre 4002 al revocar o dar de baja (~110); 4) `destinoDeConexion` devuelve un canal y prueba de punta a punta (~216). El duplex falso no se extrae salvo que aparezca un segundo consumidor | C1 | En curso |
-| CH-19c2 | Proceso del agente (DEC-123): reconexión con espera creciente, lista de destinos, puente, imagen Docker y Compose aparte, prueba de punta a punta. Un change, cinco PR encadenados: 1) configuración, política TLS, lista de destinos y límites (~320); 2) logger y puente (~340); 3) reconexión, bucle de control, clasificación de cierres y vigilancia de ping (~355); 4) `main`, apagado, códigos de salida, test de frontera, tsconfig, etapa de Docker, Compose y ejemplo (~300); 5) matriz de punta a punta (~300) | C1 | En curso |
+| CH-19b | Migración `Agente` y `Conexion.agenteId`, alta, listado y revocación de token con hash, aislamiento, prueba con dos tenants (DEC-121). Un change, tres PR encadenados (el diseño subió la unidad 1 de ~360 a ~524 líneas): 1a (esquema, migración, modelo aislado, lookup, módulo de token, ~210), 1b (tres rutas `/agentes` y su prueba con dos tenants, ~314) y 2 (`agenteId` en `POST /conexiones` con chequeo de tenant, ~114) | C1 | Archivado |
+| CH-19c1 | Lado motor (DEC-122). Un change, seis PR encadenados (el diseño subió el PR 3 a ~434 líneas y se partió en 3a y 3b; los tests ampliados de `CanalAgente` salieron a su propio PR): 1) dependencia `ws`, tipos del catálogo, `CanalAgente` y pruebas de contrato (331); 1b) tests ampliados de `CanalAgente` (152); 2) registro de sesiones (340); 3a) listener de upgrade, autenticación, rechazos, alta en el registro y cierre en `preClose` (~317); 3b) ping de 20 s y cierre 4002 al revocar o dar de baja (~110); 4) `destinoDeConexion` devuelve un canal y prueba de punta a punta (~216). El duplex falso no se extrae salvo que aparezca un segundo consumidor | C1 | Archivado |
+| CH-19c2 | Proceso del agente (DEC-123): reconexión con espera creciente, lista de destinos, puente, imagen Docker y Compose aparte, prueba de punta a punta. Un change, cinco PR encadenados: 1) configuración, política TLS, lista de destinos y límites (~320); 2) logger y puente (~340); 3) reconexión, bucle de control, clasificación de cierres y vigilancia de ping (~355); 4) `main`, apagado, códigos de salida, test de frontera, tsconfig, etapa de Docker, Compose y ejemplo (~300); 5) matriz de punta a punta (~300) | C1 | Archivado |
 | CH-19d1 | C2, parte 1: latido y sondeo TCP, columnas de estado, persistencia de transiciones | C2 | Pendiente |
 | CH-19d2 | C2, parte 2: categorías `agente-desconectado`, enmienda a DEC-97, endpoint de estado, indicador en consola, vista de automatizaciones en riesgo | C2 | Pendiente |
 | CH-19e | C3: `scripts/conectividad-alta.sql`, plantilla de bitácora, marca de DEC-88, runbook de alta. Cierre: reevaluar el modo directo (DEC-115) | C3 | Pendiente |
+
+### Camino a la demo grabable (CH-21 a CH-23)
+
+Objetivo: poder grabar el producto de punta a punta: consola del implementador, correo recibido y panel del cliente. El resultado de una automatización llega por correo; el panel muestra estado y metadatos de ejecución, no filas (DEC-93). El diseño visual está en la skill `.claude/skills/zerodashboard-design`: cada pantalla lleva su historia, change y estado en `guidelines/pantallas.md`.
+
+Orden de ejecución. Los cortes apuntan a unas 300 líneas; los marcados con ⚠ tienen una decisión abierta que se trata en la exploración, no la resuelve un agente por su cuenta (`AGENTS.md`).
+
+| Orden | ID | Corte | Historias | Notas |
+|---|---|---|---|---|
+| 1 | CH-21a | Sistema visual compartido: hoja de estilos con los tokens de la skill, aplicada a la consola existente sin cambiar su comportamiento | — | Los ids de `src/consola.ts` y `src/consola.test.ts` no cambian. ⚠ Registrar antes en `01-decisiones.md` cómo se sirven los archivos de la interfaz (hoy, un string de TypeScript) |
+| 2 | CH-21b | Catálogo inicial: stock físico, stock producible, reporte diario | D3 | ⚠ Verificar en la exploración qué cubren ya `src/plantillas.ts` (CH-12, CH-16d). Si el corte queda casi vacío, se fusiona con CH-21c |
+| 3 | CH-21c | Alta en dos pasos en la consola y formato de correo asociado a la plantilla | D2, N3 | Reutiliza el HTML de correo de CH-14. ⚠ La skill define el horario como frecuencia más hora; la consola usa cron (DEC-76): decidir si el formulario traduce a cron |
+| 4 | CH-22a | Autenticación del panel: usuario del cliente, ingreso y salida, sesión, tenant tomado siempre de la sesión | T3 | ⚠ Registrar antes el mecanismo de autenticación. Prueba automatizada con dos tenants (regla 2) |
+| 5 | CH-22b | Panel: "mis automatizaciones" (activas y disponibles; estado, última y próxima ejecución) | P1h | Rutas de lectura con alcance de tenant, separadas de la consola (DEC-04). Sin SQL ni términos técnicos |
+| 6 | CH-22c | Panel: estado de error visible y aviso de falla al cliente | P3h | ⚠ Un aviso de falla por correo es una notificación nueva y el motor produce una por ejecución: confirmar que encaja, o limitar el corte al estado visible |
+| 7 | CH-23 | Panel: ajuste de umbrales y horarios (formulario validado; rige desde la próxima ejecución) | P2h | Valida valores contra la plantilla y el cron contra el planificador. Se parte en ruta y formulario si pasa de 400 líneas |
+
+Opcionales para la demo, que suman al argumento de "sin puertos entrantes": CH-19d1 y CH-19d2.
+
+Fuera del camino de la demo: CH-19e, CH-20, CH-24, CH-25, CH-26.
 
 ---
 
@@ -102,7 +122,7 @@ Cada corte apunta a unas 300 líneas estimadas. Las estimaciones de tests se mul
 |---|---|---|
 | CH-25 | Versionado de consultas guardadas | B4 |
 | CH-26 | Advertencia de frescura insuficiente al activar | F3 |
-| CH-27 | Visualización de últimos resultados en el panel | P4h, sujeto a D-1 |
+| CH-27 | Visualización de últimos resultados en el panel. **Fuera de alcance** mientras D-1 siga cerrada en DEC-93: el sistema no persiste las filas | P4h |
 
 ---
 
@@ -115,3 +135,5 @@ No son changes, pero bloquean o condicionan el trabajo.
 - [ ] Verificar motores de base y modelo de insumos de los candidatos de D-5.
 - [ ] Consultar reglamento institucional: desarrollo propio, formato de citación, anexos, declaración de uso de IA.
 - [ ] Bloque 2 del checklist de correcciones de la tesis (formales). No depende de nada y despeja la lectura.
+- [ ] Datos de demo: dos tenants cargados con datos de la tienda de alimentos y automatizaciones ya creadas. Verificar qué cubre `prisma/seed.ts`; si hay que tocar código, entra como un change chico.
+- [ ] Guion y ensayo de la demo contra Mailpit (`localhost:8026`): consola con tenant activo, conexión por agente, consulta de solo lectura y su rechazo, alta desde plantilla, ejecución y correo, panel del cliente con ajuste de umbral, falla provocada y aislamiento entre tenants.
