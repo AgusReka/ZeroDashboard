@@ -8,8 +8,13 @@
 | 400-line budget risk | Low |
 | Chained PRs recommended | Yes |
 | Suggested split | PR0 (docs) -> PR1 (schema, migration, crypto) -> PR2 (auth routes, session hook, isolation tests) -> PR3 (panel page UI & login) |
-| Delivery strategy | auto-chain |
-| Chain strategy | stacked-to-main |
+| Delivery strategy | single-pr (`size:exception` aprobado por el maintainer, 2026-10-06) |
+| Chain strategy | n/a — un solo PR de código |
+
+> **Decisión de entrega (2026-10-06).** El preflight de sesión eligió `single-pr` y el maintainer aprobó
+> `size:exception` para un único PR de código de ~810 líneas autorizadas. Los docs ya se entregan en el
+> PR0 (#99). Los grupos PR1/PR2/PR3 de este plan se conservan como unidades de trabajo y commits
+> revisables, no como PR separados.
 
 ## PR0: Docs
 
