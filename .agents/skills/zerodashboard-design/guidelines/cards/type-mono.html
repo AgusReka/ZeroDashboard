@@ -1,0 +1,5 @@
+<!-- @dsCard group="Type" viewport="700x170" name="Monoespaciada — SQL e ids" subtitle="ui-monospace · solo consola" -->
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><style>body{margin:0;padding:20px}.sw{display:grid;gap:6px}.chip{height:56px;border-radius:6px;border:1px solid var(--border-1)}.n{font-size:12px;font-weight:600}.v{font-family:var(--font-mono);font-size:11px;color:var(--text-3)}.g{display:grid;gap:12px}</style></head><body class="zd-root"><pre class="zd-code" style="margin:0">SELECT p.sku, p.nombre, p.stock_actual, p.stock_minimo
+FROM productos p
+WHERE p.stock_actual &lt; :umbral   -- parámetro declarado
+ORDER BY p.stock_actual ASC;</pre><div style="display:flex;gap:8px;margin-top:10px"><span class="zd-tag">ten_7f3a</span><span class="zd-tag">ej_9041</span><span class="zd-tag">CH-13</span><span class="zd-meta">ids, códigos de error y SQL. El panel nunca muestra monoespaciada.</span></div></body></html>

@@ -36,3 +36,9 @@ El anti-alcance descrito en la sección 6 de `docs/00-contexto.md` (y detallado 
 ## Compuertas abiertas
 
 Las compuertas D-1, D-2, D-4 y D-5 están cerradas (DEC-93, DEC-94, DEC-25 y DEC-26 en `docs/01-decisiones.md`). Queda abierta D-6 (declaración de uso de asistentes de IA), que no bloquea el código.
+
+## Skills del proyecto
+
+| Skill | Uso |
+|---|---|
+| `zerodashboard-design` | **Diseño del front.** Obligatoria para cualquier trabajo de interfaz (pantallas, componentes, estilos, copy visual). Contiene tokens, componentes `.zd-*`, guías por pantalla y reglas de lenguaje. Copia en `.agents/skills/zerodashboard-design/` (opencode y otros agentes) y en `.claude/skills/zerodashboard-design/` (Claude Code). |
