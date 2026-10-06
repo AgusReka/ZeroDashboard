@@ -38,11 +38,11 @@ Branch `ch22a/modelo-y-crypto`.
 
 Branch `ch22a/rutas-autenticacion`. Depends on PR1.
 
-- [ ] 2.1 RED tests for auth routes (`src/panel-auth.test.ts`): login with valid credentials (cookie set, 200 response), invalid password (401), unknown email (401), deactivated user (401), deactivated tenant (409/401), logout (cookie cleared, session deleted), session read endpoint (`GET /api/panel/auth/sesion`).
-- [ ] 2.2 RED two-tenant isolation test (`src/aislamiento-panel.test.ts`): User A logs in, access is strictly limited to Tenant A; sending `X-Tenant-Id: <tenant-b>` is ignored and does not leak or switch to Tenant B; cross-tenant session token fails.
-- [ ] 2.3 GREEN `src/panel-auth.ts`: implement login, logout, session info endpoints, cookie parsing/serialization, and panel route pre-handler hook.
-- [ ] 2.4 Update exemption list in `src/contexto-tenant.ts` for public panel auth routes.
-- [ ] 2.5 Verification: `npx tsc --noEmit`, full `TEST_DB_PORT=5434 npm test`.
+- [x] 2.1 RED tests for auth routes (`src/panel-auth.test.ts`): login with valid credentials (cookie set, 200 response), invalid password (401), unknown email (401), deactivated user (401), deactivated tenant (409/401), logout (cookie cleared, session deleted), session read endpoint (`GET /api/panel/auth/sesion`).
+- [x] 2.2 RED two-tenant isolation test (`src/aislamiento-panel.test.ts`): User A logs in, access is strictly limited to Tenant A; sending `X-Tenant-Id: <tenant-b>` is ignored and does not leak or switch to Tenant B; cross-tenant session token fails.
+- [x] 2.3 GREEN `src/panel-auth.ts`: implement login, logout, session info endpoints, cookie parsing/serialization, and panel route pre-handler hook.
+- [x] 2.4 Update exemption list in `src/contexto-tenant.ts` for public panel auth routes.
+- [x] 2.5 Verification: `npx tsc --noEmit`, full `TEST_DB_PORT=5434 npm test`.
 
 ## PR3: Servable Panel Page & Login Screen (~280 authored)
 

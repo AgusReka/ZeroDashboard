@@ -8,11 +8,11 @@
 | Unidad | Tareas | Estado |
 |--------|--------|--------|
 | PR1 — Modelo de datos, migración y módulo crypto | 1.1-1.5 | **Hecho (este lote), rama `ch22a/panel-auth`** |
-| PR2 — Rutas de auth, hook de sesión, aislamiento dos tenants | 2.1-2.5 | Pendiente |
+| PR2 — Rutas de auth, hook de sesión, aislamiento dos tenants | 2.1-2.5 | **Hecho (este lote), rama `ch22a/panel-auth`** |
 | PR3 — Página `/panel` y pantalla de ingreso | 3.1-3.4 | Pendiente |
 | Cierre | 4.1-4.2 | Pendiente |
 
-No existía apply-progress previo. Este es el primer lote.
+No existía apply-progress previo (el lote PR1 lo creó). Este archivo es acumulativo: la sección PR2 se fusiona después de la de PR1 sin tocar nada de la primera.
 
 ## PR1: Archivos tocados
 
@@ -71,6 +71,61 @@ No existía apply-progress previo. Este es el primer lote.
 - El pin de fuente de `timingSafeEqual`/`scrypt` usa la técnica de texto de `src/vistas-canonicas.test.ts` (caso 2.11): el comportamiento por sí solo no distingue `===` de comparación constante-time.
 - Ninguna decisión de arquitectura nueva. DEC-133 a DEC-136 no se reabrieron.
 
+## PR2: Archivos tocados
+
+| Archivo | Acción | Qué se hizo |
+|---------|--------|-------------|
+| `src/panel-auth.test.ts` | Creado | Tarea 2.1, 10 casos de integración contra la base real: login válido (200, cookie `zd_panel_session` con `HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000; Secure` y fila `SesionPanel` que guarda solo el SHA-256), clave equivocada 401 genérico sin cookie, correo desconocido 401 (sin oráculo de cuenta), usuario desactivado 401, tenant desactivado 409 `tenant-desactivado`, propiedad extra en el body 400 `solicitud-invalida` nombrando `/tenantId`, logout (fila borrada + cookie vacía `Max-Age=0` + el token deja de servir), sesión activa 200, sin cookie 401, token expirado 401 `sesion-expirada` con limpieza de la fila |
+| `src/aislamiento-panel.test.ts` | Creado | Tarea 2.2, 5 casos por las rutas reales: `X-Tenant-Id: B` en `/sesion` no cambia ni filtra al tenant A (el encabezado se ignora), la cookie de B nunca entra en A, cada `tokenHash` resuelve al tenant que lo acuñó, lecturas scoped dentro del tenant de la sesión ven solo filas de A, el logout de B borra solo la sesión de B y la de A sigue viva |
+| `src/panel-auth.ts` | Creado | Tarea 2.3: `ingresar`/`salir`/`sesion` bajo `/api/panel/auth`, helpers de cookie (`leerCookie`, `cookieDeSesion`, `cookieVacia`), `levantarSesionPanel(prisma)` (hook `preHandler` por ruta: token → `hashTokenSesion` → `sesionPanel.buscarPorTokenHash`; expirada se limpia en uso; 401/409 fail-closed), tenant exclusivamente desde la fila de sesión vía `conTenantActivo` (DEC-135), schema estricto `propertyNames` envuelto en `{ body }` (ver desviaciones) |
+| `src/contexto-tenant.ts` | Modificado | Tarea 2.4: `RUTAS_PANEL_PUBLICAS` (filas exactas `POST /api/panel/auth/ingresar`, `POST /api/panel/auth/salir`, `GET /api/panel/auth/sesion`) cableada en `esExenta` después de `ESTILOS_EXENTOS` |
+| `src/aislamiento-prisma.ts` | Modificado | Dos escape hatches auditados, espejo de `agente.buscarPorTokenHash`: `usuario.buscarPorCorreo(correo)` (login, DEC-133/DEC-135) y `sesionPanel.buscarPorTokenHash(tokenHash)` (hook, DEC-134/DEC-135). Todo lo demás de ambos modelos sigue scoped |
+| `src/crypto-auth.ts` | Modificado | `hashTokenSesion(tokenPlano)`: SHA-256 hex, gemelo de `hashTokenAgente` (`src/agente-token.ts`); el token plano nunca llega a la base ni a logs (DEC-134) |
+| `src/server.ts` | Modificado | Import + `registerPanelAuthRoutes(app, prisma)` después de `registrarServidorAgentes`, con el porqué en el comentario (DEC-135/DEC-136) |
+
+**Commits (en orden, ninguno pushed):**
+
+5. `5f5c2ce feat(ch22a): expose the panel auth surface - session-cookie login, hook, two-tenant isolation` (tareas 2.1-2.4, 947 líneas autorizadas)
+6. Commit docs de este archivo y `tasks.md` (más abajo)
+
+## TDD Cycle Evidence (PR2)
+
+| Tarea | RED | GREEN | REFACTOR |
+|-------|-----|-------|----------|
+| 2.1 Tests de rutas | Escritos primero contra `./panel-auth.js` inexistente: `ERR_MODULE_NOT_FOUND`, exit 1 | — | — |
+| 2.2 Aislamiento dos tenants | Escrito primero (mismo `ERR_MODULE_NOT_FOUND`); los 5 casos fijan el comportamiento esperado antes de existir el código | — | — |
+| 2.3 `panel-auth.ts` | — | Primer run 9/10. El caso de propiedad extra (400) recibía 200/401: en Fastify 5 un schema de ruta **sin envolver** (`{ schema: ingresarSchema }`) no se aplica al body en absoluto. Repro diferencial A/B: envuelto en `{ body }` → 400, directo → acepta sin validar. Se adoptó la forma envuelta de `registroAutomatizacionSchema` → 10/10 | Constantes de vida de sesión y helpers de cookie extraídos; 10/10 siguen verdes |
+| 2.4 Exenciones del panel | Estructural: sin `RUTAS_PANEL_PUBLICAS`, las rutas montadas bajo `registrarContextoTenant` mueren en los hooks de encabezado antes del handler — el caso `sesion` sin encabezado de `aislamiento-panel.test.ts` lo fija | Filas exactas agregadas y cableadas en `esExenta`; la suite de `contexto-tenant` (exenciones, patrón exacto, no prefijo) sigue verde | Comentario del porqué (DEC-135) en ambos lugares; sin lógica duplicada |
+| 2.5 Verificación | — | Los cuatro comandos, más abajo | — |
+
+## Work Unit Evidence (PR2)
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado exacto | `$env:TEST_DB_PORT='5434'; npx tsx --test src/panel-auth.test.ts` → `tests 10, pass 10, fail 0`. `$env:TEST_DB_PORT='5434'; npx tsx --test src/aislamiento-panel.test.ts` → `tests 5, pass 5, fail 0` |
+| Runtime harness | Postgres vivo `zd-ch09-testdb` en `localhost:5434` (nunca 5432). Escenario: login → cookie → `GET /sesion` → logout sobre `app.inject` con la extensión real; aislamiento probado con rutas reales y lecturas directas bajo `conTenantActivo` contra esa misma base |
+| Full suite | `$env:TEST_DB_PORT='5434'; npm test` → exit 0, `tests 940, suites 146, pass 940, fail 0, cancelled 0, skipped 0`. Línea base previa: 925/144; neto nuevo: 15 tests (10 + 5). Ningún fallo preexistente |
+| Typecheck | `npx tsc --noEmit`: exit 0. Un pasaje: los fixtures asignaban `usuario.nombre` (nullable) a `nombre: string`; corregido con `usuario.nombre!` en ambos builders (ver desviaciones) |
+| Rollback boundary | Revertir los commits de este lote (feat + docs): borrar `src/panel-auth.ts`, `src/panel-auth.test.ts`, `src/aislamiento-panel.test.ts` y revertir los 4 archivos tocados (`contexto-tenant.ts`, `aislamiento-prisma.ts`, `crypto-auth.ts`, `server.ts`). No hay DDL nuevo en este lote — nada que deshacer en la base. No toca trabajo no relacionado |
+
+## Line-Count Checkpoint (2.5)
+
+`git diff --numstat HEAD -- src prisma`: `aislamiento-prisma.ts` 94, `contexto-tenant.ts` 21, `crypto-auth.ts` 9, `server.ts` 6; archivos nuevos por conteo de líneas: `panel-auth.ts` 258, `panel-auth.test.ts` 330, `aislamiento-panel.test.ts` 229. **Total 947 autorizados.** Excluye artefactos SDD y los archivos ajenos ya sucios en el worktree (`.atl/*`, `docs/verificacion-tesis-2026-10-01.md`), que no se tocaron.
+
+- El forecast estimaba ~310 para PR2; el real es 947, dominado por tests (559 de 947). No se comprimió nada para acercarse al número: la entrega sigue siendo `single-pr` con `size:exception` del maintainer, y esta unidad queda dentro de ese alcance aprobado.
+- **Drift del exception a revalidar antes de PR3**: el `size:exception` se aprobó para ~810 líneas estimadas del cambio completo; PR1+PR2 reales suman 1394 autorizados y PR3 aún no arranca. Se reporta para que el maintainer revalide el alcance; no se pidió decisión nueva porque la aprobación de 2026-10-06 cubre la entrega completa y `Chain strategy` es `n/a`.
+- **Decisión de workload heredada**: `single-pr` + `size:exception` aprobado (2026-10-06); no hizo falta pedir decisión nueva.
+
+## Desviaciones y notas (PR2)
+
+- **`entrarContextoTenant` (design.md, DEC-135) no existe en el repo**: el export real es `conTenantActivo` (`src/contexto-tenant.ts`). Se usó el nombre real — es el mecanismo que DEC-135 nombra y el que la extensión ya usa en todo el código.
+- **Un schema de ruta sin envolver no valida el body en Fastify 5**: `{ schema: ingresarSchema }` no aplica validación alguna (repro: faltaba `clave` y respondía 200). La convención del repo (`registroAutomatizacionSchema`, `registroConsultaGuardadaSchema`) envuelve en `{ body }`; se adoptó esa forma y el caso 400 quedó verde. Ningún otro caso del lote ejercía validación de body, por eso pasó inadvertido hasta el caso 10.
+- **`Usuario.nombre` es nullable** (`String?` en `schema.prisma`, línea 255): los fixtures de ambos tests lo asignaban a `nombre: string` (TS2322). Se corrigió con `usuario.nombre!` — la fixture acaba de escribir ese nombre en el `create`, la anulación es del fixture, no del contrato. El endpoint `sesion` puede devolver `nombre: null` para un usuario real sin nombre; ningún caso del lote lo ejerce.
+- **`hashTokenSesion` se agregó a `src/crypto-auth.ts`**: el diseño no lo nombraba; es el gemelo de `hashTokenAgente` (`src/agente-token.ts`), misma construcción SHA-256 que DEC-134 exige para `SesionPanel.tokenHash`.
+- **tasks.md cita ramas `ch22a/modelo-y-crypto` y `ch22a/rutas-autenticacion`**: PR1 y PR2 se hicieron ambos en `ch22a/panel-auth` (decisión del orquestador para el single-pr). No se tocaron los encabezados de tasks.md; esta nota es el registro.
+- El caso 400 con propiedad extra replica el contrato de `automatizaciones-rutas.test.ts:76` y `vistas-canonicas`: body estricto, nada de tenant en el body (regla 2).
+- Ninguna decisión de arquitectura nueva; DEC-133 a DEC-136 no se reabrieron.
+
 ## Siguiente
 
-Las tareas 1.1-1.5 están completas y marcadas en `tasks.md`. El orquestador debe correr `sdd-verify` antes de continuar con PR2 (tareas 2.1-2.5).
+Las tareas 2.1-2.5 están completas y marcadas en `tasks.md`. El orquestador debe correr `sdd-verify` sobre esta unidad (PR2) antes de continuar con PR3 (tareas 3.1-3.4), que **no** se inició en este lote. Revalidar con el maintainer el drift del `size:exception` (1394 reales vs ~810 estimados) antes de arrancar PR3.
