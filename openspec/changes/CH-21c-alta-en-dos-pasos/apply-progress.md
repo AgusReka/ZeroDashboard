@@ -423,29 +423,12 @@ Later: preview (PR5).
 
 ## PR5
 
-Not started.
+Done 2026-10-06 (tasks 5.1-5.3 and 5.5; 5.4 manual review stays open for a human, Chrome only).
 
-## PR1 verification addendum (orchestrator, 2026-10-05)
-
-- `bash scripts/smoke.sh` on the PR1 tip against the project's Compose stack: SMOKE TEST PASSED, including "CH-21c: GET /conexiones ... no header -> 400; tenant A -> 200 with its connection and no credential" (task 1.10).
-- Commit trailers of the apply agent were rewritten from `Claude Opus 5.5` to `Claude Sonnet 5.5` before pushing (unpushed commits, identical diff).
-- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL. W1: the C2 `id` tie-break is compared against a JavaScript sort (valid for uuid ids, passed live). W2: live-DB evidence rests on the author's run; the smoke now closes S1. Suggestions not applied: a non-UTC route-level assertion in R1 and a guard against `ConexionListada` gaining fields.
-- Side effect of the smoke: the stack was brought down afterwards without removing volumes; the project database keeps its seeded catalog rows.
-
-## PR2b verification addendum (orchestrator, 2026-10-05)
-
-- `bash scripts/smoke.sh` on the PR2b tip against the project's Compose stack: SMOKE TEST PASSED (38 OK). Full `npm test` against the Compose db at port 5434: 882/882 (author's run).
-- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL. W1: a network failure (or unreadable body) raises the generic banner inside `pedirAutomatizacion` before the caller's `generacionAlta` check, so a stale network failure can still show a banner (the non-200 path is guarded); W2: no test drives the network-failure branch of `cargarConexiones` or a cancel/reopen while the fetch is in flight. Suggestions: a retry button instead of "cancel and reopen" is a later UX choice.
-- Visual review with headless Chrome (light/dark, 1280 and 360 px) against the running stack with 4 real connections: dropdown lists `nombre (id8…)` options after the "Elegí una conexión" placeholder, Cancelar visible next to Siguiente, Siguiente enabled after choosing a connection and a template, step 2 shows the connection's name in the summary, a 400 for an invalid cron keeps the wizard on step 2, Volver keeps the values, Cancelar closes and resets the dropdown to the placeholder; no horizontal scroll. Not reviewed: empty list, `truncado` notice and failure banner (not reproducible against this tenant), Firefox.
-
-## PR2c verification addendum (orchestrator, 2026-10-05)
-
-- `bash scripts/smoke.sh` on the PR2c tip against the project's Compose stack: SMOKE TEST PASSED (38 OK). Full `npm test` against the Compose db at port 5434: 885/885 (author's run).
-- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL, 0 WARNING, 3 SUGGESTION. S1: W3's `Siguiente` click guard for an empty `plantillaElegida` is no longer exercised by a click (unreachable by the operator after a first choice). S2: after a non-200 detail request the card stays chosen and `Siguiente` stays enabled with no value controls; re-clicking a checked radio fires no `change`, so retry needs another card (same as the old select). S3: a stale `/plantillas` catalog answer from a previous tenant can redraw the picker (pre-existing: `cargarCatalogoPlantillas` on master has no generation token); track for a later change.
-- Visual review with headless Chrome (light/dark, 1280 and 360 px) against the running stack: both template cards with name and description by label, none checked initially, hover, click chooses the first card (accent border), ArrowDown moves the choice to the second with focus on a radio, Siguiente enabled with a connection, step 2, Volver keeps the card, Cancelar closes; cards stack at 360 px; no horizontal scroll. Not reviewed: Firefox, long template names, the neutral-description card (the catalog only has the two seeded templates).
-
-## PR3 verification addendum (orchestrator, 2026-10-05)
-
-- `bash scripts/smoke.sh` on the PR3 tip against the project's Compose stack: SMOKE TEST PASSED (38 OK). Note: the orchestrator ran `docker compose up -d --build` while the smoke was still running; the smoke finished with the same 38 OK and exit 0, so it was not affected, but the interference was a process error. Full `npm test` against the Compose db at port 5434: 890/890 (author's run).
-- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL, 1 WARNING, 3 SUGGESTION. W1: the `hasOwnProperty` guard for an unknown preset in `cronDeFrecuencia` has no covering test (defensive; the select cannot produce an unknown value). S1: `#auto-hora` is disabled for `personalizado` (not required by the spec; note it in the manual review). S2: `formatearInstante` depends on the browser's `Intl` for `es-AR`; confirm the `dd/mm/aaaa HH:MM` format in a real browser. S3: no test drives a `change` event alone on `#auto-hora`.
-- Visual review with headless Chrome (light/dark, 1280 and 360 px) against the running stack: each frequency shows the translated cron (`0 8 * * *`, `0 8 * * 1-5`, `0 8 * * 1-6`) read-only with a dashed border and the Spanish sentence; `personalizado` makes the cron editable and disables the hour; changing the hour to 07:30 gives `30 7 * * 1-5`; an empty hour gives an empty cron and Crear shows "La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30." without sending a request; with the creation response stubbed in the page (no automation was created), the success banner reads "Se creó la automatización y ya aparece en la lista. Primera ejecución programada: 06/10/2026 07:30, zona horaria UTC. Es un horario, no una garantía: ..."; no horizontal scroll at 360 px. Not reviewed: Firefox and `type="time"` rendering there, the real server-computed first run (the 201 was stubbed; the server side is covered by PR1 tests).
+- Files: `src/consola.ts` (+59) and `src/consola.test.ts` (+82), 141 authored lines against the ~170 forecast.
+- Step 2 gains a static `role="group"` preview (`auto-vista-asunto`, `auto-vista-para`, `auto-vista-titulo`, note, footer). `TEMAS_CORREO` copies `correo.ts`; `temaCorreo` uses `hasOwnProperty`; `actualizarVistaPrevia` runs on Siguiente and on the recipient `input`; the wizard reset clears the three nodes. Bridge CSS `.vista-correo__titulo`.
+- Tests: E1 (subject parity and accent against `asuntoCorreo` and `componerCorreo` for five labels and two names), neutral theme for a missing label, recipient line, E3 (hostile name verbatim, no markup-assigning property), E4 (no children, footer shared with the server text part). `Nodo` gains `style`; three ids added to `IDS`.
+- Verification: `tsc` and build clean; console 60/60; `TEST_DB_PORT=5434 npm test` 902/902, 0 skipped. Smoke not run yet (its console greps did not change).
+- Deviation: the `sdd-apply` dispatch was refused by the SDD child-dispatch hook, so the orchestrator implemented PR5 inline.
+- Deviation: the accent is read from the server html as the only `background` that is not one of the three neutral greys, since `ESTILO.titulo` is not exported.
+- Process note: a first scripted edit truncated `src/consola.ts`; it was restored from git (no uncommitted work in it) before reapplying.
