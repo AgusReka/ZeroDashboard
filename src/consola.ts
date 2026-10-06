@@ -112,6 +112,11 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   #auto-marca-1:not([aria-current]) .zd-step__n { border-color: var(--accent); color: var(--accent-text); }
   /* A preset writes the cron field: it reads as shown, not typed (the sheet has no read-only look). */
   #auto-cron[readonly] { border-style: dashed; background: var(--surface-sunken); color: var(--text-2); }
+  /* DEC-127: a template the chosen connection cannot run reads as unavailable and says why.
+     The radio is disabled, so the card is skipped by the keyboard and cannot be chosen. */
+  .zd-template:has(input:disabled) { cursor: not-allowed; background: var(--surface-sunken); border-style: dashed; }
+  .zd-template:has(input:disabled):hover { border-color: var(--border-2); }
+  .motivo-plantilla { font-size: var(--text-help); color: var(--warn-text); }
 </style>
 </head>
 <body class="zd-root">
@@ -459,6 +464,12 @@ var detallesPlantilla = Object.create(null);
 // CH-21c: the wizard's stale-response token. Every reset (open, cancel, created, tenant
 // switch) moves it, and a response that started under an older value is dropped.
 var generacionAlta = 0;
+
+// CH-21c (DEC-127): the availability probe's own token, moved by every connection change. A
+// probe answer applies only while both tokens still hold. The card parts the probe edits
+// are kept by template id, because the picker is rebuilt on every reset.
+var generacionSondeo = 0;
+var partesTarjeta = Object.create(null);
 
 var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
 
@@ -1198,6 +1209,11 @@ function mostrarAviso(texto) {
   avisoAlta.hidden = false;
 }
 
+function ocultarAviso() {
+  avisoAlta.textContent = '';
+  avisoAlta.hidden = true;
+}
+
 // DEC-129: each preset is a day-of-week set; the minute and the hour come from the hour
 // control. Built by concatenation and character checks only: no pattern literal can live
 // in this page without doubled escapes.
@@ -1424,14 +1440,21 @@ function tarjetaPlantilla(fila) {
   descripcion.className = 'zd-template__desc';
   descripcion.textContent = Object.prototype.hasOwnProperty.call(DESCRIPCIONES_PLANTILLA, etiqueta)
     ? DESCRIPCIONES_PLANTILLA[etiqueta] : DESCRIPCION_NEUTRA;
+  // DEC-127: empty and hidden until the chosen connection cannot run this template.
+  var motivo = document.createElement('span');
+  motivo.className = 'motivo-plantilla';
+  motivo.hidden = true;
+  partesTarjeta[fila.id] = { radio: radio, motivo: motivo };
   tarjeta.appendChild(radio);
   tarjeta.appendChild(nombre);
   tarjeta.appendChild(descripcion);
+  tarjeta.appendChild(motivo);
   return tarjeta;
 }
 
 function renderizarPicker() {
   vaciar(contenedorPlantillas);
+  partesTarjeta = Object.create(null);
   catalogoPlantillas.forEach(function (fila) {
     contenedorPlantillas.appendChild(tarjetaPlantilla(fila));
   });
@@ -1475,6 +1498,89 @@ async function elegirPlantilla(id) {
     contenedorValoresAuto.appendChild(rotular(entrada.nombre, entrada.valor));
     filasValoresAuto.push(entrada);
   });
+}
+
+// --- Template availability (CH-21c, DEC-127) ---------------------------------------
+// Advisory only: nothing here is sent to the server, and the run-time view gate stays the
+// authority. Cards the chosen connection cannot run are disabled, each with its reason.
+
+var MOTIVOS_VISTA = { 'no-mapeada': 'sin vista registrada', 'no-validado': 'vista sin validar', 'invalida': 'la validación de la vista falló' };
+var AVISO_SIN_SONDEO = 'No se pudo verificar el mapeo de esta conexión. Las plantillas quedan habilitadas; la compuerta de vistas se aplica igual en cada ejecución.';
+
+// Mirror of the server's evaluarVistas: a declared entity blocks unless the report says
+// valida, and a row missing from the contract-ordered report is no-mapeada there already.
+function entidadesNoAprobadas(declaradas, informe) {
+  return informe.filter(function (fila) {
+    return declaradas.indexOf(fila.entidad) !== -1 && fila.estado !== 'valida';
+  }).map(function (fila) { return { entidad: fila.entidad, estado: fila.estado }; });
+}
+
+function motivoDeVistas(bloqueadas) {
+  return 'No disponible con esta conexión: ' + bloqueadas.map(function (fila) {
+    var palabras = Object.prototype.hasOwnProperty.call(MOTIVOS_VISTA, fila.estado) ? MOTIVOS_VISTA[fila.estado] : 'vista no aprobada';
+    return fila.entidad + ' (' + palabras + ')';
+  }).join(', ') + '. Cada ejecución se frenaría antes de conectar.';
+}
+
+function entidadesDe(detalle) {
+  return detalle !== null && typeof detalle === 'object' && Array.isArray(detalle.entidades) ? detalle.entidades : null;
+}
+
+// One reason per blocked template id (a null-prototype map, '' or absent when it can run).
+// A chosen template that is now blocked is unchosen, with its values.
+function aplicarVeredictos(veredictos) {
+  catalogoPlantillas.forEach(function (fila) {
+    var partes = partesTarjeta[fila.id];
+    if (partes === undefined) { return; }
+    var motivo = veredictos[fila.id] || '';
+    partes.radio.disabled = motivo !== '';
+    partes.motivo.textContent = motivo;
+    partes.motivo.hidden = motivo === '';
+  });
+  if (plantillaElegida !== '' && veredictos[plantillaElegida]) {
+    if (partesTarjeta[plantillaElegida] !== undefined) { partesTarjeta[plantillaElegida].radio.checked = false; }
+    plantillaElegida = '';
+    vaciar(contenedorValoresAuto);
+    filasValoresAuto = [];
+  }
+  actualizarSiguiente();
+}
+
+// Runs on every connection change. The report is read first, then each template's detail in
+// catalog order (the one cached for the step-2 controls when present). Any answer that is
+// missing or malformed leaves the cards it concerns enabled and says so.
+async function sondearConexion() {
+  var g = generacionAlta;
+  generacionSondeo += 1;
+  var s = generacionSondeo;
+  aplicarVeredictos(Object.create(null));
+  ocultarAviso();
+  var conexion = selectorConexionAuto.value;
+  if (conexion === '') { return; }
+  mostrarAviso('Verificando las vistas canónicas de la conexión elegida…');
+  var lectura = await pedirAutomatizacion('/conexiones/' + encodeURIComponent(conexion) + '/validacion-mapeo');
+  if (g !== generacionAlta || s !== generacionSondeo) { return; }
+  var mapeo = lectura !== null && lectura.status === 200 ? lectura.cuerpo.validacionMapeo : null;
+  var informe = mapeo !== null && typeof mapeo === 'object' ? mapeo.entidades : null;
+  var informeValido = Array.isArray(informe) && informe.every(function (fila) { return fila !== null && typeof fila === 'object'; });
+  var incompleto = !informeValido;
+  var veredictos = Object.create(null);
+  for (var i = 0; informeValido && i < catalogoPlantillas.length; i++) {
+    var id = catalogoPlantillas[i].id;
+    var detalle = detallesPlantilla[id];
+    if (detalle === undefined) {
+      var respuesta = await pedirAutomatizacion('/plantillas/' + encodeURIComponent(id));
+      if (g !== generacionAlta || s !== generacionSondeo) { return; }
+      detalle = respuesta !== null && respuesta.status === 200 ? respuesta.cuerpo.plantilla : null;
+      if (entidadesDe(detalle) !== null) { detallesPlantilla[id] = detalle; }
+    }
+    var declaradas = entidadesDe(detalle);
+    if (declaradas === null) { incompleto = true; continue; }
+    var bloqueadas = entidadesNoAprobadas(declaradas, informe);
+    if (bloqueadas.length > 0) { veredictos[id] = motivoDeVistas(bloqueadas); }
+  }
+  aplicarVeredictos(veredictos);
+  if (incompleto) { mostrarAviso(AVISO_SIN_SONDEO); } else { ocultarAviso(); }
 }
 
 async function listarAutomatizaciones() {
@@ -1625,8 +1731,9 @@ selectorTenant.addEventListener('change', function () {
   }
 });
 
+// The probe starts by re-evaluating Siguiente, so a placeholder choice disables it at once.
 selectorConexionAuto.addEventListener('change', function () {
-  actualizarSiguiente();
+  sondearConexion();
 });
 
 botonNuevaAuto.addEventListener('click', function () {
