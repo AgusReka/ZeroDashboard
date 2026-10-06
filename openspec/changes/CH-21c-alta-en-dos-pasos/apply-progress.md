@@ -282,7 +282,77 @@ Later PRs: the schedule scenarios and "Success banner shows first run and zone" 
 - No notice when the catalog is empty: the picker is an empty group and Siguiente stays disabled, as the empty select behaved before.
 - Commit trailer uses `Claude Sonnet 5.5` plus `Claude-Session`, as the launch prompt requested.
 
-## PR3-PR5
+## PR3: Step-2 schedule (`ch21c/asistente-horario`)
+
+Status: implemented, verified and committed (not pushed). Authored 312 lines. 3.5 (manual visual review) stays open for a human.
+
+### Commits
+
+| Commit | Content |
+|---|---|
+| 24c3633 | `feat(ch21c)`: frequency select, 24 h hour, schedule sentence, always-visible cron field (read-only for a preset), `DIAS_FRECUENCIA`, `NOMBRES_FRECUENCIA`, `DIGITOS`, `horaDe`, `cronDeFrecuencia`, `actualizarHorario`, `formatearInstante`, `confirmacionDeAlta`, the invalid-hour block in `crearAutomatizacion`, the schedule reset in `reiniciarAlta`, bridge rule `#auto-cron[readonly]`; tests H1-H6, the new ids, the markup guard and the existing creation tests set the schedule through the presets |
+| (docs) | `docs(ch21c)`: `tasks.md` and this file |
+
+### Completed Tasks
+
+- [x] 3.1 Harness: `auto-frecuencia`, `auto-hora`, `auto-horario-texto` in `IDS` (so in `IDS_GUARDADOS`); `arrancar()` creates `auto-frecuencia` as a `select`; new helper `fijarHorario(escenario, frecuencia, valor)` (picks the frequency, fires `change`, then types the hour for a preset or the cron for `personalizado`, asserting that field is typeable, and fires `input`); `crearSinCerrar` (Crear answered 500, so step 2 stays and the body is returned). H1, H2, H3, H4+H5 (one test), H6 written. RW1 uses `personalizado` (`30 7 * * 1`); RW2, RW3, W6, W8 use `diaria` at `06:00` (same `0 6 * * *` body as before); W7 uses `personalizado`. The wizard markup guard pins the four option values in order, `type="time" value="08:00"` and a cron input with no `hidden`.
+- [x] 3.2 Markup in `#auto-paso-2`, before the cron field: a `zd-form-row` with `#auto-frecuencia` (`zd-select`, options `diaria` selected, `lun-vie`, `lun-sab`, `personalizado`) and `#auto-hora` (`zd-input`, `type="time"`, `value="08:00"`), both `aria-describedby="auto-horario-texto"`; `<p id="auto-horario-texto" class="ayuda">`; `#auto-cron` keeps its id and classes, gains `readonly` (the start state is a preset) and is never hidden. Bridge CSS: `#auto-cron[readonly]` (dashed border, `--surface-sunken`, `--text-2`).
+- [x] 3.3 Script: as listed in the commit row. `crearAutomatizacion` runs `actualizarHorario()` first, so a preset's cron is rebuilt from the hour as it is at that moment, then refuses with "La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30." and no request when `cronDeFrecuencia` gives `null`; Crear stays enabled. The 201 banner: "Se creó la automatización y ya aparece en la lista. Primera ejecución programada: dd/mm/aaaa HH:MM, zona horaria Z. Es un horario, no una garantía: si el servicio no está en marcha a esa hora, esa ejecución no se recupera." Without a string `proximaEjecucion` and `zonaHoraria` it keeps the former sentence.
+- [x] 3.4 Verification (below).
+- [ ] 3.5 Manual visual review: human only.
+- [x] 3.6 Line-count checkpoint: 312 authored (`consola.ts` +118/-4, `consola.test.ts` +177/-13).
+
+### RED evidence
+
+- Before 3.2/3.3, `npx tsx --test src/consola.test.ts`: 48 tests, 36 pass, 12 fail (G1 for the three new ids, the wizard markup guard, RW2, RW3, W6, W7, W8, H1, H2, H3, H4+H5, H6). RW1 passed RED: with no preset logic the typed cron was sent as before. After: 48/48.
+- Mutation checks (each applied alone to the committed `consola.ts`, then restored byte-identical; `cmp` confirmed): no per-character digit loop fails H3 only (the added vectors `' 8:30'` and `'-1:30'` parse as numbers); no `actualizarHorario()` at Crear fails H1 only (an hour changed without an event); no invalid-hour block fails H3; no schedule reset in `reiniciarAlta` fails W6, W7, H4+H5, H6; a rethrow instead of the `RangeError` fallback fails H4+H5; no legacy check fails H4+H5; a cron field always read-only fails RW1, W7, H2, H6; the hour not disabled for `personalizado` fails H2; leading zeros kept (`08` instead of `8`) fails RW2, RW3, W6, W7, W8, H1, H2, H6; hour `24` accepted fails H3; no hour `input` listener fails H1, H2, H3; formatting in `UTC` instead of the server zone fails H4+H5.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/consola.test.ts`: 48/48 pass |
+| Full suite | `TEST_DB_PORT=5434 TEST_DB_PASSWORD=<from .env> npm test`: 890 tests, 890 pass, 0 fail, 0 skipped tests; one suite skipped by design (Mailpit live delivery, no Mailpit on 127.0.0.1:8026). Live target 127.0.0.1:5434 (Compose `db`); port 5432 never used |
+| Row counts | Tenant 1, Conexion 4, Automatizacion 0, Plantilla 2, equal before and after the full run |
+| Build | `npx tsc --noEmit` clean; `npm run build` exit 0; `sh -n scripts/smoke.sh` OK (smoke not run, orchestrator-owned; its console greps did not change) |
+| Page hazards | Added lines carry no backtick, no `${`, no backslash, no regex literal, no `RegExp`, no markup-assigning property and no `className` assignment; the script's `zd-` tokens are still exactly the three G3' ones; one `<style>`, one closing script tag (guards passing) |
+| Runtime harness | Manual visual review (3.5), human only; smoke (orchestrator) |
+| Rollback boundary | Revert 24c3633 (console only). Per the design, revert PR3 before PR1 (the banner reads `proximaEjecucion`; H5 tolerates its absence) |
+
+### Spec Coverage (PR3)
+
+| Scenario | Test |
+|---|---|
+| Preset vectors (submitted `cron` for `diaria`, `lun-vie`, `lun-sab` at 08:30) | H1 (six design vectors, each submitted and checked with the server's `cronValido(., 'UTC')`) |
+| Cron field shows the translation read-only | H1 (value, `readOnly`, not hidden), markup guard (no `hidden` on `#auto-cron`) |
+| Personalizado makes the cron field editable and passes through | H2 (`30 7 * * 1`, `0 */2 * * *`, full body), RW1 |
+| Invalid hour | H3 (eight values, no request, banner, step 2 kept) |
+| Success banner shows first run and zone (scheduled, not guaranteed) | H4+H5 |
+| Server 400 shown in the banner (step 2 and the schedule kept) | RW3 (cron and hour kept) |
+| Tenant switch wipes the wizard (schedule half) | H6, W6 |
+| POST body is unchanged | H1 (keys), H2 (full body), RW1-RW3, W8 |
+| All ids present once (with the three schedule ids) | G1 |
+| Requirement text: before creation the copy names no zone | H1, H2, H6 (exact sentences) |
+
+Later PRs: availability, disabled cards and the validation half of "Late response after a tenant switch is ignored" (PR4); preview (PR5).
+
+### Ids and guards
+
+- Added: `auto-frecuencia`, `auto-hora`, `auto-horario-texto` (markup, `IDS`, hence `IDS_GUARDADOS`). Kept: `auto-cron` (same id and classes; now `readonly` in the markup and never hidden). No id removed or renamed.
+- G1, G2, G3 and G3' unchanged in code and passing. The wizard markup guard gains the frequency options, the hour attributes and the visible cron field.
+
+### Deviations
+
+- `#auto-hora` is disabled while `personalizado` is selected (the hour does not apply to a raw cron); choosing a preset enables it again. Not in the design; covered by H2 and H6.
+- `NOMBRES_FRECUENCIA` (sentence words per preset) next to the design's `DIAS_FRECUENCIA`, and `ZONA_DEL_DESPLIEGUE` for the shared phrase.
+- Crear re-runs `actualizarHorario()` before reading the field, so the cron sent for a preset always matches the hour as it is then, even without an `input`/`change` event (H1's last assertion).
+- The hour label reads "Hora (24 horas)" and the cron label reads "Expresión cron (minuto hora día-del-mes mes día-de-la-semana)" (was "Horario (...)"), since the frequency and the hour now carry the schedule.
+- One bridge rule `#auto-cron[readonly]`: the shared sheet has no read-only look, and `--surface-code` equals `--surface-sunken` in the light theme, so the dashed border is what tells the shown cron from a typed one.
+- H3 carries two extra vectors (`' 8:30'`, `'-1:30'`) so the per-character check is observable; H4 and H5 share one test, which also covers the unresolvable-zone fallback.
+- The H1 vectors table lives in `consola.test.ts` as `VECTORES_HORARIO`; it is not exported (CH-23 can copy or move it).
+- Commit trailer uses `Claude Sonnet 5.5` plus `Claude-Session`, as the launch prompt requested.
+
+## PR4-PR5
 
 Not started.
 
