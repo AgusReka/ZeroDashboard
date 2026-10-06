@@ -126,6 +126,46 @@ No existía apply-progress previo (el lote PR1 lo creó). Este archivo es acumul
 - El caso 400 con propiedad extra replica el contrato de `automatizaciones-rutas.test.ts:76` y `vistas-canonicas`: body estricto, nada de tenant en el body (regla 2).
 - Ninguna decisión de arquitectura nueva; DEC-133 a DEC-136 no se reabrieron.
 
+## PR3: Servable Panel Page & Login Screen (tareas 3.1-3.3)
+
+Lote completado el 2026-10-06 en `ch22a/panel-auth`. Strict TDD activo (declarado por el orquestador); evidencia RED→GREEN por tarea abajo.
+
+### TDD Cycle Evidence (PR3)
+
+| Tarea | RED (test primero, fallo observado) | GREEN (implementación pasa) | REFACTOR |
+|---|---|---|---|
+| 3.1 | `src/panel.test.ts` escrito antes que `src/panel.ts` existiera (4 casos: login sin sesión, shell con sesión ignorando `X-Tenant-Id`, shell sin header no filtra tenant B, cookie desconocida → login). Corrida inicial: `ERR_MODULE_NOT_FOUND` para `./panel.js`, exit 1 — fallo real por módulo inexistente | `$env:TEST_DB_PORT='5434'; npx tsx --test src/panel.test.ts` → `tests 4, suites 1, pass 4, fail 0` | — (el refactor del lote es el de 3.2) |
+| 3.2 | Cubierto por el RED de 3.1: sin módulo de página no hay documento que servir | `src/panel.ts` (244 líneas) + wiring en `src/server.ts` → 4/4 verde | Extracción de `resolverSesion` dentro de `src/panel-auth.ts` con modo `{ opcional?: boolean }`: una sola ruta de resolución de sesión (regla 2, DEC-135) compartida por API y página; los códigos 401/409 exactos de PR2 se preservan y las 62 pruebas previas siguen verdes |
+| 3.3 | n/a (verificación, sin código nuevo) | `npx tsc --noEmit` exit 0 · `npm test` 944/944 · `npm run build` exit 0 | — |
+
+### Work Unit Evidence (PR3)
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado exacto | `$env:TEST_DB_PORT='5434'; npx tsx --test src/panel.test.ts` → `tests 4, suites 1, pass 4, fail 0, cancelled 0, skipped 0` |
+| Runtime harness | Postgres vivo `zd-ch09-testdb` en `localhost:5434` (nunca 5432). Escenario: `GET /panel` sin cookie → login P-01; login real (POST `/api/panel/auth/ingresar`) → cookie → `GET /panel` sirve el shell con `tenantNombre` de la sesión; `X-Tenant-Id` de otro tenant no mueve la página; cookie desconocida → login. Mismo wiring que `src/server.ts` (registrarContextoTenant → registerPanelAuthRoutes → registerPanelRoutes) sobre `app.inject` con la extensión real |
+| Regression focused | `$env:TEST_DB_PORT='5434'; npx tsx --test src/panel-auth.test.ts src/aislamiento-panel.test.ts src/contexto-tenant.test.ts` → `tests 62, suites 7, pass 62, fail 0` |
+| Full suite | `$env:TEST_DB_PORT='5434'; npm test` → exit 0, `tests 944, suites 147, pass 944, fail 0, cancelled 0, skipped 0`. Línea base: 940 (PR2); neto nuevo: +4 tests. Ningún fallo preexistente |
+| Typecheck / build | `npx tsc --noEmit`: exit 0. `npm run build`: exit 0 |
+| Rollback boundary | Revertir los commits de este lote (feat + docs): borrar `src/panel.ts` y `src/panel.test.ts`, y revertir solo las líneas PR3 de `src/panel-auth.ts` (resolverSesion + modo opcional), `src/contexto-tenant.ts` (fila `/panel` en `esExenta`) y `src/server.ts` (import + `registerPanelRoutes`). Sin DDL nuevo — nada que deshacer en la base. No toca trabajo no relacionado |
+
+### Line-Count Checkpoint (3.3)
+
+`git diff --numstat HEAD -- src`: `panel-auth.ts` 77 agregadas / 27 removidas, `contexto-tenant.ts` 8/2, `server.ts` 6/0; archivos nuevos por conteo de líneas: `panel.ts` 244, `panel.test.ts` 222. **Total 557 autorizados** (suma de líneas agregadas; misma convención del checkpoint PR2). Excluye artefactos SDD y los archivos ajenos ya sucios en el worktree (`.atl/*`, `docs/verificacion-tesis-2026-10-01.md`), que no se tocaron.
+
+- El forecast estimaba ~280 para PR3; el real es 557, dominado por el documento servido (244) y sus tests (222). No se comprimió nada para acercarse al número: la entrega sigue siendo `single-pr` con `size:exception`.
+- **Drift del exception acumulado**: PR1+PR2 reales = 1394; con PR3 (557) el cambio completo suma **1951 líneas reales** vs ~810 estimadas y ~1700 del presupuesto ampliado (2026-10-06). Se reporta para que el maintainer revalide en el cierre (verify/archive); no se pidió decisión nueva — la aprobación cubre la entrega completa y `Chain strategy` es `n/a`.
+
+## Desviaciones y notas (PR3)
+
+- **El enlace "Olvidé mi contraseña" del mockup P-01 está ausente a propósito**: la recuperación de contraseña es R2 (fuera de alcance) y un enlace muerto en producción es peor que ninguno. Documentado en `src/panel.ts` (`DOCUMENTO_INGRESO`).
+- **`GET /panel` se eximió en el bloque GET de `esExenta` (fila exacta), NO en `RUTAS_PANEL_PUBLICAS`**: el diseño lo exige así — la página resuelve el tenant desde la fila de sesión dentro de su handler (`levantarSesionPanel(prisma, { opcional: true })`), nunca desde el request; los tres endpoints de auth sí quedan en `RUTAS_PANEL_PUBLICAS`. Comentario DEC-135 agregado en `src/contexto-tenant.ts`.
+- **`strict-tdd.md` no existe en disco** (buscado en skills/): la disciplina RED→GREEN se siguió según el texto de la skill `sdd-apply` y queda evidenciada arriba; `openspec/config.yaml` reporta `strict_tdd: false`. Discrepancia registrada, no bloqueante.
+- **La cookie `Secure` (DEC-134) se mantiene**: sobre `http://localhost` el navegador no guardará la cookie — limitación conocida y documentada en `src/panel.ts`, diferida a la revisión visual humana (tarea 3.4), no silenciada en código.
+- **El nombre del tenant viaja solo en `SesionResuelta.tenantNombre`** (`SesionPanel` trae `tenantNombre`/`tenantActivo`/`usuarioActivo`): el shell lo interpola sin lectura extra de base, escapado con `escaparHtml` (los 5 caracteres) — la fixture `Tienda & Cía <prueba>` pinnea el escape.
+- **Scripts inline sin template literals**: concatenación (`var` + `+`, `\u2026`) para que los documentos vivan dentro del template literal de TypeScript sin escapar. Convención de `src/consola.ts` respetada (HTML + CSS + JS servidos como string, sin framework ni build).
+- Ninguna decisión de arquitectura nueva; DEC-133 a DEC-136 no se reabrieron.
+
 ## Siguiente
 
-Las tareas 2.1-2.5 están completas y marcadas en `tasks.md`. El orquestador debe correr `sdd-verify` sobre esta unidad (PR2) antes de continuar con PR3 (tareas 3.1-3.4), que **no** se inició en este lote. Revalidar con el maintainer el drift del `size:exception` (1394 reales vs ~810 estimados) antes de arrancar PR3.
+Las tareas 3.1-3.3 están completas y marcadas en `tasks.md`; queda pendiente **3.4 (revisión visual humana**: login, estado de error, transición login→shell en 360 y 1280 px, temas claro/oscuro), que este lote no intenta. El orquestador debe correr `sdd-verify` sobre esta unidad (PR3) y revalidar con el maintainer el drift del `size:exception` (1951 reales acumulados vs ~1700 del presupuesto ampliado) antes del cierre.
