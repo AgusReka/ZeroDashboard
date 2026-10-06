@@ -28,11 +28,11 @@
 
 Branch `ch22a/modelo-y-crypto`.
 
-- [ ] 1.1 RED tests for `src/crypto-auth.ts`: scrypt hashing, salt random generation, verification with correct and incorrect password, timing-safe equality, session token generator.
-- [ ] 1.2 GREEN `src/crypto-auth.ts`: implement `hashearClave`, `verificarClave`, `generarTokenSesion`.
-- [ ] 1.3 `prisma/schema.prisma`: add `Usuario` and `SesionPanel` models and reverse relations on `Tenant`. Generate additive migration.
-- [ ] 1.4 Update `MODELOS_AISLADOS` in `src/contexto-tenant.ts` and pin test.
-- [ ] 1.5 Verification: `npx tsc --noEmit`, `npm test` focused on crypto-auth and model pin.
+- [x] 1.1 RED tests for `src/crypto-auth.ts`: scrypt hashing, salt random generation, verification with correct and incorrect password, timing-safe equality, session token generator.
+- [x] 1.2 GREEN `src/crypto-auth.ts`: implement `hashearClave`, `verificarClave`, `generarTokenSesion`.
+- [x] 1.3 `prisma/schema.prisma`: add `Usuario` and `SesionPanel` models and reverse relations on `Tenant`. Generate additive migration.
+- [x] 1.4 Update `MODELOS_AISLADOS` in `src/contexto-tenant.ts` and pin test.
+- [x] 1.5 Verification: `npx tsc --noEmit`, `npm test` focused on crypto-auth and model pin.
 
 ## PR2: Auth Routes, Session Hook & Two-Tenant Isolation (~310 authored)
 
