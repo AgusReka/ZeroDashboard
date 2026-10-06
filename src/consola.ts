@@ -36,7 +36,8 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   CH-21a (DEC-124): the shared stylesheet, served by exact exempt GET routes. The style
   element below is the console's bridge, not a second design: it styles the nodes the
   script builds or renames (their className is the script's, so they carry no zd-*
-  class) and lays out what the shared components do not cover. Tokens only.
+  class; the template cards of CH-21c are the one exception and use the shared card
+  classes as they are) and lays out what the shared components do not cover. Tokens only.
 -->
 <link rel="stylesheet" href="/ui/styles.css">
 <style>
@@ -210,8 +211,10 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
       <select id="auto-conexion" class="zd-select"></select>
       <p id="auto-aviso" class="ayuda" hidden></p>
 
-      <label for="auto-plantilla" class="zd-label">Plantilla</label>
-      <select id="auto-plantilla" class="zd-select"></select>
+      <!-- CH-21c (DEC-131): one radio card per catalog template, built by the script as text.
+           The group carries its own accessible name, so the visible heading is not read twice. -->
+      <p class="zd-label" aria-hidden="true">Plantilla</p>
+      <div id="auto-plantilla" class="zd-templates" role="radiogroup" aria-label="Plantilla"></div>
 
       <div class="zd-form-actions">
         <button id="auto-siguiente" class="zd-btn zd-btn--primary" type="button" disabled>Siguiente</button>
@@ -332,6 +335,15 @@ var MENSAJES_AUTOMATIZACION = {
   'automatizacion-desactivada': 'Esa automatización ya estaba desactivada. Se actualizó la lista.'
 };
 
+// CH-21c (DEC-131): the template cards' description lives in the console, keyed by the
+// template's automatizacion label; the catalog carries none. Any other label, a missing
+// one included, gets the neutral sentence. No icon and no tolerance on the card.
+var DESCRIPCIONES_PLANTILLA = {
+  'stock-fisico': 'Avisa cuando un producto queda por debajo del mínimo.',
+  'stock-producible': 'Avisa cuando los insumos no alcanzan para producir.'
+};
+var DESCRIPCION_NEUTRA = 'Plantilla del catálogo, sin descripción en la consola.';
+
 // A run closed before dialing carries one of these closed categories instead of a
 // {fase, categoria} pair from MENSAJES. The row never holds driver text (X2).
 var MENSAJES_CORRIDA = {
@@ -388,7 +400,7 @@ var banner = document.getElementById('banner');
 var estado = document.getElementById('estado');
 var encabezado = document.querySelector('#resultados thead');
 var cuerpoTabla = document.querySelector('#resultados tbody');
-var selectorPlantilla = document.getElementById('auto-plantilla');
+var contenedorPlantillas = document.getElementById('auto-plantilla');
 var contenedorValoresAuto = document.getElementById('auto-valores');
 var selectorConexionAuto = document.getElementById('auto-conexion');
 var entradaCron = document.getElementById('auto-cron');
@@ -412,6 +424,13 @@ var botonVolverAuto = document.getElementById('auto-volver');
 // the value controls of the template chosen in the create form.
 var nombresPlantilla = Object.create(null);
 var filasValoresAuto = [];
+
+// CH-21c: the catalog rows the picker draws its cards from, the chosen card's id ('' when
+// none), and the template details read during this wizard, by id. Every reset empties the
+// choice and the details.
+var catalogoPlantillas = [];
+var plantillaElegida = '';
+var detallesPlantilla = Object.create(null);
 
 // CH-21c: the wizard's stale-response token. Every reset (open, cancel, created, tenant
 // switch) moves it, and a response that started under an older value is dropped.
@@ -1134,7 +1153,7 @@ function renderizarTabla(tabla, columnas, filas, claseFila, aviso) {
 function limpiarAutomatizaciones() {
   vaciar(tablaAutomatizaciones);
   vaciar(tablaEjecuciones);
-  vaciar(selectorPlantilla);
+  catalogoPlantillas = [];
   nombresPlantilla = Object.create(null);
   // The wizard goes too, values and all: nothing typed for one tenant survives the switch.
   cerrarAlta();
@@ -1147,7 +1166,7 @@ function limpiarAutomatizaciones() {
 // Siguiente needs a connection and a chosen template; the values have their own
 // legible server-side errors on step 2.
 function actualizarSiguiente() {
-  botonSiguienteAuto.disabled = selectorConexionAuto.value === '' || selectorPlantilla.value === '';
+  botonSiguienteAuto.disabled = selectorConexionAuto.value === '' || plantillaElegida === '';
 }
 
 function mostrarAviso(texto) {
@@ -1212,7 +1231,10 @@ function irAPaso(n) {
 // the previous wizard lands nowhere.
 function reiniciarAlta() {
   generacionAlta += 1;
-  selectorPlantilla.value = '';
+  plantillaElegida = '';
+  detallesPlantilla = Object.create(null);
+  // Fresh cards, none chosen: from the catalog of the tenant now active, or none at all.
+  renderizarPicker();
   vaciar(contenedorValoresAuto);
   filasValoresAuto = [];
   // Options and choice both go: no connection of the previous tenant stays selectable.
@@ -1284,39 +1306,75 @@ function textoOpcional(valor) {
   return valor === null || valor === undefined ? '—' : String(valor);
 }
 
+// CH-21c (DEC-131): one card per catalog row, text only (regla 7). The label wraps a
+// radio of one shared name, so a click on the card and the arrow keys both choose it;
+// the shared sheet hides the radio and draws the checked and focused states.
+function tarjetaPlantilla(fila) {
+  var tarjeta = document.createElement('label');
+  tarjeta.className = 'zd-template';
+  var radio = document.createElement('input');
+  radio.type = 'radio';
+  radio.name = 'auto-plantilla-opcion';
+  radio.value = fila.id;
+  radio.addEventListener('change', function () {
+    if (radio.checked) { elegirPlantilla(fila.id); }
+  });
+  var nombre = document.createElement('span');
+  nombre.className = 'zd-template__name';
+  nombre.textContent = fila.nombre;
+  // String() makes a missing label 'undefined', and the own-key test keeps 'constructor'
+  // and every other prototype name out: both get the neutral sentence, never a throw.
+  var etiqueta = String(fila.automatizacion);
+  var descripcion = document.createElement('span');
+  descripcion.className = 'zd-template__desc';
+  descripcion.textContent = Object.prototype.hasOwnProperty.call(DESCRIPCIONES_PLANTILLA, etiqueta)
+    ? DESCRIPCIONES_PLANTILLA[etiqueta] : DESCRIPCION_NEUTRA;
+  tarjeta.appendChild(radio);
+  tarjeta.appendChild(nombre);
+  tarjeta.appendChild(descripcion);
+  return tarjeta;
+}
+
+function renderizarPicker() {
+  vaciar(contenedorPlantillas);
+  catalogoPlantillas.forEach(function (fila) {
+    contenedorPlantillas.appendChild(tarjetaPlantilla(fila));
+  });
+}
+
 async function cargarCatalogoPlantillas() {
   var resultado = await pedirAutomatizacion('/plantillas');
   if (resultado === null) { return; }
   if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
-  vaciar(selectorPlantilla);
-  var vacia = document.createElement('option');
-  vacia.value = '';
-  vacia.textContent = 'Elegí una plantilla';
-  selectorPlantilla.appendChild(vacia);
   nombresPlantilla = Object.create(null);
-  (Array.isArray(resultado.cuerpo.plantillas) ? resultado.cuerpo.plantillas : []).forEach(function (fila) {
+  catalogoPlantillas = (Array.isArray(resultado.cuerpo.plantillas) ? resultado.cuerpo.plantillas : []).map(function (fila) {
     nombresPlantilla[fila.id] = String(fila.nombre);
-    var opcion = document.createElement('option');
-    opcion.value = String(fila.id);
-    opcion.textContent = String(fila.nombre);
-    selectorPlantilla.appendChild(opcion);
+    return { id: String(fila.id), nombre: String(fila.nombre), automatizacion: fila.automatizacion };
   });
+  renderizarPicker();
 }
 
 // The chosen template's declaration becomes one value control per parameter, built by
-// controlDeValor exactly as the query editor builds them.
-async function elegirPlantilla() {
-  var id = selectorPlantilla.value;
+// controlDeValor exactly as the query editor builds them. A detail already read in this
+// wizard is reused; otherwise it is asked for once.
+async function elegirPlantilla(id) {
   var g = generacionAlta;
+  plantillaElegida = id;
+  actualizarSiguiente();
   vaciar(contenedorValoresAuto);
   filasValoresAuto = [];
-  if (id === '') { return; }
-  var resultado = await pedirAutomatizacion('/plantillas/' + encodeURIComponent(id));
-  // A later choice made while this one was in flight wins, and so does any wizard reset
-  // (a tenant switch included) that happened in between.
-  if (resultado === null || g !== generacionAlta || selectorPlantilla.value !== id) { return; }
-  if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
-  var parametros = resultado.cuerpo.plantilla.parametros;
+  var detalle = detallesPlantilla[id];
+  if (detalle === undefined) {
+    var resultado = await pedirAutomatizacion('/plantillas/' + encodeURIComponent(id));
+    // Any wizard reset in between (a tenant switch included) drops the answer.
+    if (resultado === null || g !== generacionAlta) { return; }
+    if (resultado.status === 200) { detallesPlantilla[id] = resultado.cuerpo.plantilla; }
+    // A later choice made while this one was in flight wins.
+    if (plantillaElegida !== id) { return; }
+    if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
+    detalle = resultado.cuerpo.plantilla;
+  }
+  var parametros = detalle.parametros;
   (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
     var entrada = { nombre: String(parametro.nombre), tipo: String(parametro.tipo), valor: controlDeValor(String(parametro.tipo)) };
     contenedorValoresAuto.appendChild(rotular(entrada.nombre, entrada.valor));
@@ -1359,7 +1417,7 @@ async function crearAutomatizacion() {
   var g = generacionAlta;
   // No tenant here: the header names it (DEC-15), and the route refuses one in the body.
   var alta = {
-    plantillaId: selectorPlantilla.value,
+    plantillaId: plantillaElegida,
     conexionId: selectorConexionAuto.value,
     valores: valoresDe(filasValoresAuto),
     cron: entradaCron.value.trim()
@@ -1466,11 +1524,6 @@ selectorTenant.addEventListener('change', function () {
   }
 });
 
-selectorPlantilla.addEventListener('change', function () {
-  actualizarSiguiente();
-  elegirPlantilla();
-});
-
 selectorConexionAuto.addEventListener('change', function () {
   actualizarSiguiente();
 });
@@ -1487,8 +1540,8 @@ botonCancelarAuto.addEventListener('click', function () {
 botonSiguienteAuto.addEventListener('click', function () {
   actualizarSiguiente();
   if (botonSiguienteAuto.disabled) { return; }
-  var nombre = nombresPlantilla[selectorPlantilla.value];
-  resumenAlta.textContent = 'Plantilla: ' + (nombre === undefined ? selectorPlantilla.value : nombre) +
+  var nombre = nombresPlantilla[plantillaElegida];
+  resumenAlta.textContent = 'Plantilla: ' + (nombre === undefined ? plantillaElegida : nombre) +
     ' · Conexión: ' + selectorConexionAuto.options[selectorConexionAuto.selectedIndex].textContent;
   irAPaso(2);
 });
