@@ -129,6 +129,22 @@ const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The panel surface (CH-22a, DEC-135): exact rows, one per public endpoint of
+ * `src/panel-auth.ts`. The panel never resolves a tenant from the request — the login
+ * reads the user by email before any tenant exists, and every authenticated route
+ * derives the tenant exclusively from the session cookie (rule 2). These rows exist
+ * so the header hooks above do not demand an `X-Tenant-Id` that the panel client has
+ * no business sending; the session hook in `src/panel-auth.ts` is the only tenant
+ * resolution the surface trusts. Rows are exact like every other entry here: a
+ * look-alike path or a different method stays scoped and fails closed.
+ */
+const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
+  'POST /api/panel/auth/ingresar',
+  'POST /api/panel/auth/salir',
+  'GET /api/panel/auth/sesion',
+]);
+
+/**
  * The stylesheet rows (DEC-124 A3). Exported only so `src/estilos-rutas.test.ts` can
  * assert they equal the registered routes exactly; nothing else reads it.
  */
@@ -156,6 +172,11 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
   }
   // The shared stylesheet is the same for every tenant (DEC-124); see ESTILOS_EXENTOS.
   if (ESTILOS_EXENTOS.has(`${metodo} ${patron}`)) {
+    return true;
+  }
+  // The panel authenticates by session cookie, not by header (DEC-135); see
+  // RUTAS_PANEL_PUBLICAS. The header hooks must not demand `X-Tenant-Id` there.
+  if (RUTAS_PANEL_PUBLICAS.has(`${metodo} ${patron}`)) {
     return true;
   }
   // Bootstrap: requiring a tenant in order to create the first tenant is unsatisfiable.

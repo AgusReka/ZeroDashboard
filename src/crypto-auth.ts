@@ -107,3 +107,12 @@ export function generarTokenSesion(): { tokenPlano: string; tokenHash: string } 
   const tokenHash = createHash('sha256').update(tokenPlano).digest('hex');
   return { tokenPlano, tokenHash };
 }
+
+/**
+ * The SHA-256 hex digest of a session token: what `SesionPanel.tokenHash` holds and
+ * what the panel hook looks up, exactly like `hashTokenAgente` (`src/agente-token.ts`)
+ * — the raw token never touches the database or the logs (DEC-134).
+ */
+export function hashTokenSesion(tokenPlano: string): string {
+  return createHash('sha256').update(tokenPlano).digest('hex');
+}

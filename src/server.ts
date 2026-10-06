@@ -15,6 +15,7 @@ import { registerTenantRoutes } from './tenants.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
+import { registerPanelAuthRoutes } from './panel-auth.js';
 import { registerAgenteRoutes } from './agentes-rutas.js';
 import { registrarServidorAgentes } from './agente-servidor.js';
 import { crearRegistroAgentes } from './registro-agentes.js';
@@ -100,6 +101,11 @@ registerAgenteRoutes(app, prisma, registro);
 // tenant-context hooks and their exemption list above never see it. Its `preClose` hook
 // closes every agent socket before Fastify's `server.close()` waits on them.
 registrarServidorAgentes({ app, prisma, registro });
+// CH-22a (DEC-136): the client panel's own authentication surface, exempt from the
+// `X-Tenant-Id` header hooks by `RUTAS_PANEL_PUBLICAS` — the panel derives the tenant
+// exclusively from the session cookie (DEC-135), with the audited unscoped lookups in
+// `src/aislamiento-prisma.ts`.
+registerPanelAuthRoutes(app, prisma);
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops
 // the scheduler before the process exits.

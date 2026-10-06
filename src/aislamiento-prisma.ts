@@ -165,6 +165,100 @@ export function extenderConAislamiento(prisma: PrismaClient) {
             : { id: fila.id, tenantId: fila.tenantId, tenantActivo: fila.tenant.activo };
         },
       },
+      usuario: {
+        /**
+         * CH-22a (DEC-133, DEC-135): the login's single audited unscoped read. The panel
+         * login happens before any tenant context exists (the credentials do not name a
+         * tenant — rule 2), so the user is found by its unique `correo` on the raw
+         * client, exactly like the agent token above, and the tenant comes from the
+         * matched row. It takes the email, never a tenant, and returns what the login
+         * route needs and nothing it may derivate from the request: the credentials to
+         * verify, the user's own state, and the owning tenant's identity and state.
+         * Every other `Usuario` operation stays scoped through `$allOperations`.
+         */
+        async buscarPorCorreo(
+          correo: string,
+        ): Promise<{
+          id: string;
+          correo: string;
+          nombre: string | null;
+          activo: boolean;
+          claveHash: string;
+          tenantId: string;
+          tenantNombre: string;
+          tenantActivo: boolean;
+        } | null> {
+          const fila = await prisma.usuario.findUnique({
+            where: { correo },
+            select: {
+              id: true,
+              correo: true,
+              nombre: true,
+              activo: true,
+              claveHash: true,
+              tenant: { select: { id: true, nombre: true, activo: true } },
+            },
+          });
+          return fila === null
+            ? null
+            : {
+                id: fila.id,
+                correo: fila.correo,
+                nombre: fila.nombre,
+                activo: fila.activo,
+                claveHash: fila.claveHash,
+                tenantId: fila.tenant.id,
+                tenantNombre: fila.tenant.nombre,
+                tenantActivo: fila.tenant.activo,
+              };
+        },
+      },
+      sesionPanel: {
+        /**
+         * CH-22a (DEC-134, DEC-135): the session hook's single audited unscoped read,
+         * the panel's mirror of `buscarPorTokenHash` above. A panel request presents its
+         * cookie token before any tenant context exists, so the session is found by its
+         * token hash on the raw client and the tenant comes from the session row — the
+         * exact property DEC-135 makes load-bearing (the client's `X-Tenant-Id` is never
+         * even read). It returns the minimum the hook needs to validate and enter the
+         * context: the row's identity, its owner, expiry, and the state of both bound
+         * rows. Every other `SesionPanel` operation stays scoped.
+         */
+        async buscarPorTokenHash(
+          tokenHash: string,
+        ): Promise<{
+          id: string;
+          usuarioId: string;
+          tenantId: string;
+          tenantNombre: string;
+          expiraEn: Date;
+          usuarioActivo: boolean;
+          tenantActivo: boolean;
+        } | null> {
+          const fila = await prisma.sesionPanel.findUnique({
+            where: { tokenHash },
+            select: {
+              id: true,
+              usuarioId: true,
+              tenantId: true,
+              expiraEn: true,
+              usuario: { select: { activo: true } },
+              tenant: { select: { nombre: true, activo: true } },
+            },
+          });
+          return fila === null
+            ? null
+            : {
+                id: fila.id,
+                usuarioId: fila.usuarioId,
+                tenantId: fila.tenantId,
+                tenantNombre: fila.tenant.nombre,
+                expiraEn: fila.expiraEn,
+                usuarioActivo: fila.usuario.activo,
+                tenantActivo: fila.tenant.activo,
+              };
+        },
+      },
     },
     query: {
       $allModels: {
