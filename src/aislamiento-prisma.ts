@@ -31,6 +31,11 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  * agent's token is resolved before any tenant context exists, so that single typed
  * lookup runs on the raw client and returns only `id`, `tenantId` and the tenant's
  * state. It is the only unscoped read of a scoped model in this module, by design.
+ *
+ * CH-22a adds `Usuario` and `SesionPanel` (DEC-133, DEC-134). Both carry a direct
+ * `tenantId` and both are tenant data; the panel's session resolution (DEC-135) runs
+ * before any tenant context exists and gets the same treatment the agent token got —
+ * an explicit audited lookup, added with the routes, never a pass-through here.
  */
 const MODELOS_AISLADOS = new Set([
   'Conexion',
@@ -39,6 +44,8 @@ const MODELOS_AISLADOS = new Set([
   'Automatizacion',
   'Ejecucion',
   'Agente',
+  'Usuario',
+  'SesionPanel',
 ]);
 
 /**

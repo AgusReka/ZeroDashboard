@@ -1254,11 +1254,12 @@ describe('aplicarAlcance — the closed operation map', () => {
 // ---- CH-12 1.3 the schema itself, read from the generated client -------------------
 
 describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61)', () => {
-  test('the model list is exactly the tenant models, Plantilla, and the CH-13 pair', () => {
+  test('the model list is exactly the tenant models, Plantilla, the CH-13 pair, and CH-22a', () => {
     // Read from the generated client rather than by grepping `schema.prisma`: this is
     // the model list the extension actually sees at runtime. CH-13 (DEC-74, X2) adds
-    // `Automatizacion` and `Ejecucion`, CH-19b (DEC-121) adds `Agente`; the list still
-    // pins `Usuario` out.
+    // `Automatizacion` and `Ejecucion`, CH-19b (DEC-121) adds `Agente`, and CH-22a
+    // (DEC-133, DEC-134) adds `Usuario` and `SesionPanel` — both scoped, proven by the
+    // fail-closed cases below, so this list pins them *in*, not out.
     assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
       'Agente',
       'Automatizacion',
@@ -1266,7 +1267,9 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
       'ConsultaGuardada',
       'Ejecucion',
       'Plantilla',
+      'SesionPanel',
       'Tenant',
+      'Usuario',
       'VistaCanonica',
     ]);
   });
@@ -1342,6 +1345,41 @@ describe('aislamiento — Automatizacion and Ejecucion fail closed outside a ten
     );
     await assert.rejects(
       () => aislado.agente.updateMany({ where: {}, data: { revocadoEn: new Date() } }),
+      ErrorSinTenantActivo,
+    );
+  });
+
+  test('CH-22a L1 Usuario and SesionPanel reads and writes with no active tenant throw ErrorSinTenantActivo', async () => {
+    // Both models carry a direct `tenantId` and join `MODELOS_AISLADOS` (DEC-13,
+    // DEC-133, DEC-134). Session rows are read *before* any tenant context exists
+    // during login/session resolution, so they must be scoped all the same: the
+    // route's audited lookup is a separate, explicit exception, not a pass-through.
+    await assert.rejects(() => aislado.usuario.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () => aislado.usuario.findUnique({ where: { id: 'cualquiera' } }),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () =>
+        aislado.usuario.create({
+          data: { tenantId: 't', correo: 'admin@tienda.com', claveHash: 's1:a:b' },
+        } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () => aislado.usuario.update({ where: { id: 'x' }, data: { activo: false } }),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(() => aislado.sesionPanel.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () =>
+        aislado.sesionPanel.create({
+          data: { tenantId: 't', usuarioId: 'u', tokenHash: 'h', expiraEn: new Date() },
+        } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () => aislado.sesionPanel.deleteMany({ where: {} }),
       ErrorSinTenantActivo,
     );
   });
