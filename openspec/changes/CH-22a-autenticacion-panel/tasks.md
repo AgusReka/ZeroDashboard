@@ -58,5 +58,5 @@ Branch `ch22a/panel-ingreso`. Depends on PR2.
 
 ## Closure
 
-- [ ] 4.1 Verify per PR (`sdd-verify`): check all scenarios and tests against requirements.
+- [x] 4.1 Verify per PR (`sdd-verify`): check all scenarios and tests against requirements.
 - [ ] 4.2 Archive (`sdd-archive`) after PR3 merges: sync delta specs to `openspec/specs/` and move folder to `openspec/changes/archive/2026-10-06-CH-22a-autenticacion-panel/`.
