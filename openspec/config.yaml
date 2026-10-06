@@ -1,38 +1,55 @@
 schema: spec-driven
 
 context: |
-  Tech stack: undetected (greenfield project, no code yet)
-  Architecture: undetected
-  Testing: none configured
-  Style: none established
-  Workspace: C:\Users\messi\OneDrive\Documentos\Proyectos\ZeroDashboard (not a git repo)
+  Project: zerodashboard-console. Multi-tenant console + execution engine for e-commerce automations over a read-only replica of the client's database.
+  Stack: TypeScript 5.9 (strict, ESM, NodeNext), Node 22, Fastify 5, Prisma 7 (adapter-pg, PostgreSQL), ws, nodemailer, cron-parser.
+  Architecture: single flat src/ package of Spanish-named modules (*.ts + colocated *.test.ts); separate customer-side agent in src/agente-proceso built via tsconfig.agente.json; Docker + Compose deploy.
+  Testing: Node built-in test runner through tsx (`npm test`); no coverage, linter or formatter configured.
+  Style: no linter/formatter config; follow surrounding code. Domain terms stay in Spanish.
+  Source of truth: AGENTS.md (non-negotiable rules, anti-scope) and docs/00-contexto.md, docs/01-decisiones.md, docs/02-mapa-de-changes.md. Architecture decisions MUST be recorded in docs/01-decisiones.md before being applied.
+  Artifact store: openspec (changes in openspec/changes, specs in openspec/specs). Workspace: C:\Users\messi\OneDrive\Documentos\Proyectos\ZeroDashboard (git repo, default branch master).
 
 strict_tdd: false
 
 testing:
-  projects: []
-  note: "Zero projects discovered — the workspace root is empty. Re-run /gentle-sdd-init after scaffolding real code to populate this and re-evaluate strict_tdd."
+  projects:
+    - path: "."
+      stack: "TypeScript / Node 22 / Fastify / Prisma"
+      test_command: "npm test"
+      framework: "node:test via tsx (tsx --test \"src/**/*.test.ts\")"
+      layers:
+        unit: true
+        integration: true
+        e2e: true
+      coverage: null
+      linter: null
+      type_checker: "npx tsc -p tsconfig.json --noEmit"
+      formatter: null
+  note: "Single project at the workspace root; `npm test` is the workspace-level command. strict_tdd is kept false (explicit prior value preserved); set it to true to enable Strict TDD. tsconfig.agente.json is a second build target of the same package, not a separate project."
 
 rules:
   proposal:
     - Include rollback plan for risky changes
+    - Check the change against the non-negotiable rules and anti-scope in AGENTS.md
   specs:
     - Use Given/When/Then for scenarios
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
   design:
     - Include sequence diagrams for complex flows
     - Document architecture decisions with rationale
+    - Register any new architecture decision in docs/01-decisiones.md before continuing
   tasks:
     - Group by phase, use hierarchical numbering
     - Keep tasks completable in one session
   apply:
     guidelines:
       - Follow existing code patterns
+      - Colocate tests as src/<module>.test.ts
     tdd: false
-    test_command: ""
+    test_command: "npm test"
   verify:
-    test_command: ""
-    build_command: ""
+    test_command: "npm test"
+    build_command: "npm run build"
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas

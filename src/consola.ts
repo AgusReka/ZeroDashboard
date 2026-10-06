@@ -116,6 +116,8 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
      The radio is disabled, so the card is skipped by the keyboard and cannot be chosen. */
   .zd-template:has(input:disabled) { cursor: not-allowed; background: var(--surface-sunken); border-style: dashed; }
   .zd-template:has(input:disabled):hover { border-color: var(--border-2); }
+  /* DEC-131: the preview's title bar; its accent is set by the script, as the email does. */
+  .vista-correo__titulo { padding: var(--space-3) var(--space-4); color: var(--text-on-accent); font-weight: 600; }
   .motivo-plantilla { font-size: var(--text-help); color: var(--warn-text); }
 </style>
 </head>
@@ -257,6 +259,16 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 
       <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional; no se puede cambiar después)</label>
       <input id="auto-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
+
+      <!-- CH-21c (DEC-131): a schematic of the notification email. Text nodes only, filled by the
+           script; it never shows a row of any result. -->
+      <div class="zd-card" role="group" aria-label="Vista previa del correo">
+        <p class="ayuda">Asunto: <span id="auto-vista-asunto"></span></p>
+        <p class="ayuda">Para: <span id="auto-vista-para"></span></p>
+        <p id="auto-vista-titulo" class="vista-correo__titulo"></p>
+        <p class="ayuda">Debajo del título va una tabla cuyas columnas son los alias de la consulta de la plantilla. Si la consulta no devuelve filas, no se envía correo. n es la cantidad de filas; lleva + cuando el resultado se cortó en el tope.</p>
+        <p class="ayuda">Enviado automáticamente por ZeroDashboard.</p>
+      </div>
 
       <div class="zd-form-actions">
         <button id="auto-volver" class="zd-btn zd-btn--secondary" type="button">Volver</button>
@@ -442,6 +454,9 @@ var pasoAlta1 = document.getElementById('auto-paso-1');
 var pasoAlta2 = document.getElementById('auto-paso-2');
 var avisoAlta = document.getElementById('auto-aviso');
 var botonSiguienteAuto = document.getElementById('auto-siguiente');
+var vistaAsunto = document.getElementById('auto-vista-asunto');
+var vistaPara = document.getElementById('auto-vista-para');
+var vistaTitulo = document.getElementById('auto-vista-titulo');
 var botonCancelarAuto = document.getElementById('auto-cancelar');
 var resumenAlta = document.getElementById('auto-resumen');
 var botonVolverAuto = document.getElementById('auto-volver');
@@ -1352,6 +1367,9 @@ function reiniciarAlta() {
   entradaHora.value = '08:00';
   actualizarHorario();
   entradaDestinatario.value = '';
+  vistaAsunto.textContent = '';
+  vistaPara.textContent = '';
+  vistaTitulo.textContent = '';
   resumenAlta.textContent = '';
   avisoAlta.textContent = '';
   avisoAlta.hidden = true;
@@ -1744,6 +1762,46 @@ botonCancelarAuto.addEventListener('click', function () {
   cerrarAlta();
 });
 
+// CH-21c (DEC-131): the accent and emoji per label, a copy of the closed palette in
+// correo.ts. Unknown labels get a gray bar and no emoji; the own-key test keeps names such
+// as 'constructor' off the prototype.
+var TEMAS_CORREO = {
+  'stock-fisico': { acento: '#f59e0b', emoji: '⚠️' },
+  'stock-producible': { acento: '#dc2626', emoji: '🔴' },
+  'reporte-diario': { acento: '#2563eb', emoji: '📊' }
+};
+var TEMA_NEUTRO = { acento: '#6b7280', emoji: '' };
+var SIN_DESTINATARIO = 'sin destinatario: la ejecución no envía correo';
+
+function temaCorreo(etiqueta) {
+  return Object.prototype.hasOwnProperty.call(TEMAS_CORREO, etiqueta) ? TEMAS_CORREO[etiqueta] : TEMA_NEUTRO;
+}
+
+// The server's subject, with the count left as the n placeholder (no single-line
+// normalization and no length cut: parity is for ordinary names).
+function asuntoVistaPrevia(nombre, etiqueta) {
+  var emoji = temaCorreo(etiqueta).emoji;
+  return (emoji === '' ? '' : emoji + ' ') + nombre + ' (n)';
+}
+
+function actualizarVistaPrevia() {
+  var nombre = nombresPlantilla[plantillaElegida];
+  nombre = nombre === undefined ? '' : nombre;
+  var etiqueta = '';
+  catalogoPlantillas.forEach(function (fila) {
+    if (fila.id === plantillaElegida) { etiqueta = String(fila.automatizacion); }
+  });
+  vistaAsunto.textContent = asuntoVistaPrevia(nombre, etiqueta);
+  vistaTitulo.textContent = nombre;
+  vistaTitulo.style.backgroundColor = temaCorreo(etiqueta).acento;
+  var destinatario = entradaDestinatario.value.trim();
+  vistaPara.textContent = destinatario === '' ? SIN_DESTINATARIO : destinatario;
+}
+
+entradaDestinatario.addEventListener('input', function () {
+  actualizarVistaPrevia();
+});
+
 // Re-checks the gate before moving, so a stale enabled state cannot skip step 1.
 botonSiguienteAuto.addEventListener('click', function () {
   actualizarSiguiente();
@@ -1751,6 +1809,7 @@ botonSiguienteAuto.addEventListener('click', function () {
   var nombre = nombresPlantilla[plantillaElegida];
   resumenAlta.textContent = 'Plantilla: ' + (nombre === undefined ? plantillaElegida : nombre) +
     ' · Conexión: ' + selectorConexionAuto.options[selectorConexionAuto.selectedIndex].textContent;
+  actualizarVistaPrevia();
   irAPaso(2);
 });
 

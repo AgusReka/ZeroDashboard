@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { cronValido } from './automatizaciones.js';
 import { registerConsolaRoute } from './consola.js';
 import { CONTRATO_CANONICO } from './contrato.js';
+import { asuntoCorreo, componerCorreo } from './correo.js';
 import { RUTAS_ESTILOS } from './estilos-rutas.js';
 import { evaluarVistas } from './plantillas.js';
 
@@ -37,6 +38,8 @@ class Nodo {
   checked = false;
   name = '';
   readOnly = false;
+  // CH-21c PR5: the preview's title bar takes its accent through style.backgroundColor.
+  style = { backgroundColor: '' };
   hijos: Nodo[] = [];
   private texto = '';
   private valorPropio = '';
@@ -178,6 +181,10 @@ const IDS = [
   'auto-frecuencia',
   'auto-hora',
   'auto-horario-texto',
+  // CH-21c PR5: the step-2 email preview (DEC-131).
+  'auto-vista-asunto',
+  'auto-vista-para',
+  'auto-vista-titulo',
 ] as const;
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
@@ -2002,5 +2009,80 @@ describe('the console document, served by the real route', () => {
     assert.ok(llamadas.every((peticion) => peticion.tenant !== null));
     assert.equal(llamadas[llamadas.length - 1].url, '/automatizaciones');
     assert.equal(llamadas[llamadas.length - 1].tenant, 't-2');
+  });
+
+  // ---- CH-21c PR5: the email preview (spec `query-console`, DEC-131) ----------------
+
+  /** Opens the wizard on step 2 for a one-template catalog of the given name and label. */
+  async function vistaPrevia(nombre: string, etiqueta: string | undefined): Promise<Escenario> {
+    const escenario = await arrancar();
+    const fila: Record<string, unknown> = { id: 'p-1', nombre };
+    if (etiqueta !== undefined) { fila.automatizacion = etiqueta; }
+    await elegirTenant(escenario, [], [], 't-1', [fila]);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    return escenario;
+  }
+
+  const ETIQUETAS_VISTA = ['stock-fisico', 'stock-producible', 'reporte-diario', 'otra', 'constructor'];
+
+  /** Spec "Preview parity with the server subject"; design E1 and E2. */
+  test('CH-21c E1 the preview subject and accent equal the server composer for every label', async () => {
+    for (const etiqueta of ETIQUETAS_VISTA) {
+      for (const nombre of ['Alerta de stock', 'Reporte diario (Sur) 2']) {
+        const escenario = await vistaPrevia(nombre, etiqueta);
+        const esperado = asuntoCorreo({ nombre, automatizacion: etiqueta, filas: 0, hayMas: false }).replace(/ \(0\)$/, ' (n)');
+        assert.equal(nodo(escenario, 'auto-vista-asunto').textContent, esperado, etiqueta + ' subject');
+        const correo = componerCorreo({ nombre, automatizacion: etiqueta, columnas: ['a'], filas: [['x']], hayMas: false, fecha: new Date(0), zona: 'UTC' });
+        const neutros = ['#f3f4f6', '#ffffff', '#f9fafb'];
+        const acentos = [...correo.html.matchAll(/background:(#[0-9a-f]{6})/gi)].map((m) => m[1]).filter((c) => !neutros.includes(c));
+        assert.equal(acentos.length, 1, 'the server html carries exactly one accent');
+        const acento = acentos[0];
+        assert.equal(nodo(escenario, 'auto-vista-titulo').style.backgroundColor, acento, etiqueta + ' accent');
+        assert.equal(nodo(escenario, 'auto-vista-titulo').textContent, nombre);
+      }
+    }
+  });
+
+  /** Design E1: a catalog row with no label at all gets the neutral theme, never a throw. */
+  test('CH-21c E1 a template without a label previews with the neutral theme', async () => {
+    const escenario = await vistaPrevia('Sin etiqueta', undefined);
+    assert.equal(nodo(escenario, 'auto-vista-asunto').textContent, 'Sin etiqueta (n)');
+    assert.equal(nodo(escenario, 'auto-vista-titulo').style.backgroundColor, '#6b7280');
+  });
+
+  /** The recipient line follows the input, and says so when there is none. */
+  test('CH-21c E1 the recipient line follows the input and explains the empty case', async () => {
+    const escenario = await vistaPrevia('Alerta', 'stock-fisico');
+    assert.equal(nodo(escenario, 'auto-vista-para').textContent, 'sin destinatario: la ejecución no envía correo');
+    nodo(escenario, 'auto-destinatario').value = ' ops@example.com ';
+    nodo(escenario, 'auto-destinatario').disparar('input');
+    assert.equal(nodo(escenario, 'auto-vista-para').textContent, 'ops@example.com');
+    nodo(escenario, 'auto-destinatario').value = '   ';
+    nodo(escenario, 'auto-destinatario').disparar('input');
+    assert.equal(nodo(escenario, 'auto-vista-para').textContent, 'sin destinatario: la ejecución no envía correo');
+  });
+
+  /** Spec "Script hazards stay out of the page"; design E3. */
+  test('CH-21c E3 a hostile template name is shown verbatim as text and no hazard enters the page', async () => {
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await vistaPrevia(hostil, 'stock-fisico');
+    assert.ok(nodo(escenario, 'auto-vista-asunto').textContent.includes(hostil));
+    assert.equal(nodo(escenario, 'auto-vista-titulo').textContent, hostil);
+    assert.ok(!documento.includes('inner' + 'HTML'));
+    assert.ok(!documento.includes('src' + 'doc'));
+  });
+
+  /** Spec "Preview is text-only and read-only"; design E4. */
+  test('CH-21c E4 the preview holds no row content and its footer is the server footer', async () => {
+    const escenario = await vistaPrevia('Alerta', 'stock-fisico');
+    for (const id of ['auto-vista-asunto', 'auto-vista-para', 'auto-vista-titulo']) {
+      assert.equal(nodo(escenario, id).hijos.length, 0, id + ' is a text node holder only');
+    }
+    const pie = 'Enviado automáticamente por ZeroDashboard.';
+    assert.ok(documento.includes(pie));
+    const correo = componerCorreo({ nombre: 'x', automatizacion: 'otra', columnas: [], filas: [], hayMas: false, fecha: new Date(0), zona: 'UTC' });
+    assert.ok(correo.texto.includes(pie), 'the same string as the server text part');
+    assert.match(documento, /role="group" aria-label="Vista previa del correo"/);
   });
 });
