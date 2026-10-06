@@ -415,6 +415,12 @@ Later: preview (PR5).
 - `mostrarAviso` gained a sibling `ocultarAviso`; `reiniciarAlta` keeps its inline reset.
 - Commit trailer uses `Claude Sonnet 5.5`, as the launch prompt requested.
 
+## PR4 verification addendum (orchestrator, 2026-10-06)
+
+- `bash scripts/smoke.sh` on the PR4 tip against the project's Compose stack: SMOKE TEST PASSED. Full `TEST_DB_PORT=5434 npm test` (container `zd-ch09-testdb`): 897/897, 0 skipped. Console tests 55/55.
+- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL, 2 WARNING, 3 SUGGESTION. W1: a connection change calls `ocultarAviso()` / `mostrarAviso()` on the shared `#auto-aviso`, so it erases the "only the first N connections" notice (no test; cosmetic). W2: the 4.4 record was stale (fixed). S1: a click on a disabled radio is not proven unselectable (fake DOM). S2: `:has(input:disabled)`, hover and `.motivo-plantilla` CSS are untested; check `:has()` in Firefox and the 360 px layout in 4.5. S3: first connection change costs N sequential template-detail requests.
+- Open: 4.5 (manual visual review, human only).
+
 ## PR5
 
 Not started.
