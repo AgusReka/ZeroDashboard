@@ -110,6 +110,8 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   #auto-alta .zd-form-actions { margin-top: var(--space-6); }
   #auto-marca-1:not([aria-current]) { color: var(--text-2); }
   #auto-marca-1:not([aria-current]) .zd-step__n { border-color: var(--accent); color: var(--accent-text); }
+  /* A preset writes the cron field: it reads as shown, not typed (the sheet has no read-only look). */
+  #auto-cron[readonly] { border-style: dashed; background: var(--surface-sunken); color: var(--text-2); }
 </style>
 </head>
 <body class="zd-root">
@@ -226,8 +228,27 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
       <p id="auto-resumen" class="ayuda"></p>
       <div id="auto-valores"></div>
 
-      <label for="auto-cron" class="zd-label">Horario (minuto hora día-del-mes mes día-de-la-semana)</label>
-      <input id="auto-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *">
+      <!-- CH-21c (DEC-129): a frequency and an hour write the cron field below, which stays
+           visible: read-only for a preset, editable for Personalizado. -->
+      <div class="zd-form-row">
+        <div>
+          <label for="auto-frecuencia" class="zd-label">Frecuencia</label>
+          <select id="auto-frecuencia" class="zd-select" aria-describedby="auto-horario-texto">
+            <option value="diaria" selected>Todos los días</option>
+            <option value="lun-vie">De lunes a viernes</option>
+            <option value="lun-sab">De lunes a sábado</option>
+            <option value="personalizado">Personalizado (expresión cron)</option>
+          </select>
+        </div>
+        <div>
+          <label for="auto-hora" class="zd-label">Hora (24 horas)</label>
+          <input id="auto-hora" class="zd-input" type="time" value="08:00" aria-describedby="auto-horario-texto">
+        </div>
+      </div>
+      <p id="auto-horario-texto" class="ayuda"></p>
+
+      <label for="auto-cron" class="zd-label">Expresión cron (minuto hora día-del-mes mes día-de-la-semana)</label>
+      <input id="auto-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *" readonly>
 
       <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional; no se puede cambiar después)</label>
       <input id="auto-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
@@ -419,6 +440,9 @@ var botonSiguienteAuto = document.getElementById('auto-siguiente');
 var botonCancelarAuto = document.getElementById('auto-cancelar');
 var resumenAlta = document.getElementById('auto-resumen');
 var botonVolverAuto = document.getElementById('auto-volver');
+var selectorFrecuencia = document.getElementById('auto-frecuencia');
+var entradaHora = document.getElementById('auto-hora');
+var textoHorario = document.getElementById('auto-horario-texto');
 
 // The template catalog by id, for naming each automation's plantilla in the list, and
 // the value controls of the template chosen in the create form.
@@ -1174,6 +1198,74 @@ function mostrarAviso(texto) {
   avisoAlta.hidden = false;
 }
 
+// DEC-129: each preset is a day-of-week set; the minute and the hour come from the hour
+// control. Built by concatenation and character checks only: no pattern literal can live
+// in this page without doubled escapes.
+var DIAS_FRECUENCIA = { 'diaria': '*', 'lun-vie': '1-5', 'lun-sab': '1-6' };
+var NOMBRES_FRECUENCIA = { 'diaria': 'Todos los días', 'lun-vie': 'De lunes a viernes', 'lun-sab': 'De lunes a sábado' };
+var DIGITOS = '0123456789';
+var ZONA_DEL_DESPLIEGUE = 'en la zona horaria configurada del despliegue';
+
+// {h, m} for exactly HH:MM in 24 hours, otherwise null. The time control is not trusted:
+// every character is checked here, whatever the browser let through.
+function horaDe(texto) {
+  if (typeof texto !== 'string' || texto.length !== 5 || texto.charAt(2) !== ':') { return null; }
+  for (var i = 0; i < 5; i++) {
+    if (i !== 2 && DIGITOS.indexOf(texto.charAt(i)) === -1) { return null; }
+  }
+  var h = Number(texto.slice(0, 2));
+  var m = Number(texto.slice(3));
+  return h <= 23 && m <= 59 ? { h: h, m: m } : null;
+}
+
+// 'M H * * dias' with no leading zeros, or null for an invalid hour or an unknown preset.
+function cronDeFrecuencia(frecuencia, texto) {
+  var hora = horaDe(texto);
+  if (hora === null || !Object.prototype.hasOwnProperty.call(DIAS_FRECUENCIA, frecuencia)) { return null; }
+  return hora.m + ' ' + hora.h + ' * * ' + DIAS_FRECUENCIA[frecuencia];
+}
+
+// The cron field is never hidden: a preset makes it read-only and writes its translation
+// (empty for an invalid hour); Personalizado makes it editable and leaves what it holds.
+function actualizarHorario() {
+  var frecuencia = selectorFrecuencia.value;
+  var personalizado = frecuencia === 'personalizado';
+  entradaCron.readOnly = !personalizado;
+  entradaHora.disabled = personalizado;
+  if (personalizado) {
+    textoHorario.textContent = 'Expresión cron estándar de cinco campos, ' + ZONA_DEL_DESPLIEGUE + '. Se valida al crear.';
+    return;
+  }
+  var cron = cronDeFrecuencia(frecuencia, entradaHora.value);
+  entradaCron.value = cron === null ? '' : cron;
+  textoHorario.textContent = cron === null ? 'Elegí una hora válida (HH:MM, 24 horas).'
+    : NOMBRES_FRECUENCIA[frecuencia] + ' a las ' + entradaHora.value + ', ' + ZONA_DEL_DESPLIEGUE + '.';
+}
+
+// dd/mm/aaaa HH:MM of a server instant, in the zone the server named. A zone or an
+// instant this browser cannot resolve (RangeError) shows the instant as it came.
+function formatearInstante(iso, zona) {
+  try {
+    var partes = Object.create(null);
+    new Intl.DateTimeFormat('es-AR', { timeZone: zona, day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso)).forEach(function (parte) {
+      partes[parte.type] = parte.value;
+    });
+    return partes.day + '/' + partes.month + '/' + partes.year + ' ' + partes.hour + ':' + partes.minute;
+  } catch (noResuelto) {
+    return iso;
+  }
+}
+
+// DEC-129 (P1): the first run and the zone are the server's, from the 201; a body without
+// them (a server before CH-21c) keeps the former sentence. DEC-95: a schedule, not a promise.
+function confirmacionDeAlta(cuerpo) {
+  var creada = 'Se creó la automatización y ya aparece en la lista.';
+  if (typeof cuerpo.proximaEjecucion !== 'string' || typeof cuerpo.zonaHoraria !== 'string') { return creada; }
+  return creada + ' Primera ejecución programada: ' + formatearInstante(cuerpo.proximaEjecucion, cuerpo.zonaHoraria) +
+    ', zona horaria ' + cuerpo.zonaHoraria + '. Es un horario, no una garantía: si el servicio no está en marcha a esa hora, esa ejecución no se recupera.';
+}
+
 function opcionDe(valor, texto) {
   var opcion = document.createElement('option');
   opcion.value = valor;
@@ -1239,7 +1331,10 @@ function reiniciarAlta() {
   filasValoresAuto = [];
   // Options and choice both go: no connection of the previous tenant stays selectable.
   renderizarConexiones([], 'Elegí una conexión');
-  entradaCron.value = '';
+  // The schedule goes back to the markup's start: every day at 08:00, cron read-only.
+  selectorFrecuencia.value = 'diaria';
+  entradaHora.value = '08:00';
+  actualizarHorario();
   entradaDestinatario.value = '';
   resumenAlta.textContent = '';
   avisoAlta.textContent = '';
@@ -1413,6 +1508,12 @@ async function cargarAutomatizaciones() {
 
 async function crearAutomatizacion() {
   ocultarBanner();
+  // A preset's cron is rebuilt from the hour as it is now; an invalid hour sends nothing.
+  actualizarHorario();
+  if (selectorFrecuencia.value !== 'personalizado' && cronDeFrecuencia(selectorFrecuencia.value, entradaHora.value) === null) {
+    mostrarBanner('La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
+    return;
+  }
   botonCrearAuto.disabled = true;
   var g = generacionAlta;
   // No tenant here: the header names it (DEC-15), and the route refuses one in the body.
@@ -1445,7 +1546,7 @@ async function crearAutomatizacion() {
   }
   if (resultado.status !== 201) { mostrarRechazo(resultado); return; }
   cerrarAlta();
-  mostrarConfirmacion('Se creó la automatización y ya aparece en la lista.');
+  mostrarConfirmacion(confirmacionDeAlta(resultado.cuerpo));
   await listarAutomatizaciones();
 }
 
@@ -1548,6 +1649,19 @@ botonSiguienteAuto.addEventListener('click', function () {
 
 botonVolverAuto.addEventListener('click', function () {
   irAPaso(1);
+});
+
+selectorFrecuencia.addEventListener('change', function () {
+  actualizarHorario();
+});
+
+// Both events: some browsers fire input per keystroke in a time control, others only change.
+entradaHora.addEventListener('input', function () {
+  actualizarHorario();
+});
+
+entradaHora.addEventListener('change', function () {
+  actualizarHorario();
 });
 
 botonCrearAuto.addEventListener('click', function () {

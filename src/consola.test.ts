@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { cronValido } from './automatizaciones.js';
 import { registerConsolaRoute } from './consola.js';
 import { RUTAS_ESTILOS } from './estilos-rutas.js';
 
@@ -171,6 +172,10 @@ const IDS = [
   'auto-cancelar',
   'auto-resumen',
   'auto-volver',
+  // CH-21c PR3: the step-2 schedule (DEC-129).
+  'auto-frecuencia',
+  'auto-hora',
+  'auto-horario-texto',
 ] as const;
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
@@ -387,6 +392,13 @@ describe('the console document, served by the real route', () => {
     // PR2c: the picker is a radio group the script fills with cards; no label points at it.
     assert.ok(seccion.includes('<div id="auto-plantilla" class="zd-templates" role="radiogroup" aria-label="Plantilla"></div>'));
     assert.ok(!seccion.includes('for="auto-plantilla"'), 'a label for a div names nothing');
+    // PR3: four frequencies in this order, a 24 h hour that starts at 08:00, and a cron
+    // field that is never hidden (read-only for a preset, the script decides).
+    const frecuencias = seccion.match(/<select id="auto-frecuencia"[\s\S]*?<\/select>/)?.[0] ?? '';
+    assert.deepEqual([...frecuencias.matchAll(/<option value="([^"]*)"/g)].map((opcion) => opcion[1]),
+      ['diaria', 'lun-vie', 'lun-sab', 'personalizado']);
+    assert.match(seccion, /<input id="auto-hora" [^>]*type="time" value="08:00"/);
+    assert.ok(!/<input id="auto-cron"[^>]*\bhidden\b/.test(seccion), 'the cron field is always visible');
     const botonesSeccion = seccion.match(/<button[^>]*>/g) ?? [];
     assert.ok(botonesSeccion.length >= 5);
     assert.ok(botonesSeccion.every((etiqueta) => etiqueta.includes('type="button"')), 'no button submits');
@@ -398,8 +410,9 @@ describe('the console document, served by the real route', () => {
   async function arrancar(tenants = [{ id: 't-1', nombre: 'Food Store' }]): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
-      // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c.
-      const nodo = new Nodo(id === 'tenant' || id === 'auto-conexion' ? 'select' : 'div');
+      // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
+      // auto-frecuencia is a select from PR3.
+      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia'].includes(id) ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -914,6 +927,19 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'auto-siguiente').disparar('click');
   }
 
+  /**
+   * CH-21c PR3: picks a frequency, then types into the field the operator can type in: the
+   * hour for a preset, the cron itself for personalizado.
+   */
+  function fijarHorario(escenario: Escenario, frecuencia: string, valor: string): void {
+    nodo(escenario, 'auto-frecuencia').value = frecuencia;
+    nodo(escenario, 'auto-frecuencia').disparar('change');
+    const campo = nodo(escenario, frecuencia === 'personalizado' ? 'auto-cron' : 'auto-hora');
+    assert.ok(!campo.readOnly && !campo.disabled, 'the operator can type in ' + campo.id);
+    campo.value = valor;
+    campo.disparar('input');
+  }
+
   /** CH-21c: which panel is showing and which marker is current, as `[paso, marca]`. */
   function pasoVisible(escenario: Escenario): [number, number] {
     const paso = [1, 2].filter((n) => !nodo(escenario, 'auto-paso-' + n).hidden);
@@ -965,7 +991,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(controles.length, 2, 'one control per declared parameter');
     controles[0].value = '2026-01-01';
     controles[1].value = ' 10 ';
-    (escenario.nodos.get('auto-cron') as Nodo).value = '30 7 * * 1';
+    fijarHorario(escenario, 'personalizado', '30 7 * * 1');
 
     const nueva = automatizacion({ id: 'a-2', conexionId: 'c-2', cron: '30 7 * * 1' });
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: nueva } });
@@ -1035,7 +1061,7 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario, [], [automatizacion()]);
     await abrirAlta(escenario);
     await avanzar(escenario);
-    (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
+    fijarHorario(escenario, 'diaria', '06:00');
     (escenario.nodos.get('auto-destinatario') as Nodo).value = ' ops@example.com ';
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
     await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
@@ -1052,7 +1078,7 @@ describe('the console document, served by the real route', () => {
     // The 201 closed the wizard, so the second one is opened and walked again.
     await abrirAlta(escenario);
     await avanzar(escenario);
-    (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
+    fijarHorario(escenario, 'diaria', '06:00');
     (escenario.nodos.get('auto-destinatario') as Nodo).value = '   ';
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
     await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
@@ -1070,7 +1096,7 @@ describe('the console document, served by the real route', () => {
     await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-9');
     const [control] = nodo(escenario, 'auto-valores').porClase('parametro-valor');
     control.value = '5';
-    (escenario.nodos.get('auto-cron') as Nodo).value = '0 6 * * *';
+    fijarHorario(escenario, 'diaria', '06:00');
     (escenario.nodos.get('auto-destinatario') as Nodo).value = 'ops@example.com, otro@example.com';
     await enviar(
       escenario,
@@ -1097,6 +1123,7 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
     assert.equal(nodo(escenario, 'auto-destinatario').value, 'ops@example.com, otro@example.com');
     assert.equal(nodo(escenario, 'auto-cron').value, '0 6 * * *');
+    assert.equal(nodo(escenario, 'auto-hora').value, '06:00');
     assert.equal(nodo(escenario, 'auto-conexion').value, 'c-9');
     assert.equal(nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value, '5');
   });
@@ -1165,7 +1192,7 @@ describe('the console document, served by the real route', () => {
     await abrirAlta(escenario);
     await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-A');
     nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value = '3';
-    nodo(escenario, 'auto-cron').value = '0 6 * * *';
+    fijarHorario(escenario, 'diaria', '06:00');
     nodo(escenario, 'auto-destinatario').value = 'ops@example.com';
 
     const antes = escenario.peticiones.length;
@@ -1176,9 +1203,10 @@ describe('the console document, served by the real route', () => {
     );
     assert.equal(nodo(escenario, 'auto-alta').hidden, true);
     assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
-    for (const id of ['auto-conexion', 'auto-cron', 'auto-destinatario']) {
+    for (const id of ['auto-conexion', 'auto-destinatario']) {
       assert.equal(nodo(escenario, id).value, '', id + ' is wiped');
     }
+    assert.equal(nodo(escenario, 'auto-cron').value, '0 8 * * *', 'the schedule is back to its default (H6)');
     assert.equal(tarjetas(escenario).length, 1, "B's catalog");
     assert.ok(tarjetas(escenario).every((tarjeta) => !radioDe(tarjeta).checked), 'no card stays chosen');
     assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, 'no value control of A survives');
@@ -1196,7 +1224,7 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario, [], [automatizacion()]);
     await abrirAlta(escenario);
     await avanzar(escenario, [{ nombre: 'n', tipo: 'numero' }], 'c-3');
-    nodo(escenario, 'auto-cron').value = '0 6 * * *';
+    fijarHorario(escenario, 'personalizado', '0 6 * * *');
     nodo(escenario, 'auto-volver').disparar('click');
 
     const pedidas = escenario.peticiones.length;
@@ -1207,9 +1235,8 @@ describe('the console document, served by the real route', () => {
 
     await abrirAlta(escenario);
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
-    for (const id of ['auto-conexion', 'auto-cron']) {
-      assert.equal(nodo(escenario, id).value, '', id + ' is reset');
-    }
+    assert.equal(nodo(escenario, 'auto-conexion').value, '', 'auto-conexion is reset');
+    assert.deepEqual([nodo(escenario, 'auto-frecuencia').value, nodo(escenario, 'auto-cron').value], ['diaria', '0 8 * * *']);
     assert.ok(tarjetas(escenario).every((tarjeta) => !radioDe(tarjeta).checked), 'no card stays chosen');
     assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0);
     assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
@@ -1426,7 +1453,7 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
     assert.match(nodo(escenario, 'auto-resumen').textContent, /^Plantilla: Segunda · /);
     nodo(escenario, 'auto-valores').porClase('parametro-valor')[0].value = 'x';
-    nodo(escenario, 'auto-cron').value = '0 6 * * *';
+    fijarHorario(escenario, 'diaria', '06:00');
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
     await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
     assert.deepEqual(escenario.peticiones[escenario.peticiones.length - 2].cuerpo, {
@@ -1435,6 +1462,143 @@ describe('the console document, served by the real route', () => {
       valores: { segunda: 'x' },
       cron: '0 6 * * *',
     });
+  });
+
+  // ---- CH-21c PR3: the step-2 schedule (spec `query-console`, DEC-129) --------------
+
+  const ZONA_DESPLIEGUE = 'en la zona horaria configurada del despliegue';
+
+  /** Design H1, the table CH-23 reuses: frequency, hour, the cron sent, the sentence's days. */
+  const VECTORES_HORARIO: Array<[string, string, string, string]> = [
+    ['diaria', '08:30', '30 8 * * *', 'Todos los días'],
+    ['lun-vie', '08:30', '30 8 * * 1-5', 'De lunes a viernes'],
+    ['lun-sab', '08:30', '30 8 * * 1-6', 'De lunes a sábado'],
+    ['diaria', '00:00', '0 0 * * *', 'Todos los días'],
+    ['lun-vie', '23:59', '59 23 * * 1-5', 'De lunes a viernes'],
+    ['diaria', '07:05', '5 7 * * *', 'Todos los días'],
+  ];
+
+  /** Crear with a 500 queued: the wizard stays on step 2, and the body sent is returned. */
+  async function crearSinCerrar(escenario: Escenario): Promise<Record<string, unknown>> {
+    await enviar(escenario, { error: 'otro' }, 500, 'auto-crear', 'click');
+    return ultimoCuerpo(escenario);
+  }
+
+  /** Spec "Preset vectors" and "Cron field shows the translation read-only". */
+  test('CH-21c H1 each preset sends its cron, shown read-only, and the server accepts it', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    for (const [frecuencia, hora, cron, dias] of VECTORES_HORARIO) {
+      fijarHorario(escenario, frecuencia, hora);
+      const campo = nodo(escenario, 'auto-cron');
+      assert.deepEqual([campo.value, campo.readOnly, campo.hidden], [cron, true, false], frecuencia + ' ' + hora);
+      // Before creation the zone is not named: the browser cannot know it (DEC-129).
+      assert.equal(nodo(escenario, 'auto-horario-texto').textContent, dias + ' a las ' + hora + ', ' + ZONA_DESPLIEGUE + '.');
+      assert.ok(cronValido(cron, 'UTC'), cron + ' is standard cron for the server');
+      const cuerpo = await crearSinCerrar(escenario);
+      assert.deepEqual(Object.keys(cuerpo).sort(), ['conexionId', 'cron', 'plantillaId', 'valores']);
+      assert.equal(cuerpo.cron, cron);
+    }
+    // Crear reads the hour again instead of trusting the last event: a value changed with
+    // no event still decides the cron sent.
+    nodo(escenario, 'auto-hora').value = '21:15';
+    assert.equal((await crearSinCerrar(escenario)).cron, '15 21 * * *');
+  });
+
+  /** Spec "Personalizado makes the cron field editable and passes through". */
+  test('CH-21c H2 personalizado makes the cron field editable and sends it unchanged', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    fijarHorario(escenario, 'lun-vie', '09:45');
+    nodo(escenario, 'auto-frecuencia').value = 'personalizado';
+    nodo(escenario, 'auto-frecuencia').disparar('change');
+    // The preset's cron stays as a starting point, and the hour no longer applies.
+    const estado = (): unknown[] => [nodo(escenario, 'auto-cron').value, nodo(escenario, 'auto-cron').readOnly,
+      nodo(escenario, 'auto-hora').disabled];
+    assert.deepEqual(estado(), ['45 9 * * 1-5', false, true]);
+    assert.equal(nodo(escenario, 'auto-horario-texto').textContent,
+      'Expresión cron estándar de cinco campos, ' + ZONA_DESPLIEGUE + '. Se valida al crear.');
+    for (const cron of ['30 7 * * 1', '0 */2 * * *']) {
+      fijarHorario(escenario, 'personalizado', cron);
+      assert.deepEqual(await crearSinCerrar(escenario), { plantillaId: 'p-1', conexionId: 'c-1', valores: {}, cron });
+      assert.equal(nodo(escenario, 'auto-cron').value, cron, 'Crear does not rewrite it');
+    }
+    // Back to a preset: read-only again, with the translation of the hour.
+    fijarHorario(escenario, 'lun-sab', '10:00');
+    assert.deepEqual(estado(), ['0 10 * * 1-6', true, false]);
+  });
+
+  /** Spec "Invalid hour": the time control is not trusted, every character is checked. */
+  test('CH-21c H3 an invalid hour empties the cron, says so, and Crear sends nothing', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    const presets = ['diaria', 'lun-vie', 'lun-sab'];
+    // The last two parse as numbers (' 8', '-1'), so only the per-character check refuses them.
+    for (const [i, hora] of ['24:00', '8:30', '08:60', 'ab:cd', '', '08:30:00', ' 8:30', '-1:30'].entries()) {
+      fijarHorario(escenario, presets[i % presets.length], hora);
+      assert.equal(nodo(escenario, 'auto-cron').value, '', JSON.stringify(hora));
+      assert.equal(nodo(escenario, 'auto-horario-texto').textContent, 'Elegí una hora válida (HH:MM, 24 horas).');
+      const pedidas = escenario.peticiones.length;
+      nodo(escenario, 'auto-crear').disparar('click');
+      await asentar();
+      assert.equal(escenario.peticiones.length, pedidas, 'no request for ' + JSON.stringify(hora));
+      assert.equal(nodo(escenario, 'banner').textContent, 'La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
+      assert.deepEqual(pasoVisible(escenario), [2, 2]);
+      assert.equal(nodo(escenario, 'auto-crear').disabled, false, 'Crear stays usable');
+    }
+  });
+
+  /** Spec "Success banner shows first run and zone"; design H4 and H5 (a 201 without the fields). */
+  test('CH-21c H4 H5 the 201 banner states the first run in the server zone, or the old sentence', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    const creada = 'Se creó la automatización y ya aparece en la lista.';
+    const programada = ' Primera ejecución programada: ';
+    const garantia = '. Es un horario, no una garantía: si el servicio no está en marcha a esa hora, esa ejecución no se recupera.';
+    const instante = '2026-10-06T11:30:00.000Z';
+    const casos: Array<[Record<string, unknown>, string]> = [
+      [{ proximaEjecucion: instante, zonaHoraria: 'America/Argentina/Buenos_Aires' },
+        creada + programada + '06/10/2026 08:30, zona horaria America/Argentina/Buenos_Aires' + garantia],
+      // A zone the browser cannot resolve: the server's instant is shown as it came.
+      [{ proximaEjecucion: instante, zonaHoraria: 'Zona/Inexistente' },
+        creada + programada + instante + ', zona horaria Zona/Inexistente' + garantia],
+      [{}, creada],
+    ];
+    for (const [extra, texto] of casos) {
+      await abrirAlta(escenario);
+      await avanzar(escenario);
+      escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion(), ...extra } });
+      await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+      const banner = nodo(escenario, 'banner');
+      assert.deepEqual([banner.className, banner.textContent], ['banner exito', texto]);
+      assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    }
+  });
+
+  /** Spec "Tenant switch wipes the wizard" (schedule half); design H6. */
+  test('CH-21c H6 a tenant switch puts the schedule back to every day at 08:00, read-only', async () => {
+    const escenario = await arrancar([
+      { id: 't-1', nombre: 'Food Store' },
+      { id: 't-2', nombre: 'Otra tienda' },
+    ]);
+    await elegirTenant(escenario, [], [], 't-1');
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    fijarHorario(escenario, 'personalizado', '5 4 * * 0');
+
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.deepEqual(
+      [nodo(escenario, 'auto-frecuencia').value, nodo(escenario, 'auto-hora').value, nodo(escenario, 'auto-cron').value,
+        nodo(escenario, 'auto-cron').readOnly, nodo(escenario, 'auto-hora').disabled],
+      ['diaria', '08:00', '0 8 * * *', true, false],
+    );
+    assert.equal(nodo(escenario, 'auto-horario-texto').textContent, 'Todos los días a las 08:00, ' + ZONA_DESPLIEGUE + '.');
   });
 
   /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */
