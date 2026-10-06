@@ -352,7 +352,76 @@ Later PRs: availability, disabled cards and the validation half of "Late respons
 - The H1 vectors table lives in `consola.test.ts` as `VECTORES_HORARIO`; it is not exported (CH-23 can copy or move it).
 - Commit trailer uses `Claude Sonnet 5.5` plus `Claude-Session`, as the launch prompt requested.
 
-## PR4-PR5
+## PR4: Disabled with reason (`ch21c/asistente-disponibilidad`)
+
+Status: implemented, verified and committed (not pushed). Authored 345 lines. 4.5 (manual visual review) stays open for a human.
+
+### Commits
+
+| Commit | Content |
+|---|---|
+| fc51b1c | `feat(ch21c)`: `entidadesNoAprobadas`, `MOTIVOS_VISTA`, `motivoDeVistas`, `entidadesDe`, `aplicarVeredictos`, `sondearConexion` with `generacionSondeo`, the hidden `span.motivo-plantilla` on every card, `partesTarjeta`, `ocultarAviso`, the connection `change` listener, bridge CSS; tests V1-V7 and the adapted helpers |
+| (docs) | `docs(ch21c)`: `tasks.md` and this file |
+
+### Completed Tasks
+
+- [x] 4.1 Harness and tests. `informeDe(estados)` builds the report in contract order (`CONTRATO_CANONICO`), `TODO_VALIDO`, `elegirConexion` (queues the probe answer, changes the dropdown, settles), `completarPaso1` and the W3 and W8 connection choices go through it, `elegirPlantillaAlta`'s detail now carries `entidades: ['producto']`. V1 runs six vectors through the UI and through the imported `evaluarVistas` (all valid, `no-mapeada`, `no-validado`, `invalida`, the DEC-127 `stock-fisico` without `receta_componente` with an M4 `aplicable` block in the report, and three entities blocked at once); V2 pins the exact reason text and the absence of raw codes; V3 deselection, values and Siguiente cleared, then freed by a second connection; V4 stale probe by connection change; V5 four failure shapes (HTTP 500, non-JSON, no report in the body, a detail that fails); V6 stale probe after a tenant switch, with no further request; V7 the unchanged POST body after a failed probe.
+- [x] 4.2 Script as listed in the commit row. The probe is `GET /conexiones/:id/validacion-mapeo`, then one `GET /plantillas/:id` per catalog row in catalog order (the wizard's cache first), each step dropped unless `generacionAlta` and `generacionSondeo` still hold. Reason copy: "No disponible con esta conexión: ENTIDAD (sin vista registrada | vista sin validar | la validación de la vista falló), .... Cada ejecución se frenaría antes de conectar." Verifying notice and fail-open notice as in the design.
+- [x] 4.3 Bridge CSS: `.zd-template:has(input:disabled)`, its `:hover`, `.motivo-plantilla`. Every token used exists in the shared sheet (`--surface-sunken`, `--border-2`, `--text-help`, `--warn-text`).
+- [x] 4.4 Verification (below).
+- [ ] 4.5 Manual visual review: human only.
+- [x] 4.6 Line-count checkpoint: 345 authored (`consola.ts` +108/-1, `consola.test.ts` +224/-12), against the ~270 forecast and the 400 budget.
+
+### RED evidence
+
+- Before the script change, `npx tsx --test src/consola.test.ts`: 55 tests, 40 pass, 15 fail (V1-V7, and the eight tests whose helper now queues a probe answer that nothing consumes: the create and recipient tests, W1, W3, W6, W8, H4/H5). After: 55/55.
+- Mutation checks (each applied alone to the committed `consola.ts`, then restored byte-identical; `cmp` confirmed): dropping the `generacionSondeo` check on the probe answer fails V4 only; dropping the `generacionAlta` check fails V6 only; no deselection of a chosen template that became disabled fails V3 only; the raw state code in the reason fails V2 only; a reason naming only the first blocked entity fails V1 and V2; no fail-open notice fails V5 and V7.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused tests | `npx tsx --test src/consola.test.ts`: 55/55 pass (48 before PR4 plus V1-V7) |
+| Full suite | `TEST_DB_PORT=1 npm test`: 591 tests, 591 pass, 0 fail. The live DB blocks were **not run**: Docker was not running and 127.0.0.1:5434 refused connections (port 5432 never used), and the task forbade starting Compose. PR4 touches no server code, so the live blocks are unchanged by it, but they are not proven by this run. The orchestrator's run against the Compose db is the one of record |
+| Build | `npx tsc --noEmit` clean; `npm run build` exit 0; `scripts/smoke.sh` not touched (its console greps did not change; the smoke run is orchestrator-owned) |
+| Page hazards | Added lines carry no backtick, no `${`, no backslash, no markup-assigning property and no `zd-` token; G3' (exact three-token set, single-class assignments) passes unchanged, since `motivo-plantilla` is not a shared class; one `<style>`, one closing script tag (guards passing) |
+| Runtime harness | Manual visual review (4.5), human only: `:has()` support, the disabled look, focus order, verifying and fail-open notices |
+| Rollback boundary | Revert fc51b1c (console only): restores the always-enabled cards |
+
+### Spec Coverage (PR4)
+
+| Scenario | Test |
+|---|---|
+| Template with a non-valid entity is disabled | V1 (`no-validado`, `no-mapeada`, `invalida`, DEC-127, several), V2 |
+| Template with all entities valid stays enabled | V1 (all valid), V3 (freed by a connection that can run it) |
+| Validation fetch fails | V5, V7 |
+| Late validation response is discarded | V4 |
+| Late response after a tenant switch is ignored (validation half) | V6 |
+
+Later: preview (PR5).
+
+### Ids and guards
+
+- No id added or removed. `motivo-plantilla` is a class, not an id, and is not a `zd-` class, so G1, G2, G3, G3' and the wizard markup guard are unchanged in code. W1 gains the fifth card child (`span.motivo-plantilla`) in its expected shape, a deliberate test edit.
+
+### Deviations
+
+- The reason lists every blocked entity in contract order (the design's example showed one), and an unknown state word falls back to "vista no aprobada" instead of printing the code.
+- A chosen card's own detail counts as the cached detail: a detail without an `entidades` array (malformed) leaves that card enabled and raises the fail-open notice; it is not cached by the probe, only a detail with `entidades` is.
+- Choosing a connection hides `#auto-aviso` when the probe ends well, so the "only the first N connections" notice of `truncado` disappears once a connection is chosen. Choosing the placeholder again also hides it.
+- On a 500 or a network failure of the probe, only the fail-open notice shows (no banner), except for a non-JSON body or a network error, where `pedirAutomatizacion` already raises its own banner.
+- Siguiente is not disabled while the probe is in flight: the advisory answer can still deselect the chosen template when it lands.
+- The probe re-runs on every connection change, including the template details not yet read; the picker cards stay enabled while it runs.
+- `mostrarAviso` gained a sibling `ocultarAviso`; `reiniciarAlta` keeps its inline reset.
+- Commit trailer uses `Claude Sonnet 5.5`, as the launch prompt requested.
+
+## PR4 verification addendum (orchestrator, 2026-10-06)
+
+- `bash scripts/smoke.sh` on the PR4 tip against the project's Compose stack: SMOKE TEST PASSED. Full `TEST_DB_PORT=5434 npm test` (container `zd-ch09-testdb`): 897/897, 0 skipped. Console tests 55/55.
+- Independent verifier: PASS WITH WARNINGS, 0 CRITICAL, 2 WARNING, 3 SUGGESTION. W1: a connection change calls `ocultarAviso()` / `mostrarAviso()` on the shared `#auto-aviso`, so it erases the "only the first N connections" notice (no test; cosmetic). W2: the 4.4 record was stale (fixed). S1: a click on a disabled radio is not proven unselectable (fake DOM). S2: `:has(input:disabled)`, hover and `.motivo-plantilla` CSS are untested; check `:has()` in Firefox and the 360 px layout in 4.5. S3: first connection change costs N sequential template-detail requests.
+- Open: 4.5 (manual visual review, human only).
+
+## PR5
 
 Not started.
 

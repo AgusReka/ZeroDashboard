@@ -3,7 +3,9 @@ import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { cronValido } from './automatizaciones.js';
 import { registerConsolaRoute } from './consola.js';
+import { CONTRATO_CANONICO } from './contrato.js';
 import { RUTAS_ESTILOS } from './estilos-rutas.js';
+import { evaluarVistas } from './plantillas.js';
 
 /**
  * Cases for CH-07 task 4.1/4.2 (spec `query-console`).
@@ -908,8 +910,29 @@ describe('the console document, served by the real route', () => {
 
   /** CH-21c step 1: picks the template's card, its detail answered with `parametros`. */
   async function elegirPlantillaAlta(escenario: Escenario, parametros: unknown[] = []): Promise<void> {
-    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros, entidades: ['producto'] } } });
     elegirTarjeta(escenario, 'p-1');
+    await asentar();
+  }
+
+  /**
+   * CH-21c PR4: the report `GET /conexiones/:id/validacion-mapeo` answers, in contract
+   * order, one row per contract entity (`no-mapeada` unless `estados` says otherwise).
+   */
+  function informeDe(estados: Record<string, string>): { validacionMapeo: { entidades: unknown[] } } {
+    return {
+      validacionMapeo: {
+        entidades: CONTRATO_CANONICO.map((e) => ({ entidad: e.nombre, estado: estados[e.nombre] ?? 'no-mapeada' })),
+      },
+    };
+  }
+  const TODO_VALIDO = informeDe(Object.fromEntries(CONTRATO_CANONICO.map((e) => [e.nombre, 'valida'])));
+
+  /** CH-21c PR4: picks a connection from the dropdown; the availability probe answers `informe`. */
+  async function elegirConexion(escenario: Escenario, id: string, informe: unknown = TODO_VALIDO, status = 200): Promise<void> {
+    escenario.respuestas.push({ status, cuerpo: informe });
+    nodo(escenario, 'auto-conexion').value = id;
+    nodo(escenario, 'auto-conexion').disparar('change');
     await asentar();
   }
 
@@ -917,8 +940,7 @@ describe('the console document, served by the real route', () => {
   async function completarPaso1(escenario: Escenario, parametros: unknown[] = [], conexion = 'c-1'): Promise<void> {
     await elegirPlantillaAlta(escenario, parametros);
     assert.ok(opcionesConexion(escenario).some(([valor]) => valor === conexion), conexion + ' is offered');
-    nodo(escenario, 'auto-conexion').value = conexion;
-    nodo(escenario, 'auto-conexion').disparar('change');
+    await elegirConexion(escenario, conexion);
   }
 
   /** CH-21c: step 1 completed, then Siguiente, landing on step 2. */
@@ -1151,14 +1173,12 @@ describe('the console document, served by the real route', () => {
 
     await elegirPlantillaAlta(escenario, [{ nombre: 'n', tipo: 'numero' }]);
     assert.equal(siguiente.disabled, true, 'a template without a connection');
-    nodo(escenario, 'auto-conexion').value = 'c-7';
-    nodo(escenario, 'auto-conexion').disparar('change');
+    await elegirConexion(escenario, 'c-7');
     assert.equal(siguiente.disabled, false);
     nodo(escenario, 'auto-conexion').value = '';
     nodo(escenario, 'auto-conexion').disparar('change');
     assert.equal(siguiente.disabled, true, 'the placeholder is no connection');
-    nodo(escenario, 'auto-conexion').value = 'c-7';
-    nodo(escenario, 'auto-conexion').disparar('change');
+    await elegirConexion(escenario, 'c-7');
 
     siguiente.disparar('click');
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
@@ -1179,7 +1199,7 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'auto-conexion').value = '';
     siguiente.disparar('click');
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
-    assert.equal(escenario.peticiones.length, pedidas + 2, 'only the connections and the template detail');
+    assert.equal(escenario.peticiones.length, pedidas + 4, 'the template detail and one probe per connection chosen');
   });
 
   /** Spec "Tenant switch wipes the wizard" and "Tenant load keeps three requests". */
@@ -1384,8 +1404,8 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'auto-plantilla').hijos.length, catalogo.length, 'nothing but the cards');
     assert.deepEqual(
       cartas.map((tarjeta) => [tarjeta.tagName, ...tarjeta.hijos.map((hijo) => hijo.tagName + '.' + hijo.className)]),
-      catalogo.map(() => ['label', 'input.', 'span.zd-template__name', 'span.zd-template__desc']),
-      'name and description only: no icon, no tolerance, no check mark',
+      catalogo.map(() => ['label', 'input.', 'span.zd-template__name', 'span.zd-template__desc', 'span.motivo-plantilla']),
+      'name and description only (no icon, tolerance or check mark), plus the reason slot of PR4',
     );
     assert.deepEqual(
       cartas.map((tarjeta) => [tarjeta.hijos[1].textContent, tarjeta.hijos[2].textContent]),
@@ -1447,8 +1467,7 @@ describe('the console document, served by the real route', () => {
     elegirTarjeta(escenario, 'p-2');
     await asentar();
 
-    nodo(escenario, 'auto-conexion').value = 'c-1';
-    nodo(escenario, 'auto-conexion').disparar('change');
+    await elegirConexion(escenario, 'c-1');
     nodo(escenario, 'auto-siguiente').disparar('click');
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
     assert.match(nodo(escenario, 'auto-resumen').textContent, /^Plantilla: Segunda · /);
@@ -1599,6 +1618,199 @@ describe('the console document, served by the real route', () => {
       ['diaria', '08:00', '0 8 * * *', true, false],
     );
     assert.equal(nodo(escenario, 'auto-horario-texto').textContent, 'Todos los días a las 08:00, ' + ZONA_DESPLIEGUE + '.');
+  });
+
+  // ---- CH-21c PR4: templates the chosen connection cannot run (spec `query-console`, DEC-127) ----
+
+  const AVISO_SIN_SONDEO = 'No se pudo verificar el mapeo de esta conexión. Las plantillas quedan habilitadas; la compuerta de vistas se aplica igual en cada ejecución.';
+  const CATALOGO_FISICO = [{ id: 'p-1', nombre: 'Stock físico', automatizacion: 'stock-fisico' }];
+
+  /** The reason under a card, '' while it is hidden. */
+  function motivoDe(tarjeta: Nodo): string {
+    const motivo = tarjeta.porClase('motivo-plantilla')[0];
+    return motivo.hidden ? '' : motivo.textContent;
+  }
+
+  /** Chooses a connection with p-1 not yet read: the probe answers `informe`, then p-1's detail answers `entidades`. */
+  async function sondear(escenario: Escenario, entidades: string[], informe: unknown, conexion = 'c-1'): Promise<void> {
+    escenario.respuestas.push(
+      { status: 200, cuerpo: informe },
+      { status: 200, cuerpo: { plantilla: { parametros: [], entidades } } },
+    );
+    nodo(escenario, 'auto-conexion').value = conexion;
+    nodo(escenario, 'auto-conexion').disparar('change');
+    await asentar();
+  }
+
+  /** Shared vectors: the console's mirror must agree with the server's `evaluarVistas` on each. */
+  const VECTORES_DISPONIBILIDAD: Array<[string, string[], Record<string, string>]> = [
+    ['all valid', ['producto', 'insumo'], { producto: 'valida', insumo: 'valida' }],
+    ['no-mapeada', ['producto', 'pedido'], { producto: 'valida' }],
+    ['no-validado', ['producto', 'pedido'], { producto: 'valida', pedido: 'no-validado' }],
+    ['invalida', ['pedido'], { pedido: 'invalida' }],
+    ['DEC-127 stock-fisico without receta_componente', ['producto', 'receta_componente'], { producto: 'valida' }],
+    ['several at once', ['producto', 'pedido', 'insumo'], { producto: 'valida', pedido: 'no-validado', insumo: 'invalida' }],
+  ];
+
+  /** Spec "Template with a non-valid entity is disabled" and "Template with all entities valid stays enabled". */
+  test('CH-21c V1 a card is enabled exactly when the server gate would pass, naming the same entities', async () => {
+    for (const [vector, entidades, estados] of VECTORES_DISPONIBILIDAD) {
+      const escenario = await arrancar();
+      await elegirTenant(escenario, [], [], 't-1', CATALOGO_FISICO);
+      await abrirAlta(escenario);
+      // The report's M4 block calls stock-fisico applicable whatever receta_componente says: ignored.
+      const informe = informeDe(estados);
+      const m4 = [{ automatizacion: 'stock-fisico', estado: 'aplicable', motivos: [] }];
+      await sondear(escenario, entidades, { validacionMapeo: { ...informe.validacionMapeo, automatizaciones: m4 } });
+
+      const filas = Object.entries(estados)
+        .filter(([, estado]) => estado !== 'no-mapeada')
+        .map(([entidad, estadoValidacion]) => ({ entidad, sql: 'SELECT 1', estadoValidacion }));
+      const compuerta = evaluarVistas(entidades, filas);
+      const tarjeta = tarjetas(escenario)[0];
+      assert.equal(radioDe(tarjeta).disabled, !compuerta.ok, vector);
+      const bloqueadas = compuerta.ok ? [] : compuerta.entidades.map((fila) => fila.entidad);
+      assert.deepEqual(entidades.filter((e) => motivoDe(tarjeta).includes(e)), entidades.filter((e) => bloqueadas.includes(e)), vector);
+      assert.equal(motivoDe(tarjeta) === '', compuerta.ok, vector + ': a reason only on a disabled card');
+      assert.equal(nodo(escenario, 'auto-aviso').hidden, true, vector + ': nothing left to say');
+    }
+  });
+
+  /** Spec "Template with a non-valid entity is disabled": the reason is plain words, never a state code. */
+  test('CH-21c V2 the reason uses the legible words and never a raw state code', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [], 't-1', CATALOGO_FISICO);
+    await abrirAlta(escenario);
+    const informe = informeDe({ producto: 'valida', pedido: 'no-validado', insumo: 'invalida' });
+    await sondear(escenario, ['producto', 'pedido', 'insumo', 'receta_componente'], informe);
+
+    const motivo = motivoDe(tarjetas(escenario)[0]);
+    assert.equal(motivo, 'No disponible con esta conexión: pedido (vista sin validar), insumo (la validación de la vista falló), '
+      + 'receta_componente (sin vista registrada). Cada ejecución se frenaría antes de conectar.');
+    for (const codigo of ['no-mapeada', 'no-validado', 'invalida']) {
+      assert.ok(!motivo.includes(codigo), codigo + ' stays out of the text');
+    }
+  });
+
+  /** Spec "Template with a non-valid entity is disabled"; design V3. */
+  test('CH-21c V3 a chosen template that becomes unavailable is deselected with its values and Siguiente', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [], 't-1', CATALOGO_FISICO);
+    await abrirAlta(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { parametros: [{ nombre: 'n', tipo: 'numero' }], entidades: ['producto', 'pedido'] } } });
+    elegirTarjeta(escenario, 'p-1');
+    await asentar();
+    assert.equal(nodo(escenario, 'auto-valores').porClase('parametro-valor').length, 1);
+
+    await elegirConexion(escenario, 'c-1', informeDe({ producto: 'valida', pedido: 'no-validado' }));
+    const radio = radioDe(tarjetas(escenario)[0]);
+    assert.deepEqual([radio.disabled, radio.checked], [true, false]);
+    assert.equal(nodo(escenario, 'auto-valores').hijos.length, 0, 'its value controls are gone');
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
+    nodo(escenario, 'auto-siguiente').disparar('click');
+    assert.deepEqual(pasoVisible(escenario), [1, 1], 'a connection and no template does not advance');
+
+    // A connection that can run it frees the card again; its detail is read from the cache.
+    const pedidas = escenario.peticiones.length;
+    await elegirConexion(escenario, 'c-2');
+    assert.deepEqual([radio.disabled, motivoDe(tarjetas(escenario)[0])], [false, '']);
+    elegirTarjeta(escenario, 'p-1');
+    await asentar();
+    assert.equal(escenario.peticiones.length, pedidas + 1, 'only the second probe');
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, false);
+  });
+
+  /** Spec "Late validation response is discarded". */
+  test('CH-21c V4 a probe answered after another connection was chosen is discarded', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [], 't-1', CATALOGO_FISICO);
+    await abrirAlta(escenario);
+    const antes = escenario.peticiones.length;
+    let responder!: (cuerpo: unknown) => void;
+    escenario.respuestas.push({ status: 200, cuerpo: new Promise((resolver) => { responder = resolver; }) });
+    nodo(escenario, 'auto-conexion').value = 'c-1';
+    nodo(escenario, 'auto-conexion').disparar('change');
+    await asentar();
+    assert.equal(nodo(escenario, 'auto-aviso').textContent, 'Verificando las vistas canónicas de la conexión elegida…');
+
+    await sondear(escenario, ['producto'], TODO_VALIDO, 'c-2');
+    responder(informeDe({ producto: 'no-validado' }));
+    await asentar();
+    const tarjeta = tarjetas(escenario)[0];
+    assert.deepEqual([radioDe(tarjeta).disabled, motivoDe(tarjeta)], [false, ''], "c-1's report is not applied");
+    assert.equal(nodo(escenario, 'auto-aviso').hidden, true);
+    assert.deepEqual(
+      escenario.peticiones.slice(antes).map((peticion) => peticion.url),
+      ['/conexiones/c-1/validacion-mapeo', '/conexiones/c-2/validacion-mapeo', '/plantillas/p-1'],
+    );
+  });
+
+  /** Spec "Validation fetch fails": every card stays enabled and the notice says why. */
+  test('CH-21c V5 a failed, unreadable or incomplete probe leaves every card enabled with the notice', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [], 't-1', CATALOGO_FISICO);
+    const noEsJson = { then: (_: unknown, rechazar: (error: Error) => void): void => rechazar(new Error('no es JSON')) };
+    const casos: Array<[string, Array<{ status: number; cuerpo: unknown }>]> = [
+      ['HTTP 500', [{ status: 500, cuerpo: { error: 'x' } }]],
+      ['not JSON', [{ status: 200, cuerpo: noEsJson }]],
+      ['no report in the body', [{ status: 200, cuerpo: {} }]],
+      ['a template detail fails', [{ status: 200, cuerpo: TODO_VALIDO }, { status: 500, cuerpo: { error: 'x' } }]],
+    ];
+    for (const [caso, respuestas] of casos) {
+      await abrirAlta(escenario);
+      escenario.respuestas.push(...respuestas);
+      nodo(escenario, 'auto-conexion').value = 'c-1';
+      nodo(escenario, 'auto-conexion').disparar('change');
+      await asentar();
+      const tarjeta = tarjetas(escenario)[0];
+      assert.deepEqual([radioDe(tarjeta).disabled, motivoDe(tarjeta)], [false, ''], caso);
+      assert.deepEqual([nodo(escenario, 'auto-aviso').hidden, nodo(escenario, 'auto-aviso').textContent], [false, AVISO_SIN_SONDEO], caso);
+      nodo(escenario, 'auto-cancelar').disparar('click');
+    }
+  });
+
+  /** Spec "Late response after a tenant switch is ignored" (validation half). */
+  test('CH-21c V6 a probe answered after a tenant switch is dropped without asking for anything more', async () => {
+    const escenario = await arrancar([
+      { id: 't-1', nombre: 'Food Store' },
+      { id: 't-2', nombre: 'Otra tienda' },
+    ]);
+    await elegirTenant(escenario, [], [], 't-1', CATALOGO_FISICO);
+    await abrirAlta(escenario);
+    let responder!: (cuerpo: unknown) => void;
+    escenario.respuestas.push({ status: 200, cuerpo: new Promise((resolver) => { responder = resolver; }) });
+    nodo(escenario, 'auto-conexion').value = 'c-1';
+    nodo(escenario, 'auto-conexion').disparar('change');
+    await asentar();
+
+    const antes = escenario.peticiones.length;
+    await elegirTenant(escenario, [], [], 't-2', CATALOGO_FISICO);
+    await abrirAlta(escenario);
+    responder(informeDe({ producto: 'no-validado' }));
+    await asentar();
+    assert.deepEqual(
+      escenario.peticiones.slice(antes).map((peticion) => peticion.url),
+      ['/consultas-guardadas', '/plantillas', '/automatizaciones', '/conexiones'],
+      "A's probe asks for no template detail",
+    );
+    const tarjeta = tarjetas(escenario)[0];
+    assert.deepEqual([radioDe(tarjeta).disabled, motivoDe(tarjeta)], [false, '']);
+    assert.equal(nodo(escenario, 'auto-aviso').hidden, true);
+    assert.equal(nodo(escenario, 'banner').hidden, true);
+  });
+
+  /** The probe is advisory: creation after it failed sends the same body as before CH-21c. */
+  test('CH-21c V7 creating after a failed probe sends the unchanged body', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    await elegirPlantillaAlta(escenario);
+    await elegirConexion(escenario, 'c-1', { error: 'x' }, 500);
+    assert.equal(nodo(escenario, 'auto-aviso').textContent, AVISO_SIN_SONDEO);
+    assert.equal(nodo(escenario, 'auto-siguiente').disabled, false);
+    nodo(escenario, 'auto-siguiente').disparar('click');
+    fijarHorario(escenario, 'diaria', '06:00');
+    assert.deepEqual(await crearSinCerrar(escenario), { plantillaId: 'p-1', conexionId: 'c-1', valores: {}, cron: '0 6 * * *' });
   });
 
   /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */
