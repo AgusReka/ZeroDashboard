@@ -173,3 +173,31 @@ El maintainer revisó el 2026-10-06 sobre el stack local HTTPS (app → `127.0.0
 ## Siguiente
 
 Con 3.4 completa, todas las tareas del plan están completas salvo el cierre; el drift del `size:exception` (1951 reales vs ~1700 del presupuesto ampliado) fue revalidado por el maintainer en la decisión de cierre del mismo día. Correr `sdd-verify` (4.1); luego abrir el PR único de código y archivar (4.2) tras el merge.
+
+## Corrección 4.1 (lote de verificación de brecha)
+
+**Por qué.** El `sdd-verify` final encontró exactamente un CRITICAL: el escenario *"Unique email constraint"* de `specs/domain-data-model/spec.md` no tenía test de runtime que lo cubriera. El índice único sobre `Usuario.correo` ya existe (`prisma/schema.prisma:253` y `prisma/migrations/20261006000000_usuario_sesion_panel/migration.sql:39`, migración aplicada a `zd-ch09-testdb` en 5434, 11/11). No hubo cambio de producción: la corrección es un test que prueba la restricción en runtime. La deuda ya estaba anotada en las desviaciones de PR1 ("rechazo de correo duplicado a nivel base … se marca para `sdd-verify`").
+
+**Test agregado** (en `src/panel-auth.test.ts`, mismo fixture/cleanup que el resto de la suite):
+
+- Nombre: `the database rejects a second Usuario with the same correo (P2002, unique email)`.
+- Qué asegura: con el `Usuario` de la fixture `a` existente (mismo `tenantId`), un segundo `create` con el mismo `correo` es rechazado con `Prisma.PrismaClientKnownRequestError` código `P2002` (matcher `conCodigo`, el canónico de `src/aislamiento.test.ts`), y el conteo de filas con ese correo queda en 1. El duplicado viviría en el mismo tenant: solo el índice único global de `correo` puede rechazarlo.
+- Convención respetada: fixture por suite (tenant + usuario con `hashearClave`), clientes crudos, limpieza en `after` por `tenantIds` (`deleteMany` de usuarios y tenants); el repositorio no trunca tablas por test — este lote no introduce una convención nueva.
+
+### TDD Cycle Evidence (lote de brecha)
+
+| Tarea | RED | GREEN | REFACTOR |
+|-------|-----|-------|----------|
+| Corrección 4.1 | **No alcanzable por diseño — test de brecha de verificación.** La restricción única ya está implementada y la migración aplicada desde PR1: el test pasa contra el estado actual y un RED artificial exigiría mutar el esquema de la base de pruebas (drop del índice), fuera de alcance y destructivo. No se forzó un RED artificial; el test se escribió contra el comportamiento ya existente y se documenta explícitamente | `$env:TEST_DB_PORT='5434'; npx tsx --test src/panel-auth.test.ts` → `tests 11, suites 1, pass 11, fail 0` (diez casos previos + el nuevo); suite completa → 945/945 | Ninguno — un solo test aditivo, sin lógica nueva que extraer |
+
+### Work Unit Evidence (Corrección 4.1)
+
+| Evidencia | Valor |
+|---|---|
+| Comando de test focalizado y resultado exacto | `$env:TEST_DB_PORT='5434'; npx tsx --test src/panel-auth.test.ts` → exit 0, `tests 11, pass 11, fail 0` (el caso nuevo: 69 ms, P2002) |
+| Runtime harness | Postgres vivo `zd-ch09-testdb` en `localhost:5434` (nunca 5432). Escenario: la fila de la fixture `a` ya existe (GIVEN), el segundo `create` con el mismo `correo` cae en el índice único real → `P2002`; el conteo posterior prueba que el duplicado no persistió |
+| Full suite | `$env:TEST_DB_PORT='5434'; npm test` → exit 0, `tests 945, suites 147, pass 945, fail 0, cancelled 0, skipped 0`. Línea base: 944 (PR3); neto nuevo: +1 test |
+| Typecheck / build | `npx tsc --noEmit`: exit 0. `npm run build`: exit 0 |
+| Rollback boundary | Revertir el commit del lote: `src/panel-auth.test.ts` vuelve a sus 10 casos (solo se agregó 1 import `Prisma` + 1 test + el helper `conCodigo` local), y se elimina esta sección de `apply-progress.md`. Sin DDL nuevo — nada que deshacer en la base. No toca trabajo no relacionado |
+
+**Estado 4.1 para el re-verify**: el CRITICAL queda cubierto por test en runtime; el resto de tareas no se tocó. `tasks.md` no se modificó — 4.1 sigue `[ ]` hasta que el re-verify lo confirme.

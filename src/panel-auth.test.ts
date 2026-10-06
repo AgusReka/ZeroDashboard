@@ -4,7 +4,7 @@ import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from './generated/prisma/client.js';
+import { Prisma, PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
 import { generarTokenSesion, hashearClave } from './crypto-auth.js';
@@ -325,6 +325,34 @@ describe(
         null,
         'the expired row was cleaned up on use',
       );
+    });
+
+    /** The repo's canonical Prisma error-code matcher (see `src/aislamiento.test.ts`). */
+    const conCodigo = (codigo: string) => (error: unknown) =>
+      error instanceof Prisma.PrismaClientKnownRequestError && error.code === codigo;
+
+    // domain-data-model spec, scenario "Unique email constraint": GIVEN an existing
+    // Usuario with email X, WHEN another Usuario is created with the same email, THEN
+    // the database SHALL reject the duplicate. `a` above is the existing row; the
+    // duplicate would live in the same tenant, so the global `@unique` index on
+    // Usuario.correo (`prisma/schema.prisma`) is the only thing that can refuse it.
+    test('the database rejects a second Usuario with the same correo (P2002, unique email)', async (t) => {
+      const claveHash = await hashearClave(CLAVE);
+      await assert.rejects(
+        () =>
+          db.usuario.create({
+            data: {
+              tenantId: a.tenantId,
+              correo: a.correo,
+              claveHash,
+              nombre: 'Duplicado',
+              activo: true,
+            },
+          }),
+        conCodigo('P2002'),
+      );
+      // The duplicate never landed: exactly one row carries that email.
+      assert.equal(await db.usuario.count({ where: { correo: a.correo } }), 1);
     });
   },
 );
