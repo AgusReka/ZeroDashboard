@@ -54,7 +54,7 @@ Branch `ch22a/panel-ingreso`. Depends on PR2.
 - [x] 3.1 RED tests for `src/panel.ts` / `src/panel.test.ts`: `GET /panel` without session renders login screen (P-01) with email and password fields, submit action, stylesheet link; `GET /panel` with active session renders panel shell and tenant store name.
 - [x] 3.2 GREEN `src/panel.ts`: implement panel page HTML/script serving login form and initial shell.
 - [x] 3.3 Verification: `npx tsc --noEmit`, full `TEST_DB_PORT=5434 npm test`, `npm run build`.
-- [ ] 3.4 Manual visual review (human only): login screen, error state, successful login transition to shell; 360 and 1280 px, light/dark themes in browser.
+- [x] 3.4 Manual visual review (human only): login screen, error state, successful login transition to shell; 360 and 1280 px, light/dark themes in browser. Maintainer confirmó los 4 puntos OK el 2026-10-06 (stack HTTPS local, ver apply-progress).
 
 ## Closure
 

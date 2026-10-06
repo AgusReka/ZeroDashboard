@@ -166,6 +166,10 @@ Lote completado el 2026-10-06 en `ch22a/panel-auth`. Strict TDD activo (declarad
 - **Scripts inline sin template literals**: concatenación (`var` + `+`, `\u2026`) para que los documentos vivan dentro del template literal de TypeScript sin escapar. Convención de `src/consola.ts` respetada (HTML + CSS + JS servidos como string, sin framework ni build).
 - Ninguna decisión de arquitectura nueva; DEC-133 a DEC-136 no se reabrieron.
 
+## Revisión visual 3.4 (completada por el maintainer)
+
+El maintainer revisó el 2026-10-06 sobre el stack local HTTPS (app → `127.0.0.1:3000`, proxy TLS `https://localhost:3443/panel`, certificado autofirmado fuera del repo; la cookie `Secure` de DEC-134 se mantuvo intacta). Flujo E2E validado con curl antes de la revisión: login 200 → cookie `zd_panel_session` HttpOnly+Secure path `/` → `/api/panel/auth/sesion` 200 → logout 200. **Los 4 puntos dieron OK**: pantalla de ingreso (P-01) a 360 y 1280 px en claro y oscuro, ingreso→shell mostrando `Tienda Demo ZD`, Salir, y error de credencial (401). Tarea 3.4 marcada en `tasks.md`.
+
 ## Siguiente
 
-Las tareas 3.1-3.3 están completas y marcadas en `tasks.md`; queda pendiente **3.4 (revisión visual humana**: login, estado de error, transición login→shell en 360 y 1280 px, temas claro/oscuro), que este lote no intenta. El orquestador debe correr `sdd-verify` sobre esta unidad (PR3) y revalidar con el maintainer el drift del `size:exception` (1951 reales acumulados vs ~1700 del presupuesto ampliado) antes del cierre.
+Con 3.4 completa, todas las tareas del plan están completas salvo el cierre; el drift del `size:exception` (1951 reales vs ~1700 del presupuesto ampliado) fue revalidado por el maintainer en la decisión de cierre del mismo día. Correr `sdd-verify` (4.1); luego abrir el PR único de código y archivar (4.2) tras el merge.
