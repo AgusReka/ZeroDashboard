@@ -66,15 +66,22 @@ The system SHALL filter every read and write on `Conexion`, `ConsultaGuardada`, 
 
 ### Requirement: Cross-Tenant Isolation Is Proven by an Automated Test (T2)
 
-The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes (triggering validation, reading a validation result, reading the automation-applicability report) and the routes creating, listing, getting, and deactivating an `Automatizacion` and listing an automation's `Ejecucion` rows. The suite SHALL also include a two-tenant scheduler tick asserting that each tenant's result rows are delivered only to that tenant's own automation recipient (a recording fake notifier is permitted; the database is not mocked).
-(Previously: the sweep did not include notification delivery.)
+The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes (triggering validation, reading a validation result, reading the automation-applicability report), the routes creating, listing, getting, and deactivating an `Automatizacion` and listing an automation's `Ejecucion` rows, and `GET /conexiones`. The suite SHALL also include a two-tenant scheduler tick asserting that each tenant's result rows are delivered only to that tenant's own automation recipient (a recording fake notifier is permitted; the database is not mocked).
+(Previously: the sweep did not include `GET /conexiones`.)
 
 #### Scenario: Full two-tenant route sweep
 
 - GIVEN two tenants, each with its own `Conexion`, `ConsultaGuardada`, schema-mapping definition, validation result, `Automatizacion`, and `Ejecucion`
-- WHEN every tenant-scoped route is exercised from both tenants, including validate, validation-read, applicability-report, automation, and runs-listing routes
+- WHEN every tenant-scoped route is exercised from both tenants, including validate, validation-read, applicability-report, automation, runs-listing, and connection-listing routes
 - THEN no response SHALL contain, confirm the existence of, trigger validation against, or act upon the other tenant's row
 - AND a cross-tenant request naming another tenant's connection, entity, or automation SHALL receive `404`
+
+#### Scenario: Connection listing sweep row
+
+- GIVEN tenants A and B, each with a connection
+- WHEN each tenant calls `GET /conexiones`
+- THEN each response SHALL contain only its own connection's `id` and `nombre`
+- AND neither response SHALL contain the other tenant's connection id NOR its name
 
 #### Scenario: Database unreachable
 

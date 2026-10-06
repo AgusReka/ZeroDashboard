@@ -163,5 +163,6 @@ Branch `ch21c/asistente-vista-previa`. Depends on PR2c.
 
 ## Closure
 
-- [ ] 6.1 Verify per PR (`sdd-verify`): re-check each scenario above against the observed results of the verification tasks (1.10, 2a.6, 2b.3, 2c.3, 3.4, 4.4, 5.3), the empty diff for schema, migrations, `correo.ts`, `contexto-tenant.ts` and engine files, and DEC-129..132. Manual visual-review tasks stay open until a human signs them. Orchestrator-owned.
-- [ ] 6.2 Archive (`sdd-archive`) after PR5 merges: sync the four deltas to `openspec/specs/` and move the change folder to `openspec/changes/archive/`. Orchestrator-owned.
+- [x] 6.1 Verify per PR (`sdd-verify`): re-check each scenario above against the observed results of the verification tasks (1.10, 2a.6, 2b.3, 2c.3, 3.4, 4.4, 5.3), the empty diff for schema, migrations, `correo.ts`, `contexto-tenant.ts` and engine files, and DEC-129..132. Manual visual-review tasks stay open until a human signs them. Orchestrator-owned.
+- [x] 6.2 Archive (`sdd-archive`) after PR5 merges: sync the four deltas to `openspec/specs/` and move the change folder to `openspec/changes/archive/`. Orchestrator-owned.
+
