@@ -432,3 +432,11 @@ Done 2026-10-06 (tasks 5.1-5.3 and 5.5; 5.4 manual review stays open for a human
 - Deviation: the `sdd-apply` dispatch was refused by the SDD child-dispatch hook, so the orchestrator implemented PR5 inline.
 - Deviation: the accent is read from the server html as the only `background` that is not one of the three neutral greys, since `ESTILO.titulo` is not exported.
 - Process note: a first scripted edit truncated `src/consola.ts`; it was restored from git (no uncommitted work in it) before reapplying.
+
+## PR5 verification addendum (orchestrator, 2026-10-06)
+
+- Not verified by the independent `sdd-verify` agent: the SDD child-dispatch hook refused it, so the orchestrator checked inline. Weaker than an independent pass.
+- Evidence: console 60/60; full `TEST_DB_PORT=5434 npm test` 902/902, 0 skipped; `tsc` and build clean. Smoke not run: `scripts/smoke.sh` console greps (SQL input, execute control, save controls, stylesheet link, no `innerHTML`, `textContent`) do not depend on the new markup.
+- Checked: the diff outside `src/consola*` and `openspec/` is empty (schema, migrations, `correo.ts`, `contexto-tenant.ts`, engine); the added lines have no markup-assigning property, backtick or `${`; the three preview ids appear once; `TEMAS_CORREO` equals `correo.ts` `TEMAS`; the wizard reset clears the preview nodes; scenarios "Preview parity", "Preview is text-only and read-only" and the hostile-name case are covered by runtime tests.
+- Verdict: PASS WITH WARNINGS, 0 CRITICAL. W1: "Script hazards stay out of the page" was not re-proved independently (the served-page check hung and was cancelled); it relies on the existing guards. W2: E1 derives the accent from the server html as the only `background` outside the three neutral greys, because `ESTILO.titulo` is not exported. S1: the empty-recipient text is fixed console copy and must follow the engine if that behavior changes.
+- Open: 5.4 (manual visual review, human only, Chrome), 6.1 (per-PR `sdd-verify`, orchestrator-owned) and 6.2 (archive after the chain merges).
