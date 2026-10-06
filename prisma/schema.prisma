@@ -26,6 +26,8 @@ model Tenant {
   automatizaciones   Automatizacion[]
   ejecuciones        Ejecucion[]
   agente             Agente?
+  usuarios           Usuario[]
+  sesionesPanel      SesionPanel[]
 }
 
 model Conexion {
@@ -229,4 +231,57 @@ model Agente {
   tokenEmitidoEn DateTime   @default(now())
   revocadoEn     DateTime?
   conexiones     Conexion[]
+}
+
+// CH-22a (DEC-133): a client user (P2) — the business administrator who signs in to
+// the panel. Every row belongs to exactly one Tenant, `correo` is globally unique so
+// a duplicate registration is refused by the database (spec: "Unique email
+// constraint"), and `claveHash` holds only the `s1:<salt>:<key>` scrypt envelope from
+// `src/crypto-auth.ts` — never a plaintext password (regla 5). `activo` has the same
+// meaning as `Tenant.activo` (DEC-14): deactivation keeps the row, and the login path
+// fails closed on it. `nombre` is nullable so a user provisioned with the tenant can
+// exist without one (spec: "an optional `nombre` string").
+//
+// Both models are in `MODELOS_AISLADOS`, so every read and write below carries the
+// active tenant structurally (DEC-13). The one exception is session validation, which
+// runs before any tenant context exists and is an explicit audited lookup (DEC-135),
+// added with the routes — not here.
+model Usuario {
+  id            String        @id @default(uuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  correo        String        @unique
+  claveHash     String
+  nombre        String?
+  activo        Boolean       @default(true)
+  creadoEn      DateTime      @default(now())
+  actualizadoEn DateTime      @updatedAt
+  sesiones      SesionPanel[]
+
+  @@index([tenantId])
+}
+
+// CH-22a (DEC-134): one server-side panel session, referenced by a 256-bit random
+// token that lives only in the browser's `HttpOnly` cookie. The database stores the
+// SHA-256 `tokenHash` of it, never the token itself, so a leaked row cannot be
+// replayed — the same construction as `Agente.tokenHash` (DEC-121). Persisting the
+// row is what makes logout an immediate explicit revocation and expiry a server-side
+// fact (DEC-134's stated reason over a stateless JWT).
+//
+// `usuario` is `onDelete: Cascade`: sessions are meaningless without their user and
+// no route deletes one, while both tenant foreign keys are Prisma's required-relation
+// default (RESTRICT), so a tenant with users cannot be deleted out from under them.
+// `expiraEn` carries no default — the login route writes it from a fixed TTL.
+model SesionPanel {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  expiraEn  DateTime
+  creadaEn  DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tokenHash])
 }
