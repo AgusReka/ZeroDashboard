@@ -2407,6 +2407,78 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-133 — CH-22a: Modelo `Usuario` del cliente (P2) con hashing mediante `node:crypto.scrypt`
+
+**Contexto.** La historia T3 exige autenticación para el administrador de la PYME (P2). La base de datos propia no cuenta con una tabla de usuarios ni almacenamiento de credenciales para P2.
+
+**Opciones.** (a) Modelo `Usuario` en la base propia con `tenantId`, `correo` único, `claveHash` y salt usando `node:crypto.scrypt` (nativo en Node.js). (b) Modelo de usuarios con librería externa (`bcrypt` / `argon2`). (c) Autenticación delegada / OAuth externo.
+
+**Decisión.** (a). Modelo `Usuario` en base propia con hashing nativo `scrypt` (`node:crypto`).
+
+**Por qué.** `node:crypto.scrypt` viene integrado en el runtime de Node.js, no añade dependencias nativas compiladas que compliquen el build o contenedor, y provee derivación de claves resistente a fuerza bruta. Unificar los usuarios en la base propia mantiene la autonomía del prototipo y el modelo multi-tenant cerrado.
+
+**Se resigna.** No hay recuperación de contraseñas por correo ni autenticación multifactor en este release (R2).
+
+**Decidido por:** el usuario, 2026-10-06. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-134 — CH-22a: Sesiones del panel vía cookie `HttpOnly` y tabla `SesionPanel`
+
+**Contexto.** El administrador de la PYME (P2) accede desde el navegador web. Debe mantenerse su sesión sin exponer tokens a scripts de terceros ni forzar reingreso en cada navegación.
+
+**Opciones.** (a) Cookie `HttpOnly`, `SameSite=Lax`, `Secure` con token de sesión aleatorio (`crypto.randomBytes`) referenciando una fila en `SesionPanel` (con `tokenHash`, `usuarioId`, `tenantId`, `expiraEn`). (b) JWT sin estado guardado en `localStorage` o cookie. (c) Autenticación HTTP Basic enviada en cada llamada.
+
+**Decisión.** (a). Cookie `HttpOnly` con token de sesión y persistencia en tabla `SesionPanel`.
+
+**Por qué.** Las cookies `HttpOnly` mitigan el robo de tokens ante ataques XSS. Persistir la sesión en el servidor con su hash permite revocación explícita inmediata al hacer logout (salida) y control estricto de expiración (TTL).
+
+**Se resigna.** Cada petición autenticada de P2 consulta la sesión en la base propia (un read liviano por token hash).
+
+**Decidido por:** el usuario, 2026-10-06. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-135 — CH-22a: Aislamiento estricto en el panel (Regla 2) — el tenant deriva exclusivamente de la sesión activa
+
+**Contexto.** La Regla 2 no negociable establece: *"Aislamiento entre tenants. Ninguna consulta originada en el panel puede devolver datos de otro tenant. El identificador de tenant nunca se toma de la petición del cliente"*.
+
+**Opciones.** (a) En todas las rutas del panel (`/panel/*`, `/api/panel/*`), el `tenantId` se extrae únicamente de la sesión verificada en base y se introduce en `AsyncLocalStorage` (`entrarContextoTenant(sesion.tenantId)`). Cualquier cabecera `X-Tenant-Id` enviada por el cliente se ignora o rechaza. (b) Aceptar `X-Tenant-Id` si coincide con la sesión.
+
+**Decisión.** (a). El `tenantId` proviene única y exclusivamente de la sesión; `X-Tenant-Id` no tiene ningún efecto en la superficie del panel.
+
+**Por qué.** Hace cumplir la Regla 2 de forma estructural: el cliente del panel nunca envía ni puede alterar el tenant sobre el que opera. Una prueba automatizada con dos tenants (T2) valida que un usuario autenticado del Tenant A jamás puede acceder a registros del Tenant B.
+
+**Se resigna.** Un usuario del panel no puede cambiar de tenant sin cerrar sesión e ingresar con credenciales de otro tenant (lo cual es el comportamiento deseado para P2).
+
+**Decidido por:** el usuario, 2026-10-06. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-136 — CH-22a: Superficie separada del panel (`/panel`) y endpoints de autenticación (DEC-04)
+
+**Contexto.** DEC-04 establece que la consola de implementador (P1) y el panel de cliente (P2) son dos superficies distintas. CH-22a introduce la primera versión servible del panel.
+
+**Opciones.** (a) Rutas dedicadas: `GET /panel` (sirve la interfaz del panel con pantalla de ingreso P-01 o shell si está autenticado), `POST /api/panel/auth/ingresar`, `POST /api/panel/auth/salir`, `GET /api/panel/auth/sesion`. (b) Embeber la autenticación dentro de las rutas de la consola `/consola`.
+
+**Decisión.** (a). Rutas dedicadas bajo `/panel` y `/api/panel/auth/*`.
+
+**Por qué.** Preserva el principio de superficies separadas (DEC-04) y evita mezclar la política de autenticación de P1 (sin sesión, orientada al implementador) con la de P2 (sesión por cookie, orientada a la PYME).
+
+**Se resigna.** Hay dos puntos de entrada HTML servidos por la aplicación (`/consola` y `/panel`).
+
+**Decidido por:** el usuario, 2026-10-06. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
