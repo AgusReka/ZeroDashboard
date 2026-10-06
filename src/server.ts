@@ -16,6 +16,7 @@ import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { registerPanelAuthRoutes } from './panel-auth.js';
+import { registerPanelRoutes } from './panel.js';
 import { registerAgenteRoutes } from './agentes-rutas.js';
 import { registrarServidorAgentes } from './agente-servidor.js';
 import { crearRegistroAgentes } from './registro-agentes.js';
@@ -106,6 +107,11 @@ registrarServidorAgentes({ app, prisma, registro });
 // exclusively from the session cookie (DEC-135), with the audited unscoped lookups in
 // `src/aislamiento-prisma.ts`.
 registerPanelAuthRoutes(app, prisma);
+// CH-22a PR3: `GET /panel` serves the P-01 login screen without a session or the panel
+// shell with the tenant name once `levantarSesionPanel` resolves one (DEC-135). The page
+// route is exempt from the `X-Tenant-Id` header hooks by exact GET row in
+// `src/contexto-tenant.ts`, not by `RUTAS_PANEL_PUBLICAS`.
+registerPanelRoutes(app, prisma);
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops
 // the scheduler before the process exits.

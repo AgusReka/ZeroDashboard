@@ -116,44 +116,94 @@ function leerCookie(cabecera: string | undefined, nombre: string): string | null
 }
 
 /**
- * The panel route pre-handler hook: resolves the session cookie against `SesionPanel`
- * and attaches the row to `request.sesionPanel`. Every refusal below returns a reply
- * before the handler — unknown token, expired row (cleaned up on use, per the spec),
- * deactivated tenant, deactivated user — and a request that passes attaches the
- * session whose `tenantId` the handlers then enter context with (DEC-135).
+ * Why a session cookie did not resolve. The page (`GET /panel`, CH-22a PR3) needs
+ * only "valid or not"; the hook needs the reason to answer with the exact code the
+ * spec pins (401 `sesion-expirada`, 409 `tenant-desactivado`, generic 401 otherwise).
+ */
+type DesenlaceSesion =
+  | { sesion: SesionResuelta; motivo: 'valida' }
+  | { sesion: null; motivo: 'sin-cookie' | 'token-desconocido' | 'expirada' | 'tenant-desactivado' | 'usuario-inactivo' };
+
+/**
+ * The one session-resolution path both consumers share: the API hook below and the
+ * panel page's `GET /panel`. Reads the cookie, validates the row, cleans an expired
+ * row up on use (spec), and reports what happened without replying. The hook maps
+ * the failure reasons onto status codes; the page ignores them and serves the login
+ * screen. Keeping a single resolution path matters: the panel's tenant comes from
+ * this row and nowhere else (rule 2, DEC-135), so two copies of the check would be
+ * two places a leak could hide.
+ */
+async function resolverSesion(
+  prisma: PrismaAislado,
+  cabeceraCookie: string | undefined,
+): Promise<DesenlaceSesion> {
+  const token = leerCookie(cabeceraCookie, NOMBRE_COOKIE);
+  if (token === null) {
+    return { sesion: null, motivo: 'sin-cookie' };
+  }
+  const sesion = await prisma.sesionPanel.buscarPorTokenHash(hashTokenSesion(token));
+  if (sesion === null) {
+    return { sesion: null, motivo: 'token-desconocido' };
+  }
+  if (sesion.expiraEn.getTime() <= Date.now()) {
+    // Spec: the expired row is cleaned up when it is used, from the session's own
+    // tenant — a scoped delete through the same extension every handler relies on.
+    await conTenantActivo({ id: sesion.tenantId, nombre: sesion.tenantNombre }, async () => {
+      await prisma.sesionPanel.deleteMany({ where: { id: sesion.id } });
+    });
+    return { sesion: null, motivo: 'expirada' };
+  }
+  if (!sesion.tenantActivo) {
+    return { sesion: null, motivo: 'tenant-desactivado' };
+  }
+  if (!sesion.usuarioActivo) {
+    return { sesion: null, motivo: 'usuario-inactivo' };
+  }
+  return { sesion, motivo: 'valida' };
+}
+
+/**
+ * `levantarSesionPanel(prisma, { opcional })` — the panel route pre-handler hook.
+ * Resolves the session cookie against `SesionPanel` and attaches the row to
+ * `request.sesionPanel`.
+ *
+ * With `opcional: false` (the default, and the only mode the API routes use) every
+ * refusal below returns a reply before the handler — unknown token, expired row
+ * (cleaned up on use, per the spec), deactivated tenant, deactivated user — with
+ * the exact codes `src/panel-auth.test.ts` pins.
+ *
+ * With `opcional: true` (the panel page, CH-22a PR3) the hook never replies: the
+ * handler must load whether the session exists or not, serving the login screen
+ * when `request.sesionPanel` is absent. Everything else is identical — the check,
+ * the cleanup, the refusal conditions — so the page can never render a shell from
+ * a dead, expired or deactivated session.
  *
  * Route-level `preHandler`, not a global hook: the header-based tenant hooks already
  * run for every route, and only routes that opt into panel authentication apply this
  * one — the same closed, explicit style as the exemption allowlist.
  */
-export function levantarSesionPanel(prisma: PrismaAislado) {
+export function levantarSesionPanel(
+  prisma: PrismaAislado,
+  opciones: { opcional?: boolean } = {},
+) {
   return async function sesionDeLaCookie(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
-    const token = leerCookie(request.headers.cookie, NOMBRE_COOKIE);
-    if (token === null) {
+    const desenlace = await resolverSesion(prisma, request.headers.cookie);
+    if (desenlace.sesion === null) {
+      if (opciones.opcional === true) {
+        return;
+      }
+      if (desenlace.motivo === 'expirada') {
+        return reply.code(401).send({ error: 'sesion-expirada' });
+      }
+      if (desenlace.motivo === 'tenant-desactivado') {
+        return reply.code(409).send({ error: 'tenant-desactivado' });
+      }
       return reply.code(401).send({ error: 'sesion-invalida' });
     }
-    const sesion = await prisma.sesionPanel.buscarPorTokenHash(hashTokenSesion(token));
-    if (sesion === null) {
-      return reply.code(401).send({ error: 'sesion-invalida' });
-    }
-    if (sesion.expiraEn.getTime() <= Date.now()) {
-      // Spec: the expired row is cleaned up when it is used, from the session's own
-      // tenant — a scoped delete through the same extension every handler relies on.
-      await conTenantActivo({ id: sesion.tenantId, nombre: sesion.tenantNombre }, async () => {
-        await prisma.sesionPanel.deleteMany({ where: { id: sesion.id } });
-      });
-      return reply.code(401).send({ error: 'sesion-expirada' });
-    }
-    if (!sesion.tenantActivo) {
-      return reply.code(409).send({ error: 'tenant-desactivado' });
-    }
-    if (!sesion.usuarioActivo) {
-      return reply.code(401).send({ error: 'sesion-invalida' });
-    }
-    request.sesionPanel = sesion;
+    request.sesionPanel = desenlace.sesion;
   };
 }
 

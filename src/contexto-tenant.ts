@@ -159,10 +159,16 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
   // Liveness has no tenant and must answer before any tenant exists; the console page
   // *is* where the operator picks one, so needing a tenant to load it would deadlock;
   // and the contract describes what every tenant must expose, so demanding one in order
-  // to read it would be asking the question backwards.
+  // to read it would be asking the question backwards. `GET /panel` joins them under
+  // DEC-135 for the mirror reason on the client surface: the panel never sends
+  // `X-Tenant-Id` (rule 2), so demanding one would make the P-01 login screen
+  // unreachable — an unauthenticated browser has no header to send. The row is NOT in
+  // `RUTAS_PANEL_PUBLICAS` on purpose: unlike the three auth endpoints, the page's
+  // tenant is resolved from the session row inside its handler (via the same
+  // `levantarSesionPanel` hook), never from the request.
   if (
     metodo === 'GET' &&
-    (patron === '/health' || patron === '/consola' || patron === '/contrato')
+    (patron === '/health' || patron === '/consola' || patron === '/contrato' || patron === '/panel')
   ) {
     return true;
   }

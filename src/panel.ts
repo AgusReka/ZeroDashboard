@@ -1,0 +1,244 @@
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { PrismaAislado } from './aislamiento-prisma.js';
+import { levantarSesionPanel } from './panel-auth.js';
+
+/**
+ * The servable client panel: one page, two renders (CH-22a PR3, DEC-04, DEC-136).
+ *
+ * `GET /panel` runs through the same session hook the API routes use, in its
+ * *optional* mode: the page must load whether or not a session exists. With a
+ * session it renders the panel shell naming the session's tenant; without one it
+ * renders the P-01 login screen, whose form submits to `POST /api/panel/auth/ingresar`
+ * (built in PR2). Both renders share the head below: the CH-21a stylesheet
+ * (`/ui/styles.css`) and page-local layout rules that use tokens only — nothing
+ * console-specific lives in `public/ui/`, per the DEC-124 contract.
+ *
+ * The page is plain HTML + CSS + JS served as a string, like `src/consola.ts`: no
+ * static-file plugin, no build, no framework. Two properties of this module are
+ * load-bearing and worth stating:
+ *
+ *  - **The tenant enters only from the session row (rule 2, DEC-135).** The header
+ *    hooks exempt `GET /panel` by exact row (see `src/contexto-tenant.ts`) because
+ *    the panel client never sends `X-Tenant-Id`; the handler resolves the tenant via
+ *    `levantarSesionPanel(prisma, { opcional: true })`, which attaches
+ *    `request.sesionPanel` (with `tenantNombre`) or serves the login screen. The page
+ *    cannot leak a foreign tenant because it never asks for one.
+ *  - **Stored values are escaped, never interpolated raw.** The tenant name is a
+ *    stored, replayed string (operator-created), so the shell interpolates it through
+ *    `escaparHtml` — the same discipline `consola.ts` applies with `textContent`. The
+ *    login screen carries no dynamic data at all.
+ *
+ * The inline scripts use string concatenation rather than JS template literals so
+ * the documents can live inside this TypeScript template literal without escaping.
+ * The `Secure` cookie attribute (DEC-134) stays on: over plain `http://localhost` a
+ * browser will not store the cookie, a known limitation checked in the human visual
+ * review (task 3.4), not silently weakened here.
+ */
+
+/** Escapes the five characters that would read as markup in an HTML text node. */
+const RE_HTML = /[&<>"']/g;
+const MAPA_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#x27;',
+};
+
+function escaparHtml(texto: string): string {
+  return texto.replace(RE_HTML, (caracter) => MAPA_ESCAPES[caracter]);
+}
+
+/**
+ * The shared head and layout rules. `[hidden]` is the toggle the login script relies
+ * on (the shared sheet does not force `display:none` for it). The layout follows the
+ * panel mockup's shapes with tokens only: the login card is one centered column on a
+ * full viewport; the shell is a sticky 60 px header plus one `--panel-max` column.
+ */
+const CABEZA_PAGINA = `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZeroDashboard — Panel</title>
+<!-- CH-21a (DEC-124): the shared stylesheet, served by the exact exempt GET routes. -->
+<link rel="stylesheet" href="/ui/styles.css">
+<style>
+  [hidden] { display: none !important; }
+  .panel-marca { font-weight: var(--weight-bold); letter-spacing: -.02em; }
+  /* P-01 login: one centered card column, padded for the smallest screen. */
+  .panel-ingreso { min-height: 100vh; display: grid; place-items: center; padding: var(--space-6); }
+  .panel-ingreso__caja { width: min(420px, 100%); display: grid; gap: var(--space-8); }
+  .panel-ingreso__marca { display: grid; gap: var(--space-3); text-align: center; }
+  .panel-ingreso__marca .panel-marca { font-size: var(--text-2xl); }
+  .panel-ingreso__caja .zd-meta { text-align: center; margin: 0; }
+  /* Panel shell: sticky 60 px header (DEC panel layout) + one centered column. */
+  .panel-header { position: sticky; top: 0; z-index: 20; background: var(--surface-card);
+    border-bottom: var(--border-width) solid var(--border-1); }
+  .panel-header__in { max-width: var(--panel-max); margin: 0 auto; padding: 0 var(--space-6);
+    min-height: 60px; display: flex; align-items: center; gap: var(--space-5); }
+  .panel-header .panel-marca { font-size: var(--text-lg); }
+  .panel-header__sep { flex: none; width: 1px; height: 20px; background: var(--border-2); }
+  .panel-negocio { display: inline-flex; align-items: center; gap: var(--space-3);
+    font-weight: var(--weight-semibold); color: var(--text-2); font-size: var(--text-sm); min-width: 0; }
+  .panel-flexor { flex: 1; }
+  .panel-main { max-width: var(--panel-max); margin: 0 auto; padding: var(--space-9) var(--space-6) var(--space-12);
+    display: grid; gap: var(--gap-section); }
+  .panel-main .zd-muted { margin: var(--space-3) 0 0; }
+</style>
+</head>
+<body class="zd-root" data-surface="panel">
+`;
+
+const PIE_PAGINA = `</body>
+</html>
+`;
+
+/**
+ * P-01 (CH-22): the login screen. The form declares its submit destination in HTML
+ * (`action`/`method`) and the script below intercepts it: the POST goes to the PR2
+ * endpoint as JSON, the button turns into its loading state while it flies, and a
+ * non-2xx shows the credential banner in the panel's own wording (P-01: "El correo o
+ * la contraseña no coinciden"). A `2xx` reloads — the server now sees the cookie and
+ * serves the shell. No tenant is ever named or chosen here (rule 2; DEC-135).
+ *
+ * The "Olvidé mi contraseña" link of the mockup is deliberately absent: recovery is
+ * out of scope (R2), and a dead link in production is worse than none.
+ */
+const DOCUMENTO_INGRESO = CABEZA_PAGINA + `<!-- P-01 Ingreso (CH-22): unauthenticated /panel. -->
+<section class="panel-ingreso" data-screen-label="Ingreso" data-change="CH-22" data-estado="parcial">
+  <div class="panel-ingreso__caja">
+    <div class="panel-ingreso__marca">
+      <span class="panel-marca">ZeroDashboard</span>
+      <p class="zd-muted">Tus avisos y reportes automáticos, en un solo lugar.</p>
+    </div>
+    <form id="form-ingreso" class="zd-card zd-form" action="/api/panel/auth/ingresar" method="post" novalidate>
+      <h1 class="zd-h2">Ingresar</h1>
+      <div class="zd-field">
+        <label class="zd-label" for="correo">Correo</label>
+        <input class="zd-input" id="correo" name="correo" type="email" autocomplete="email" required>
+      </div>
+      <div class="zd-field">
+        <label class="zd-label" for="clave">Contraseña</label>
+        <input class="zd-input" id="clave" name="clave" type="password" autocomplete="current-password" required>
+      </div>
+      <div id="aviso-ingreso" class="zd-banner zd-banner--error" role="alert" hidden>
+        <svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg>
+        <div>
+          <p class="zd-banner__title">No pudimos ingresarte</p>
+          <p class="zd-banner__body" id="texto-aviso">El correo o la contraseña no coinciden.</p>
+        </div>
+      </div>
+      <button id="boton-ingresar" class="zd-btn zd-btn--primary zd-btn--block" type="submit">
+        <svg id="icono-cargando" class="zd-icon zd-icon--spin" aria-hidden="true" viewBox="0 0 24 24" hidden><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+        <span id="etiqueta-ingresar">Ingresar</span>
+      </button>
+    </form>
+    <p class="zd-meta">Entrás directo a tu negocio; no hace falta elegirlo.</p>
+  </div>
+</section>
+<script>
+var formulario = document.getElementById('form-ingreso');
+var aviso = document.getElementById('aviso-ingreso');
+var textoAviso = document.getElementById('texto-aviso');
+var boton = document.getElementById('boton-ingresar');
+var etiqueta = document.getElementById('etiqueta-ingresar');
+var iconoCargando = document.getElementById('icono-cargando');
+var MENSAJE_CREDENCIALES = 'El correo o la contraseña no coinciden.';
+var MENSAJE_TENANT_INACTIVO = 'Tu negocio no está activo en este momento. Comunicate con quien te dio acceso.';
+var MENSAJE_RED = 'No pudimos conectar con el servidor. Volvé a intentar en unos minutos.';
+function fallar(texto) {
+  textoAviso.textContent = texto;
+  aviso.hidden = false;
+  boton.disabled = false;
+  etiqueta.textContent = 'Ingresar';
+  iconoCargando.hidden = true;
+}
+formulario.addEventListener('submit', function (evento) {
+  evento.preventDefault();
+  aviso.hidden = true;
+  boton.disabled = true;
+  etiqueta.textContent = 'Ingresando\u2026';
+  iconoCargando.hidden = false;
+  fetch(formulario.action, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ correo: formulario.elements.correo.value, clave: formulario.elements.clave.value })
+  }).then(function (respuesta) {
+    if (respuesta.ok) {
+      window.location.reload();
+      return null;
+    }
+    return respuesta.json();
+  }).then(function (cuerpo) {
+    if (cuerpo === null) { return; }
+    if (cuerpo.error === 'tenant-desactivado') { fallar(MENSAJE_TENANT_INACTIVO); return; }
+    if (cuerpo.error === 'correo-o-clave-incorrectos') { fallar(MENSAJE_CREDENCIALES); return; }
+    fallar(MENSAJE_RED);
+  }).catch(function () {
+    fallar(MENSAJE_RED);
+  });
+});
+</script>
+` + PIE_PAGINA;
+
+/**
+ * The authenticated shell (CH-22, "parcial": the header and landing frame exist; the
+ * automation list is CH-22b). The header names the session's tenant — the one store
+ * this administrator sees — and its Salir button revokes the session through the PR2
+ * endpoint and reloads, so the server renders the login screen again. `nombreTenant`
+ * is escaped before interpolation: it is stored data, so it is never trusted as
+ * markup.
+ */
+function documentoShell(nombreTenant: string): string {
+  return CABEZA_PAGINA + `<!-- Panel shell (CH-22, parcial): authenticated /panel. -->
+<header class="panel-header">
+  <div class="panel-header__in">
+    <span class="panel-marca">ZeroDashboard</span>
+    <span class="panel-header__sep" aria-hidden="true"></span>
+    <span class="panel-negocio">
+      <svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"></path><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"></path><path d="M2 7h20"></path><path d="M22 7v3a2 2 0 0 1-2 2 2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"></path></svg>
+      ${escaparHtml(nombreTenant)}
+    </span>
+    <span class="panel-flexor"></span>
+    <button id="boton-salir" class="zd-btn zd-btn--ghost" type="button">
+      <svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" x2="9" y1="12" y2="12"></line></svg>
+      Salir
+    </button>
+  </div>
+</header>
+<main class="panel-main">
+  <section data-screen-label="Mis automatizaciones" data-change="CH-22" data-estado="parcial">
+    <h1 class="zd-h1">Mis automatizaciones</h1>
+    <p class="zd-muted">Lo que revisamos por vos y te mandamos por correo.</p>
+  </section>
+</main>
+<script>
+document.getElementById('boton-salir').addEventListener('click', function () {
+  fetch('/api/panel/auth/salir', { method: 'POST' }).finally(function () {
+    window.location.reload();
+  });
+});
+</script>
+` + PIE_PAGINA;
+}
+
+/**
+ * `GET /panel` (DEC-136). The route is NOT exempt like the auth endpoints are: its
+ * tenant comes from the session hook below, and the hook runs in optional mode so
+ * this handler decides between the two renders. No `PrismaClient` handle is kept
+ * beyond the hook's: the shell's tenant name arrives in `request.sesionPanel` (the
+ * same row the API routes trust), so the page never performs its own read.
+ */
+export function registerPanelRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+  app.get(
+    '/panel',
+    { preHandler: [levantarSesionPanel(prisma, { opcional: true })] },
+    async (request: FastifyRequest, reply) => {
+      const sesion = request.sesionPanel;
+      const documento =
+        sesion === undefined ? DOCUMENTO_INGRESO : documentoShell(sesion.tenantNombre);
+      return reply.code(200).type('text/html; charset=utf-8').send(documento);
+    },
+  );
+}
