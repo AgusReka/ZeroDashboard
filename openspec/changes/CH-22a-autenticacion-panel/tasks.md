@@ -12,7 +12,10 @@
 | Chain strategy | n/a — un solo PR de código |
 
 > **Decisión de entrega (2026-10-06).** El preflight de sesión eligió `single-pr` y el maintainer aprobó
-> `size:exception` para un único PR de código de ~810 líneas autorizadas. Los docs ya se entregan en el
+> `size:exception` para un único PR de código. **Ampliado el mismo día por decisión del maintainer
+> (`gentle-ai sdd-attempt reset` auditado, actor `user (AgusReka)`):** los tests reales duplicaron el
+> forecast (~810 estimado; PR1 533 + PR2 1018 = 1551 líneas reales del ledger), el presupuesto
+> autorizado sube a ~1.700 líneas y PR3 continúa dentro del mismo único PR. Los docs ya se entregan en el
 > PR0 (#99). Los grupos PR1/PR2/PR3 de este plan se conservan como unidades de trabajo y commits
 > revisables, no como PR separados.
 
