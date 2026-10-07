@@ -207,6 +207,80 @@ describe(
       assert.ok(!respuesta.body.includes('Otra Tienda'), 'tenant B leaked onto the page');
     });
 
+    /** The authenticated shell's HTML plus its last inline script (the P-02 screen script). */
+    async function shellConScript() {
+      const token = tokenDe(await ingresar());
+      const respuesta = await app.inject({ method: 'GET', url: '/panel', headers: { cookie: `${NOMBRE_COOKIE}=${token}` } });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const html = respuesta.body;
+      const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
+      return { html, script };
+    }
+
+    test('GET /panel with a session serves the P-02 screen markup and a script that reads the automations route with no tenant identifier (CH-22b)', async (t) => {
+      const { html, script } = await shellConScript();
+
+      assert.match(html, /id="estado-carga"/);
+      assert.match(html, /class="zd-skeleton /);
+      assert.match(html, /id="estado-vacio"/);
+      assert.match(html, /id="estado-error"[^>]*role="alert"/);
+      assert.match(html, /id="lista-activas"/);
+      assert.match(html, /id="seccion-disponibles"/);
+      // The data request: same-origin cookie, no custom header, nothing tenant-shaped.
+      assert.ok(script.includes("fetch('/api/panel/automatizaciones', { credentials: 'same-origin' })"));
+      assert.ok(!/x-tenant-id|tenantId|headers/i.test(script), 'the script must not send any tenant identifier or header');
+      // The login render is unchanged by this screen.
+      assert.ok(!html.includes('action="/api/panel/auth/ingresar"'));
+      const login = await app.inject({ method: 'GET', url: '/panel' });
+      assert.ok(!login.body.includes('/api/panel/automatizaciones'), 'the login screen must not carry the screen script');
+    });
+
+    test('the P-02 script carries every state string and the 401 reload branch (CH-22b)', async (t) => {
+      const { html, script } = await shellConScript();
+
+      for (const texto of [
+        'Todavía no activaste ninguna automatización',
+        'No pudimos cargar tus automatizaciones',
+        'Volvé a intentar en unos minutos.',
+        'Tu negocio no está activo en este momento. Comunicate con quien te dio acceso.',
+        'Todavía no hubo una revisión',
+        'Activa',
+        'Pausada',
+        'Se completó',
+        'No se pudo hacer',
+      ]) {
+        assert.ok((html + script).includes(texto), `falta el texto: ${texto}`);
+      }
+      assert.match(script, /status === 401\) \{\s*window\.location\.reload\(\)/);
+      assert.ok(script.includes("new Intl.DateTimeFormat('es-AR'"));
+    });
+
+    test('the P-02 script is safe to embed and offers no actions (CH-22b)', async (t) => {
+      const { html, script } = await shellConScript();
+
+      assert.ok(!script.includes('`'), 'no JS template literal');
+      assert.ok(!script.includes('${'), 'no interpolation');
+      assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(script), 'API values only through textContent');
+      assert.ok(script.includes('.textContent = texto'));
+      assert.ok(!/\.(href|src)\s*=/.test(script), 'no href or src built from API data');
+      assert.ok(!/Ajustar|Activar/.test(html), 'no actions are offered (write actions are CH-23)');
+      assert.ok(!/<button/.test(html.replace(/<button id="boton-salir"[\s\S]*?<\/button>/, '')), 'Salir is the only control');
+    });
+
+    test('the P-02 screen has no glossary-forbidden term in visible text or script string literals (CH-22b)', async (t) => {
+      const { html, script } = await shellConScript();
+      const visible = html
+        .replace(/<script>[\s\S]*?<\/script>/g, ' ')
+        .replace(/<style>[\s\S]*?<\/style>/g, ' ')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/<[^>]*>/g, ' ');
+      const literales = (script.match(/'[^']*'/g) ?? []).join(' ');
+      const prohibido = /tenant|cron|sql|consulta|query|ejecución|réplica|parámetro|timeout|plantilla/i;
+
+      assert.ok(!prohibido.test(visible), `término técnico en el texto visible: ${prohibido.exec(visible)?.[0]}`);
+      assert.ok(!prohibido.test(literales), `término técnico en el script: ${prohibido.exec(literales)?.[0]}`);
+    });
+
     test('GET /panel with an unknown cookie serves the login screen, never the shell', async (t) => {
       const respuesta = await app.inject({
         method: 'GET',

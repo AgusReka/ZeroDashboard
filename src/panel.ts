@@ -85,6 +85,14 @@ const CABEZA_PAGINA = `<!doctype html>
   .panel-main { max-width: var(--panel-max); margin: 0 auto; padding: var(--space-9) var(--space-6) var(--space-12);
     display: grid; gap: var(--gap-section); }
   .panel-main .zd-muted { margin: var(--space-3) 0 0; }
+  /* P-02 Mis automatizaciones (CH-22b): one column of cards, tokens only, 360 px first. */
+  .panel-lista, .panel-seccion { display: grid; gap: var(--space-5); }
+  .panel-main .zd-auto-card__title { overflow-wrap: anywhere; }
+  .panel-main .zd-card__head > div { min-width: 0; }
+  .panel-esqueleto { display: grid; gap: var(--space-4); }
+  .panel-esqueleto__titulo { height: 18px; width: 45%; }
+  .panel-esqueleto__linea { width: 85%; }
+  .panel-esqueleto__corta { width: 60%; }
 </style>
 </head>
 <body class="zd-root" data-surface="panel">
@@ -183,8 +191,8 @@ formulario.addEventListener('submit', function (evento) {
 ` + PIE_PAGINA;
 
 /**
- * The authenticated shell (CH-22, "parcial": the header and landing frame exist; the
- * automation list is CH-22b). The header names the session's tenant — the one store
+ * The authenticated shell (CH-22, "parcial": the header, plus the read-only P-02 list of
+ * CH-22b; write actions are CH-23). The header names the session's tenant — the one store
  * this administrator sees — and its Salir button revokes the session through the PR2
  * endpoint and reloads, so the server renders the login screen again. `nombreTenant`
  * is escaped before interpolation: it is stored data, so it is never trusted as
@@ -212,12 +220,136 @@ function documentoShell(nombreTenant: string): string {
     <h1 class="zd-h1">Mis automatizaciones</h1>
     <p class="zd-muted">Lo que revisamos por vos y te mandamos por correo.</p>
   </section>
+  <!-- P-02 states: loading skeleton, error, empty, active cards, available section. -->
+  <div id="estado-carga" class="panel-lista" aria-busy="true" aria-label="Cargando tus automatizaciones">
+    <div class="zd-card panel-esqueleto"><span class="zd-skeleton panel-esqueleto__titulo"></span><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
+    <div class="zd-card panel-esqueleto"><span class="zd-skeleton panel-esqueleto__titulo"></span><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
+  </div>
+  <div id="estado-error" class="zd-card zd-state zd-state--error" role="alert" hidden>
+    <span class="zd-state__icon"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>
+    <p class="zd-state__title">No pudimos cargar tus automatizaciones</p>
+    <p class="zd-state__body" id="texto-error">Volvé a intentar en unos minutos.</p>
+  </div>
+  <div id="estado-vacio" class="zd-card zd-state" hidden>
+    <span class="zd-state__icon"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg></span>
+    <p class="zd-state__title">Todavía no activaste ninguna automatización</p>
+    <p class="zd-state__body">Cuando haya una activa, la vas a ver acá con su última revisión y la próxima.</p>
+  </div>
+  <div id="lista-activas" class="panel-lista" hidden></div>
+  <section id="seccion-disponibles" class="panel-seccion" hidden>
+    <h2 class="zd-h2">Otras automatizaciones disponibles</h2>
+    <div id="lista-disponibles" class="panel-lista"></div>
+  </section>
+  <p id="nota-truncado" class="zd-meta" hidden>Mostramos solo una parte de tus automatizaciones.</p>
 </main>
 <script>
 document.getElementById('boton-salir').addEventListener('click', function () {
   fetch('/api/panel/auth/salir', { method: 'POST' }).finally(function () {
     window.location.reload();
   });
+});
+</script>
+<script>
+var MENSAJE_TENANT_INACTIVO = 'Tu negocio no está activo en este momento. Comunicate con quien te dio acceso.';
+var MENSAJE_ERROR = 'Volvé a intentar en unos minutos.';
+function nodo(etiqueta, clase, texto) {
+  var n = document.createElement(etiqueta);
+  if (clase) { n.className = clase; }
+  if (texto !== undefined) { n.textContent = texto; }
+  return n;
+}
+function mostrar(id, visible) {
+  document.getElementById(id).hidden = !visible;
+}
+function formatear(iso, zona) {
+  var opciones = { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+  var formato;
+  try {
+    opciones.timeZone = zona;
+    formato = new Intl.DateTimeFormat('es-AR', opciones);
+  } catch (e) {
+    delete opciones.timeZone;
+    formato = new Intl.DateTimeFormat('es-AR', opciones);
+  }
+  return formato.format(new Date(iso));
+}
+function dato(lista, etiqueta, valor) {
+  var fila = nodo('div');
+  fila.appendChild(nodo('dt', '', etiqueta));
+  fila.appendChild(nodo('dd', '', valor));
+  lista.appendChild(fila);
+}
+function cabeza(titulo, descripcion, insignia) {
+  var cab = nodo('div', 'zd-card__head');
+  var texto = nodo('div');
+  texto.appendChild(nodo('h3', 'zd-auto-card__title', titulo));
+  texto.appendChild(nodo('p', 'zd-auto-card__desc', descripcion));
+  cab.appendChild(texto);
+  if (insignia) { cab.appendChild(insignia); }
+  return cab;
+}
+function tarjetaActiva(item, zona) {
+  var activa = item.estado === 'activa';
+  var tarjeta = nodo('article', 'zd-card zd-auto-card');
+  tarjeta.appendChild(cabeza(item.titulo, item.descripcion,
+    nodo('span', activa ? 'zd-badge zd-badge--ok' : 'zd-badge', activa ? 'Activa' : 'Pausada')));
+  var tiempos = nodo('dl', 'zd-auto-card__times');
+  var ultima = item.ultimaEjecucion;
+  if (ultima === null) {
+    dato(tiempos, 'Última revisión', 'Todavía no hubo una revisión');
+  } else {
+    var resultado = ultima.resultado === 'completada' ? 'Se completó' : 'No se pudo hacer';
+    dato(tiempos, 'Última revisión', resultado + ' · ' + formatear(ultima.fecha, zona));
+  }
+  if (item.proximaEjecucion) { dato(tiempos, 'Próxima revisión', formatear(item.proximaEjecucion, zona)); }
+  if (item.frecuencia) { dato(tiempos, 'Frecuencia', item.frecuencia); }
+  tarjeta.appendChild(tiempos);
+  return tarjeta;
+}
+function tarjetaDisponible(item) {
+  var tarjeta = nodo('article', 'zd-card zd-auto-card zd-auto-card--disponible');
+  tarjeta.appendChild(cabeza(item.titulo, item.descripcion, null));
+  return tarjeta;
+}
+function pintar(cuerpo) {
+  var activas = document.getElementById('lista-activas');
+  var disponibles = document.getElementById('lista-disponibles');
+  mostrar('estado-carga', false);
+  for (var i = 0; i < cuerpo.activas.length; i++) {
+    activas.appendChild(tarjetaActiva(cuerpo.activas[i], cuerpo.zonaHoraria));
+  }
+  for (var j = 0; j < cuerpo.disponibles.length; j++) {
+    disponibles.appendChild(tarjetaDisponible(cuerpo.disponibles[j]));
+  }
+  mostrar('estado-vacio', cuerpo.activas.length === 0);
+  mostrar('lista-activas', cuerpo.activas.length > 0);
+  mostrar('seccion-disponibles', cuerpo.disponibles.length > 0);
+  mostrar('nota-truncado', cuerpo.truncado === true);
+}
+function fallar(texto) {
+  mostrar('estado-carga', false);
+  document.getElementById('texto-error').textContent = texto;
+  mostrar('estado-error', true);
+}
+fetch('/api/panel/automatizaciones', { credentials: 'same-origin' }).then(function (respuesta) {
+  if (respuesta.status === 401) {
+    window.location.reload();
+    return null;
+  }
+  if (respuesta.status === 409) {
+    fallar(MENSAJE_TENANT_INACTIVO);
+    return null;
+  }
+  if (!respuesta.ok) {
+    fallar(MENSAJE_ERROR);
+    return null;
+  }
+  return respuesta.json();
+}).then(function (cuerpo) {
+  if (cuerpo === null) { return; }
+  pintar(cuerpo);
+}).catch(function () {
+  fallar(MENSAJE_ERROR);
 });
 </script>
 ` + PIE_PAGINA;
