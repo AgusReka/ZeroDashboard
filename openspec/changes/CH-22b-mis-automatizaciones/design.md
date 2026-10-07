@@ -126,7 +126,7 @@ Rollback: revert the PR(s); no migration or data change.
 
 ## Open questions (all resolved by the user, 2026-10-06)
 
-Resolution: (1) `ultimaEjecucion` is `{ fecha, resultado }` with `completada` for `ok` and `no-realizada` for `fallo` and `omitida`; an `omitida` run counts as the last run. (2) Five queries are accepted. (3) The copy in section 5 is approved as written, including the fallback. (4) A corrupt stored cron yields `proximaEjecucion: null` and no `frecuencia`. (5) A `409` shows the login screen's inactive-business text. (6) Duplicate template slugs are deduplicated by slug. Recorded in DEC-137. The original questions follow for traceability.
+Resolution: (1) `ultimaEjecucion` is `{ fecha, resultado }` with `completada` for `ok` and `no-realizada` for `fallo` and `omitida`; an `omitida` run counts as the last run. (2) Five queries are accepted. (3) The copy in section 5 is approved as written, including the fallback. (4) A corrupt stored cron yields `proximaEjecucion: null` and no `frecuencia`. (5) A `409` shows the login screen's inactive-business text. (6) Duplicate template slugs are deduplicated by slug, and a slug is hidden when any template with that slug has an active automation. Recorded in DEC-137. The original questions follow for traceability.
 
 These are not decided in DEC-137, DEC-128, DEC-129, DEC-135 or DEC-136. Per `AGENTS.md`, decisions of architecture must be registered in `docs/01-decisiones.md` before implementation; the first two may need that, the rest are confirmations.
 
