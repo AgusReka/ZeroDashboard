@@ -1,3 +1,5 @@
+import { cronValido, proximaEjecucion } from './automatizaciones.js';
+
 /**
  * CH-22b (DEC-137): the pure half of the panel's "mis automatizaciones" read. Business
  * copy, the readable frequency, the neutral run outcome and the allow-list projections
@@ -74,4 +76,89 @@ export function frecuenciaDeCron(cron: string): string | null {
   }
   const hhmm = `${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`;
   return `${dias} a las ${hhmm}`;
+}
+
+// ---- last run and active items ------------------------------------------------------
+
+/** The only two outcomes the client reads about a finished run. */
+export type ResultadoNegocio = 'completada' | 'no-realizada';
+
+/**
+ * `ok` is `completada`; `fallo`, `omitida` and any state this code does not know are
+ * `no-realizada`. The reason of a failure never reaches the client (DEC-137, CH-22c).
+ */
+export function resultadoDe(estado: string): ResultadoNegocio {
+  return estado === 'ok' ? 'completada' : 'no-realizada';
+}
+
+/** The columns of a stored automation this projection reads; nothing else is selected. */
+export interface FilaAutomatizacion {
+  activo: boolean;
+  cron: string;
+  plantilla: { automatizacion: string };
+}
+
+/** The latest finished run of one automation (never `en-curso`), as stored. */
+export interface UltimaEjecucionFila {
+  estado: string;
+  iniciadaEn: Date;
+  finalizadaEn: Date | null;
+}
+
+/** One entry of `activas`: the allow-list of DEC-137, with no identifier. */
+export interface ItemActiva {
+  titulo: string;
+  descripcion: string;
+  estado: 'activa' | 'pausada';
+  frecuencia?: string;
+  ultimaEjecucion: { fecha: string; resultado: ResultadoNegocio } | null;
+  proximaEjecucion: string | null;
+}
+
+/**
+ * Builds one `activas` item. The output object is written literally from named inputs,
+ * never by spreading a stored row, so a column added later cannot leak. `estado` follows
+ * `activo` alone: a failed last run does not change it. `ahora` is the request's single
+ * clock read, shared by every item, and `zona` is the deployment zone (DEC-77).
+ *
+ * An invalid stored cron gives `proximaEjecucion: null` and no `frecuencia` instead of a
+ * throw that would blank the whole screen.
+ */
+export function proyectarActiva(
+  fila: FilaAutomatizacion,
+  ultima: UltimaEjecucionFila | null,
+  ahora: Date,
+  zona: string,
+): ItemActiva {
+  const copy = copyDe(fila.plantilla.automatizacion);
+  const item: ItemActiva = {
+    titulo: copy.titulo,
+    descripcion: copy.descripcion,
+    estado: fila.activo ? 'activa' : 'pausada',
+    ultimaEjecucion:
+      ultima === null
+        ? null
+        : {
+            fecha: (ultima.finalizadaEn ?? ultima.iniciadaEn).toISOString(),
+            resultado: resultadoDe(ultima.estado),
+          },
+    proximaEjecucion: fila.activo ? proximaIso(fila.cron, ahora, zona) : null,
+  };
+  const frecuencia = frecuenciaDeCron(fila.cron);
+  if (frecuencia !== null) {
+    item.frecuencia = frecuencia;
+  }
+  return item;
+}
+
+/** The next fire as ISO UTC, or `null` when the stored expression cannot be resolved. */
+function proximaIso(cron: string, ahora: Date, zona: string): string | null {
+  if (!cronValido(cron, zona)) {
+    return null;
+  }
+  try {
+    return proximaEjecucion(cron, ahora, zona).toISOString();
+  } catch {
+    return null;
+  }
 }

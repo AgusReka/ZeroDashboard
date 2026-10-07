@@ -5,6 +5,9 @@ import {
   COPY_NEUTRO,
   copyDe,
   frecuenciaDeCron,
+  proyectarActiva,
+  resultadoDe,
+  type FilaAutomatizacion,
 } from './panel-automatizaciones.js';
 
 /**
@@ -76,6 +79,148 @@ describe('frecuenciaDeCron — text only for the three DEC-129 patterns', () => 
   test('1.2 the result never contains the cron string', () => {
     for (const cron of ['30 8 * * *', '0 9 * * 1-5', '0 18 * * 1-6']) {
       assert.ok(!(frecuenciaDeCron(cron) ?? '').includes(cron), cron);
+    }
+  });
+});
+
+// ---- 1.3 result mapping ------------------------------------------------------------
+
+describe('resultadoDe — a neutral outcome, never the failure reason', () => {
+  test('1.3 ok is completada', () => {
+    assert.equal(resultadoDe('ok'), 'completada');
+  });
+
+  test('1.3 fallo, omitida and unknown states are no-realizada', () => {
+    for (const estado of ['fallo', 'omitida', 'en-curso', 'algo-nuevo', '']) {
+      assert.equal(resultadoDe(estado), 'no-realizada', estado);
+    }
+  });
+});
+
+// ---- 1.4 to 1.6 active-item projection ----------------------------------------------
+
+const AHORA = new Date('2026-10-07T10:00:00Z');
+const ZONA_BA = 'America/Argentina/Buenos_Aires';
+const PROHIBIDAS = ['tenantId', 'conexionId', 'valores', 'codigoError', 'error', 'sql'];
+
+/** A stored row as the database would hand it, carrying every forbidden field. */
+const FILA_CRUDA = {
+  id: 'aut-1',
+  tenantId: 'ten-1',
+  plantillaId: 'pla-1',
+  conexionId: 'con-1',
+  valores: { umbral: 5 },
+  destinatario: 'ana@empresa.com',
+  activo: true,
+  cron: '0 8 * * *',
+  plantilla: { automatizacion: 'stock-fisico', nombre: 'Console name', sql: 'SELECT 1' },
+};
+const EJECUCION_CRUDA = {
+  id: 'eje-1',
+  tenantId: 'ten-1',
+  estado: 'fallo',
+  iniciadaEn: new Date('2026-10-07T08:00:00Z'),
+  finalizadaEn: new Date('2026-10-07T08:00:05Z'),
+  error: 'sql-rechazado',
+  codigoError: '42P01',
+};
+
+function fila(parche: Partial<FilaAutomatizacion> = {}): FilaAutomatizacion {
+  return { activo: true, cron: '0 8 * * *', plantilla: { automatizacion: 'stock-fisico' }, ...parche };
+}
+
+/** Every key at any depth of a parsed JSON value. */
+function clavesProfundas(valor: unknown): string[] {
+  if (Array.isArray(valor)) {
+    return valor.flatMap(clavesProfundas);
+  }
+  if (valor !== null && typeof valor === 'object') {
+    return Object.entries(valor).flatMap(([k, v]) => [k, ...clavesProfundas(v)]);
+  }
+  return [];
+}
+
+describe('proyectarActiva — allow-list without technical fields', () => {
+  test('1.4 no forbidden key and no stored value reaches the item', () => {
+    const item = proyectarActiva(FILA_CRUDA, EJECUCION_CRUDA, AHORA, 'UTC');
+    const claves = clavesProfundas(item);
+    for (const prohibida of PROHIBIDAS) {
+      assert.ok(!claves.includes(prohibida), prohibida);
+    }
+    const texto = JSON.stringify(item);
+    for (const valor of ['SELECT 1', 'Console name', '42P01', 'sql-rechazado', 'ten-1', 'con-1']) {
+      assert.ok(!texto.includes(valor), valor);
+    }
+  });
+
+  test('1.4 the item has exactly the allow-listed keys and no id', () => {
+    const item = proyectarActiva(FILA_CRUDA, EJECUCION_CRUDA, AHORA, 'UTC');
+    assert.deepEqual(Object.keys(item).sort(), [
+      'descripcion',
+      'estado',
+      'frecuencia',
+      'proximaEjecucion',
+      'titulo',
+      'ultimaEjecucion',
+    ]);
+    assert.deepEqual(Object.keys(item.ultimaEjecucion ?? {}).sort(), ['fecha', 'resultado']);
+  });
+
+  test('1.4 the copy comes from the slug map, and the fallback for an unmapped slug', () => {
+    const mapeada = proyectarActiva(fila(), null, AHORA, 'UTC');
+    assert.equal(mapeada.titulo, 'Aviso de stock bajo');
+    const otra = proyectarActiva(
+      fila({ plantilla: { automatizacion: 'reporte-semanal' } }),
+      null,
+      AHORA,
+      'UTC',
+    );
+    assert.equal(otra.titulo, 'Automatización de tu negocio');
+  });
+
+  test('1.4 estado is activa or pausada only; a failed last run does not change it', () => {
+    assert.equal(proyectarActiva(fila(), null, AHORA, 'UTC').estado, 'activa');
+    assert.equal(proyectarActiva(fila({ activo: false }), null, AHORA, 'UTC').estado, 'pausada');
+    const conFallo = proyectarActiva(fila(), EJECUCION_CRUDA, AHORA, 'UTC');
+    assert.equal(conFallo.estado, 'activa');
+    assert.equal(conFallo.ultimaEjecucion?.resultado, 'no-realizada');
+  });
+
+  test('1.4 frecuencia is a missing key, not null, outside the three patterns', () => {
+    const item = proyectarActiva(fila({ cron: '*/15 * * * *' }), null, AHORA, 'UTC');
+    assert.equal('frecuencia' in item, false);
+    assert.equal(proyectarActiva(fila(), null, AHORA, 'UTC').frecuencia, 'Todos los días a las 08:00');
+  });
+
+  test('1.4 fecha is finalizadaEn, or iniciadaEn when the run has no end', () => {
+    const fin = proyectarActiva(fila(), { ...EJECUCION_CRUDA }, AHORA, 'UTC');
+    assert.equal(fin.ultimaEjecucion?.fecha, '2026-10-07T08:00:05.000Z');
+    const sinFin = proyectarActiva(
+      fila(),
+      { estado: 'ok', iniciadaEn: new Date('2026-10-07T07:00:00Z'), finalizadaEn: null },
+      AHORA,
+      'UTC',
+    );
+    assert.deepEqual(sinFin.ultimaEjecucion, {
+      fecha: '2026-10-07T07:00:00.000Z',
+      resultado: 'completada',
+    });
+  });
+
+  test('1.5 next run from a fixed clock, per zone', () => {
+    assert.equal(proyectarActiva(fila(), null, AHORA, 'UTC').proximaEjecucion, '2026-10-08T08:00:00.000Z');
+    assert.equal(proyectarActiva(fila(), null, AHORA, ZONA_BA).proximaEjecucion, '2026-10-07T11:00:00.000Z');
+  });
+
+  test('1.5 a paused automation has no next run', () => {
+    assert.equal(proyectarActiva(fila({ activo: false }), null, AHORA, 'UTC').proximaEjecucion, null);
+  });
+
+  test('1.6 an invalid stored cron gives a null next run, no frecuencia and no throw', () => {
+    for (const cron of ['no es un cron', '61 8 * * *']) {
+      const item = proyectarActiva(fila({ cron }), null, AHORA, 'UTC');
+      assert.equal(item.proximaEjecucion, null, cron);
+      assert.equal('frecuencia' in item, false, cron);
     }
   });
 });
