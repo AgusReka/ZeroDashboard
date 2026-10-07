@@ -174,7 +174,7 @@ export interface PlantillaCatalogo {
 /**
  * The templates the client could still turn on: those with business copy and without an
  * active automation of this tenant (a paused one does not hide it). Several templates
- * with the same slug are listed once. Order is the copy map's insertion order, then the
+ * with the same slug are listed once, and none is listed if any of them is active. Order is the copy map's insertion order, then the
  * template `id`, so the same input always gives the same list. Output carries only
  * `titulo` and `descripcion`.
  *
@@ -185,8 +185,11 @@ export function proyectarDisponibles(
   plantillaIdsActivas: ReadonlySet<string>,
 ): CopyNegocio[] {
   const orden = [...COPY_NEGOCIO.keys()];
+  const etiquetasActivas = new Set(
+    plantillas.filter((p) => plantillaIdsActivas.has(p.id)).map((p) => p.automatizacion),
+  );
   const candidatas = plantillas
-    .filter((p) => COPY_NEGOCIO.has(p.automatizacion) && !plantillaIdsActivas.has(p.id))
+    .filter((p) => COPY_NEGOCIO.has(p.automatizacion) && !etiquetasActivas.has(p.automatizacion))
     .sort(
       (a, b) =>
         orden.indexOf(a.automatizacion) - orden.indexOf(b.automatizacion) ||

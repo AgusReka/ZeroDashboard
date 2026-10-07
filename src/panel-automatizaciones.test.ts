@@ -278,6 +278,18 @@ describe('proyectarDisponibles — what the client can still turn on', () => {
     );
     assert.deepEqual(lista, [copyDe('stock-fisico')]);
   });
+
+  test('1.8 a slug with an active template is hidden even if a twin template is not active', () => {
+    const lista = proyectarDisponibles(
+      [
+        { id: 'p-7', automatizacion: 'stock-fisico' },
+        { id: 'p-8', automatizacion: 'stock-fisico' },
+        PRODUCIBLE,
+      ],
+      new Set(['p-7']),
+    );
+    assert.deepEqual(lista, [copyDe('stock-producible')]);
+  });
 });
 
 // ---- 1.9 glossary scan --------------------------------------------------------------
