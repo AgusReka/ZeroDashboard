@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import net from 'node:net';
+import { after, before, describe, test } from 'node:test';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from './generated/prisma/client.js';
+import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { registrarContextoTenant } from './contexto-tenant.js';
+import { generarTokenSesion } from './crypto-auth.js';
+import { LIMITE_LISTADO } from './listados.js';
 import {
   COPY_NEGOCIO,
   COPY_NEUTRO,
@@ -7,6 +15,7 @@ import {
   frecuenciaDeCron,
   proyectarActiva,
   proyectarDisponibles,
+  registerPanelAutomatizacionesRoutes,
   resultadoDe,
   type FilaAutomatizacion,
 } from './panel-automatizaciones.js';
@@ -324,3 +333,393 @@ describe('glosario — no technical term reaches the client copy', () => {
     }
   });
 });
+
+// ---- 2.x route against a live PostgreSQL target (CH-22b PR2) -------------------------
+
+/** Same target and variables as `src/panel-auth.test.ts` (see `src/aislamiento.test.ts`). */
+const objetivo = {
+  host: process.env.TEST_DB_HOST ?? 'localhost',
+  port: Number(process.env.TEST_DB_PORT ?? '5432'),
+  user: process.env.TEST_DB_USER ?? 'zerodashboard',
+  password: process.env.TEST_DB_PASSWORD ?? 'change-me',
+  database: process.env.TEST_DB_NAME ?? 'zerodashboard',
+};
+const databaseUrl =
+  `postgresql://${encodeURIComponent(objetivo.user)}:${encodeURIComponent(objetivo.password)}` +
+  `@${objetivo.host}:${objetivo.port}/${objetivo.database}`;
+
+function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const cerrar = (alcanzable: boolean): void => {
+      socket.destroy();
+      resolve(alcanzable);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => cerrar(true));
+    socket.once('timeout', () => cerrar(false));
+    socket.once('error', () => cerrar(false));
+  });
+}
+
+const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
+const motivoSkip =
+  `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
+  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento.test.ts)';
+
+interface CuerpoAutomatizaciones {
+  activas: Array<Record<string, unknown> & { titulo: string; estado: string }>;
+  disponibles: Array<{ titulo: string; descripcion: string }>;
+  zonaHoraria: string;
+  truncado: boolean;
+}
+
+/** Every object key of a parsed body, at any depth. */
+function clavesDe(valor: unknown, acumuladas = new Set<string>()): Set<string> {
+  if (Array.isArray(valor)) {
+    valor.forEach((v) => clavesDe(v, acumuladas));
+  } else if (typeof valor === 'object' && valor !== null) {
+    for (const [clave, interior] of Object.entries(valor)) {
+      acumuladas.add(clave);
+      clavesDe(interior, acumuladas);
+    }
+  }
+  return acumuladas;
+}
+
+describe(
+  'GET /api/panel/automatizaciones — live PostgreSQL target (CH-22b PR2)',
+  { skip: alcanzable ? false : motivoSkip },
+  () => {
+    const marca = `CH-22b ${Date.now()}`;
+    const SQL_SECRETO = `SELECT secreto_${Date.now()} FROM v_producto`;
+    const NOMBRE_PLANTILLA = `${marca} plantilla interna`;
+    const RELOJ = new Date('2026-10-07T10:00:00Z');
+    let db!: PrismaClient;
+    let app!: FastifyInstance;
+    let fisico!: string;
+    let producible!: string;
+    let noMapeada!: string;
+    const tenantIds: string[] = [];
+    const plantillaIds: string[] = [];
+    const apps: FastifyInstance[] = [];
+
+    async function montarApp(zona: string, reloj?: () => Date): Promise<FastifyInstance> {
+      const instancia = Fastify({ logger: false });
+      const aislado = extenderConAislamiento(db);
+      registrarContextoTenant(instancia, aislado);
+      registerPanelAutomatizacionesRoutes(instancia, aislado, zona, reloj);
+      apps.push(instancia);
+      await instancia.ready();
+      return instancia;
+    }
+
+    before(async () => {
+      db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+      app = await montarApp('UTC');
+      const plantilla = async (automatizacion: string): Promise<string> => {
+        const fila = await db.plantilla.create({
+          data: {
+            nombre: NOMBRE_PLANTILLA,
+            sql: SQL_SECRETO,
+            entidades: ['producto'],
+            automatizacion,
+            formato: 'correo-html',
+            toleranciaFrescuraMinutos: 30,
+          },
+        });
+        plantillaIds.push(fila.id);
+        return fila.id;
+      };
+      fisico = await plantilla('stock-fisico');
+      producible = await plantilla('stock-producible');
+      noMapeada = await plantilla(`ch22b-sin-copy-${Date.now()}`);
+    });
+
+    after(async () => {
+      if (tenantIds.length > 0) {
+        const donde = { tenantId: { in: tenantIds } };
+        await db.ejecucion.deleteMany({ where: donde });
+        await db.automatizacion.deleteMany({ where: donde });
+        await db.conexion.deleteMany({ where: donde });
+        await db.usuario.deleteMany({ where: donde });
+        await db.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+      }
+      await db.plantilla.deleteMany({ where: { id: { in: plantillaIds } } });
+      await db.$disconnect();
+      await Promise.all(apps.map((a) => a.close()));
+    });
+
+    interface Negocio {
+      tenantId: string;
+      conexionId: string;
+      cookie: { cookie: string };
+    }
+
+    /** One tenant, one user, one connection and one live session cookie. */
+    async function negocio(etiqueta: string, tenantActivo = true): Promise<Negocio> {
+      const tenant = await db.tenant.create({
+        data: { nombre: `${marca} ${etiqueta}`, activo: tenantActivo },
+      });
+      tenantIds.push(tenant.id);
+      const usuario = await db.usuario.create({
+        data: { tenantId: tenant.id, correo: `${tenant.id}@prueba.test`, claveHash: 'x', activo: true },
+      });
+      const conexion = await db.conexion.create({
+        data: {
+          tenantId: tenant.id,
+          nombre: 'Replica',
+          motor: 'postgres',
+          host: 'localhost',
+          puerto: 5432,
+          baseDeDatos: 'x',
+          usuarioDb: 'x',
+          credencial: 'x',
+        },
+      });
+      const { tokenPlano, tokenHash } = generarTokenSesion();
+      await db.sesionPanel.create({
+        data: {
+          tokenHash,
+          usuarioId: usuario.id,
+          tenantId: tenant.id,
+          expiraEn: new Date(Date.now() + 3_600_000),
+        },
+      });
+      return {
+        tenantId: tenant.id,
+        conexionId: conexion.id,
+        cookie: { cookie: `zd_panel_session=${tokenPlano}` },
+      };
+    }
+
+    async function automatizacion(
+      n: Negocio,
+      plantillaId: string,
+      extra: { cron?: string; activo?: boolean; creadaEn?: string; valores?: object } = {},
+    ): Promise<string> {
+      const fila = await db.automatizacion.create({
+        data: {
+          tenantId: n.tenantId,
+          plantillaId,
+          conexionId: n.conexionId,
+          cron: extra.cron ?? '0 8 * * *',
+          activo: extra.activo ?? true,
+          ...(extra.creadaEn === undefined ? {} : { creadaEn: new Date(extra.creadaEn) }),
+          ...(extra.valores === undefined ? {} : { valores: extra.valores }),
+        },
+      });
+      return fila.id;
+    }
+
+    async function ejecucion(
+      n: Negocio,
+      automatizacionId: string,
+      estado: string,
+      iniciadaEn: string,
+      extra: { error?: string; codigoError?: string } = {},
+    ): Promise<void> {
+      await db.ejecucion.create({
+        data: {
+          tenantId: n.tenantId,
+          automatizacionId,
+          estado,
+          iniciadaEn: new Date(iniciadaEn),
+          finalizadaEn: estado === 'en-curso' ? null : new Date(iniciadaEn),
+          ...extra,
+        },
+      });
+    }
+
+    async function leer(n: Negocio, instancia: FastifyInstance = app) {
+      const respuesta = await instancia.inject({
+        method: 'GET',
+        url: '/api/panel/automatizaciones',
+        headers: n.cookie,
+      });
+      return { respuesta, cuerpo: respuesta.json() as CuerpoAutomatizaciones };
+    }
+
+    test('2.1 a tenant without automations answers 200, the exact keys and every mapped template', async () => {
+      const { respuesta, cuerpo } = await leer(await negocio('vacio'));
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.deepEqual(Object.keys(cuerpo).sort(), ['activas', 'disponibles', 'truncado', 'zonaHoraria']);
+      assert.deepEqual(cuerpo.activas, []);
+      assert.equal(cuerpo.truncado, false);
+      assert.equal(cuerpo.zonaHoraria, 'UTC');
+      assert.deepEqual(cuerpo.disponibles, [...COPY_NEGOCIO.values()]);
+    });
+
+    test('2.2 the session guard answers 401 without a cookie or with an unknown token', async () => {
+      const sin = await app.inject({ method: 'GET', url: '/api/panel/automatizaciones' });
+      assert.equal(sin.statusCode, 401, sin.body);
+      assert.deepEqual(sin.json(), { error: 'sesion-invalida' });
+      const falso = await app.inject({
+        method: 'GET',
+        url: '/api/panel/automatizaciones',
+        headers: { cookie: 'zd_panel_session=no-existe' },
+      });
+      assert.equal(falso.statusCode, 401, falso.body);
+      assert.deepEqual(falso.json(), { error: 'sesion-invalida' });
+    });
+
+    test('2.2 an expired session answers 401 sesion-expirada and no data', async () => {
+      const n = await negocio('expirado');
+      await db.sesionPanel.updateMany({
+        where: { tenantId: n.tenantId },
+        data: { expiraEn: new Date(Date.now() - 60_000) },
+      });
+      const { respuesta } = await leer(n);
+      assert.equal(respuesta.statusCode, 401, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'sesion-expirada' });
+    });
+
+    test('2.2 a deactivated tenant answers 409 tenant-desactivado and no automation data', async () => {
+      const n = await negocio('muerto', false);
+      await automatizacion(n, fisico);
+      const { respuesta } = await leer(n);
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-desactivado' });
+    });
+
+    test('2.3 a valid cookie with no X-Tenant-Id answers 200, not 400', async () => {
+      const n = await negocio('sin-cabecera');
+      const respuesta = await app.inject({
+        method: 'GET',
+        url: '/api/panel/automatizaciones',
+        headers: n.cookie,
+      });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+    });
+
+    test('2.6 ultimaEjecucion: none and only en-curso are null; the latest finished one wins', async () => {
+      const n = await negocio('ultima');
+      await automatizacion(n, fisico, { creadaEn: '2026-01-03T00:00:00Z' });
+      const soloCurso = await automatizacion(n, producible, { creadaEn: '2026-01-02T00:00:00Z' });
+      const mixta = await automatizacion(n, noMapeada, { creadaEn: '2026-01-01T00:00:00Z' });
+      await ejecucion(n, soloCurso, 'en-curso', '2026-10-07T09:00:00Z');
+      await ejecucion(n, mixta, 'ok', '2026-10-07T08:00:00Z');
+      await ejecucion(n, mixta, 'en-curso', '2026-10-07T09:00:00Z');
+      const { cuerpo } = await leer(n);
+      assert.deepEqual(
+        cuerpo.activas.map((a) => a.ultimaEjecucion),
+        [null, null, { fecha: '2026-10-07T08:00:00.000Z', resultado: 'completada' }],
+      );
+    });
+
+    test('2.6 each automation reports its own latest; a failure is no-realizada with no error text', async () => {
+      const n = await negocio('propias');
+      const uno = await automatizacion(n, fisico, { creadaEn: '2026-01-02T00:00:00Z' });
+      const dos = await automatizacion(n, producible, { creadaEn: '2026-01-01T00:00:00Z' });
+      await ejecucion(n, uno, 'ok', '2026-10-06T08:00:00Z');
+      await ejecucion(n, uno, 'fallo', '2026-10-07T08:00:00Z', { error: 'replica-caida', codigoError: '08006' });
+      await ejecucion(n, dos, 'ok', '2026-10-05T08:00:00Z');
+      const { respuesta, cuerpo } = await leer(n);
+      assert.deepEqual(
+        cuerpo.activas.map((a) => [a.estado, a.ultimaEjecucion]),
+        [
+          ['activa', { fecha: '2026-10-07T08:00:00.000Z', resultado: 'no-realizada' }],
+          ['activa', { fecha: '2026-10-05T08:00:00.000Z', resultado: 'completada' }],
+        ],
+      );
+      assert.ok(!respuesta.body.includes('replica-caida') && !respuesta.body.includes('08006'));
+    });
+
+    test('2.6 a paused automation is listed as pausada with proximaEjecucion null', async () => {
+      const n = await negocio('pausada');
+      await automatizacion(n, fisico, { activo: false });
+      const { cuerpo } = await leer(n);
+      assert.equal(cuerpo.activas.length, 1);
+      assert.equal(cuerpo.activas[0]?.estado, 'pausada');
+      assert.equal(cuerpo.activas[0]?.proximaEjecucion, null);
+    });
+
+    test('2.7 an active automation hides its template; a paused-only one does not', async () => {
+      const activa = await negocio('oculta');
+      await automatizacion(activa, fisico);
+      assert.deepEqual((await leer(activa)).cuerpo.disponibles, [COPY_NEGOCIO.get('stock-producible')]);
+
+      const pausada = await negocio('solo-pausada');
+      await automatizacion(pausada, fisico, { activo: false });
+      assert.deepEqual((await leer(pausada)).cuerpo.disponibles, [...COPY_NEGOCIO.values()]);
+    });
+
+    test('2.7 an unmapped slug is never offered, and an existing automation of it uses the fallback', async () => {
+      const n = await negocio('sin-copy');
+      await automatizacion(n, noMapeada);
+      const { respuesta, cuerpo } = await leer(n);
+      assert.equal(cuerpo.activas[0]?.titulo, COPY_NEUTRO.titulo);
+      assert.equal(cuerpo.activas[0]?.descripcion, COPY_NEUTRO.descripcion);
+      assert.ok(!respuesta.body.includes(NOMBRE_PLANTILLA));
+      assert.equal(cuerpo.disponibles.length, COPY_NEGOCIO.size);
+    });
+
+    test('2.8 the injected clock and zone fix proximaEjecucion', async () => {
+      const n = await negocio('reloj');
+      await automatizacion(n, fisico, { cron: '0 8 * * *' });
+      const utc = await montarApp('UTC', () => RELOJ);
+      const buenosAires = await montarApp('America/Argentina/Buenos_Aires', () => RELOJ);
+      assert.equal((await leer(n, utc)).cuerpo.activas[0]?.proximaEjecucion, '2026-10-08T08:00:00.000Z');
+      const ba = await leer(n, buenosAires);
+      assert.equal(ba.cuerpo.activas[0]?.proximaEjecucion, '2026-10-07T11:00:00.000Z');
+      assert.equal(ba.cuerpo.zonaHoraria, 'America/Argentina/Buenos_Aires');
+    });
+
+    test('2.9 a stored invalid cron still answers 200 with proximaEjecucion null and no frecuencia', async () => {
+      const n = await negocio('cron-roto');
+      await automatizacion(n, fisico, { cron: 'esto no es un cron', creadaEn: '2026-01-02T00:00:00Z' });
+      await automatizacion(n, producible, { cron: '30 9 * * 1-5', creadaEn: '2026-01-01T00:00:00Z' });
+      const { respuesta, cuerpo } = await leer(n);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.equal(cuerpo.activas[0]?.proximaEjecucion, null);
+      assert.ok(!('frecuencia' in (cuerpo.activas[0] ?? {})));
+      assert.equal(cuerpo.activas[1]?.frecuencia, 'De lunes a viernes a las 09:30');
+      assert.equal(typeof cuerpo.activas[1]?.proximaEjecucion, 'string');
+    });
+
+    test('2.10 the body carries only allow-listed keys and none of the stored internals', async () => {
+      const n = await negocio('prohibidas');
+      const id = await automatizacion(n, fisico, { valores: { umbral: 7 }, cron: '*/15 * * * *' });
+      await ejecucion(n, id, 'fallo', '2026-10-07T08:00:00Z', { error: 'replica-caida', codigoError: '42P01' });
+      const { respuesta, cuerpo } = await leer(n);
+      const claves = clavesDe(cuerpo);
+      for (const prohibida of ['tenantId', 'conexionId', 'valores', 'codigoError', 'error', 'sql', 'cron']) {
+        assert.ok(!claves.has(prohibida), prohibida);
+      }
+      for (const texto of [SQL_SECRETO, '42P01', 'replica-caida', NOMBRE_PLANTILLA, n.tenantId, n.conexionId, '*/15']) {
+        assert.ok(!respuesta.body.includes(texto), texto);
+      }
+      assert.deepEqual(
+        Object.keys(cuerpo.activas[0] ?? {}).sort(),
+        ['descripcion', 'estado', 'proximaEjecucion', 'titulo', 'ultimaEjecucion'],
+      );
+      assert.deepEqual(Object.keys(cuerpo.disponibles[0] ?? {}).sort(), ['descripcion', 'titulo']);
+    });
+
+    test('2.11 at the limit is not truncated; one over is cut to the limit and disponibles is unaffected', async () => {
+      const n = await negocio('limite');
+      await db.automatizacion.createMany({
+        data: Array.from({ length: LIMITE_LISTADO }, (_, i) => ({
+          tenantId: n.tenantId,
+          plantillaId: noMapeada,
+          conexionId: n.conexionId,
+          cron: '0 8 * * *',
+          creadaEn: new Date(Date.UTC(2026, 0, 1, 0, 0, i)),
+        })),
+      });
+      const justo = await leer(n);
+      assert.equal(justo.cuerpo.activas.length, LIMITE_LISTADO);
+      assert.equal(justo.cuerpo.truncado, false);
+
+      await automatizacion(n, fisico, { creadaEn: '2025-01-01T00:00:00Z' });
+      const exceso = await leer(n);
+      assert.equal(exceso.cuerpo.activas.length, LIMITE_LISTADO);
+      assert.equal(exceso.cuerpo.truncado, true);
+      assert.deepEqual(
+        exceso.cuerpo.disponibles,
+        [COPY_NEGOCIO.get('stock-producible')],
+        'the oldest (cut) automation still hides its template',
+      );
+    });
+  },
+);

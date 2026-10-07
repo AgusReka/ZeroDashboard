@@ -9,6 +9,7 @@ import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { conTenantActivo, registrarContextoTenant } from './contexto-tenant.js';
 import { hashearClave } from './crypto-auth.js';
 import { registerPanelAuthRoutes } from './panel-auth.js';
+import { COPY_NEGOCIO, registerPanelAutomatizacionesRoutes } from './panel-automatizaciones.js';
 
 /**
  * CH-22a task 2.2 (DEC-135, T2): the two-tenant panel isolation proof. User A logs in
@@ -76,6 +77,7 @@ describe(
     let a!: FixtureAislamiento;
     let b!: FixtureAislamiento;
     const tenantIds: string[] = [];
+    const plantillaIds: string[] = [];
 
     before(async () => {
       db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -83,6 +85,7 @@ describe(
       app = Fastify({ logger: false });
       registrarContextoTenant(app, aislado);
       registerPanelAuthRoutes(app, aislado);
+      registerPanelAutomatizacionesRoutes(app, aislado, 'UTC');
       await app.ready();
 
       a = await montarUsuario('A');
@@ -91,9 +94,13 @@ describe(
 
     after(async () => {
       if (tenantIds.length > 0) {
+        await db.ejecucion.deleteMany({ where: { tenantId: { in: tenantIds } } });
+        await db.automatizacion.deleteMany({ where: { tenantId: { in: tenantIds } } });
+        await db.conexion.deleteMany({ where: { tenantId: { in: tenantIds } } });
         await db.usuario.deleteMany({ where: { tenantId: { in: tenantIds } } });
         await db.tenant.deleteMany({ where: { id: { in: tenantIds } } });
       }
+      await db.plantilla.deleteMany({ where: { id: { in: plantillaIds } } });
       await db.$disconnect();
       await app.close();
     });
@@ -224,6 +231,98 @@ describe(
       assert.equal(deA.statusCode, 200, deA.body);
       const cuerpo = deA.json() as { tenant: { id: string } };
       assert.equal(cuerpo.tenant.id, a.tenantId);
+    });
+
+    // ---- CH-22b 2.14, 2.15: the automations read, one session per tenant -------------
+
+    const INSTANTE_A = '2026-10-04T08:00:00.000Z';
+    const INSTANTE_B = '2026-10-05T09:30:00.000Z';
+
+    /** Tenant `t` runs `slug` actively, with one finished run at `instante`. */
+    async function montarAutomatizacion(t: FixtureAislamiento, slug: string, instante: string) {
+      const plantilla = await db.plantilla.create({
+        data: {
+          nombre: `CH-22b ${t.etiqueta} ${Date.now()}`,
+          sql: 'SELECT 1',
+          entidades: ['producto'],
+          automatizacion: slug,
+          formato: 'correo-html',
+          toleranciaFrescuraMinutos: 30,
+        },
+      });
+      plantillaIds.push(plantilla.id);
+      const conexion = await db.conexion.create({
+        data: {
+          tenantId: t.tenantId,
+          nombre: 'Replica',
+          motor: 'postgres',
+          host: 'localhost',
+          puerto: 5432,
+          baseDeDatos: 'x',
+          usuarioDb: 'x',
+          credencial: 'x',
+        },
+      });
+      const automatizacion = await db.automatizacion.create({
+        data: { tenantId: t.tenantId, plantillaId: plantilla.id, conexionId: conexion.id, cron: '0 8 * * *' },
+      });
+      await db.ejecucion.create({
+        data: {
+          tenantId: t.tenantId,
+          automatizacionId: automatizacion.id,
+          estado: 'ok',
+          iniciadaEn: new Date(instante),
+          finalizadaEn: new Date(instante),
+        },
+      });
+    }
+
+    async function automatizacionesDe(token: string, extra: { cabecera?: string; consulta?: string } = {}) {
+      return await app.inject({
+        method: 'GET',
+        url: '/api/panel/automatizaciones' + (extra.consulta === undefined ? '' : `?${extra.consulta}`),
+        headers: {
+          cookie: `${NOMBRE_COOKIE}=${token}`,
+          ...(extra.cabecera === undefined ? {} : { 'x-tenant-id': extra.cabecera }),
+        },
+      });
+    }
+
+    const titulo = (slug: string): string => COPY_NEGOCIO.get(slug)!.titulo;
+
+    test('2.14 two tenants each see only their own automations, and the other one never hides a template', async () => {
+      await montarAutomatizacion(a, 'stock-fisico', INSTANTE_A);
+      await montarAutomatizacion(b, 'stock-producible', INSTANTE_B);
+      const deA = await automatizacionesDe(tokenDe(await ingresar(a)));
+      const deB = await automatizacionesDe(tokenDe(await ingresar(b)));
+      assert.equal(deA.statusCode, 200, deA.body);
+      assert.equal(deB.statusCode, 200, deB.body);
+      const cuerpoA = deA.json() as { activas: Array<{ titulo: string; ultimaEjecucion: { fecha: string } }>; disponibles: Array<{ titulo: string }> };
+      const cuerpoB = deB.json() as typeof cuerpoA;
+
+      assert.deepEqual(cuerpoA.activas.map((i) => [i.titulo, i.ultimaEjecucion.fecha]), [[titulo('stock-fisico'), INSTANTE_A]]);
+      assert.deepEqual(cuerpoA.disponibles.map((i) => i.titulo), [titulo('stock-producible')]);
+      assert.deepEqual(cuerpoB.activas.map((i) => [i.titulo, i.ultimaEjecucion.fecha]), [[titulo('stock-producible'), INSTANTE_B]]);
+      assert.deepEqual(cuerpoB.disponibles.map((i) => i.titulo), [titulo('stock-fisico')]);
+
+      for (const [cuerpo, ajeno, instanteAjeno] of [[deA.body, b, INSTANTE_B], [deB.body, a, INSTANTE_A]] as const) {
+        assert.ok(!cuerpo.includes(ajeno.tenantId), 'no foreign tenant id');
+        assert.ok(!cuerpo.includes(instanteAjeno), 'no foreign execution instant');
+      }
+    });
+
+    test("2.15 a foreign X-Tenant-Id or tenant query parameter changes nothing: the body is byte-for-byte the same", async () => {
+      const tokenA = tokenDe(await ingresar(a));
+      const tokenB = tokenDe(await ingresar(b));
+      for (const [token, propio, ajeno] of [[tokenA, a, b], [tokenB, b, a]] as const) {
+        const base = await automatizacionesDe(token);
+        const conCabecera = await automatizacionesDe(token, { cabecera: ajeno.tenantId });
+        const conConsulta = await automatizacionesDe(token, { consulta: `tenantId=${ajeno.tenantId}&tenant=${ajeno.tenantId}` });
+        assert.equal(base.statusCode, 200, base.body);
+        assert.equal(conCabecera.body, base.body, 'the header is ignored');
+        assert.equal(conConsulta.body, base.body, 'the query parameter is ignored');
+        assert.ok(!conCabecera.body.includes(ajeno.tenantId) && !conCabecera.body.includes(propio.tenantId));
+      }
     });
   },
 );
