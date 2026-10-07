@@ -114,7 +114,7 @@ export interface UltimaEjecucionFila {
 export interface ItemActiva {
   titulo: string;
   descripcion: string;
-  estado: 'activa' | 'pausada';
+  estado: 'activa' | 'pausada' | 'con_falla';
   frecuencia?: string;
   ultimaEjecucion: { fecha: string; resultado: ResultadoNegocio } | null;
   proximaEjecucion: string | null;
@@ -136,17 +136,28 @@ export function proyectarActiva(
   zona: string,
 ): ItemActiva {
   const copy = copyDe(fila.plantilla.automatizacion);
+  const ultimaEjecucion: ItemActiva['ultimaEjecucion'] =
+    ultima === null
+      ? null
+      : {
+          fecha: (ultima.finalizadaEn ?? ultima.iniciadaEn).toISOString(),
+          resultado: resultadoDe(ultima.estado),
+        };
+  let estado: ItemActiva['estado'];
+  if (!fila.activo) {
+    estado = 'pausada';
+  } else {
+    if (ultima !== null && ultimaEjecucion !== null && ultimaEjecucion.resultado === 'no-realizada') {
+      estado = 'con_falla';
+    } else {
+      estado = 'activa';
+    }
+  }
   const item: ItemActiva = {
     titulo: copy.titulo,
     descripcion: copy.descripcion,
-    estado: fila.activo ? 'activa' : 'pausada',
-    ultimaEjecucion:
-      ultima === null
-        ? null
-        : {
-            fecha: (ultima.finalizadaEn ?? ultima.iniciadaEn).toISOString(),
-            resultado: resultadoDe(ultima.estado),
-          },
+    estado,
+    ultimaEjecucion,
     proximaEjecucion: fila.activo ? proximaIso(fila.cron, ahora, zona) : null,
   };
   const frecuencia = frecuenciaDeCron(fila.cron);
