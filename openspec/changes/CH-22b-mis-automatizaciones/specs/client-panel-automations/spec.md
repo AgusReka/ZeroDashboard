@@ -192,7 +192,7 @@ Each `activas` item SHALL carry `estado` equal to `activa` when the stored `acti
 
 - **GIVEN** the same clock and cron with zone `America/Argentina/Buenos_Aires` (UTC-3)
 - **WHEN** the route is called
-- **THEN** its `proximaEjecucion` SHALL be `2026-10-08T11:00:00.000Z`
+- **THEN** its `proximaEjecucion` SHALL be `2026-10-07T11:00:00.000Z`
 
 #### Scenario: Paused automation has no next run
 
