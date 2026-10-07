@@ -615,3 +615,39 @@ describe(
     });
   },
 );
+
+// ---- CH-22b 2.13 the panel automations row is exact, still with no database -----------
+
+describe('contexto de tenant — GET /api/panel/automatizaciones es una fila exacta (CH-22b, DEC-137)', () => {
+  let app!: FastifyInstance;
+  const alcanzada = async (): Promise<{ alcanzada: true }> => ({ alcanzada: true });
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    app.get('/api/panel/automatizaciones', alcanzada);
+    app.get('/api/panel/automatizaciones/extra', alcanzada);
+    app.post('/api/panel/automatizaciones', alcanzada);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  test('2.13 the exact row reaches its handler with no header', async () => {
+    const respuesta = await app.inject({ method: 'GET', url: '/api/panel/automatizaciones' });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+  });
+
+  for (const { method, url } of [
+    { method: 'GET', url: '/api/panel/automatizaciones/extra' },
+    { method: 'POST', url: '/api/panel/automatizaciones' },
+  ] as const) {
+    test(`2.13 ${method} ${url} with no header is refused 400 tenant-no-indicado`, async () => {
+      const respuesta = await app.inject({ method, url });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    });
+  }
+});
