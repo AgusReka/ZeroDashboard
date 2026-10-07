@@ -2479,6 +2479,28 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-137 — CH-22b: contrato de lectura "mis automatizaciones" del panel
+
+**Contexto.** CH-22b agrega al panel la lista de automatizaciones del cliente (P1h). Hay que fijar qué significan estado, "disponible" y "última ejecución", y qué expone la ruta, sin SQL ni términos técnicos (DEC-04, DEC-93, DEC-135).
+
+**Opciones.** Estado: (a) solo activa/pausada según `activo`; (b) derivado de la última ejecución; (c) ambos. Disponibles: (a) plantillas con texto de negocio sin automatización activa del tenant; (b) sin ninguna del tenant; (c) lista curada con marca. Última ejecución: (a) la última terminada; (b) la última exitosa; (c) cualquiera. Acciones: (a) omitir Ajustar y Activar; (b) mostrarlas deshabilitadas.
+
+**Decisión.** Estado (a): `activa` o `pausada`; "con falla" queda para CH-22c. Disponibles (a): se listan solo las plantillas con texto de negocio mapeado en el cliente (hoy las dos del catálogo inicial), sin filtrar por conexión. Última ejecución (a): la más reciente que no esté `en-curso`; sin ninguna, "Todavía no hubo una revisión". Acciones (a): se omiten. Ruta única `GET /api/panel/automatizaciones` con `{ activas, disponibles, zonaHoraria, truncado }`, tenant tomado solo de la sesión (DEC-135), proyección con lista blanca de campos (sin `conexionId`, `valores`, `codigoError`, `error` ni `sql`) y nunca `GET /plantillas/:id`.
+
+**Propuestas confirmadas por el usuario el 2026-10-06.** Próxima ejecución como ISO UTC más `zonaHoraria`, formateada en el navegador con `Intl` es-AR y ausente si la automatización está pausada. Frecuencia en lenguaje de negocio solo para los tres patrones de DEC-129; en otro caso se omite. Copy de estados vacío, cargando y error según P-02 de `pantallas.md`.
+
+**Ampliación del 2026-10-06 (diseño).** `ultimaEjecucion` es `{ fecha, resultado }`, con `completada` para `ok` y `no-realizada` para `fallo` y `omitida`; la omitida cuenta como última revisión. Textos de negocio: `stock-fisico` "Aviso de stock bajo", `stock-producible` "Aviso de productos que ya casi no podés armar", respaldo "Automatización de tu negocio" (descripciones en `design.md`, sección 5). Un cron guardado inválido da próxima ejecución nula y sin frecuencia, no un error 500. Un 409 muestra el texto de negocio inactivo del ingreso. Las plantillas con etiqueta repetida se deduplican por etiqueta. La lectura usa cinco consultas para que "disponibles" sea correcta aunque "activas" se trunque.
+
+**Por qué.** Mantiene el corte chico y separado de CH-22c y CH-23, y cumple las reglas 1 y 2 de forma estructural.
+
+**Se resigna.** Una plantilla sin texto de negocio no aparece como disponible; el cliente no ve fallas hasta CH-22c.
+
+**Decidido por:** el usuario, 2026-10-06 (estado, disponibles, última ejecución, acciones y las tres propuestas). No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
