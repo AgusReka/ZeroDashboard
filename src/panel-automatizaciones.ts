@@ -1,10 +1,15 @@
+import type { FastifyInstance } from 'fastify';
 import { cronValido, proximaEjecucion } from './automatizaciones.js';
+import type { PrismaAislado } from './aislamiento-prisma.js';
+import { conTenantActivo } from './contexto-tenant.js';
+import { LIMITE_LISTADO } from './listados.js';
+import { levantarSesionPanel } from './panel-auth.js';
 
 /**
  * CH-22b (DEC-137): the pure half of the panel's "mis automatizaciones" read. Business
  * copy, the readable frequency, the neutral run outcome and the allow-list projections
  * live here with no Prisma and no I/O, so every rule is unit-testable without a database.
- * The route that feeds these functions is a later work unit.
+ * The route registrar at the end of the file feeds these functions.
  */
 
 /** What the client reads about one automation kind: a title and a one-line description. */
@@ -206,4 +211,116 @@ export function proyectarDisponibles(
     disponibles.push({ titulo: copy.titulo, descripcion: copy.descripcion });
   }
   return disponibles;
+}
+
+// ---- route (DEC-137, DEC-135) -------------------------------------------------------
+
+/** `ultimaEjecucion` is keyed by automation, so the second pass is a map lookup. */
+interface EjecucionTerminada extends UltimaEjecucionFila {
+  automatizacionId: string;
+}
+
+/**
+ * `GET /api/panel/automatizaciones`: read-only, session-guarded, tenant only from the
+ * session (DEC-135). No body, query or path parameter reaches a query. The clock is read
+ * once per request and shared by every item; `server.ts` leaves `ahora` at its default.
+ *
+ * Fixed query count (design section 3): Q1 automations, Q2 latest finished start per
+ * automation, Q3 those runs, Q4 the template catalog bounded by the copy map, Q5 the
+ * templates this tenant has active. Q1, Q2, Q3 and Q5 are scoped by the isolation
+ * extension (`findMany` and `groupBy` are in its filter set); `Plantilla` is global, so
+ * the "active" set is always subtracted in code from the scoped Q5, never filtered
+ * through a relation. No raw SQL, no nested `ejecuciones`, no `distinct`.
+ */
+export function registerPanelAutomatizacionesRoutes(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  zonaHoraria: string,
+  ahora: () => Date = () => new Date(),
+): void {
+  app.get(
+    '/api/panel/automatizaciones',
+    { preHandler: [levantarSesionPanel(prisma)] },
+    async (request, reply) => {
+      const sesion = request.sesionPanel!;
+      const referencia = ahora();
+      const cuerpo = await conTenantActivo(
+        { id: sesion.tenantId, nombre: sesion.tenantNombre },
+        async () => {
+          const [leidas, plantillas, activasGrupo] = await Promise.all([
+            prisma.automatizacion.findMany({
+              select: {
+                id: true,
+                activo: true,
+                cron: true,
+                plantilla: { select: { automatizacion: true } },
+              },
+              orderBy: [{ creadaEn: 'desc' }, { id: 'asc' }],
+              take: LIMITE_LISTADO + 1,
+            }),
+            prisma.plantilla.findMany({
+              where: { automatizacion: { in: [...COPY_NEGOCIO.keys()] } },
+              select: { id: true, automatizacion: true },
+            }),
+            prisma.automatizacion.groupBy({ by: ['plantillaId'], where: { activo: true } }),
+          ]);
+          const truncado = leidas.length > LIMITE_LISTADO;
+          const filas = leidas.slice(0, LIMITE_LISTADO);
+
+          const ultimas = await ultimasTerminadas(
+            prisma,
+            filas.map((f) => f.id),
+          );
+          return {
+            activas: filas.map((f) => proyectarActiva(f, ultimas.get(f.id) ?? null, referencia, zonaHoraria)),
+            disponibles: proyectarDisponibles(
+              plantillas,
+              new Set(activasGrupo.map((g) => g.plantillaId)),
+            ),
+            zonaHoraria,
+            truncado,
+          };
+        },
+      );
+      return reply.code(200).send(cuerpo);
+    },
+  );
+}
+
+/**
+ * Q2 and Q3: the latest run that is not `en-curso` of each automation, by the
+ * `(automatizacionId, iniciadaEn)` index. Skips Q3 when nothing has finished.
+ */
+async function ultimasTerminadas(
+  prisma: PrismaAislado,
+  ids: readonly string[],
+): Promise<Map<string, EjecucionTerminada>> {
+  const ultimas = new Map<string, EjecucionTerminada>();
+  if (ids.length === 0) {
+    return ultimas;
+  }
+  const grupos = await prisma.ejecucion.groupBy({
+    by: ['automatizacionId'],
+    where: { automatizacionId: { in: [...ids] }, estado: { not: 'en-curso' } },
+    _max: { iniciadaEn: true },
+  });
+  const pares = grupos.flatMap((g) =>
+    g._max.iniciadaEn === null
+      ? []
+      : [{ automatizacionId: g.automatizacionId, iniciadaEn: g._max.iniciadaEn }],
+  );
+  if (pares.length === 0) {
+    return ultimas;
+  }
+  const filas = await prisma.ejecucion.findMany({
+    where: { estado: { not: 'en-curso' }, OR: pares },
+    select: { automatizacionId: true, estado: true, iniciadaEn: true, finalizadaEn: true },
+  });
+  for (const fila of filas) {
+    // A tie on the same start keeps the first row: one run per automation at a time (DEC-96).
+    if (!ultimas.has(fila.automatizacionId)) {
+      ultimas.set(fila.automatizacionId, fila);
+    }
+  }
+  return ultimas;
 }

@@ -130,7 +130,7 @@ const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
 
 /**
  * The panel surface (CH-22a, DEC-135): exact rows, one per public endpoint of
- * `src/panel-auth.ts`. The panel never resolves a tenant from the request — the login
+ * `src/panel-auth.ts`, plus the read of CH-22b (DEC-137). The panel never resolves a tenant from the request — the login
  * reads the user by email before any tenant exists, and every authenticated route
  * derives the tenant exclusively from the session cookie (rule 2). These rows exist
  * so the header hooks above do not demand an `X-Tenant-Id` that the panel client has
@@ -142,6 +142,7 @@ const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
   'POST /api/panel/auth/ingresar',
   'POST /api/panel/auth/salir',
   'GET /api/panel/auth/sesion',
+  'GET /api/panel/automatizaciones',
 ]);
 
 /**
