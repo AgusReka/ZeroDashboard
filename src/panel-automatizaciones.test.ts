@@ -6,6 +6,7 @@ import {
   copyDe,
   frecuenciaDeCron,
   proyectarActiva,
+  proyectarDisponibles,
   resultadoDe,
   type FilaAutomatizacion,
 } from './panel-automatizaciones.js';
@@ -222,6 +223,60 @@ describe('proyectarActiva — allow-list without technical fields', () => {
       assert.equal(item.proximaEjecucion, null, cron);
       assert.equal('frecuencia' in item, false, cron);
     }
+  });
+});
+
+// ---- 1.7 and 1.8 available automations --------------------------------------------
+
+describe('proyectarDisponibles — what the client can still turn on', () => {
+  const FISICO = { id: 'p-1', automatizacion: 'stock-fisico' };
+  const PRODUCIBLE = { id: 'p-2', automatizacion: 'stock-producible' };
+
+  test('1.7 a template with an active automation is not available', () => {
+    const lista = proyectarDisponibles([FISICO, PRODUCIBLE], new Set(['p-1']));
+    assert.deepEqual(lista, [copyDe('stock-producible')]);
+  });
+
+  test('1.7 a template with only a paused automation is available (its id is not active)', () => {
+    assert.equal(proyectarDisponibles([FISICO], new Set()).length, 1);
+    assert.equal(proyectarDisponibles([FISICO], new Set(['p-9'])).length, 1);
+  });
+
+  test('1.7 a tenant without automations sees every mapped template', () => {
+    assert.equal(proyectarDisponibles([FISICO, PRODUCIBLE], new Set()).length, 2);
+  });
+
+  test('1.7 a template without business copy is hidden', () => {
+    const lista = proyectarDisponibles(
+      [{ id: 'p-3', automatizacion: 'reporte-semanal' }, FISICO],
+      new Set(),
+    );
+    assert.deepEqual(lista, [copyDe('stock-fisico')]);
+  });
+
+  test('1.7 order is the copy map order, whatever the input order', () => {
+    const lista = proyectarDisponibles([PRODUCIBLE, FISICO], new Set());
+    assert.deepEqual(
+      lista.map((i) => i.titulo),
+      ['Aviso de stock bajo', 'Aviso de productos que ya casi no podés armar'],
+    );
+  });
+
+  test('1.7 items carry only titulo and descripcion', () => {
+    for (const item of proyectarDisponibles([FISICO, PRODUCIBLE], new Set())) {
+      assert.deepEqual(Object.keys(item).sort(), ['descripcion', 'titulo']);
+    }
+  });
+
+  test('1.8 two templates with the same slug yield a single entry', () => {
+    const lista = proyectarDisponibles(
+      [
+        { id: 'p-8', automatizacion: 'stock-fisico' },
+        { id: 'p-7', automatizacion: 'stock-fisico' },
+      ],
+      new Set(),
+    );
+    assert.deepEqual(lista, [copyDe('stock-fisico')]);
   });
 });
 

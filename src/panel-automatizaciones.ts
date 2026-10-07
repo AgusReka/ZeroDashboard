@@ -162,3 +162,45 @@ function proximaIso(cron: string, ahora: Date, zona: string): string | null {
     return null;
   }
 }
+
+// ---- available automations ----------------------------------------------------------
+
+/** The columns of a global template this rule reads; `nombre`, `sql` and the rest never. */
+export interface PlantillaCatalogo {
+  id: string;
+  automatizacion: string;
+}
+
+/**
+ * The templates the client could still turn on: those with business copy and without an
+ * active automation of this tenant (a paused one does not hide it). Several templates
+ * with the same slug are listed once. Order is the copy map's insertion order, then the
+ * template `id`, so the same input always gives the same list. Output carries only
+ * `titulo` and `descripcion`.
+ *
+ * `plantillaIdsActivas` must come from a tenant-scoped read: this function trusts it.
+ */
+export function proyectarDisponibles(
+  plantillas: readonly PlantillaCatalogo[],
+  plantillaIdsActivas: ReadonlySet<string>,
+): CopyNegocio[] {
+  const orden = [...COPY_NEGOCIO.keys()];
+  const candidatas = plantillas
+    .filter((p) => COPY_NEGOCIO.has(p.automatizacion) && !plantillaIdsActivas.has(p.id))
+    .sort(
+      (a, b) =>
+        orden.indexOf(a.automatizacion) - orden.indexOf(b.automatizacion) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
+  const vistas = new Set<string>();
+  const disponibles: CopyNegocio[] = [];
+  for (const { automatizacion } of candidatas) {
+    if (vistas.has(automatizacion)) {
+      continue;
+    }
+    vistas.add(automatizacion);
+    const copy = copyDe(automatizacion);
+    disponibles.push({ titulo: copy.titulo, descripcion: copy.descripcion });
+  }
+  return disponibles;
+}
