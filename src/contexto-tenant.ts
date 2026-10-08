@@ -143,6 +143,8 @@ const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
   'POST /api/panel/auth/salir',
   'GET /api/panel/auth/sesion',
   'GET /api/panel/automatizaciones',
+  'GET /api/panel/automatizaciones/:id/ajustes',
+  'PUT /api/panel/automatizaciones/:id/ajustes',
 ]);
 
 /**

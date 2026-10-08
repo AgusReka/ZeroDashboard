@@ -651,3 +651,44 @@ describe('contexto de tenant — GET /api/panel/automatizaciones es una fila exa
     });
   }
 });
+
+// ---- CH-23 the two adjust rows are exact, still with no database ---------------------
+
+describe('contexto de tenant — GET y PUT /api/panel/automatizaciones/:id/ajustes son filas exactas (CH-23, DEC-141)', () => {
+  let app!: FastifyInstance;
+  const alcanzada = async (): Promise<{ alcanzada: true }> => ({ alcanzada: true });
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    app.get('/api/panel/automatizaciones/:id/ajustes', alcanzada);
+    app.put('/api/panel/automatizaciones/:id/ajustes', alcanzada);
+    app.post('/api/panel/automatizaciones/:id/ajustes', alcanzada);
+    app.delete('/api/panel/automatizaciones/:id/ajustes', alcanzada);
+    app.get('/api/panel/automatizaciones/:id/ajustes/extra', alcanzada);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  for (const method of ['GET', 'PUT'] as const) {
+    test(`CH-23 ${method} reaches its handler with no header`, async () => {
+      const respuesta = await app.inject({ method, url: '/api/panel/automatizaciones/abc/ajustes', payload: method === 'PUT' ? { hora: '08:00' } : undefined });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+    });
+  }
+
+  for (const { method, url } of [
+    { method: 'POST', url: '/api/panel/automatizaciones/abc/ajustes' },
+    { method: 'DELETE', url: '/api/panel/automatizaciones/abc/ajustes' },
+    { method: 'GET', url: '/api/panel/automatizaciones/abc/ajustes/extra' },
+  ] as const) {
+    test(`CH-23 ${method} ${url} with no header is refused 400 tenant-no-indicado`, async () => {
+      const respuesta = await app.inject({ method, url });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    });
+  }
+});

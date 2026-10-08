@@ -1,8 +1,14 @@
-import { cronValido } from './automatizaciones.js';
+import type { FastifyInstance } from 'fastify';
+import { Prisma } from './generated/prisma/client.js';
+import type { PrismaAislado } from './aislamiento-prisma.js';
+import { cronValido, proximaEjecucion } from './automatizaciones.js';
 import { destinatarioDe } from './automatizaciones-rutas.js';
+import { camposInvalidos } from './conexiones.js';
+import { conTenantActivo } from './contexto-tenant.js';
 import { sanearSql } from './consulta-ejecucion.js';
 import { direccionValida } from './correo.js';
 import { prepararSentencia, validarDeclaracion } from './parametros.js';
+import { levantarSesionPanel } from './panel-auth.js';
 import { DIAS_PRESET, horarioPresetDeCron, type Dias } from './panel-automatizaciones.js';
 
 /**
@@ -179,4 +185,171 @@ export function resolverAjustes(
   }
 
   return campos.length > 0 ? { ok: false, estado: 400, campos } : { ok: true, datos };
+}
+
+// ---- routes (DEC-141, DEC-135) ------------------------------------------------------
+
+/**
+ * Strict body, `propertyNames` included for the reason `registroAutomatizacionSchema`
+ * documents: under Fastify's `removeAdditional` an unknown key would otherwise be stripped
+ * and the body accepted, so a `tenantId`, `cron`, `sql` or `valores` is a `400`. `umbral`
+ * is declared with an empty schema on purpose: it must be listed in `properties` or
+ * `additionalProperties: false` would strip it silently, and it has no type so AJV cannot
+ * coerce it and `prepararSentencia` applies DEC-60.
+ */
+const ajustesSchema = {
+  type: 'object',
+  additionalProperties: false,
+  minProperties: 1,
+  propertyNames: { enum: ['umbral', 'hora', 'dias', 'destinatario'] },
+  properties: {
+    umbral: {},
+    hora: { type: 'string', maxLength: 5 },
+    dias: { type: 'string', maxLength: 16 },
+    destinatario: { type: 'string', maxLength: 254 },
+  },
+} as const;
+
+interface ParamsAjustes {
+  id: string;
+}
+
+type RespuestaAjustes = { estado: number; cuerpo: unknown };
+
+const NO_ENCONTRADA: RespuestaAjustes = { estado: 404, cuerpo: { error: 'automatizacion-no-encontrada' } };
+
+/** Field names for a schema error: the offending key, never a JSON pointer. */
+function camposDeEsquema(error: { validation?: unknown }): string[] {
+  return camposInvalidos(error)
+    .map((campo) => campo.replace(/^\//, ''))
+    .filter((campo) => campo !== '');
+}
+
+/** `P2025` is Prisma's "no row to update": the row vanished between the read and the write. */
+function esFilaInexistente(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
+}
+
+/** The next fire as ISO UTC, or `null` when a stored custom expression cannot be resolved. */
+function proximaIso(cron: string, ahora: Date, zona: string): string | null {
+  if (!cronValido(cron, zona)) {
+    return null;
+  }
+  try {
+    return proximaEjecucion(cron, ahora, zona).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `GET` and `PUT /api/panel/automatizaciones/:id/ajustes`: session-guarded, tenant only
+ * from the session (DEC-135). `:id` goes through the scoped `findUnique`, so another
+ * tenant's id is `null` here and answers the same `404` as an unknown one. `PUT` writes
+ * only what `resolverAjustes` returns, with one scoped `update`; the scheduler re-reads
+ * `cron` and `valores` on every tick, so the change applies from the next run.
+ */
+export function registerPanelAjustesRoutes(
+  app: FastifyInstance,
+  prisma: PrismaAislado,
+  zonaHoraria: string,
+  ahora: () => Date = () => new Date(),
+): void {
+  /** The stored automation and its template, or `null` for an unknown or foreign id. */
+  async function leer(id: string) {
+    const fila = await prisma.automatizacion.findUnique({
+      where: { id },
+      select: { activo: true, cron: true, valores: true, destinatario: true, plantillaId: true },
+    });
+    if (fila === null) {
+      return null;
+    }
+    // `Plantilla` is global (DEC-61): this read is not scoped, and the id comes from a
+    // row the extension already scoped.
+    const plantilla = await prisma.plantilla.findUnique({
+      where: { id: fila.plantillaId },
+      select: { sql: true, parametros: true },
+    });
+    return plantilla === null ? null : { fila, plantilla };
+  }
+
+  app.get<{ Params: ParamsAjustes }>(
+    '/api/panel/automatizaciones/:id/ajustes',
+    { preHandler: [levantarSesionPanel(prisma)] },
+    async (request, reply) => {
+      const sesion = request.sesionPanel!;
+      const respuesta = await conTenantActivo(
+        { id: sesion.tenantId, nombre: sesion.tenantNombre },
+        async (): Promise<RespuestaAjustes> => {
+          const leida = await leer(request.params.id);
+          return leida === null
+            ? NO_ENCONTRADA
+            : { estado: 200, cuerpo: proyectarAjustes(leida.fila, leida.plantilla, zonaHoraria) };
+        },
+      );
+      return reply.code(respuesta.estado).send(respuesta.cuerpo);
+    },
+  );
+
+  app.put<{ Params: ParamsAjustes; Body: CuerpoAjustes }>(
+    '/api/panel/automatizaciones/:id/ajustes',
+    {
+      schema: { body: ajustesSchema },
+      attachValidation: true,
+      preHandler: [levantarSesionPanel(prisma)],
+    },
+    async (request, reply) => {
+      const sesion = request.sesionPanel!;
+      if (request.validationError) {
+        return reply
+          .code(400)
+          .send({ error: 'solicitud-invalida', campos: camposDeEsquema(request.validationError) });
+      }
+      const respuesta = await conTenantActivo(
+        { id: sesion.tenantId, nombre: sesion.tenantNombre },
+        async (): Promise<RespuestaAjustes> => {
+          const leida = await leer(request.params.id);
+          if (leida === null) {
+            return NO_ENCONTRADA;
+          }
+          if (!leida.fila.activo) {
+            return { estado: 409, cuerpo: { error: 'automatizacion-pausada' } };
+          }
+          const resolucion = resolverAjustes(request.body, leida.fila, leida.plantilla, zonaHoraria);
+          if (!resolucion.ok) {
+            return resolucion.estado === 409
+              ? { estado: 409, cuerpo: { error: resolucion.error } }
+              : { estado: 400, cuerpo: { error: 'solicitud-invalida', campos: resolucion.campos } };
+          }
+          const { cron, valores, destinatario } = resolucion.datos;
+          try {
+            const guardada = await prisma.automatizacion.update({
+              where: { id: request.params.id },
+              data: {
+                ...(cron === undefined ? {} : { cron }),
+                // Sound cast: `prepararSentencia` accepted every key as declared and every
+                // value as a string, finite number or boolean (as in the alta route).
+                ...(valores === undefined ? {} : { valores: valores as Prisma.InputJsonObject }),
+                ...(destinatario === undefined ? {} : { destinatario }),
+              },
+              select: { activo: true, cron: true, valores: true, destinatario: true },
+            });
+            return {
+              estado: 200,
+              cuerpo: {
+                ...proyectarAjustes(guardada, leida.plantilla, zonaHoraria),
+                proximaEjecucion: proximaIso(guardada.cron, ahora(), zonaHoraria),
+              },
+            };
+          } catch (error) {
+            if (esFilaInexistente(error)) {
+              return NO_ENCONTRADA;
+            }
+            throw error;
+          }
+        },
+      );
+      return reply.code(respuesta.estado).send(respuesta.cuerpo);
+    },
+  );
 }
