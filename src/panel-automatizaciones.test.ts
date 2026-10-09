@@ -136,7 +136,7 @@ const EJECUCION_CRUDA = {
 };
 
 function fila(parche: Partial<FilaAutomatizacion> = {}): FilaAutomatizacion {
-  return { activo: true, cron: '0 8 * * *', plantilla: { automatizacion: 'stock-fisico' }, ...parche };
+  return { id: 'aut-1', activo: true, cron: '0 8 * * *', plantilla: { automatizacion: 'stock-fisico' }, ...parche };
 }
 
 /** Every key at any depth of a parsed JSON value. */
@@ -163,12 +163,14 @@ describe('proyectarActiva — allow-list without technical fields', () => {
     }
   });
 
-  test('1.4 the item has exactly the allow-listed keys and no id', () => {
+  test('1.4 the item has exactly the allow-listed keys: the opaque id (DEC-139) and nothing technical', () => {
     const item = proyectarActiva(FILA_CRUDA, EJECUCION_CRUDA, AHORA, 'UTC');
+    assert.equal(item.id, 'aut-1');
     assert.deepEqual(Object.keys(item).sort(), [
       'descripcion',
       'estado',
       'frecuencia',
+      'id',
       'proximaEjecucion',
       'titulo',
       'ultimaEjecucion',
@@ -716,8 +718,9 @@ describe(
       }
       assert.deepEqual(
         Object.keys(cuerpo.activas[0] ?? {}).sort(),
-        ['descripcion', 'estado', 'proximaEjecucion', 'titulo', 'ultimaEjecucion'],
+        ['descripcion', 'estado', 'id', 'proximaEjecucion', 'titulo', 'ultimaEjecucion'],
       );
+      assert.equal(cuerpo.activas[0]?.id, id);
       assert.deepEqual(Object.keys(cuerpo.disponibles[0] ?? {}).sort(), ['descripcion', 'titulo']);
     });
 

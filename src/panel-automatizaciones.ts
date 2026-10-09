@@ -57,11 +57,43 @@ export function copyDe(slug: string): CopyNegocio {
 /** `M H * * D` with `D` one of the three day sets the console offers (DEC-129). */
 const PATRON_FRECUENCIA = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|1-6)$/;
 
-const DIAS_FRECUENCIA: ReadonlyMap<string, string> = new Map([
-  ['*', 'Todos los días'],
-  ['1-5', 'De lunes a viernes'],
-  ['1-6', 'De lunes a sábado'],
+/** The day sets the panel offers, by the name the adjust form and API use (DEC-141). */
+export type Dias = 'todos' | 'lun-vie' | 'lun-sab';
+
+/**
+ * The single table behind the readable frequency and the adjust form: the cron day field
+ * and the business text of each set. Insertion order is the order the form lists them.
+ */
+export const DIAS_PRESET: ReadonlyMap<Dias, { cron: string; texto: string }> = new Map([
+  ['todos', { cron: '*', texto: 'Todos los días' }],
+  ['lun-vie', { cron: '1-5', texto: 'De lunes a viernes' }],
+  ['lun-sab', { cron: '1-6', texto: 'De lunes a sábado' }],
 ]);
+
+/** A stored preset cron read back as its parts; the fields keep their numeric range checked. */
+export interface HorarioPreset {
+  hora: number;
+  minuto: number;
+  dias: Dias;
+}
+
+/**
+ * The parts of a stored cron when it is one of the three DEC-129 patterns, or `null` for
+ * any other expression (including an hour or minute out of range).
+ */
+export function horarioPresetDeCron(cron: string): HorarioPreset | null {
+  const partes = PATRON_FRECUENCIA.exec(cron.trim().split(/\s+/).join(' '));
+  if (partes === null) {
+    return null;
+  }
+  const minuto = Number(partes[1]);
+  const hora = Number(partes[2]);
+  const dias = [...DIAS_PRESET].find(([, valor]) => valor.cron === partes[3])?.[0];
+  if (minuto > 59 || hora > 23 || dias === undefined) {
+    return null;
+  }
+  return { hora, minuto, dias };
+}
 
 /**
  * Business text for the three DEC-129 patterns, such as `Todos los días a las 08:30`, in
@@ -69,18 +101,12 @@ const DIAS_FRECUENCIA: ReadonlyMap<string, string> = new Map([
  * the stored expression never reaches the client.
  */
 export function frecuenciaDeCron(cron: string): string | null {
-  const partes = PATRON_FRECUENCIA.exec(cron.trim().split(/\s+/).join(' '));
-  if (partes === null) {
+  const horario = horarioPresetDeCron(cron);
+  if (horario === null) {
     return null;
   }
-  const minuto = Number(partes[1]);
-  const hora = Number(partes[2]);
-  const dias = DIAS_FRECUENCIA.get(partes[3] as string);
-  if (minuto > 59 || hora > 23 || dias === undefined) {
-    return null;
-  }
-  const hhmm = `${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`;
-  return `${dias} a las ${hhmm}`;
+  const hhmm = `${String(horario.hora).padStart(2, '0')}:${String(horario.minuto).padStart(2, '0')}`;
+  return `${(DIAS_PRESET.get(horario.dias) as { texto: string }).texto} a las ${hhmm}`;
 }
 
 // ---- last run and active items ------------------------------------------------------
@@ -98,6 +124,7 @@ export function resultadoDe(estado: string): ResultadoNegocio {
 
 /** The columns of a stored automation this projection reads; nothing else is selected. */
 export interface FilaAutomatizacion {
+  id: string;
   activo: boolean;
   cron: string;
   plantilla: { automatizacion: string };
@@ -110,8 +137,9 @@ export interface UltimaEjecucionFila {
   finalizadaEn: Date | null;
 }
 
-/** One entry of `activas`: the allow-list of DEC-137, with no identifier. */
+/** One entry of `activas`: the allow-list of DEC-137 plus the opaque `id` of DEC-139. */
 export interface ItemActiva {
+  id: string;
   titulo: string;
   descripcion: string;
   estado: 'activa' | 'pausada' | 'con_falla';
@@ -155,6 +183,7 @@ export function proyectarActiva(
     }
   }
   const item: ItemActiva = {
+    id: fila.id,
     titulo: copy.titulo,
     descripcion: copy.descripcion,
     estado,
