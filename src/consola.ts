@@ -190,7 +190,7 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 -->
 <section id="guardado">
   <h2 class="zd-h2">Consultas guardadas</h2>
-  <p class="ayuda">Guarda la sentencia que está ahora en el editor. No se puede editar ni borrar una consulta guardada: para corregirla, se guarda otra.</p>
+  <p class="ayuda">Guarda la sentencia que está ahora en el editor. Al cargar una consulta guardada podés editarla y guardar los cambios como una versión nueva: cada cambio queda en su historial. No se puede borrar.</p>
 
   <label for="nombre" class="zd-label">Nombre</label>
   <input id="nombre" class="zd-input" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
@@ -200,6 +200,19 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
 
   <div class="controles">
     <button id="guardar" class="zd-btn zd-btn--secondary" type="button">Guardar consulta</button>
+  </div>
+
+  <!--
+    CH-25 (DEC-148, DEC-150): shown only while a saved query is loaded in the editor. The
+    note is optional; the button sends the editor's content as a new version of that query.
+  -->
+  <div id="version-guardar" hidden>
+    <p id="version-cargada" class="ayuda"></p>
+    <label for="version-nota" class="zd-label">Nota de la versión (opcional)</label>
+    <input id="version-nota" class="zd-input" type="text" maxlength="500" autocomplete="off" placeholder="por ejemplo: Agrega filtro por depósito">
+    <div class="controles">
+      <button id="version-boton" class="zd-btn zd-btn--secondary" type="button">Guardar como nueva versión</button>
+    </div>
   </div>
 
   <ul id="guardadas"></ul>
@@ -785,6 +798,7 @@ function manejarFalloDeTenant(cuerpo) {
     limpiarResultados();
     vaciar(listaGuardadas);
     cerrarVersiones();
+    olvidarConsultaCargada();
     limpiarAutomatizaciones();
     cargarTenants();
   }
@@ -1203,6 +1217,7 @@ async function cargarGuardada(id) {
   if (respuesta.status === 404) {
     // The row is gone from under the list; refresh so the stale entry disappears.
     mostrarBanner('Esa consulta guardada ya no existe. Se actualizó la lista.');
+    olvidarConsultaCargada();
     await listarGuardadas();
     return;
   }
@@ -1210,6 +1225,13 @@ async function cargarGuardada(id) {
     mostrarBanner('La aplicación respondió HTTP ' + respuesta.status + '.');
     return;
   }
+
+  // CH-25: the name and description come into their fields too, so an edit sends them as
+  // the operator sees them, and the loaded query is remembered for "Guardar como nueva versión".
+  entradaNombre.value = String(cuerpo.consultaGuardada.nombre);
+  entradaDescripcion.value = cuerpo.consultaGuardada.descripcion === null || cuerpo.consultaGuardada.descripcion === undefined
+    ? '' : String(cuerpo.consultaGuardada.descripcion);
+  recordarConsultaCargada(cuerpo.consultaGuardada);
 
   // A plain value assignment on the textarea: the statement is data, not markup.
   entradaSql.value = cuerpo.consultaGuardada.sql;
@@ -2111,6 +2133,9 @@ async function restaurarVersion(numero, nota) {
     return;
   }
   var nueva = resultado.cuerpo.consultaGuardada;
+  // If this is the query loaded in the editor, the editor shows the restored content (it
+  // reloads first: loading clears the banner, and the confirmation comes after).
+  if (consultaCargada !== null && consultaCargada.id === consulta.id) { await cargarGuardada(consulta.id); }
   mostrarConfirmacion('Se creó la versión ' + nueva.version + ' con el contenido de la versión ' + numero + '.');
   await listarGuardadas();
   await abrirVersiones({ id: consulta.id, nombre: nueva.nombre });
@@ -2208,6 +2233,89 @@ botonCerrarVersiones.addEventListener('click', function () {
   cerrarVersiones();
 });
 
+// --- Save as a new version (CH-25, DEC-148, DEC-150) ------------------------------
+// Offered only while a saved query is loaded in the editor. The editor's name, description,
+// statement and declaration go up exactly as the create sends them, plus the optional note,
+// as a PUT on that query's id. The server decides what counts as a change (sin-cambios).
+var bloqueVersion = document.getElementById('version-guardar');
+var textoCargada = document.getElementById('version-cargada');
+var entradaNotaVersion = document.getElementById('version-nota');
+var botonVersion = document.getElementById('version-boton');
+
+// The query loaded in the editor ({ id, nombre }), or null when none is.
+var consultaCargada = null;
+
+function olvidarConsultaCargada() {
+  consultaCargada = null;
+  bloqueVersion.hidden = true;
+  textoCargada.textContent = '';
+  entradaNotaVersion.value = '';
+}
+
+function recordarConsultaCargada(consulta) {
+  consultaCargada = { id: String(consulta.id), nombre: String(consulta.nombre) };
+  bloqueVersion.hidden = false;
+  textoCargada.textContent = 'Consulta cargada: «' + consultaCargada.nombre +
+    '». Los cambios del editor se guardan como una versión nueva de esta consulta.';
+  entradaNotaVersion.value = '';
+}
+
+async function guardarNuevaVersion() {
+  if (consultaCargada === null) { return; }
+  ocultarBanner();
+  var consulta = consultaCargada;
+  var declaracion = declaracionActual();
+  var nota = entradaNotaVersion.value.trim();
+  var cuerpo = {
+    nombre: entradaNombre.value.trim(),
+    descripcion: entradaDescripcion.value,
+    sql: entradaSql.value,
+    parametros: declaracion
+  };
+  if (nota !== '') { cuerpo.nota = nota; }
+  botonVersion.disabled = true;
+  var resultado = await pedirAutomatizacion('/consultas-guardadas/' + encodeURIComponent(consulta.id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo)
+  });
+  botonVersion.disabled = false;
+  // A tenant switch while the request was in flight owns the page now.
+  if (resultado === null || consultaCargada === null || consultaCargada.id !== consulta.id) { return; }
+
+  if (resultado.status === 200) {
+    var guardada = resultado.cuerpo.consultaGuardada;
+    consultaCargada.nombre = String(guardada.nombre);
+    entradaNotaVersion.value = '';
+    mostrarConfirmacion('Se guardó la versión ' + guardada.version + ' de «' + consultaCargada.nombre + '».');
+    await listarGuardadas();
+    if (consultaAbierta !== null && consultaAbierta.id === consulta.id) {
+      await abrirVersiones({ id: consulta.id, nombre: consultaCargada.nombre });
+    }
+    return;
+  }
+  var error = resultado.cuerpo.error;
+  if (resultado.status === 404) {
+    mostrarBanner('Esa consulta guardada ya no existe. Se actualizó la lista.');
+    olvidarConsultaCargada();
+    await listarGuardadas();
+  } else if (resultado.status === 409 && error === 'sin-cambios') {
+    mostrarBanner('No hay cambios respecto de la versión vigente.');
+  } else if (resultado.status === 409 && error === 'conflicto-de-edicion') {
+    mostrarBanner('Otra edición se guardó antes que esta. Volvé a cargar la consulta e intentá de nuevo.');
+  } else if (resultado.status === 400 && Array.isArray(resultado.cuerpo.campos) && resultado.cuerpo.campos.indexOf('/nota') !== -1) {
+    mostrarBanner('La nota tiene que ser un texto de hasta 500 caracteres.');
+  } else if (resultado.status === 400) {
+    mostrarBanner(mensajeDeSolicitudInvalida(resultado.cuerpo, declaracion));
+  } else {
+    mostrarBanner('La aplicación respondió HTTP ' + resultado.status + '.');
+  }
+}
+
+botonVersion.addEventListener('click', function () {
+  guardarNuevaVersion();
+});
+
 // Switching tenants wipes the screen before anything else happens. This is the visual
 // half of the isolation guarantee: rows and saved-query names belonging to the tenant
 // the operator just left must not stay on the page next to the new tenant's name.
@@ -2217,6 +2325,7 @@ selectorTenant.addEventListener('change', function () {
   limpiarResultados();
   vaciar(listaGuardadas);
   cerrarVersiones();
+  olvidarConsultaCargada();
   limpiarParametros();
   limpiarAutomatizaciones();
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
