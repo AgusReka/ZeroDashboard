@@ -33,8 +33,8 @@ Branch base: the current stack (`ch24/archivo`, PR #121). Strict order inside ea
 - [x] 4.3a1 `src/consola.test.ts`: ids registered in `IDS`, the panel starts hidden (`IDS_OCULTOS_ALTA` keeps the wizard test about the wizard only), the panel scenarios of the `query-console` delta.
 
 ## PR4a2 — Console: compare and restore
-- [ ] 4.2a Comparison as two plain-text blocks (chosen version, then the current one, two requests in that order); restore with an inline confirmation whose button repeats action and object («Restaurar versión N»), an optional note and Cancelar; refusals keep the rows and say why.
-- [ ] 4.3a2 Tests for the compare and restore scenarios.
+- [x] 4.2a Comparison as two plain-text blocks (chosen version, then the current one, two requests in that order); restore with an inline confirmation whose button repeats action and object («Restaurar versión N»), an optional note and Cancelar; refusals keep the rows and say why.
+- [x] 4.3a2 Tests for the compare and restore scenarios.
 
 ## PR4b — Console: save the editor as a new version
 - [ ] 4.2b Track the loaded query; "Guardar como nueva versión" with an optional note sending `PUT`; `sin-cambios` and `conflicto-de-edicion` messages; help text; forget the loaded query on tenant switch; sync the editor after a restore of the loaded query.

@@ -128,6 +128,9 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   #fresc-minutos { width: 10rem; }
   /* CH-25 (C-05): the versions panel. The current version is an icon and a word, never a color alone. */
   .version-vigente { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 600; color: var(--ok-text); }
+  .versiones-bloques { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); margin-top: var(--space-5); }
+  .versiones-bloque pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  @media (max-width: 40rem) { .versiones-bloques { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body class="zd-root">
@@ -210,6 +213,7 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
     <h3 id="versiones-titulo" class="zd-h2"></h3>
     <p id="versiones-estado" class="ayuda" role="status"></p>
     <ul id="versiones-lista"></ul>
+    <div id="versiones-comparacion"></div>
     <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
   </div>
 </section>
@@ -1977,14 +1981,16 @@ botonMarcar.addEventListener('click', function () {
 });
 
 // --- Versions (CH-25, DEC-146 to DEC-150, screen C-05) ---------------------------
-// The history of one saved query, listed newest first. Comparison and restore come next.
-// Every call goes through pedirAutomatizacion, so the tenant header and the
+// The history of one saved query: list, plain-text comparison with the current version
+// (no diff is computed, DEC-149) and restore, which never deletes: it creates a new version
+// (DEC-147). Every call goes through pedirAutomatizacion, so the tenant header and the
 // tenant refusals are handled in one place. Values reach the page through textContent, and
 // no shared class is assigned here: the look comes from the page's bridge style.
 var panelVersiones = document.getElementById('versiones');
 var tituloVersiones = document.getElementById('versiones-titulo');
 var estadoVersiones = document.getElementById('versiones-estado');
 var listaVersiones = document.getElementById('versiones-lista');
+var comparacionVersiones = document.getElementById('versiones-comparacion');
 var botonCerrarVersiones = document.getElementById('versiones-cerrar');
 
 // The query whose panel is open ({ id, nombre, vigente }), and the token that makes a
@@ -1993,7 +1999,11 @@ var consultaAbierta = null;
 var generacionVersiones = 0;
 
 var MENSAJES_VERSIONES = {
-  'consulta-guardada-no-encontrada': 'Esa consulta guardada ya no existe. Se actualizó la lista.'
+  'consulta-guardada-no-encontrada': 'Esa consulta guardada ya no existe. Se actualizó la lista.',
+  'version-no-encontrada': 'Esa versión ya no existe. Se actualizó el historial.',
+  'version-vigente': 'Esa ya es la versión vigente: no hay nada que restaurar.',
+  'conflicto-de-edicion': 'Otra edición se guardó antes. Se actualizó el historial; volvé a intentarlo.',
+  'solicitud-invalida': 'La nota no es válida: tiene que ser un texto de hasta 500 caracteres.'
 };
 
 function mensajeDeVersiones(resultado) {
@@ -2014,6 +2024,7 @@ function cerrarVersiones() {
   tituloVersiones.textContent = '';
   estadoVersiones.textContent = '';
   vaciar(listaVersiones);
+  vaciar(comparacionVersiones);
 }
 
 function insigniaVigente() {
@@ -2026,7 +2037,118 @@ function insigniaVigente() {
   return nodo;
 }
 
-function filaDeVersion(version) {
+// "Parámetros: umbral (numero), dias (numero)", or a plain statement that there are none.
+function textoDeParametros(parametros) {
+  var lista = Array.isArray(parametros) ? parametros : [];
+  if (lista.length === 0) { return 'Parámetros: ninguno.'; }
+  return 'Parámetros: ' + lista.map(function (p) { return String(p.nombre) + ' (' + String(p.tipo) + ')'; }).join(', ') + '.';
+}
+
+function bloqueDeVersion(version) {
+  var bloque = document.createElement('div');
+  bloque.className = 'versiones-bloque';
+  var titulo = document.createElement('strong');
+  titulo.textContent = 'Versión ' + version.version + (version.esActual === true ? ' (vigente)' : '');
+  bloque.appendChild(titulo);
+  [
+    'Nombre: ' + String(version.nombre),
+    'Descripción: ' + (version.descripcion === null || version.descripcion === undefined ? '—' : String(version.descripcion)),
+    textoDeParametros(version.parametros)
+  ].forEach(function (linea) {
+    var parrafo = document.createElement('p');
+    parrafo.className = 'ayuda';
+    parrafo.textContent = linea;
+    bloque.appendChild(parrafo);
+  });
+  var sentencia = document.createElement('pre');
+  sentencia.textContent = String(version.sql);
+  bloque.appendChild(sentencia);
+  return bloque;
+}
+
+// Compare: the chosen version and the current one, side by side as text. Two requests, in
+// that order; a response that arrives after the panel changed is dropped.
+async function compararVersion(numero) {
+  var g = generacionVersiones;
+  var consulta = consultaAbierta;
+  vaciar(comparacionVersiones);
+  estadoVersiones.textContent = 'Cargando la comparación…';
+  var elegida = await pedirAutomatizacion(rutaVersiones(consulta.id, numero));
+  var actual = elegida !== null && elegida.status === 200
+    ? await pedirAutomatizacion(rutaVersiones(consulta.id, consulta.vigente)) : null;
+  if (g !== generacionVersiones) { return; }
+  if (elegida === null || elegida.status !== 200) {
+    estadoVersiones.textContent = elegida === null ? 'No se pudo leer la versión.' : mensajeDeVersiones(elegida);
+    return;
+  }
+  if (actual === null || actual.status !== 200) {
+    estadoVersiones.textContent = actual === null ? 'No se pudo leer la versión vigente.' : mensajeDeVersiones(actual);
+    return;
+  }
+  estadoVersiones.textContent = '';
+  var bloques = document.createElement('div');
+  bloques.className = 'versiones-bloques';
+  bloques.appendChild(bloqueDeVersion(elegida.cuerpo.version));
+  bloques.appendChild(bloqueDeVersion(actual.cuerpo.version));
+  comparacionVersiones.appendChild(bloques);
+}
+
+// Restore: creates version N+1 with the content of the chosen one and reloads the panel and
+// the list. A refusal keeps the rows and says why.
+async function restaurarVersion(numero, nota) {
+  var g = generacionVersiones;
+  var consulta = consultaAbierta;
+  var cuerpo = nota === '' ? {} : { nota: nota };
+  var resultado = await pedirAutomatizacion(rutaVersiones(consulta.id, numero) + '/restaurar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo)
+  });
+  if (g !== generacionVersiones || resultado === null) { return; }
+  if (resultado.status !== 200) {
+    estadoVersiones.textContent = mensajeDeVersiones(resultado);
+    if (resultado.cuerpo.error === 'consulta-guardada-no-encontrada') { cerrarVersiones(); listarGuardadas(); }
+    return;
+  }
+  var nueva = resultado.cuerpo.consultaGuardada;
+  mostrarConfirmacion('Se creó la versión ' + nueva.version + ' con el contenido de la versión ' + numero + '.');
+  await listarGuardadas();
+  await abrirVersiones({ id: consulta.id, nombre: nueva.nombre });
+}
+
+// The confirmation repeats the action and its object (never "Sí"), and takes an optional note.
+function pedirConfirmacion(celda, numero) {
+  vaciar(celda);
+  var nota = document.createElement('input');
+  nota.type = 'text';
+  nota.maxLength = 500;
+  nota.placeholder = 'nota (opcional)';
+  celda.appendChild(nota);
+  celda.appendChild(botonDeVersion('Restaurar versión ' + numero, function () {
+    restaurarVersion(numero, nota.value.trim());
+  }));
+  celda.appendChild(botonDeVersion('Cancelar', function () {
+    vaciar(celda);
+    celda.appendChild(accionesDeVersion(celda, numero));
+  }));
+}
+
+function botonDeVersion(texto, accion) {
+  var boton = document.createElement('button');
+  boton.type = 'button';
+  boton.textContent = texto;
+  boton.addEventListener('click', accion);
+  return boton;
+}
+
+function accionesDeVersion(celda, numero) {
+  var acciones = document.createElement('span');
+  acciones.appendChild(botonDeVersion('Comparar con la actual', function () { compararVersion(numero); }));
+  acciones.appendChild(botonDeVersion('Restaurar', function () { pedirConfirmacion(celda, numero); }));
+  return acciones;
+}
+
+function filaDeVersion(version, conAcciones) {
   var item = document.createElement('li');
   var titulo = document.createElement('strong');
   titulo.textContent = 'Versión ' + version.version;
@@ -2043,6 +2165,10 @@ function filaDeVersion(version) {
   }
   if (version.esActual === true) {
     item.appendChild(insigniaVigente());
+  } else if (conAcciones) {
+    var celda = document.createElement('span');
+    celda.appendChild(accionesDeVersion(celda, version.version));
+    item.appendChild(celda);
   }
   return item;
 }
@@ -2053,7 +2179,7 @@ function renderizarVersiones(cuerpo) {
   lista.forEach(function (v) { if (v.esActual === true) { vigente = v.version; } });
   consultaAbierta.vigente = vigente;
   vaciar(listaVersiones);
-  lista.forEach(function (version) { listaVersiones.appendChild(filaDeVersion(version)); });
+  lista.forEach(function (version) { listaVersiones.appendChild(filaDeVersion(version, lista.length > 1)); });
   estadoVersiones.textContent = lista.length <= 1 ? 'Esta es la versión inicial.'
     : cuerpo.truncado === true ? 'Se muestran solo las ' + lista.length + ' versiones más recientes.' : '';
 }
@@ -2063,6 +2189,7 @@ async function abrirVersiones(fila) {
   var g = generacionVersiones;
   consultaAbierta = { id: String(fila.id), nombre: String(fila.nombre), vigente: null };
   vaciar(listaVersiones);
+  vaciar(comparacionVersiones);
   tituloVersiones.textContent = 'Versiones de «' + consultaAbierta.nombre + '»';
   estadoVersiones.textContent = 'Cargando versiones…';
   panelVersiones.hidden = false;
