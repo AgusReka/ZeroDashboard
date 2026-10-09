@@ -9,10 +9,10 @@ Branch base `master`. Strict order inside each PR: tests first where the repo do
 - Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`)
 
 ## PR1 — Pure layer (no I/O)
-- [ ] 1.1 Export `DIAS_PRESET` from `src/panel-automatizaciones.ts`; make `frecuenciaDeCron` derive from it (no behavior change; existing tests stay green).
-- [ ] 1.2 Add `id` to `FilaAutomatizacion`, `ItemActiva` and `proyectarActiva`; extend its unit tests (id present, nothing else new).
-- [ ] 1.3 `src/panel-ajustes.ts`: `horarioDeCron`, `cronDeHorario`, `proyectarAjustes`, `resolverAjustes`.
-- [ ] 1.4 `src/panel-ajustes.test.ts` (pure): preset vectors copied from `VECTORES_HORARIO`, hour bounds, partial updates, every `campos` and 409 branch, `valores` merge keeps other keys, projection has no extra keys.
+- [x] 1.1 Export `DIAS_PRESET` (and `horarioPresetDeCron`) from `src/panel-automatizaciones.ts`; make `frecuenciaDeCron` derive from it (no behavior change; existing tests stay green).
+- [x] 1.2 Add `id` to `FilaAutomatizacion`, `ItemActiva` and `proyectarActiva`; extend its unit tests (id present, nothing else new).
+- [x] 1.3 `src/panel-ajustes.ts`: `cronDeHorario`, `proyectarAjustes`, `resolverAjustes` (the preset-to-parts reader is `horarioPresetDeCron`, shared with the frequency text).
+- [x] 1.4 `src/panel-ajustes.test.ts` (pure): preset vectors copied from `VECTORES_HORARIO`, hour bounds, partial updates, every `campos` and 409 branch, `valores` merge keeps other declared keys (DEC-58), projection has no extra keys.
 
 ## PR2 — Routes and isolation
 - [ ] 2.1 Q1 `select` of the list gains `id`; list route test asserts it.
