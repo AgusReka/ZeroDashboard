@@ -21,7 +21,7 @@ Branch base: the current stack (`master` is behind CH-22 and CH-23, which are no
 - [x] 2.1 Markup for `#frescura` and the script: tenant rows kept by `renderizarSelector`, `mostrarFrescura`, `estadoFrescura`, `hace`, and the table drawn from the catalog the automations section already reads (the tolerance now rides along in `cargarCatalogoPlantillas`), so a tenant switch adds no request. Deviation from the design: the badge takes local classes from the page's bridge style because guard G3' forbids any shared `zd-*` class in the script.
 - [x] 2.2 Save and mark actions with the exact bodies through `pedirAutomatizacion` (the console's convention, header included), error handling (`manejarFalloDeTenant`, 400 text), disabled state with no tenant. The window field is a text control: a number control would turn invalid text into an empty value and clear the declaration by accident.
 - [x] 2.3 `src/consola.test.ts`: ids registered, `createElementNS` in the fake DOM, vectors, relative-time cases, request bodies, error branches, hostile name.
-- [ ] 2.4 Manual check by the user in the running app (rebuild with `docker compose up -d --build app`).
+- [x] 2.4 Manual check by the user in the running app, 2026-10-09 ("Todo salió bien"). The build output showed every layer `CACHED`; the running image was confirmed to contain the code by reading `dist/` inside the container.
 
 ## Close
-- [ ] 3.1 Verify against the spec, merge the delta into `openspec/specs/data-freshness/spec.md`, archive.
+- [x] 3.1 Verified against the spec (`verify-report.md`), delta merged into `openspec/specs/data-freshness/spec.md`, change archived.
