@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import type { Prisma } from './generated/prisma/client.js';
+import { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { LIMITE_LISTADO } from './listados.js';
-import { validarCuerpoConsulta } from './consultas-versiones.js';
+import { mismoContenido, resolverNota, validarCuerpoConsulta } from './consultas-versiones.js';
 import { TIPOS_PARAMETRO } from './parametros.js';
 
 /**
@@ -102,6 +102,86 @@ const registroConsultaGuardadaSchema = {
   },
 } as const;
 
+/**
+ * CH-25 (DEC-146, DEC-148): the full row plus the number and the note of its current
+ * version. Used by the edit answer and by the version routes; the create and get-by-id
+ * projections above stay as they were.
+ */
+export const ConsultaGuardadaConVersion = {
+  ...ConsultaGuardadaCompleta,
+  version: true,
+  nota: true,
+} as const;
+
+/**
+ * The edit body (DEC-150): the create body plus an optional `nota`. Same reasoning as the
+ * create schema for `propertyNames`; `nota` is listed in `properties` (or
+ * `additionalProperties: false` would strip it silently) and carries no `type`, so AJV
+ * cannot coerce a number into text and `resolverNota` is the one place its type is checked.
+ */
+const edicionConsultaGuardadaSchema = {
+  ...registroConsultaGuardadaSchema,
+  propertyNames: { enum: ['nombre', 'descripcion', 'sql', 'parametros', 'nota'] },
+  properties: { ...registroConsultaGuardadaSchema.properties, nota: {} },
+} as const;
+
+interface EdicionConsultaGuardadaBody extends RegistroConsultaGuardadaBody {
+  nota?: unknown;
+}
+
+/** The two delegates an archive touches, as the transaction client exposes them. */
+type ClienteTransaccion = Pick<PrismaAislado, 'consultaGuardada' | 'consultaGuardadaVersion'>;
+
+/** The row as the archive step reads it: everything that defines a version. */
+const FilaVigente = {
+  id: true,
+  nombre: true,
+  descripcion: true,
+  sql: true,
+  parametros: true,
+  nota: true,
+  version: true,
+  actualizadaEn: true,
+} as const;
+
+/**
+ * Moves the row's current state into the history, inside the caller's transaction. The
+ * unique `(consultaGuardadaId, version)` is what turns two concurrent edits of the same
+ * version into a conflict (`P2002`) instead of a forked history. `desde` is the instant
+ * that state became current, which for a row is its `actualizadaEn`.
+ */
+async function archivarVersion(
+  tx: ClienteTransaccion,
+  vigente: {
+    id: string;
+    nombre: string;
+    descripcion: string | null;
+    sql: string;
+    parametros: Prisma.JsonValue;
+    nota: string | null;
+    version: number;
+    actualizadaEn: Date;
+  },
+): Promise<void> {
+  await tx.consultaGuardadaVersion.create({
+    data: conTenantInyectado({
+      consultaGuardadaId: vigente.id,
+      version: vigente.version,
+      nombre: vigente.nombre,
+      descripcion: vigente.descripcion,
+      sql: vigente.sql,
+      parametros: vigente.parametros as Prisma.InputJsonValue,
+      nota: vigente.nota,
+      desde: vigente.actualizadaEn,
+    }),
+  });
+}
+
+/** `P2002` is Prisma's unique-constraint violation: here, only the archive of a version that already exists. */
+function esConflictoDeVersion(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
 export function registerConsultaGuardadaRoutes(
   app: FastifyInstance,
   prisma: PrismaAislado,
@@ -191,6 +271,76 @@ export function registerConsultaGuardadaRoutes(
       }
 
       return reply.code(200).send({ consultaGuardada });
+    },
+  );
+
+  /**
+   * CH-25 (DEC-146, DEC-150): a full edit. The previous state is archived, the row takes the
+   * new content and its `version` goes up, all in one interactive transaction, so a failure
+   * midway leaves neither a gap in the history nor a half-updated row. The scoping holds
+   * inside the transaction (`src/aislamiento-versiones.test.ts`). The checks are the create
+   * route's own (`validarCuerpoConsulta`), and an edit that changes nothing is a `409` that
+   * writes nothing: a note alone never makes a version.
+   */
+  app.put<{ Params: ConsultaGuardadaParams; Body: EdicionConsultaGuardadaBody }>(
+    '/consultas-guardadas/:id',
+    { schema: { body: edicionConsultaGuardadaSchema }, attachValidation: true },
+    async (request, reply) => {
+      if (request.validationError) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: camposInvalidos(request.validationError),
+        });
+      }
+      const validado = validarCuerpoConsulta(request.body);
+      if (!validado.ok) {
+        return reply.code(400).send(validado.cuerpo);
+      }
+      const nota = resolverNota(request.body.nota);
+      if (!nota.ok) {
+        return reply.code(400).send({ error: 'solicitud-invalida', campos: nota.campos });
+      }
+      const { datos } = validado;
+      const id = request.params.id;
+
+      try {
+        const resultado = await prisma.$transaction(async (tx) => {
+          const vigente = await tx.consultaGuardada.findUnique({ where: { id }, select: FilaVigente });
+          if (vigente === null) {
+            return { estado: 404 as const };
+          }
+          if (mismoContenido(vigente, datos)) {
+            return { estado: 409 as const };
+          }
+          await archivarVersion(tx, vigente);
+          const consultaGuardada = await tx.consultaGuardada.update({
+            where: { id },
+            data: {
+              nombre: datos.nombre,
+              descripcion: datos.descripcion,
+              sql: datos.sql,
+              parametros: datos.parametros as unknown as Prisma.InputJsonValue,
+              nota: nota.nota,
+              version: { increment: 1 },
+            },
+            select: ConsultaGuardadaConVersion,
+          });
+          return { estado: 200 as const, consultaGuardada };
+        });
+
+        if (resultado.estado === 404) {
+          return reply.code(404).send({ error: 'consulta-guardada-no-encontrada' });
+        }
+        if (resultado.estado === 409) {
+          return reply.code(409).send({ error: 'sin-cambios' });
+        }
+        return reply.code(200).send({ consultaGuardada: resultado.consultaGuardada });
+      } catch (error) {
+        if (esConflictoDeVersion(error)) {
+          return reply.code(409).send({ error: 'conflicto-de-edicion' });
+        }
+        throw error;
+      }
     },
   );
 }
