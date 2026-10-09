@@ -4,7 +4,12 @@ import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { LIMITE_LISTADO } from './listados.js';
-import { mismoContenido, resolverNota, validarCuerpoConsulta } from './consultas-versiones.js';
+import {
+  analizarVersion,
+  mismoContenido,
+  resolverNota,
+  validarCuerpoConsulta,
+} from './consultas-versiones.js';
 import { TIPOS_PARAMETRO } from './parametros.js';
 
 /**
@@ -127,6 +132,11 @@ const edicionConsultaGuardadaSchema = {
 
 interface EdicionConsultaGuardadaBody extends RegistroConsultaGuardadaBody {
   nota?: unknown;
+}
+
+interface VersionParams {
+  id: string;
+  version: string;
 }
 
 /** The two delegates an archive touches, as the transaction client exposes them. */
@@ -343,4 +353,87 @@ export function registerConsultaGuardadaRoutes(
       }
     },
   );
+
+  /**
+   * The history of one saved query, newest first. The current version comes from the row
+   * (its date is `actualizadaEn`) and the past ones from the history table (their date is
+   * `desde`); no statement travels in a list. The cap keeps the current version and the
+   * most recent `LIMITE_LISTADO - 1` past ones.
+   */
+  app.get<{ Params: ConsultaGuardadaParams }>('/consultas-guardadas/:id/versiones', async (request, reply) => {
+    const vigente = await prisma.consultaGuardada.findUnique({
+      where: { id: request.params.id },
+      select: { id: true, version: true, nota: true, actualizadaEn: true },
+    });
+    if (vigente === null) {
+      return reply.code(404).send({ error: 'consulta-guardada-no-encontrada' });
+    }
+    const pasadas = await prisma.consultaGuardadaVersion.findMany({
+      where: { consultaGuardadaId: vigente.id },
+      select: { version: true, nota: true, desde: true },
+      orderBy: { version: 'desc' },
+      take: LIMITE_LISTADO,
+    });
+    const truncado = pasadas.length > LIMITE_LISTADO - 1;
+    const versiones = [
+      { version: vigente.version, fecha: vigente.actualizadaEn, nota: vigente.nota, esActual: true },
+      ...pasadas
+        .slice(0, LIMITE_LISTADO - 1)
+        .map((fila) => ({ version: fila.version, fecha: fila.desde, nota: fila.nota, esActual: false })),
+    ];
+    return reply.code(200).send({ versiones, truncado });
+  });
+
+  /**
+   * One version with its full content, the current one included, for the comparison of
+   * DEC-149. The query is resolved first through the scoped model, so another tenant's id
+   * is `consulta-guardada-no-encontrada` whatever the version says; a `:version` that is not
+   * a positive integer or has no entry is `version-no-encontrada`.
+   */
+  app.get<{ Params: VersionParams }>('/consultas-guardadas/:id/versiones/:version', async (request, reply) => {
+    const vigente = await prisma.consultaGuardada.findUnique({
+      where: { id: request.params.id },
+      select: ConsultaGuardadaConVersion,
+    });
+    if (vigente === null) {
+      return reply.code(404).send({ error: 'consulta-guardada-no-encontrada' });
+    }
+    const numero = analizarVersion(request.params.version);
+    if (numero === null) {
+      return reply.code(404).send({ error: 'version-no-encontrada' });
+    }
+    if (numero === vigente.version) {
+      return reply.code(200).send({
+        version: {
+          version: vigente.version,
+          fecha: vigente.actualizadaEn,
+          nota: vigente.nota,
+          esActual: true,
+          nombre: vigente.nombre,
+          descripcion: vigente.descripcion,
+          sql: vigente.sql,
+          parametros: vigente.parametros,
+        },
+      });
+    }
+    const pasada = await prisma.consultaGuardadaVersion.findUnique({
+      where: { consultaGuardadaId_version: { consultaGuardadaId: vigente.id, version: numero } },
+      select: { version: true, desde: true, nota: true, nombre: true, descripcion: true, sql: true, parametros: true },
+    });
+    if (pasada === null) {
+      return reply.code(404).send({ error: 'version-no-encontrada' });
+    }
+    return reply.code(200).send({
+      version: {
+        version: pasada.version,
+        fecha: pasada.desde,
+        nota: pasada.nota,
+        esActual: false,
+        nombre: pasada.nombre,
+        descripcion: pasada.descripcion,
+        sql: pasada.sql,
+        parametros: pasada.parametros,
+      },
+    });
+  });
 }
