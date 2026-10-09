@@ -193,10 +193,18 @@ const IDS = [
   'fresc-marcar',
   'fresc-aviso',
   'fresc-plantillas',
+  // CH-25: the versions panel (C-05).
+  'versiones',
+  'versiones-titulo',
+  'versiones-estado',
+  'versiones-lista',
+  'versiones-cerrar',
 ] as const;
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
-const IDS_OCULTOS = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
+const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
+/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel. */
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -404,7 +412,7 @@ describe('the console document, served by the real route', () => {
   /** CH-21c PR2a: what IDS_OCULTOS mirrors, read from the markup itself. */
   test('CH-21c the wizard markup starts closed, on step 1, with type="button" on every button', () => {
     const seccion = marcado().slice(marcado().indexOf('id="automatizaciones"'));
-    for (const id of IDS_OCULTOS) {
+    for (const id of IDS_OCULTOS_ALTA) {
       assert.match(seccion, new RegExp('id="' + id + '"[^>]*\\bhidden\\b'), id + ' starts hidden');
     }
     assert.match(seccion, /<li id="auto-marca-1"[^>]*aria-current="step"/, 'step 1 is current');
@@ -2261,5 +2269,127 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(tablaFrescura(escenario)[0].slice(0, 2), [hostil, '5']);
     assert.ok(!script.includes('inner' + 'HTML'));
     assert.ok(!/zd-[\w-]+/.test(script.slice(script.indexOf('--- Freshness (CH-24'))), 'the section assigns no shared class');
+  });
+
+  // ---- CH-25: the versions panel (spec `query-console`, DEC-146 to DEC-150) ----------
+
+  const FILA_GUARDADA = { id: 'q-1', nombre: 'Stock', descripcion: null, creadaEn: '2026-10-01T10:00:00.000Z', actualizadaEn: '2026-10-03T10:00:00.000Z' };
+
+  /** Descendants of `raiz` for which `condicion` holds, in document order. */
+  function buscar(raiz: Nodo, condicion: (nodo: Nodo) => boolean): Nodo[] {
+    return [...(condicion(raiz) ? [raiz] : []), ...raiz.hijos.flatMap((hijo) => buscar(hijo, condicion))];
+  }
+  const botonesCon = (raiz: Nodo, texto: string): Nodo[] => buscar(raiz, (n) => n.tagName === 'button' && n.textContent === texto);
+  const asentarVarias = async (): Promise<void> => {
+    for (let vuelta = 0; vuelta < 5; vuelta++) await new Promise((resolver) => setImmediate(resolver));
+  };
+
+  const version = (numero: number, esActual: boolean, nota: string | null = null) => ({
+    version: numero,
+    fecha: `2026-10-0${numero}T10:00:00.000Z`,
+    nota,
+    esActual,
+  });
+  /** Boots, selects the tenant with one saved query listed. */
+  async function conConsulta(): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [FILA_GUARDADA]);
+    return escenario;
+  }
+
+  /** Opens the panel of the one saved query, answering the history request with `versiones`. */
+  async function abrirPanel(escenario: Escenario, versiones: unknown[], truncado = false): Promise<void> {
+    escenario.respuestas.push({ status: 200, cuerpo: { versiones, truncado } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Versiones')[0].disparar('click');
+    await asentarVarias();
+  }
+
+  const TRES_VERSIONES = [version(3, true, 'Agrega filtro'), version(2, false), version(1, false)];
+
+  test('CH-25 the panel markup starts closed, keeps its ids once and every button is type="button"', () => {
+    verificarIds(marcado());
+    assert.match(marcado(), /<div id="versiones" hidden>/);
+    const seccion = marcado().slice(marcado().indexOf('id="guardado"'), marcado().indexOf('id="automatizaciones"'));
+    const botones = seccion.match(/<button[^>]*>/g) ?? [];
+    assert.ok(botones.length >= 2, 'Guardar consulta and Cerrar versiones');
+    assert.ok(botones.every((etiqueta) => etiqueta.includes('type="button"')), 'no button submits');
+  });
+
+  test('CH-25 each saved query offers a Versiones action next to Cargar', async () => {
+    const escenario = await conConsulta();
+    const lista = nodo(escenario, 'guardadas');
+    assert.equal(botonesCon(lista, 'Cargar').length, 1);
+    assert.equal(botonesCon(lista, 'Versiones').length, 1);
+  });
+
+  test('CH-25 opening shows loading at once, then the rows newest first with Vigente as icon and word', async () => {
+    const escenario = await conConsulta();
+    escenario.respuestas.push({ status: 200, cuerpo: { versiones: TRES_VERSIONES, truncado: false } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Versiones')[0].disparar('click');
+    assert.equal(nodo(escenario, 'versiones').hidden, false);
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Cargando versiones…');
+    await asentarVarias();
+
+    const peticion = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.deepEqual([peticion.url, peticion.tenant], ['/consultas-guardadas/q-1/versiones', 't-1']);
+    assert.equal(nodo(escenario, 'versiones-titulo').textContent, 'Versiones de «Stock»');
+    const filas = nodo(escenario, 'versiones-lista').hijos;
+    assert.equal(filas.length, 3);
+    assert.deepEqual(filas.map((f) => f.hijos[0].textContent), ['Versión 3', 'Versión 2', 'Versión 1']);
+    assert.ok(filas[0].textContent.includes('Agrega filtro'), 'the note is shown');
+    const insignia = buscar(filas[0], (n) => n.className === 'version-vigente');
+    assert.equal(insignia.length, 1, 'only the newest is current');
+    assert.equal(insignia[0].hijos[0].tagName, 'svg', 'an icon');
+    assert.equal(insignia[0].hijos[1].textContent, 'Vigente', 'and the word');
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, '');
+  });
+
+  test('CH-25 a query with one version says so', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, [version(1, true)]);
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Esta es la versión inicial.');
+    assert.equal(buscar(nodo(escenario, 'versiones-lista'), (n) => n.tagName === 'button').length, 0);
+  });
+
+  test('CH-25 a capped history is announced', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, TRES_VERSIONES, true);
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Se muestran solo las 3 versiones más recientes.');
+  });
+
+  test('CH-25 a failed history request shows the reason and no rows', async () => {
+    const escenario = await conConsulta();
+    escenario.respuestas.push({ status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } });
+    escenario.respuestas.push({ status: 200, cuerpo: { consultasGuardadas: [], truncado: false } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Versiones')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Esa consulta guardada ya no existe. Se actualizó la lista.');
+    assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 0);
+
+    const otra = await conConsulta();
+    otra.respuestas.push({ status: 500, cuerpo: { error: 'interno' } });
+    botonesCon(nodo(otra, 'guardadas'), 'Versiones')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(otra, 'versiones-estado').textContent, 'La aplicación respondió HTTP 500.');
+  });
+
+  test('CH-25 switching tenant closes the panel and clears every row of the previous tenant', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(escenario, [FILA_GUARDADA]);
+    await abrirPanel(escenario, TRES_VERSIONES);
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'versiones').hidden, true);
+    assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 0);
+    assert.equal(nodo(escenario, 'versiones-titulo').textContent, '');
+  });
+
+  test('CH-25 Cerrar versiones hides the panel, and a response that arrives afterwards is dropped', async () => {
+    const escenario = await conConsulta();
+    escenario.respuestas.push({ status: 200, cuerpo: { versiones: TRES_VERSIONES, truncado: false } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Versiones')[0].disparar('click');
+    nodo(escenario, 'versiones-cerrar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'versiones').hidden, true);
+    assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 0, 'the late answer did not repaint a closed panel');
   });
 });
