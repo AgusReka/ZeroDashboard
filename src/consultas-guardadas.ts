@@ -3,9 +3,9 @@ import type { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
-import { sanearSql } from './consulta-ejecucion.js';
 import { LIMITE_LISTADO } from './listados.js';
-import { analizarSentencia, TIPOS_PARAMETRO, validarDeclaracion } from './parametros.js';
+import { validarCuerpoConsulta } from './consultas-versiones.js';
+import { TIPOS_PARAMETRO } from './parametros.js';
 
 /**
  * The metadata projection every list row is built from. Unlike `ConexionPublica`,
@@ -117,28 +117,14 @@ export function registerConsultaGuardadaRoutes(
         });
       }
 
-      const body = request.body;
-      // `sanearSql` is used here **as a predicate only**, the same guard
-      // `src/consultas.ts` applies before execution: a statement that is empty once
-      // trimmed could never execute, so it can never be saved either.
-      const sql = sanearSql(body.sql);
-      if (sql === '') {
-        return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/sql'] });
+      // The content checks live in `validarCuerpoConsulta` since CH-25 so `PUT` applies the
+      // very same ones: a statement empty once sanitized is refused, and a declaration that
+      // does not fit the statement is refused at save time instead of on every execution.
+      const validado = validarCuerpoConsulta(request.body);
+      if (!validado.ok) {
+        return reply.code(400).send(validado.cuerpo);
       }
-
-      // The static half of the parameter checks (DEC-49, DEC-56, DEC-57, DEC-59): the
-      // declaration's shape, then its fit with the statement. There are no values to
-      // check here, so a query that could never be prepared is refused at save time
-      // instead of on every later execution.
-      const declaracion = validarDeclaracion(body.parametros);
-      const problemas = declaracion.ok ? analizarSentencia(sql, declaracion.valor) : declaracion.problemas;
-      if (!declaracion.ok || problemas.length > 0) {
-        return reply.code(400).send({
-          error: 'solicitud-invalida',
-          campos: [...new Set(problemas.map((problema) => problema.campo))],
-          problemas,
-        });
-      }
+      const { datos } = validado;
 
       // No tenant resolution here any more. The active tenant was validated by the
       // `onRequest` hooks before this handler ran, and `tenantId` is injected into the
@@ -146,23 +132,20 @@ export function registerConsultaGuardadaRoutes(
       // `503 tenant-no-inicializado` this route used to raise is gone rather than
       // renamed: the condition it described is unreachable on this path.
 
-      // One representation of absence: omitted, explicit null and blank-or-whitespace
-      // all persist as null, the same treatment `sanearSql` gives a blank statement.
-      const descripcion =
-        (body.descripcion ?? '').trim() === '' ? null : (body.descripcion ?? null);
-
       const consultaGuardada = await prisma.consultaGuardada.create({
         data: conTenantInyectado({
-          nombre: body.nombre,
-          descripcion,
+          nombre: datos.nombre,
+          // One representation of absence: omitted, explicit null and blank-or-whitespace
+          // all persist as null (decided in `validarCuerpoConsulta`).
+          descripcion: datos.descripcion,
           // Stored verbatim. `sanearSql` strips one trailing `;`, which is an
           // execution-path concern owned by the pagination wrapper; applying it here
           // would silently rewrite the operator's statement in the database. The
           // stored text is re-sanitized at execution time instead.
-          sql: body.sql,
+          sql: datos.sql,
           // The validated copy: only `nombre` and `tipo` of each entry, in order. The cast
           // is only because an interface carries no index signature; the value is plain JSON.
-          parametros: declaracion.valor as unknown as Prisma.InputJsonValue,
+          parametros: datos.parametros as unknown as Prisma.InputJsonValue,
         }),
         select: ConsultaGuardadaCompleta,
       });
