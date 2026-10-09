@@ -2645,6 +2645,100 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-146 — CH-25: la fila de la consulta guardada conserva el contenido vigente y el historial vive en una tabla aparte
+
+**Contexto.** B4 pide versionar los cambios de una consulta guardada, con historial y vuelta atrás. Hoy `ConsultaGuardada` no se edita (DEC-10) y todas sus lecturas devuelven el contenido vigente de la fila.
+
+**Opciones.** (a) La fila sigue guardando el contenido vigente y cada edición archiva el estado anterior en una tabla nueva con alcance de tenant. (b) La consulta pasa a ser solo una identidad y todo el contenido vive en versiones.
+
+**Decisión.** (a). `ConsultaGuardada` suma un contador `version` (1 por defecto) y una tabla `ConsultaGuardadaVersion` guarda cada estado anterior; la versión vigente es la fila y las anteriores son el historial.
+
+**Por qué.** Las filas existentes siguen siendo válidas sin migrar datos, las lecturas actuales no se mueven y la versión 1 de una consulta sin ediciones ya es la fila. (b) reescribe todas las lecturas y exige un relleno de datos.
+
+**Se resigna.** El contenido de la versión vigente y el de las anteriores viven en lugares distintos: toda lectura de historial une la fila con la tabla, y una edición debe archivar y actualizar en una sola transacción.
+
+**Decidido por:** el usuario, 2026-10-09. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-147 — CH-25: restaurar una versión crea una versión nueva; el historial solo crece
+
+**Contexto.** B4 pide "se puede volver atrás". Con el historial en una tabla aparte (DEC-146), volver atrás puede ser aditivo o destructivo.
+
+**Opciones.** (a) Restaurar la versión N copia su contenido como una versión nueva al final del historial. (b) Mover un puntero o descartar las versiones posteriores.
+
+**Decisión.** (a). Restaurar archiva el estado vigente, copia byte por byte el contenido de la versión elegida a la fila, incrementa `version` y no borra nada. No hay ninguna ruta que borre versiones.
+
+**Por qué.** Es reversible, deja constancia de que alguien volvió atrás y mantiene el historial a prueba de errores. (b) pierde información sin vuelta.
+
+**Se resigna.** El historial crece también con cada restauración y no hay forma de podarlo. Restaurar la versión 2 estando en la 5 deja una versión 6 con el mismo contenido que la 2.
+
+**Decidido por:** el usuario, 2026-10-09. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-148 — CH-25: las versiones llevan una nota opcional y no llevan autor
+
+**Contexto.** C-05 muestra por versión `autor` y `nota`. La consola no tiene usuarios ni sesión (DEC-15): el sistema no sabe quién edita.
+
+**Opciones.** (a) Sin autor y con una nota opcional escrita por el operador. (b) Autor y nota, ambos de texto libre.
+
+**Decisión.** (a). Cada edición y cada restauración admite una `nota` de texto de hasta 500 caracteres, vacía o ausente guardada como nula. No existe la columna `autor`.
+
+**Por qué.** (b) mostraría como autor lo que cada operador quiera escribir, sin verificarlo, y puede inducir a error. No se inventa un dato que el sistema no tiene.
+
+**Se resigna.** El historial dice qué cambió y cuándo, no quién. Cuando la consola tenga identidad se podrá sumar el autor sin romper el contrato de lectura.
+
+**Decidido por:** el usuario, 2026-10-09. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-149 — CH-25: «Comparar con la actual» muestra las dos sentencias lado a lado como texto plano
+
+**Contexto.** C-05 pide la acción «Comparar con la actual». La skill de diseño anota la comparación visual de versiones como sugerencia fuera de alcance: el diff no está diseñado.
+
+**Opciones.** (a) Mostrar la versión elegida y la vigente lado a lado, como texto plano, sin algoritmo de diff ni resaltado. (b) Dejar la acción fuera y registrarla como límite.
+
+**Decisión.** (a). Dos bloques de texto con la sentencia, los parámetros declarados, el nombre y la descripción de cada versión, escritos con `textContent`. No se calcula ninguna diferencia.
+
+**Por qué.** Cubre la acción que pide la pantalla con poco código y sin inventar un diseño que no existe. (b) deja la pantalla sin una acción que el diseño pide.
+
+**Se resigna.** El operador compara a ojo; no hay resaltado de líneas cambiadas. Un diff real, con su diseño, queda como mejora posterior.
+
+**Decidido por:** el usuario, 2026-10-09. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-150 — CH-25: edición completa de la consulta guardada y contrato de las rutas de versiones
+
+**Contexto.** DEC-10 dejó la consulta guardada sin edición ni borrado hasta B4. Versionar (DEC-146 a DEC-149) necesita una ruta de edición y rutas de lectura y restauración del historial, solo de la consola.
+
+**Opciones.** (a) Edición completa (nombre, descripción, sentencia, parámetros y nota opcional), con las mismas validaciones que el alta. (b) Edición solo de la sentencia y los parámetros, con nombre y descripción fijos.
+
+**Decisión.** (a), enmendando DEC-10 únicamente para la edición; seguir sin borrado. Rutas, todas con alcance de tenant por `X-Tenant-Id` (DEC-13, DEC-15):
+- `PUT /consultas-guardadas/:id`: cuerpo estricto igual al del alta más `nota` opcional (DEC-148). Mismas validaciones que el alta (sentencia no vacía, declaración de parámetros coherente con la sentencia). Archiva el estado anterior, actualiza la fila y sube `version` en una sola transacción. Responde 200 `{ consultaGuardada }` con `version`; 404 `consulta-guardada-no-encontrada`; 409 `sin-cambios`, sin crear versión, si el contenido es idéntico al vigente.
+- `GET /consultas-guardadas/:id/versiones`: más reciente primero, con `version`, `fecha`, `nota` y `esActual`, sin sentencia, acotada por `LIMITE_LISTADO` con `truncado`.
+- `GET /consultas-guardadas/:id/versiones/:version`: el contenido completo de esa versión (la vigente incluida), para la comparación de DEC-149.
+- `POST /consultas-guardadas/:id/versiones/:version/restaurar`: cuerpo `{ nota? }`; crea una versión nueva con el contenido de la elegida (DEC-147). 404 si el id o la versión no existen; 409 `version-vigente` si se pide restaurar la vigente.
+
+**Por qué.** (b) deja sin arreglo un nombre equivocado, justo lo que DEC-10 no podía corregir. Una edición idéntica no crea una versión vacía. Un id de otro tenant responde igual que uno inexistente.
+
+**Se resigna.** Una ruta de escritura nueva en la consola y su prueba con dos tenants (regla 2). Sigue sin haber borrado ni poda del historial.
+
+**Decidido por:** el usuario, 2026-10-09 (la edición completa); el contrato de rutas sigue ese criterio. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
