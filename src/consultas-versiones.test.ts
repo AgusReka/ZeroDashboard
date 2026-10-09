@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import {
   LIMITE_NOTA,
   analizarVersion,
+  leerCuerpoRestauracion,
   mismoContenido,
   resolverNota,
   validarCuerpoConsulta,
@@ -90,6 +91,32 @@ describe('resolverNota — the optional note of an edit or a restore (DEC-148)',
 
   test('the limit is 500 characters', () => {
     assert.equal(LIMITE_NOTA, 500);
+  });
+});
+
+describe('leerCuerpoRestauracion — the body of a restore (DEC-150)', () => {
+  test('no body, null and an empty object all mean "no note"', () => {
+    for (const cuerpo of [undefined, null, {}]) {
+      assert.deepEqual(leerCuerpoRestauracion(cuerpo), { ok: true, nota: undefined }, JSON.stringify(cuerpo));
+    }
+  });
+
+  test('the note is handed over untouched for resolverNota to judge', () => {
+    for (const nota of ['volvemos', '', 5, null, ['x']]) {
+      assert.deepEqual(leerCuerpoRestauracion({ nota }), { ok: true, nota });
+    }
+  });
+
+  test('any other key is refused by name, __proto__ included', () => {
+    assert.deepEqual(leerCuerpoRestauracion({ sql: 'x', tenantId: 'y' }), { ok: false, campos: ['/sql', '/tenantId'] });
+    assert.deepEqual(leerCuerpoRestauracion({ nota: 'ok', version: 9 }), { ok: false, campos: ['/version'] });
+    assert.deepEqual(leerCuerpoRestauracion(JSON.parse('{"__proto__": {"nota": "x"}}')), { ok: false, campos: ['/__proto__'] });
+  });
+
+  test('a body that is not an object is refused', () => {
+    for (const cuerpo of ['nota', 5, true, ['nota']]) {
+      assert.deepEqual(leerCuerpoRestauracion(cuerpo), { ok: false, campos: ['/'] }, JSON.stringify(cuerpo));
+    }
   });
 });
 

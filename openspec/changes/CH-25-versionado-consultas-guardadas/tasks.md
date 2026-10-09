@@ -25,8 +25,8 @@ Branch base: the current stack (`ch24/archivo`, PR #121). Strict order inside ea
 - [x] 2.3b `src/consultas-versiones-historial.test.ts`: list, cap, one version, unknown versions and the two-tenant block on both reads.
 
 ## PR3 — Restore
-- [ ] 3.1 `POST /consultas-guardadas/:id/versiones/:version/restaurar` sharing the archive-and-update helper with the edit.
-- [ ] 3.2 Tests: new version with the chosen content byte for byte, history keeps every entry, `409 version-vigente`, `404`s, two-tenant block.
+- [x] 3.1 `POST /consultas-guardadas/:id/versiones/:version/restaurar` sharing `archivarVersion` and the conflict mapping with the edit. A request with no body means "no note", which a body schema of type object cannot say (it answered `400 campos: ["/"]`, found by the live tests), so the route has no body schema and the pure `leerCuerpoRestauracion` is the strict check.
+- [x] 3.2 `src/consultas-versiones-restaurar.test.ts` (10 cases on the live database) plus the pure cases in `consultas-versiones.test.ts`: new version with the chosen content byte for byte, history keeps every entry field by field, `409 version-vigente`, `404`s, forced conflict, two-tenant block.
 
 ## PR4 — Console
 - [ ] 4.1 Load `zerodashboard-design`; "Versiones" panel with rows, "Vigente" state with icon and text, single-version text and error state.

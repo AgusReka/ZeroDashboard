@@ -128,6 +128,15 @@ export async function montarEntorno() {
       });
     },
 
+    restaurar(tenantId: string, id: string, numero: string, payload?: unknown) {
+      return app.inject({
+        method: 'POST',
+        url: `/consultas-guardadas/${encodeURIComponent(id)}/versiones/${encodeURIComponent(numero)}/restaurar`,
+        headers: cabecera(tenantId),
+        ...(payload === undefined ? {} : { payload: payload as object }),
+      });
+    },
+
     fila: (id: string) => db.consultaGuardada.findUniqueOrThrow({ where: { id } }),
 
     historial: (id: string) =>

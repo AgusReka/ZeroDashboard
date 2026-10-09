@@ -102,6 +102,29 @@ export function resolverNota(nota: unknown): ResultadoNota {
   return limpia.length > LIMITE_NOTA ? { ok: false, campos: ['/nota'] } : { ok: true, nota: limpia };
 }
 
+export type LecturaRestauracion = { ok: true; nota: unknown } | { ok: false; campos: string[] };
+
+/**
+ * The body of a restore: only an optional `nota`. A request with no body at all (or a JSON
+ * `null`) is valid and means "no note", which a route schema of type object cannot express;
+ * anything else must be an object whose only key, if any, is `nota`. An unknown key is
+ * refused by name, `__proto__` included, since `JSON.parse` makes it an own key. The note's
+ * own type and length are `resolverNota`'s concern.
+ */
+export function leerCuerpoRestauracion(cuerpo: unknown): LecturaRestauracion {
+  if (cuerpo === undefined || cuerpo === null) {
+    return { ok: true, nota: undefined };
+  }
+  if (typeof cuerpo !== 'object' || Array.isArray(cuerpo)) {
+    return { ok: false, campos: ['/'] };
+  }
+  const ajenas = Object.keys(cuerpo).filter((clave) => clave !== 'nota');
+  if (ajenas.length > 0) {
+    return { ok: false, campos: ajenas.map((clave) => `/${clave}`) };
+  }
+  return { ok: true, nota: (cuerpo as { nota?: unknown }).nota };
+}
+
 /** Whether two declarations list the same `{nombre, tipo}` entries in the same order. */
 function mismosParametros(a: unknown, b: unknown): boolean {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
