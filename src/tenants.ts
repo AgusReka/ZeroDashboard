@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
+import { resolverFrescura, type CuerpoFrescura } from './frescura.js';
 import type { RegistroAgentes } from './registro-agentes.js';
 
 /**
@@ -17,6 +18,9 @@ export const TenantPublico = {
   nombre: true,
   activo: true,
   creadoEn: true,
+  /** CH-24 (DEC-143, DEC-144): what the implementer declared about the replica; null is "sin declarar". */
+  ventanaDesactualizacionMinutos: true,
+  replicaActualizadaEn: true,
 } as const;
 
 interface RegistroTenantBody {
@@ -53,6 +57,22 @@ const registroTenantSchema = {
   properties: {
     nombre: { type: 'string', minLength: 1 },
   },
+} as const;
+
+/**
+ * CH-24 (DEC-145): `PUT /tenants/:id/frescura`. `propertyNames` rejects an unknown key (the
+ * reason `registroTenantSchema` documents) and both properties must still be listed, or
+ * `removeAdditional` would strip them silently. They carry no `type` on purpose: a schema
+ * type would let AJV coerce `"5"` into `5` and `"true"` into `true`, so the types are
+ * checked by `resolverFrescura`. `nombre`, `activo` and `replicaActualizadaEn` are absent
+ * from both lists: only the two declarations can be changed here.
+ */
+const frescuraSchema = {
+  type: 'object',
+  additionalProperties: false,
+  minProperties: 1,
+  propertyNames: { enum: ['ventanaMinutos', 'actualizadaAhora'] },
+  properties: { ventanaMinutos: {}, actualizadaAhora: {} },
 } as const;
 
 /** Built without a session registry, a baja closes no socket (CH-19c1). */
@@ -145,4 +165,50 @@ export function registerTenantRoutes(
 
     return reply.code(200).send({ tenant: actualizado });
   });
+
+  /**
+   * Console-only (rule 2: the client panel never reaches it) and exempt from the tenant
+   * header by the `/tenants/` prefix; the path names the tenant, like `baja`. Pure checks
+   * first, as in `POST /automatizaciones`, so a bad body is a `400` before any read. A
+   * deactivated tenant is frozen (DEC-14) and answers the same `409` as `baja`. Only the
+   * columns `resolverFrescura` returns are written, so `replicaActualizadaEn` always comes
+   * from the server clock and never from the request.
+   */
+  app.put<{ Params: TenantParams; Body: CuerpoFrescura }>(
+    '/tenants/:id/frescura',
+    { schema: { body: frescuraSchema }, attachValidation: true },
+    async (request, reply) => {
+      if (request.validationError) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: camposInvalidos(request.validationError),
+        });
+      }
+      const resolucion = resolverFrescura(request.body, new Date());
+      if (!resolucion.ok) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: resolucion.campos.map((campo) => `/${campo}`),
+        });
+      }
+
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: request.params.id },
+        select: TenantPublico,
+      });
+      if (tenant === null) {
+        return reply.code(404).send({ error: 'tenant-no-encontrado' });
+      }
+      if (!tenant.activo) {
+        return reply.code(409).send({ error: 'tenant-desactivado' });
+      }
+
+      const actualizado = await prisma.tenant.update({
+        where: { id: request.params.id },
+        data: resolucion.datos,
+        select: TenantPublico,
+      });
+      return reply.code(200).send({ tenant: actualizado });
+    },
+  );
 }
