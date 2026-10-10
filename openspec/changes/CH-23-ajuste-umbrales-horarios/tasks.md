@@ -15,11 +15,11 @@ Branch base `master`. Strict order inside each PR: tests first where the repo do
 - [x] 1.4 `src/panel-ajustes.test.ts` (pure): preset vectors copied from `VECTORES_HORARIO`, hour bounds, partial updates, every `campos` and 409 branch, `valores` merge keeps other declared keys (DEC-58), projection has no extra keys.
 
 ## PR2 — Routes and isolation
-- [ ] 2.1 Q1 `select` of the list gains `id`; list route test asserts it.
-- [ ] 2.2 `registerPanelAjustesRoutes` (`GET`/`PUT`), strict schema, scoped `update`, P2025 to 404.
-- [ ] 2.3 Add `GET` and `PUT /api/panel/automatizaciones/:id/ajustes` to `RUTAS_PANEL_PUBLICAS`; extend `src/contexto-tenant.test.ts`.
-- [ ] 2.4 Register in `src/server.ts`.
-- [ ] 2.5 Route tests (200/400/401/404/409, stored values, forbidden keys) and the two-tenant test in `src/aislamiento-panel.test.ts` (GET and PUT by foreign id; header ignored). Add rows to the T2 sweep if it lists routes.
+- [x] 2.1 The list's Q1 `select` already carried `id`; the live list test asserts it (PR1 added it to the item).
+- [x] 2.2 `registerPanelAjustesRoutes` (`GET`/`PUT`), strict schema (`umbral: {}` listed in `properties`, or `additionalProperties: false` strips it), scoped `update`, P2025 to 404.
+- [x] 2.3 Add `GET` and `PUT /api/panel/automatizaciones/:id/ajustes` to `RUTAS_PANEL_PUBLICAS`; extend `src/contexto-tenant.test.ts`.
+- [x] 2.4 Register in `src/server.ts`.
+- [x] 2.5 Route tests (200/400/401/404/409, stored values, forbidden keys) and the two-tenant tests live in `src/panel-ajustes-rutas.test.ts` (GET and PUT by foreign id equal an unknown id; header ignored). No route list exists in the T2 sweep to extend. Verified against a live PostgreSQL.
 
 ## PR3 — Form (P-04)
 - [ ] 3.1 Load `zerodashboard-design`; build "Ajustar" and the inline form in `src/panel.ts` with nodes and `textContent`.

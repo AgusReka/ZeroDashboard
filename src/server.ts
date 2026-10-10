@@ -16,6 +16,7 @@ import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { registerPanelAuthRoutes } from './panel-auth.js';
+import { registerPanelAjustesRoutes } from './panel-ajustes.js';
 import { registerPanelAutomatizacionesRoutes } from './panel-automatizaciones.js';
 import { registerPanelRoutes } from './panel.js';
 import { registerAgenteRoutes } from './agentes-rutas.js';
@@ -111,6 +112,7 @@ registerPanelAuthRoutes(app, prisma);
 // CH-22b (DEC-137): the panel's read-only "mis automatizaciones", session-guarded and exempt
 // by one exact row in `RUTAS_PANEL_PUBLICAS`. The clock stays at its default.
 registerPanelAutomatizacionesRoutes(app, prisma, config.zonaHoraria);
+registerPanelAjustesRoutes(app, prisma, config.zonaHoraria);
 // CH-22a PR3: `GET /panel` serves the P-01 login screen without a session or the panel
 // shell with the tenant name once `levantarSesionPanel` resolves one (DEC-135). The page
 // route is exempt from the `X-Tenant-Id` header hooks by exact GET row in
