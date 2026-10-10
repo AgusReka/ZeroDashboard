@@ -22,10 +22,10 @@ Branch base `master`. Strict order inside each PR: tests first where the repo do
 - [x] 2.5 Route tests (200/400/401/404/409, stored values, forbidden keys) and the two-tenant tests live in `src/panel-ajustes-rutas.test.ts` (GET and PUT by foreign id equal an unknown id; header ignored). No route list exists in the T2 sweep to extend. Verified against a live PostgreSQL.
 
 ## PR3 — Form (P-04)
-- [ ] 3.1 Load `zerodashboard-design`; build "Ajustar" and the inline form in `src/panel.ts` with nodes and `textContent`.
-- [ ] 3.2 States: loading values, per-field errors, success banner "Se aplican desde la próxima revisión", session/network errors.
-- [ ] 3.3 `src/panel.test.ts`: form strings present, glossary scan (no cron, SQL, tenant, id) extended.
-- [ ] 3.4 Manual check at 375 px and desktop in the running app.
+- [x] 3.1 Load `zerodashboard-design`; build "Ajustar" and the inline form in `src/panel.ts` with nodes and `textContent`.
+- [x] 3.2 States: loading values (button disabled), per-field errors, success banner "Guardamos tus cambios / Se aplican desde la próxima revisión.", session/network/unavailable errors.
+- [x] 3.3 `src/panel.test.ts`: form strings present, body keys limited to the four fields, script compiles, glossary scan covers the new literals (no cron, SQL, tenant, id).
+- [ ] 3.4 Manual check at 375 px and desktop in the running app. **Pending: needs a browser.** The `Secure` session cookie is not stored over plain `http://localhost` (known limitation, CH-22a), so use https or a browser that treats localhost as secure.
 
 ## Close
 - [ ] 4.1 Update `docs/02-mapa-de-changes.md` (CH-23 state) and the design skill's P-04 status in `guidelines/pantallas.md` (both copies).

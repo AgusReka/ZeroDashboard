@@ -93,6 +93,11 @@ const CABEZA_PAGINA = `<!doctype html>
   .panel-esqueleto__titulo { height: 18px; width: 45%; }
   .panel-esqueleto__linea { width: 85%; }
   .panel-esqueleto__corta { width: 60%; }
+  /* P-04 Ajustar (CH-23): the inline form, its notices and the action row inside a card. */
+  .panel-acciones { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-5); }
+  .panel-aviso { margin-top: var(--space-5); }
+  .panel-ajuste { margin-top: var(--space-5); padding-top: var(--space-5);
+    border-top: var(--border-width) solid var(--border-1); }
 </style>
 </head>
 <body class="zd-root" data-surface="panel">
@@ -191,8 +196,8 @@ formulario.addEventListener('submit', function (evento) {
 ` + PIE_PAGINA;
 
 /**
- * The authenticated shell (CH-22, "parcial": the header, plus the read-only P-02 list of
- * CH-22b; write actions are CH-23). The header names the session's tenant — the one store
+ * The authenticated shell (CH-22, "parcial": the header, plus the P-02 list of CH-22b and
+ * the P-04 inline "Ajustar" form of CH-23). The header names the session's tenant — the one store
  * this administrator sees — and its Salir button revokes the session through the PR2
  * endpoint and reloads, so the server renders the login screen again. `nombreTenant`
  * is escaped before interpolation: it is stored data, so it is never trusted as
@@ -288,6 +293,263 @@ function cabeza(titulo, descripcion, insignia) {
   if (insignia) { cab.appendChild(insignia); }
   return cab;
 }
+// ---- P-04 Ajustar (CH-23): the inline form of one automation ----------------------------
+var NS_SVG = 'http://www.w3.org/2000/svg';
+var avisoGuardado = null;
+var contadorFormularios = 0;
+var MENSAJE_AJUSTE_NO_DISPONIBLE = 'Esta automatización ya no se puede ajustar.';
+var MENSAJE_REVISAR = 'Revisá los datos e intentá de nuevo.';
+var MENSAJE_SIN_CAMBIOS = 'No cambiaste ningún dato.';
+var ERRORES_CAMPO = {
+  umbral: 'Ingresá un número válido.',
+  hora: 'Elegí una hora válida.',
+  dias: 'Elegí los días de envío.',
+  destinatario: 'Ingresá un correo válido.'
+};
+var OPCIONES_DIAS = [['todos', 'Todos los días'], ['lun-vie', 'De lunes a viernes'], ['lun-sab', 'De lunes a sábado']];
+var ICONO_OK = [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm9 12 2 2 4-4' }]];
+var ICONO_ALERTA = [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'M12 8v4' }], ['path', { d: 'M12 16h.01' }]];
+function icono(formas) {
+  var svg = document.createElementNS(NS_SVG, 'svg');
+  svg.setAttribute('class', 'zd-icon');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  for (var i = 0; i < formas.length; i++) {
+    var forma = document.createElementNS(NS_SVG, formas[i][0]);
+    for (var clave in formas[i][1]) {
+      if (Object.prototype.hasOwnProperty.call(formas[i][1], clave)) { forma.setAttribute(clave, formas[i][1][clave]); }
+    }
+    svg.appendChild(forma);
+  }
+  return svg;
+}
+function aviso(tono, titulo, cuerpo, rol) {
+  var banner = nodo('div', 'zd-banner zd-banner--' + tono + ' panel-aviso');
+  banner.setAttribute('role', rol);
+  banner.appendChild(icono(tono === 'ok' ? ICONO_OK : ICONO_ALERTA));
+  var texto = nodo('div');
+  texto.appendChild(nodo('p', 'zd-banner__title', titulo));
+  if (cuerpo) { texto.appendChild(nodo('p', 'zd-banner__body', cuerpo)); }
+  banner.appendChild(texto);
+  return banner;
+}
+function quitarAviso(contenedor) {
+  for (var i = contenedor.children.length - 1; i >= 0; i--) {
+    if (contenedor.children[i].classList.contains('panel-aviso')) { contenedor.removeChild(contenedor.children[i]); }
+  }
+}
+function rutaAjustes(id) {
+  return '/api/panel/automatizaciones/' + encodeURIComponent(id) + '/ajustes';
+}
+function campoDeFormulario(prefijo, nombre, etiqueta, control, ayuda, sufijo) {
+  var id = prefijo + '-' + nombre;
+  control.id = id;
+  var caja = nodo('div', 'zd-field');
+  var rotulo = nodo('label', 'zd-label', etiqueta);
+  rotulo.setAttribute('for', id);
+  caja.appendChild(rotulo);
+  if (sufijo) {
+    var grupo = nodo('div', 'zd-input-group');
+    grupo.appendChild(control);
+    grupo.appendChild(nodo('span', 'zd-input-suffix', sufijo));
+    caja.appendChild(grupo);
+  } else {
+    caja.appendChild(control);
+  }
+  var campo = { caja: caja, control: control, ayudaId: null, error: nodo('span', 'zd-field-error') };
+  if (ayuda) {
+    campo.ayudaId = id + '-ayuda';
+    var textoAyuda = nodo('span', 'zd-help', ayuda);
+    textoAyuda.id = campo.ayudaId;
+    control.setAttribute('aria-describedby', campo.ayudaId);
+    caja.appendChild(textoAyuda);
+  }
+  campo.error.id = id + '-error';
+  campo.error.hidden = true;
+  caja.appendChild(campo.error);
+  return campo;
+}
+function marcarCampo(campo, texto) {
+  campo.error.textContent = '';
+  var ayuda = campo.ayudaId ? campo.ayudaId : '';
+  if (texto) {
+    campo.error.appendChild(icono(ICONO_ALERTA));
+    campo.error.appendChild(document.createTextNode(texto));
+    campo.control.setAttribute('aria-invalid', 'true');
+    campo.control.setAttribute('aria-describedby', (ayuda + ' ' + campo.error.id).trim());
+  } else {
+    campo.control.removeAttribute('aria-invalid');
+    if (ayuda) { campo.control.setAttribute('aria-describedby', ayuda); } else { campo.control.removeAttribute('aria-describedby'); }
+  }
+  campo.error.hidden = !texto;
+}
+// Only what the person changed is sent: the server rebuilds the schedule and the values.
+function cuerpoDeCambios(campos, ajustes) {
+  var cuerpo = {};
+  if (campos.umbral) {
+    var escrito = campos.umbral.control.value.trim();
+    var numero = Number(escrito);
+    var valor = escrito === '' || isNaN(numero) ? escrito : numero;
+    if (valor !== ajustes.umbral) { cuerpo.umbral = valor; }
+  }
+  if (campos.hora && campos.hora.control.value !== ajustes.hora) { cuerpo.hora = campos.hora.control.value; }
+  if (campos.dias && campos.dias.control.value !== ajustes.dias) { cuerpo.dias = campos.dias.control.value; }
+  var correo = campos.destinatario.control.value.trim();
+  if (correo !== (ajustes.destinatario || '')) { cuerpo.destinatario = correo; }
+  return cuerpo;
+}
+function respuestaDeGuardado(resultado, item, forma, campos) {
+  var estado = resultado.estado;
+  var datos = resultado.datos;
+  if (estado === 200) {
+    avisoGuardado = item.id;
+    cargarLista();
+    return;
+  }
+  if (estado === 401) {
+    window.location.reload();
+    return;
+  }
+  var texto = MENSAJE_ERROR;
+  if (estado === 400) {
+    var lista = Array.isArray(datos.campos) ? datos.campos : [];
+    var primero = null;
+    for (var i = 0; i < lista.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(campos, lista[i])) {
+        marcarCampo(campos[lista[i]], ERRORES_CAMPO[lista[i]]);
+        if (primero === null) { primero = campos[lista[i]]; }
+      }
+    }
+    if (primero !== null) {
+      primero.control.focus();
+      return;
+    }
+    texto = MENSAJE_REVISAR;
+  } else if (estado === 404 || (estado === 409 && (datos.error === 'automatizacion-pausada' || datos.error === 'horario-no-editable'))) {
+    texto = MENSAJE_AJUSTE_NO_DISPONIBLE;
+  } else if (estado === 409) {
+    texto = MENSAJE_TENANT_INACTIVO;
+  }
+  forma.insertBefore(aviso('error', texto, '', 'alert'), forma.firstChild);
+}
+function formularioDeAjustes(item, ajustes, tarjeta, boton) {
+  contadorFormularios += 1;
+  var prefijo = 'ajuste-' + contadorFormularios;
+  var forma = nodo('form', 'zd-form panel-ajuste');
+  forma.noValidate = true;
+  forma.setAttribute('aria-label', 'Ajustar ' + item.titulo);
+  var campos = {};
+  if (typeof ajustes.umbral === 'number') {
+    var numero = nodo('input', 'zd-input');
+    numero.type = 'number';
+    numero.step = 'any';
+    numero.value = String(ajustes.umbral);
+    campos.umbral = campoDeFormulario(prefijo, 'umbral', 'Cantidad mínima', numero, 'Te avisamos cuando un producto llegue a esta cantidad o menos.', 'unidades');
+    forma.appendChild(campos.umbral.caja);
+  }
+  if (typeof ajustes.hora === 'string' && typeof ajustes.dias === 'string') {
+    var fila = nodo('div', 'zd-form-row');
+    var hora = nodo('input', 'zd-input');
+    hora.type = 'time';
+    hora.value = ajustes.hora;
+    var dias = nodo('select', 'zd-select');
+    for (var i = 0; i < OPCIONES_DIAS.length; i++) {
+      var opcion = nodo('option', '', OPCIONES_DIAS[i][1]);
+      opcion.value = OPCIONES_DIAS[i][0];
+      dias.appendChild(opcion);
+    }
+    dias.value = ajustes.dias;
+    campos.hora = campoDeFormulario(prefijo, 'hora', 'Hora de envío', hora, null, null);
+    campos.dias = campoDeFormulario(prefijo, 'dias', 'Días', dias, null, null);
+    fila.appendChild(campos.hora.caja);
+    fila.appendChild(campos.dias.caja);
+    forma.appendChild(fila);
+  }
+  var correo = nodo('input', 'zd-input');
+  correo.type = 'email';
+  correo.value = ajustes.destinatario || '';
+  correo.setAttribute('autocomplete', 'off');
+  campos.destinatario = campoDeFormulario(prefijo, 'destinatario', 'Enviar a', correo, null, null);
+  forma.appendChild(campos.destinatario.caja);
+  var acciones = nodo('div', 'zd-form-actions');
+  var guardar = nodo('button', 'zd-btn zd-btn--primary', 'Guardar cambios');
+  guardar.type = 'submit';
+  var cancelar = nodo('button', 'zd-btn zd-btn--secondary', 'Cancelar');
+  cancelar.type = 'button';
+  cancelar.addEventListener('click', function () {
+    tarjeta.removeChild(forma);
+    boton.setAttribute('aria-expanded', 'false');
+    boton.focus();
+  });
+  acciones.appendChild(guardar);
+  acciones.appendChild(cancelar);
+  forma.appendChild(acciones);
+  forma.addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    quitarAviso(forma);
+    for (var nombre in campos) {
+      if (Object.prototype.hasOwnProperty.call(campos, nombre)) { marcarCampo(campos[nombre], null); }
+    }
+    var cuerpo = cuerpoDeCambios(campos, ajustes);
+    if (Object.keys(cuerpo).length === 0) {
+      forma.insertBefore(aviso('error', MENSAJE_SIN_CAMBIOS, '', 'alert'), forma.firstChild);
+      return;
+    }
+    guardar.disabled = true;
+    guardar.setAttribute('aria-busy', 'true');
+    fetch(rutaAjustes(item.id), {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo)
+    }).then(function (respuesta) {
+      return respuesta.json().catch(function () { return {}; }).then(function (datos) {
+        return { estado: respuesta.status, datos: datos };
+      });
+    }).then(function (resultado) {
+      respuestaDeGuardado(resultado, item, forma, campos);
+    }).catch(function () {
+      forma.insertBefore(aviso('error', MENSAJE_ERROR, '', 'alert'), forma.firstChild);
+    }).finally(function () {
+      guardar.disabled = false;
+      guardar.removeAttribute('aria-busy');
+    });
+  });
+  return forma;
+}
+function alternarAjustes(item, tarjeta, boton) {
+  var abierto = tarjeta.querySelector('.panel-ajuste');
+  quitarAviso(tarjeta);
+  if (abierto) {
+    tarjeta.removeChild(abierto);
+    boton.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  boton.disabled = true;
+  fetch(rutaAjustes(item.id), { credentials: 'same-origin' }).then(function (respuesta) {
+    if (respuesta.status === 401) {
+      window.location.reload();
+      return null;
+    }
+    if (!respuesta.ok) {
+      var motivo = respuesta.status === 404 ? MENSAJE_AJUSTE_NO_DISPONIBLE : MENSAJE_ERROR;
+      tarjeta.appendChild(aviso('error', 'No pudimos abrir los ajustes', motivo, 'alert'));
+      return null;
+    }
+    return respuesta.json();
+  }).then(function (ajustes) {
+    if (ajustes === null) { return; }
+    var forma = formularioDeAjustes(item, ajustes, tarjeta, boton);
+    tarjeta.appendChild(forma);
+    boton.setAttribute('aria-expanded', 'true');
+    var primero = forma.querySelector('input, select');
+    if (primero) { primero.focus(); }
+  }).catch(function () {
+    tarjeta.appendChild(aviso('error', 'No pudimos abrir los ajustes', MENSAJE_ERROR, 'alert'));
+  }).finally(function () {
+    boton.disabled = false;
+  });
+}
 function tarjetaActiva(item, zona) {
   var esActiva = item.estado === 'activa';
   var esConFalla = item.estado === 'con_falla';
@@ -313,6 +575,9 @@ function tarjetaActiva(item, zona) {
     banner.appendChild(nodo('p', 'zd-banner__body', 'La última revisión falló. La próxima vez que se ejecute, volvemos a intentarlo.'));
     tarjeta.appendChild(banner);
   }
+  if (avisoGuardado === item.id) {
+    tarjeta.appendChild(aviso('ok', 'Guardamos tus cambios', 'Se aplican desde la próxima revisión.', 'status'));
+  }
   var tiempos = nodo('dl', 'zd-auto-card__times');
   var ultima = item.ultimaEjecucion;
   if (ultima === null) {
@@ -324,6 +589,16 @@ function tarjetaActiva(item, zona) {
   if (item.proximaEjecucion) { dato(tiempos, 'Próxima revisión', formatear(item.proximaEjecucion, zona)); }
   if (item.frecuencia) { dato(tiempos, 'Frecuencia', item.frecuencia); }
   tarjeta.appendChild(tiempos);
+  if (esActiva || esConFalla) {
+    var acciones = nodo('div', 'panel-acciones');
+    var ajustar = nodo('button', 'zd-btn zd-btn--secondary', 'Ajustar');
+    ajustar.type = 'button';
+    ajustar.setAttribute('aria-expanded', 'false');
+    ajustar.setAttribute('aria-label', 'Ajustar ' + item.titulo);
+    ajustar.addEventListener('click', function () { alternarAjustes(item, tarjeta, ajustar); });
+    acciones.appendChild(ajustar);
+    tarjeta.appendChild(acciones);
+  }
   return tarjeta;
 }
 function tarjetaDisponible(item) {
@@ -334,7 +609,10 @@ function tarjetaDisponible(item) {
 function pintar(cuerpo) {
   var activas = document.getElementById('lista-activas');
   var disponibles = document.getElementById('lista-disponibles');
+  activas.textContent = '';
+  disponibles.textContent = '';
   mostrar('estado-carga', false);
+  mostrar('estado-error', false);
   for (var i = 0; i < cuerpo.activas.length; i++) {
     activas.appendChild(tarjetaActiva(cuerpo.activas[i], cuerpo.zonaHoraria));
   }
@@ -345,32 +623,36 @@ function pintar(cuerpo) {
   mostrar('lista-activas', cuerpo.activas.length > 0);
   mostrar('seccion-disponibles', cuerpo.disponibles.length > 0);
   mostrar('nota-truncado', cuerpo.truncado === true);
+  avisoGuardado = null;
 }
 function fallar(texto) {
   mostrar('estado-carga', false);
   document.getElementById('texto-error').textContent = texto;
   mostrar('estado-error', true);
 }
-fetch('/api/panel/automatizaciones', { credentials: 'same-origin' }).then(function (respuesta) {
-  if (respuesta.status === 401) {
-    window.location.reload();
-    return null;
-  }
-  if (respuesta.status === 409) {
-    fallar(MENSAJE_TENANT_INACTIVO);
-    return null;
-  }
-  if (!respuesta.ok) {
+function cargarLista() {
+  return fetch('/api/panel/automatizaciones', { credentials: 'same-origin' }).then(function (respuesta) {
+    if (respuesta.status === 401) {
+      window.location.reload();
+      return null;
+    }
+    if (respuesta.status === 409) {
+      fallar(MENSAJE_TENANT_INACTIVO);
+      return null;
+    }
+    if (!respuesta.ok) {
+      fallar(MENSAJE_ERROR);
+      return null;
+    }
+    return respuesta.json();
+  }).then(function (cuerpo) {
+    if (cuerpo === null) { return; }
+    pintar(cuerpo);
+  }).catch(function () {
     fallar(MENSAJE_ERROR);
-    return null;
-  }
-  return respuesta.json();
-}).then(function (cuerpo) {
-  if (cuerpo === null) { return; }
-  pintar(cuerpo);
-}).catch(function () {
-  fallar(MENSAJE_ERROR);
-});
+  });
+}
+cargarLista();
 </script>
 ` + PIE_PAGINA;
 }

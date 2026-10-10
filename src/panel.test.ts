@@ -228,7 +228,9 @@ describe(
       assert.match(html, /id="seccion-disponibles"/);
       // The data request: same-origin cookie, no custom header, nothing tenant-shaped.
       assert.ok(script.includes("fetch('/api/panel/automatizaciones', { credentials: 'same-origin' })"));
-      assert.ok(!/x-tenant-id|tenantId|headers/i.test(script), 'the script must not send any tenant identifier or header');
+      assert.ok(!/x-tenant-id|tenantId/i.test(script), 'the script must not send any tenant identifier');
+      // CH-23: the only header is the JSON content type of the adjust request.
+      assert.deepEqual(script.match(/headers:\s*\{[^}]*\}/g), ["headers: { 'Content-Type': 'application/json' }"]);
       // The login render is unchanged by this screen.
       assert.ok(!html.includes('action="/api/panel/auth/ingresar"'));
       const login = await app.inject({ method: 'GET', url: '/panel' });
@@ -258,7 +260,48 @@ describe(
       assert.ok(script.includes("new Intl.DateTimeFormat('es-AR'"));
     });
 
-    test('the P-02 script is safe to embed and offers no actions (CH-22b)', async (t) => {
+    test('the P-04 form carries every string, sends only the four fields and never a schedule expression (CH-23)', async (t) => {
+      const { script } = await shellConScript();
+
+      // Syntax only: `new Function` compiles the source and never runs it, so a typo in the
+      // page script fails here and not in the browser.
+      assert.doesNotThrow(() => new Function(script), 'the page script must compile');
+
+      for (const texto of [
+        'Ajustar',
+        'Cantidad mínima',
+        'Te avisamos cuando un producto llegue a esta cantidad o menos.',
+        'Hora de envío',
+        'Días',
+        'Enviar a',
+        'Guardar cambios',
+        'Cancelar',
+        'Guardamos tus cambios',
+        'Se aplican desde la próxima revisión.',
+        'Ingresá un número válido.',
+        'Elegí una hora válida.',
+        'Elegí los días de envío.',
+        'Ingresá un correo válido.',
+        'Revisá los datos e intentá de nuevo.',
+        'No cambiaste ningún dato.',
+        'Esta automatización ya no se puede ajustar.',
+        'Todos los días',
+        'De lunes a viernes',
+        'De lunes a sábado',
+      ]) {
+        assert.ok(script.includes(texto), `falta el texto: ${texto}`);
+      }
+      // The request body is built from the four fields only; nothing else can be added.
+      const campos = new Set([...script.matchAll(/cuerpo\.(\w+) = /g)].map((m) => m[1]));
+      assert.deepEqual([...campos].sort(), ['destinatario', 'dias', 'hora', 'umbral']);
+      assert.ok(script.includes("method: 'PUT'"));
+      assert.ok(script.includes('encodeURIComponent(id)'), 'the id travels as a path segment, encoded');
+      assert.ok(!/\bcron\b|\bvalores\b|\bsql\b/i.test(script), 'no schedule expression, value map or SQL on the page');
+      // Only the active and failing cards get the action.
+      assert.match(script, /if \(esActiva \|\| esConFalla\) \{[\s\S]*?'Ajustar'/);
+    });
+
+    test('the P-02 script is safe to embed and offers no activation (CH-22b, CH-23)', async (t) => {
       const { html, script } = await shellConScript();
 
       assert.ok(!script.includes('`'), 'no JS template literal');
@@ -266,8 +309,8 @@ describe(
       assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(script), 'API values only through textContent');
       assert.ok(script.includes('.textContent = texto'));
       assert.ok(!/\.(href|src)\s*=/.test(script), 'no href or src built from API data');
-      assert.ok(!/Ajustar|Activar/.test(html), 'no actions are offered (write actions are CH-23)');
-      assert.ok(!/<button/.test(html.replace(/<button id="boton-salir"[\s\S]*?<\/button>/, '')), 'Salir is the only control');
+      assert.ok(!/Activar/.test(html), 'activation is not offered');
+      assert.ok(!/<button/.test(html.replace(/<button id="boton-salir"[\s\S]*?<\/button>/, '')), 'Salir is the only static control');
     });
 
     test('the P-02 screen has no glossary-forbidden term in visible text or script string literals (CH-22b)', async (t) => {
