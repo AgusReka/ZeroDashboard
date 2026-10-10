@@ -21,8 +21,8 @@ Branch base: the current stack (`ch24/archivo`, PR #121). Strict order inside ea
 - [x] 2.3a `src/consultas-versiones-apoyo.ts` (shared test setup, as `canal-agente-apoyo.ts` is) and `src/consultas-versiones-rutas.test.ts`: every edit scenario on the live database, parity of the 400 bodies with the create, the forced-conflict case and the two-tenant block.
 
 ## PR2b — Read the history
-- [ ] 2.2 `GET /consultas-guardadas/:id/versiones` and `GET /consultas-guardadas/:id/versiones/:version`.
-- [ ] 2.3b `src/consultas-versiones-historial.test.ts`: list, cap, one version, unknown versions and the two-tenant block on both reads.
+- [x] 2.2 `GET /consultas-guardadas/:id/versiones` and `GET /consultas-guardadas/:id/versiones/:version`.
+- [x] 2.3b `src/consultas-versiones-historial.test.ts`: list, cap, one version, unknown versions and the two-tenant block on both reads.
 
 ## PR3 — Restore
 - [ ] 3.1 `POST /consultas-guardadas/:id/versiones/:version/restaurar` sharing the archive-and-update helper with the edit.
