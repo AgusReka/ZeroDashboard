@@ -28,9 +28,11 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 - [x] 2.3 Move the wiring to `src/rutas.ts` (`registrarRutas`, guard first, order and comments kept); `src/server.ts` calls it.
 - [x] 2.4 `src/rutas.test.ts`: every registered route is 401 without a cookie unless exempt; every exempt row is registered and not answered by the guard (a hook registered after the guard marks what got past it, because the panel answers `sesion-invalida` too). Mutation check: with the guard line removed, 2 of 5 fail.
 
-## PR3 — Bootstrap command and smoke
-- [ ] 3.1 RED: `src/operador-alta.test.ts` (validators, `leerClave` with fake streams, `altaOReposicion` create and reset-revokes on the live DB).
-- [ ] 3.2 GREEN: `src/operador-alta.ts`, exit codes, `package.json` script, built into `dist/`.
+## PR3a — Bootstrap command (split from the planned PR3, which came out at 433 lines)
+- [x] 3.1 RED: `src/operador-alta.test.ts` (validators, `leerClave` with fake streams, `altaOReposicion` create and reset-revokes on the live DB).
+- [x] 3.2 GREEN: `src/operador-alta.ts`, exit codes, `package.json` script, built into `dist/`.
+
+## PR3b — Smoke script
 - [ ] 3.3 `scripts/smoke.sh`: create the operator in the container (`docker compose exec -T app node dist/operador-alta.js …` with the password on stdin), log in, send `Cookie:` on every console call; assert 401 without it on `/tenants`; the console page checks run with the cookie.
 
 ## PR4 — Console
