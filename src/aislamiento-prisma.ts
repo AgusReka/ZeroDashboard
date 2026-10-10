@@ -49,6 +49,8 @@ const MODELOS_AISLADOS = new Set([
   'Agente',
   'Usuario',
   'SesionPanel',
+  // CH-29 (DEC-151): `Operador` and `SesionConsola` are absent on purpose. They carry no
+  // `tenantId`: an operator works across every tenant, like `Tenant` and `Plantilla`.
 ]);
 
 /**

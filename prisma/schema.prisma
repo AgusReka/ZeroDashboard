@@ -321,3 +321,32 @@ model SesionPanel {
   @@index([tenantId])
   @@index([tokenHash])
 }
+
+// CH-29 (DEC-151): an operator of the console (P1). No tenant column on purpose: an
+// operator works across every tenant, and the tenant still arrives explicitly on each
+// request (DEC-15). Not a scoped model, like `Tenant`. `claveHash` comes from the same
+// `scrypt` routine as `Usuario.claveHash` (DEC-133). There is no `activo` column: the
+// only writer is the bootstrap command (DEC-153), and resetting a password is how an
+// operator is cut off, since it deletes every session of theirs.
+model Operador {
+  id            String          @id @default(uuid())
+  nombre        String          @unique
+  claveHash     String
+  creadoEn      DateTime        @default(now())
+  actualizadoEn DateTime        @updatedAt
+  sesiones      SesionConsola[]
+}
+
+// CH-29 (DEC-151): one console session, the panel's construction (DEC-134) without a
+// tenant: only the SHA-256 `tokenHash` of the cookie's token is stored. `operador` is
+// `onDelete: Cascade` because a session is meaningless without its operator.
+model SesionConsola {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  operadorId String
+  operador   Operador @relation(fields: [operadorId], references: [id], onDelete: Cascade)
+  expiraEn   DateTime
+  creadaEn   DateTime @default(now())
+
+  @@index([operadorId])
+}
