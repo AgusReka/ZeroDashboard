@@ -185,6 +185,14 @@ const IDS = [
   'auto-vista-asunto',
   'auto-vista-para',
   'auto-vista-titulo',
+  // CH-24: the freshness section (C-22).
+  'fresc-ventana',
+  'fresc-actualizada',
+  'fresc-minutos',
+  'fresc-guardar',
+  'fresc-marcar',
+  'fresc-aviso',
+  'fresc-plantillas',
 ] as const;
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
@@ -195,7 +203,7 @@ const IDS_OCULTOS = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
  * the bar the T4 comment names and the three containers the script reaches by selector
  * or the smoke greps for.
  */
-const IDS_GUARDADOS = [...IDS, 'barra-tenant', 'resultados', 'guardado', 'automatizaciones'];
+const IDS_GUARDADOS = [...IDS, 'barra-tenant', 'resultados', 'guardado', 'automatizaciones', 'frescura'];
 
 /** Throws naming the first guarded id that is missing, renamed or duplicated. */
 function verificarIds(marcado: string): void {
@@ -232,6 +240,10 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
       return null;
     },
     createElement(tagName: string): Nodo {
+      return new Nodo(tagName);
+    },
+    // CH-24: the state badge's icon is an SVG; the fake treats it as any other node.
+    createElementNS(_espacio: string, tagName: string): Nodo {
       return new Nodo(tagName);
     },
   };
@@ -2084,5 +2096,170 @@ describe('the console document, served by the real route', () => {
     const correo = componerCorreo({ nombre: 'x', automatizacion: 'otra', columnas: [], filas: [], hayMas: false, fecha: new Date(0), zona: 'UTC' });
     assert.ok(correo.texto.includes(pie), 'the same string as the server text part');
     assert.match(documento, /role="group" aria-label="Vista previa del correo"/);
+  });
+
+  // ---- CH-24: the freshness section (spec `data-freshness`, DEC-142 to DEC-145) ------
+
+  interface FilaTenantFrescura {
+    id: string;
+    nombre: string;
+    ventanaDesactualizacionMinutos?: number | null;
+    replicaActualizadaEn?: string | null;
+  }
+
+  /** Boots the console and selects the tenant, with a catalog whose tolerances are given. */
+  async function conFrescura(
+    tenant: Omit<FilaTenantFrescura, 'id' | 'nombre'>,
+    tolerancias: number[] = [],
+  ): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store', ...tenant }] as never);
+    await elegirTenant(
+      escenario,
+      [],
+      [],
+      't-1',
+      tolerancias.map((toleranciaFrescuraMinutos, i) => ({ id: `p-${i}`, nombre: `Plantilla ${i}`, toleranciaFrescuraMinutos })),
+    );
+    return escenario;
+  }
+
+  /** The text of every cell of the freshness table body, row by row. */
+  function tablaFrescura(escenario: Escenario): string[][] {
+    const cuerpo = (nodo(escenario, 'fresc-plantillas').hijos.find((hijo) => hijo.tagName === 'tbody') as Nodo | undefined);
+    return (cuerpo?.hijos ?? []).map((fila) => fila.hijos.map((celda) => celda.textContent));
+  }
+
+  /** The same vectors as `src/frescura.test.ts`: window, tolerance, label shown. */
+  const VECTORES_FRESCURA: Array<[number | null, number, string]> = [
+    [null, 60, 'Sin declarar'],
+    [0, 0, 'Al día'],
+    [60, 60, 'Al día'],
+    [61, 60, 'Desactualizada'],
+    [180, 120, 'Desactualizada'],
+    [30, 120, 'Al día'],
+  ];
+
+  test('CH-24 the section markup keeps its ids once, starts disabled and every button is type="button"', () => {
+    verificarIds(marcado());
+    const seccion = marcado().slice(marcado().indexOf('id="frescura"'));
+    for (const id of ['fresc-guardar', 'fresc-marcar']) {
+      assert.match(seccion, new RegExp('<button id="' + id + '"[^>]*type="button"[^>]*disabled'), id);
+    }
+    assert.match(seccion, /<input id="fresc-minutos"[^>]*type="text"/, 'a text control: a number control would hide invalid input');
+    assert.ok(seccion.includes('Frescura de datos'));
+  });
+
+  test('CH-24 with no active tenant the section says so and offers no action', async () => {
+    const escenario = await arrancar();
+    assert.equal(nodo(escenario, 'fresc-ventana').textContent, 'Elegí un tenant para ver su frescura.');
+    for (const id of ['fresc-minutos', 'fresc-guardar', 'fresc-marcar']) {
+      assert.equal(nodo(escenario, id).disabled, true, id);
+    }
+    assert.equal(tablaFrescura(escenario).length, 0);
+  });
+
+  test('CH-24 each shared vector shows its label with an icon and a word, never a color alone', async () => {
+    for (const [ventana, tolerancia, etiqueta] of VECTORES_FRESCURA) {
+      const escenario = await conFrescura({ ventanaDesactualizacionMinutos: ventana }, [tolerancia]);
+      assert.deepEqual(tablaFrescura(escenario), [['Plantilla 0', String(tolerancia), etiqueta]], `${ventana} contra ${tolerancia}`);
+      const insignia = (nodo(escenario, 'fresc-plantillas').hijos[1].hijos[0].hijos[2]).hijos[0];
+      assert.equal(insignia.hijos[0].tagName, 'svg', 'an icon');
+      assert.equal(insignia.hijos[1].textContent, etiqueta, 'and the word');
+    }
+  });
+
+  test('CH-24 an undeclared tenant reads "Sin declarar" for the window and the refresh', async () => {
+    const escenario = await conFrescura({ ventanaDesactualizacionMinutos: null, replicaActualizadaEn: null }, [60]);
+    assert.equal(nodo(escenario, 'fresc-ventana').textContent, 'Ventana de desactualización: Sin declarar.');
+    assert.equal(nodo(escenario, 'fresc-actualizada').textContent, 'Última actualización de la réplica: Sin declarar.');
+    assert.equal(nodo(escenario, 'fresc-minutos').value, '');
+    assert.equal(nodo(escenario, 'fresc-guardar').disabled, false);
+  });
+
+  test('CH-24 the last refresh reads as relative time', async () => {
+    const hace = (milisegundos: number): string => new Date(Date.now() - milisegundos).toISOString();
+    const casos: Array<[number, string]> = [
+      [5 * 1000, 'hace unos segundos'],
+      [12 * 60 * 1000, 'hace 12 min'],
+      [(3 * 60 + 10) * 60 * 1000, 'hace 3 h 10 min'],
+      [2 * 60 * 60 * 1000, 'hace 2 h'],
+      [3 * 24 * 60 * 60 * 1000, 'hace 3 d'],
+      [-60 * 60 * 1000, 'hace unos segundos'],
+    ];
+    for (const [antes, esperado] of casos) {
+      const escenario = await conFrescura({ ventanaDesactualizacionMinutos: 60, replicaActualizadaEn: hace(antes) });
+      assert.equal(nodo(escenario, 'fresc-actualizada').textContent, `Última actualización de la réplica: ${esperado}.`, esperado);
+    }
+  });
+
+  test('CH-24 saving a window sends exactly { ventanaMinutos } and redraws from the answer', async () => {
+    const escenario = await conFrescura({ ventanaDesactualizacionMinutos: 30 }, [60]);
+    nodo(escenario, 'fresc-minutos').value = ' 90 ';
+    await enviar(escenario, { tenant: { id: 't-1', nombre: 'Food Store', ventanaDesactualizacionMinutos: 90, replicaActualizadaEn: null } }, 200, 'fresc-guardar', 'click');
+    const peticion = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(peticion.url, '/tenants/t-1/frescura');
+    assert.deepEqual(peticion.cuerpo, { ventanaMinutos: 90 });
+    assert.equal(nodo(escenario, 'fresc-ventana').textContent, 'Ventana de desactualización: 90 min.');
+    assert.deepEqual(tablaFrescura(escenario), [['Plantilla 0', '60', 'Desactualizada']]);
+    assert.equal(nodo(escenario, 'fresc-aviso').textContent, 'Guardado.');
+  });
+
+  test('CH-24 an empty field clears the window; text that is not digits goes up as typed', async () => {
+    const escenario = await conFrescura({ ventanaDesactualizacionMinutos: 30 });
+    nodo(escenario, 'fresc-minutos').value = '';
+    await enviar(escenario, { tenant: { id: 't-1', nombre: 'Food Store', ventanaDesactualizacionMinutos: null } }, 200, 'fresc-guardar', 'click');
+    assert.deepEqual(ultimoCuerpo(escenario), { ventanaMinutos: null });
+    assert.equal(nodo(escenario, 'fresc-ventana').textContent, 'Ventana de desactualización: Sin declarar.');
+
+    // Never silently turned into "clear": the server refuses these and says why.
+    for (const escrito of ['abc', '-5', '1.5', '1e3']) {
+      nodo(escenario, 'fresc-minutos').value = escrito;
+      await enviar(escenario, { error: 'solicitud-invalida', campos: ['/ventanaMinutos'] }, 400, 'fresc-guardar', 'click');
+      assert.deepEqual(ultimoCuerpo(escenario), { ventanaMinutos: escrito }, escrito);
+    }
+  });
+
+  test('CH-24 a 400 keeps the previous declaration on screen and explains the rule', async () => {
+    const escenario = await conFrescura({ ventanaDesactualizacionMinutos: 45 }, [60]);
+    nodo(escenario, 'fresc-minutos').value = '999999999';
+    await enviar(escenario, { error: 'solicitud-invalida', campos: ['/ventanaMinutos'] }, 400, 'fresc-guardar', 'click');
+    assert.equal(nodo(escenario, 'fresc-ventana').textContent, 'Ventana de desactualización: 45 min.');
+    assert.match(nodo(escenario, 'fresc-aviso').textContent, /número entero de minutos, entre 0 y 525600/);
+    assert.deepEqual(tablaFrescura(escenario), [['Plantilla 0', '60', 'Al día']]);
+    assert.equal(nodo(escenario, 'fresc-guardar').disabled, false, 'the operator can retry');
+  });
+
+  test('CH-24 marking the replica refreshed sends exactly { actualizadaAhora: true }', async () => {
+    const escenario = await conFrescura({ ventanaDesactualizacionMinutos: 60, replicaActualizadaEn: null });
+    await enviar(escenario, { tenant: { id: 't-1', nombre: 'Food Store', ventanaDesactualizacionMinutos: 60, replicaActualizadaEn: new Date().toISOString() } }, 200, 'fresc-marcar', 'click');
+    assert.deepEqual(ultimoCuerpo(escenario), { actualizadaAhora: true });
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].tenant, 't-1');
+    assert.equal(nodo(escenario, 'fresc-actualizada').textContent, 'Última actualización de la réplica: hace unos segundos.');
+  });
+
+  test('CH-24 a tenant that is gone or deactivated shows the tenant message and reloads the list', async () => {
+    const escenario = await conFrescura({ ventanaDesactualizacionMinutos: 60 });
+    // Queue order is request order: the refused PUT first, then the reload of GET /tenants
+    // the refusal triggers, which answers the list without that tenant.
+    escenario.respuestas.push(
+      { status: 409, cuerpo: { error: 'tenant-desactivado' } },
+      { status: 200, cuerpo: { tenants: [] } },
+    );
+    nodo(escenario, 'fresc-guardar').disparar('click');
+    for (let vuelta = 0; vuelta < 4; vuelta++) {
+      await new Promise((resolver) => setImmediate(resolver));
+    }
+    // The refusal banner is followed by the reload's own "ya no está activo" notice, as for any tenant.
+    assert.match(nodo(escenario, 'banner').textContent, /ya no está activo/);
+    assert.equal(nodo(escenario, 'fresc-ventana').textContent, 'Elegí un tenant para ver su frescura.');
+  });
+
+  test('CH-24 a hostile template name is shown as text and the script assigns no shared class or markup', async () => {
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store', ventanaDesactualizacionMinutos: 10 }] as never);
+    await elegirTenant(escenario, [], [], 't-1', [{ id: 'p-1', nombre: hostil, toleranciaFrescuraMinutos: 5 }]);
+    assert.deepEqual(tablaFrescura(escenario)[0].slice(0, 2), [hostil, '5']);
+    assert.ok(!script.includes('inner' + 'HTML'));
+    assert.ok(!/zd-[\w-]+/.test(script.slice(script.indexOf('--- Freshness (CH-24'))), 'the section assigns no shared class');
   });
 });

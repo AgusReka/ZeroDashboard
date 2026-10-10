@@ -119,6 +119,13 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   /* DEC-131: the preview's title bar; its accent is set by the script, as the email does. */
   .vista-correo__titulo { padding: var(--space-3) var(--space-4); color: var(--text-on-accent); font-weight: 600; }
   .motivo-plantilla { font-size: var(--text-help); color: var(--warn-text); }
+  /* CH-24 (C-22): a freshness state is an icon and a word, never a color alone. */
+  .estado-frescura { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+  .estado-frescura--al-dia { color: var(--ok-text); }
+  .estado-frescura--desactualizada { color: var(--warn-text); }
+  .estado-frescura--sin-declarar { color: var(--text-2); }
+  .icono-frescura { width: 1.15em; height: 1.15em; flex: none; }
+  #fresc-minutos { width: 10rem; }
 </style>
 </head>
 <body class="zd-root">
@@ -280,6 +287,31 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   <div class="zd-table-wrap zd-table-scroll"><table id="auto-lista" class="zd-table"></table></div>
   <h2 class="zd-h2">Ejecuciones</h2>
   <div class="zd-table-wrap zd-table-scroll"><table id="auto-ejecuciones" class="zd-table"></table></div>
+</section>
+
+<!--
+  CH-24 (DEC-142 to DEC-145, screen C-22): what the implementer declared about the active
+  tenant's replica, next to each template's tolerance. Declare and show only: nothing here
+  stops or changes a run. Outside #formulario, every button is type="button", and every
+  value is written by the script as text.
+-->
+<section id="frescura">
+  <h2 class="zd-h2">Frescura de datos</h2>
+  <p class="ayuda">Declarás cada cuánto se regenera la réplica del tenant activo y cuándo se actualizó por última vez. Una plantilla figura como desactualizada cuando esa ventana supera la antigüedad que tolera. Es informativo: no detiene ni cambia ninguna ejecución.</p>
+  <p id="fresc-ventana" class="ayuda"></p>
+  <p id="fresc-actualizada" class="ayuda"></p>
+
+  <div class="controles">
+    <div>
+      <label for="fresc-minutos" class="zd-label">Ventana (minutos)</label>
+      <input id="fresc-minutos" class="zd-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="vacía: sin declarar">
+    </div>
+    <button id="fresc-guardar" class="zd-btn zd-btn--secondary" type="button" disabled>Guardar ventana</button>
+    <button id="fresc-marcar" class="zd-btn zd-btn--secondary" type="button" disabled>Marcar réplica actualizada ahora</button>
+  </div>
+  <p id="fresc-aviso" class="ayuda" role="status"></p>
+
+  <div class="zd-table-wrap zd-table-scroll"><table id="fresc-plantillas" class="zd-table"></table></div>
 </section>
 
 <p id="banner" class="banner" role="alert" hidden></p>
@@ -492,6 +524,10 @@ var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, co
 // server session). Every call reads it through pedir() below.
 var tenantActivo = null;
 
+// CH-24: the rows GET /tenants returned, kept so the freshness section can read the active
+// tenant's declaration without another request.
+var tenantsCargados = [];
+
 // The declaration rows, in the order they are sent: the server binds $k by that order.
 var filasParametros = [];
 
@@ -639,9 +675,11 @@ function fijarTenant(id) {
       ' (' + tenantActivo.slice(0, 8) + '…)';
   }
   escribirTenantGuardado(tenantActivo);
+  mostrarFrescura();
 }
 
 function renderizarSelector(tenants) {
+  tenantsCargados = tenants;
   vaciar(selectorTenant);
 
   var vacio = document.createElement('option');
@@ -1207,6 +1245,8 @@ function limpiarAutomatizaciones() {
   nombresPlantilla = Object.create(null);
   // The wizard goes too, values and all: nothing typed for one tenant survives the switch.
   cerrarAlta();
+  // The freshness table is drawn from the catalog just emptied.
+  mostrarFrescura();
 }
 
 // --- Creation wizard (CH-21c, DEC-129) ------------------------------------------
@@ -1485,9 +1525,11 @@ async function cargarCatalogoPlantillas() {
   nombresPlantilla = Object.create(null);
   catalogoPlantillas = (Array.isArray(resultado.cuerpo.plantillas) ? resultado.cuerpo.plantillas : []).map(function (fila) {
     nombresPlantilla[fila.id] = String(fila.nombre);
-    return { id: String(fila.id), nombre: String(fila.nombre), automatizacion: fila.automatizacion };
+    // CH-24: the tolerance rides along for the freshness table; the picker ignores it.
+    return { id: String(fila.id), nombre: String(fila.nombre), automatizacion: fila.automatizacion, tolerancia: fila.toleranciaFrescuraMinutos };
   });
   renderizarPicker();
+  mostrarFrescura();
 }
 
 // The chosen template's declaration becomes one value control per parameter, built by
@@ -1731,6 +1773,186 @@ async function verEjecuciones(id) {
       : resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' ejecuciones más recientes.' : null
   );
 }
+
+// --- Freshness (CH-24, DEC-142 to DEC-145, screen C-22) --------------------------
+// What the implementer declared for the active tenant, next to each template's tolerance.
+// Declare and show only: nothing here changes a run. The tenant rows come from GET /tenants
+// (kept by renderizarSelector) and the tolerances from the catalog the automations section
+// already reads, so a tenant switch costs no request of its own. Every value reaches the
+// page through textContent, and the state badge takes its look from the page's bridge style.
+var LIMITE_VENTANA = 525600;
+var SIN_DECLARAR = 'Sin declarar';
+var MENSAJE_VENTANA = 'La ventana tiene que ser un número entero de minutos, entre 0 y ' + LIMITE_VENTANA +
+  ', o quedar vacía para volver a "sin declarar".';
+var DIGITOS_VENTANA = '0123456789';
+var textoVentana = document.getElementById('fresc-ventana');
+var textoReplica = document.getElementById('fresc-actualizada');
+var entradaVentana = document.getElementById('fresc-minutos');
+var botonVentana = document.getElementById('fresc-guardar');
+var botonMarcar = document.getElementById('fresc-marcar');
+var avisoFrescura = document.getElementById('fresc-aviso');
+var tablaFrescura = document.getElementById('fresc-plantillas');
+
+var ETIQUETAS_FRESCURA = { 'al-dia': 'Al día', 'desactualizada': 'Desactualizada', 'sin-declarar': SIN_DECLARAR };
+var ICONOS_FRESCURA = {
+  'al-dia': [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm9 12 2 2 4-4' }]],
+  'desactualizada': [
+    ['path', { d: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3' }],
+    ['path', { d: 'M12 9v4' }],
+    ['path', { d: 'M12 17h.01' }]
+  ],
+  'sin-declarar': [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }],
+    ['path', { d: 'M12 17h.01' }]
+  ]
+};
+
+// The client twin of evaluarFrescura in src/frescura.ts, pinned by the same vectors: an
+// undeclared window is its own state, and a window equal to the tolerance is still al-dia.
+function estadoFrescura(ventana, tolerancia) {
+  if (ventana === null || ventana === undefined) { return 'sin-declarar'; }
+  return ventana > tolerancia ? 'desactualizada' : 'al-dia';
+}
+
+// "hace 3 h 10 min". An instant in the future (clock skew) reads as just now, never negative.
+function hace(iso, ahoraMs) {
+  var instante = Date.parse(iso);
+  if (isNaN(instante)) { return SIN_DECLARAR; }
+  var segundos = Math.floor((ahoraMs - instante) / 1000);
+  if (segundos < 60) { return 'hace unos segundos'; }
+  var minutos = Math.floor(segundos / 60);
+  if (minutos < 60) { return 'hace ' + minutos + ' min'; }
+  var horas = Math.floor(minutos / 60);
+  var resto = minutos % 60;
+  if (horas < 24) { return 'hace ' + horas + ' h' + (resto === 0 ? '' : ' ' + resto + ' min'); }
+  return 'hace ' + Math.floor(horas / 24) + ' d';
+}
+
+function iconoDeEstado(clave) {
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'icono-frescura');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  ICONOS_FRESCURA[clave].forEach(function (forma) {
+    var trazo = document.createElementNS('http://www.w3.org/2000/svg', forma[0]);
+    Object.keys(forma[1]).forEach(function (atributo) { trazo.setAttribute(atributo, forma[1][atributo]); });
+    svg.appendChild(trazo);
+  });
+  return svg;
+}
+
+function insignia(clave) {
+  var nodo = document.createElement('span');
+  nodo.className = 'estado-frescura estado-frescura--' + clave;
+  nodo.appendChild(iconoDeEstado(clave));
+  var texto = document.createElement('span');
+  texto.textContent = ETIQUETAS_FRESCURA[clave];
+  nodo.appendChild(texto);
+  return nodo;
+}
+
+function filaDeTenant(id) {
+  for (var i = 0; i < tenantsCargados.length; i++) {
+    if (String(tenantsCargados[i].id) === id) { return tenantsCargados[i]; }
+  }
+  return null;
+}
+
+function ventanaDe(fila) {
+  return typeof fila.ventanaDesactualizacionMinutos === 'number' ? fila.ventanaDesactualizacionMinutos : null;
+}
+
+function reemplazarTenant(nuevo) {
+  for (var i = 0; i < tenantsCargados.length; i++) {
+    if (String(tenantsCargados[i].id) === String(nuevo.id)) { tenantsCargados[i] = nuevo; }
+  }
+}
+
+function renderizarFrescura(ventana) {
+  renderizarTabla(tablaFrescura, ['Plantilla', 'Tolerancia (min)', 'Estado'],
+    catalogoPlantillas.map(function (fila) {
+      if (typeof fila.tolerancia !== 'number') { return [fila.nombre, '—', '—']; }
+      return [fila.nombre, String(fila.tolerancia), insignia(estadoFrescura(ventana, fila.tolerancia))];
+    }), 'frescura', null);
+}
+
+// Redraws the whole section from the kept rows. Called on every tenant change, when the
+// catalog arrives and after a save, so it never shows another tenant's declaration.
+function mostrarFrescura() {
+  var fila = tenantActivo === null ? null : filaDeTenant(tenantActivo);
+  var habilitado = fila !== null;
+  entradaVentana.disabled = !habilitado;
+  botonVentana.disabled = !habilitado;
+  botonMarcar.disabled = !habilitado;
+  avisoFrescura.textContent = '';
+  if (!habilitado) {
+    textoVentana.textContent = 'Elegí un tenant para ver su frescura.';
+    textoReplica.textContent = '';
+    entradaVentana.value = '';
+    vaciar(tablaFrescura);
+    return;
+  }
+  var ventana = ventanaDe(fila);
+  textoVentana.textContent = 'Ventana de desactualización: ' + (ventana === null ? SIN_DECLARAR : ventana + ' min') + '.';
+  var replica = fila.replicaActualizadaEn;
+  textoReplica.textContent = 'Última actualización de la réplica: ' +
+    (typeof replica === 'string' ? hace(replica, Date.now()) : SIN_DECLARAR) + '.';
+  entradaVentana.value = ventana === null ? '' : String(ventana);
+  renderizarFrescura(ventana);
+}
+
+// Digits only, otherwise the raw text goes up and the server refuses it: a number control or
+// a lenient parse would turn "abc" into an empty value and clear the declaration by accident.
+function ventanaEscrita() {
+  var texto = entradaVentana.value.trim();
+  if (texto === '') { return null; }
+  for (var i = 0; i < texto.length; i++) {
+    if (DIGITOS_VENTANA.indexOf(texto.charAt(i)) === -1) { return texto; }
+  }
+  return Number(texto);
+}
+
+async function guardarFrescura(cuerpo) {
+  if (tenantActivo === null) { return; }
+  var id = tenantActivo;
+  botonVentana.disabled = true;
+  botonMarcar.disabled = true;
+  // The path names the tenant (the route is exempt from the header) and pedir() sends the
+  // header anyway, as for the catalog: the section belongs to the active tenant.
+  var resultado = await pedirAutomatizacion('/tenants/' + encodeURIComponent(id) + '/frescura', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo)
+  });
+  // A tenant switch while the request was in flight owns the section now.
+  if (id !== tenantActivo) { return; }
+  if (resultado !== null && resultado.status === 200 && resultado.cuerpo.tenant) {
+    reemplazarTenant(resultado.cuerpo.tenant);
+    mostrarFrescura();
+    avisoFrescura.textContent = 'Guardado.';
+    return;
+  }
+  // A refusal keeps the previous declaration on screen.
+  mostrarFrescura();
+  if (resultado !== null) {
+    avisoFrescura.textContent = resultado.status === 400 ? MENSAJE_VENTANA
+      : 'La aplicación respondió HTTP ' + resultado.status + '.';
+  }
+}
+
+botonVentana.addEventListener('click', function () {
+  guardarFrescura({ ventanaMinutos: ventanaEscrita() });
+});
+
+botonMarcar.addEventListener('click', function () {
+  guardarFrescura({ actualizadaAhora: true });
+});
 
 // Switching tenants wipes the screen before anything else happens. This is the visual
 // half of the isolation guarantee: rows and saved-query names belonging to the tenant

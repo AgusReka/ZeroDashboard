@@ -18,9 +18,9 @@ Branch base: the current stack (`master` is behind CH-22 and CH-23, which are no
 - [x] 1.7 `src/planificador.test.ts`: a stale window does not change a run (spec "The Engine Is Not Affected").
 
 ## PR2 — Console: C-22 section
-- [ ] 2.1 Markup for `#frescura` and the script: keep tenant rows from `cargarTenants`, `mostrarFrescura`, `estadoFrescura`, `hace`, template table from `GET /plantillas`.
-- [ ] 2.2 Save and mark actions with the exact bodies, error handling (`manejarFalloDeTenant`, 400 text), disabled state with no tenant.
-- [ ] 2.3 `src/consola.test.ts`: strings, vectors, relative-time cases, request bodies, error branches. Load `zerodashboard-design` before writing markup.
+- [x] 2.1 Markup for `#frescura` and the script: tenant rows kept by `renderizarSelector`, `mostrarFrescura`, `estadoFrescura`, `hace`, and the table drawn from the catalog the automations section already reads (the tolerance now rides along in `cargarCatalogoPlantillas`), so a tenant switch adds no request. Deviation from the design: the badge takes local classes from the page's bridge style because guard G3' forbids any shared `zd-*` class in the script.
+- [x] 2.2 Save and mark actions with the exact bodies through `pedirAutomatizacion` (the console's convention, header included), error handling (`manejarFalloDeTenant`, 400 text), disabled state with no tenant. The window field is a text control: a number control would turn invalid text into an empty value and clear the declaration by accident.
+- [x] 2.3 `src/consola.test.ts`: ids registered, `createElementNS` in the fake DOM, vectors, relative-time cases, request bodies, error branches, hostile name.
 - [ ] 2.4 Manual check by the user in the running app (rebuild with `docker compose up -d --build app`).
 
 ## Close
