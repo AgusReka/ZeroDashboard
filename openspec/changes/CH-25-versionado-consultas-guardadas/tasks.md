@@ -28,10 +28,17 @@ Branch base: the current stack (`ch24/archivo`, PR #121). Strict order inside ea
 - [x] 3.1 `POST /consultas-guardadas/:id/versiones/:version/restaurar` sharing `archivarVersion` and the conflict mapping with the edit. A request with no body means "no note", which a body schema of type object cannot say (it answered `400 campos: ["/"]`, found by the live tests), so the route has no body schema and the pure `leerCuerpoRestauracion` is the strict check.
 - [x] 3.2 `src/consultas-versiones-restaurar.test.ts` (10 cases on the live database) plus the pure cases in `consultas-versiones.test.ts`: new version with the chosen content byte for byte, history keeps every entry field by field, `409 version-vigente`, `404`s, forced conflict, two-tenant block.
 
-## PR4 — Console
-- [ ] 4.1 Load `zerodashboard-design`; "Versiones" panel with rows, "Vigente" state with icon and text, single-version text and error state.
-- [ ] 4.2 Comparison as two plain-text blocks; restore with the inline confirmation; save-as-new-version with the note; help text; tenant switch clears the panel and the loaded query.
-- [ ] 4.3 `src/consola.test.ts` (ids registered in `IDS`, scenarios of the `query-console` delta).
+## PR4a1 — Console: the Versiones panel (the planned PR4 came out near 800 lines and was split in three)
+- [x] 4.1 `zerodashboard-design` was loaded earlier in the session; the panel follows the console's bridge style, so no shared `zd-*` class enters the script (guard G3'). "Versiones" action per saved query, rows with "Vigente" as icon and word, single-version text, capped-list notice and error states, a stale-response token so a closed panel or another tenant is never repainted, tenant switch closes the panel.
+- [x] 4.3a1 `src/consola.test.ts`: ids registered in `IDS`, the panel starts hidden (`IDS_OCULTOS_ALTA` keeps the wizard test about the wizard only), the panel scenarios of the `query-console` delta.
+
+## PR4a2 — Console: compare and restore
+- [ ] 4.2a Comparison as two plain-text blocks (chosen version, then the current one, two requests in that order); restore with an inline confirmation whose button repeats action and object («Restaurar versión N»), an optional note and Cancelar; refusals keep the rows and say why.
+- [ ] 4.3a2 Tests for the compare and restore scenarios.
+
+## PR4b — Console: save the editor as a new version
+- [ ] 4.2b Track the loaded query; "Guardar como nueva versión" with an optional note sending `PUT`; `sin-cambios` and `conflicto-de-edicion` messages; help text; forget the loaded query on tenant switch; sync the editor after a restore of the loaded query.
+- [ ] 4.3b Tests for the scenarios of the delta that concern saving.
 - [ ] 4.4 Manual check by the user in the running app (rebuild with `docker compose up -d --build app`; stop the `app` container while running the full suite).
 
 ## Close

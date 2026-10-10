@@ -126,6 +126,8 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   .estado-frescura--sin-declarar { color: var(--text-2); }
   .icono-frescura { width: 1.15em; height: 1.15em; flex: none; }
   #fresc-minutos { width: 10rem; }
+  /* CH-25 (C-05): the versions panel. The current version is an icon and a word, never a color alone. */
+  .version-vigente { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 600; color: var(--ok-text); }
 </style>
 </head>
 <body class="zd-root">
@@ -198,6 +200,18 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   </div>
 
   <ul id="guardadas"></ul>
+
+  <!--
+    CH-25 (DEC-146 to DEC-150, screen C-05): the history of one saved query. Starts closed;
+    the script fills it as text. Every button is type="button". Restoring never deletes: it
+    creates a new version.
+  -->
+  <div id="versiones" hidden>
+    <h3 id="versiones-titulo" class="zd-h2"></h3>
+    <p id="versiones-estado" class="ayuda" role="status"></p>
+    <ul id="versiones-lista"></ul>
+    <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
+  </div>
 </section>
 
 <!--
@@ -766,6 +780,7 @@ function manejarFalloDeTenant(cuerpo) {
   if (cuerpo.error === 'tenant-no-encontrado' || cuerpo.error === 'tenant-desactivado') {
     limpiarResultados();
     vaciar(listaGuardadas);
+    cerrarVersiones();
     limpiarAutomatizaciones();
     cargarTenants();
   }
@@ -1063,6 +1078,13 @@ function renderizarGuardadas(cuerpo) {
     // identifies a row when names can repeat.
     boton.addEventListener('click', function () { cargarGuardada(fila.id); });
     item.appendChild(boton);
+
+    // CH-25: the history of this query, in the panel below the list.
+    var botonVersiones = document.createElement('button');
+    botonVersiones.type = 'button';
+    botonVersiones.textContent = 'Versiones';
+    botonVersiones.addEventListener('click', function () { abrirVersiones(fila); });
+    item.appendChild(botonVersiones);
 
     listaGuardadas.appendChild(item);
   });
@@ -1954,6 +1976,111 @@ botonMarcar.addEventListener('click', function () {
   guardarFrescura({ actualizadaAhora: true });
 });
 
+// --- Versions (CH-25, DEC-146 to DEC-150, screen C-05) ---------------------------
+// The history of one saved query, listed newest first. Comparison and restore come next.
+// Every call goes through pedirAutomatizacion, so the tenant header and the
+// tenant refusals are handled in one place. Values reach the page through textContent, and
+// no shared class is assigned here: the look comes from the page's bridge style.
+var panelVersiones = document.getElementById('versiones');
+var tituloVersiones = document.getElementById('versiones-titulo');
+var estadoVersiones = document.getElementById('versiones-estado');
+var listaVersiones = document.getElementById('versiones-lista');
+var botonCerrarVersiones = document.getElementById('versiones-cerrar');
+
+// The query whose panel is open ({ id, nombre, vigente }), and the token that makes a
+// response from an older open, a closed panel or another tenant drop itself.
+var consultaAbierta = null;
+var generacionVersiones = 0;
+
+var MENSAJES_VERSIONES = {
+  'consulta-guardada-no-encontrada': 'Esa consulta guardada ya no existe. Se actualizó la lista.'
+};
+
+function mensajeDeVersiones(resultado) {
+  var error = resultado.cuerpo.error;
+  return Object.prototype.hasOwnProperty.call(MENSAJES_VERSIONES, error)
+    ? MENSAJES_VERSIONES[error] : 'La aplicación respondió HTTP ' + resultado.status + '.';
+}
+
+function rutaVersiones(id, numero) {
+  return '/consultas-guardadas/' + encodeURIComponent(id) + '/versiones' +
+    (numero === undefined ? '' : '/' + encodeURIComponent(numero));
+}
+
+function cerrarVersiones() {
+  generacionVersiones += 1;
+  consultaAbierta = null;
+  panelVersiones.hidden = true;
+  tituloVersiones.textContent = '';
+  estadoVersiones.textContent = '';
+  vaciar(listaVersiones);
+}
+
+function insigniaVigente() {
+  var nodo = document.createElement('span');
+  nodo.className = 'version-vigente';
+  nodo.appendChild(iconoDeEstado('al-dia'));
+  var texto = document.createElement('span');
+  texto.textContent = 'Vigente';
+  nodo.appendChild(texto);
+  return nodo;
+}
+
+function filaDeVersion(version) {
+  var item = document.createElement('li');
+  var titulo = document.createElement('strong');
+  titulo.textContent = 'Versión ' + version.version;
+  item.appendChild(titulo);
+  var fecha = document.createElement('span');
+  fecha.className = 'ayuda';
+  fecha.textContent = String(version.fecha);
+  item.appendChild(fecha);
+  if (version.nota !== null && version.nota !== undefined) {
+    var nota = document.createElement('span');
+    nota.className = 'ayuda';
+    nota.textContent = String(version.nota);
+    item.appendChild(nota);
+  }
+  if (version.esActual === true) {
+    item.appendChild(insigniaVigente());
+  }
+  return item;
+}
+
+function renderizarVersiones(cuerpo) {
+  var lista = Array.isArray(cuerpo.versiones) ? cuerpo.versiones : [];
+  var vigente = null;
+  lista.forEach(function (v) { if (v.esActual === true) { vigente = v.version; } });
+  consultaAbierta.vigente = vigente;
+  vaciar(listaVersiones);
+  lista.forEach(function (version) { listaVersiones.appendChild(filaDeVersion(version)); });
+  estadoVersiones.textContent = lista.length <= 1 ? 'Esta es la versión inicial.'
+    : cuerpo.truncado === true ? 'Se muestran solo las ' + lista.length + ' versiones más recientes.' : '';
+}
+
+async function abrirVersiones(fila) {
+  generacionVersiones += 1;
+  var g = generacionVersiones;
+  consultaAbierta = { id: String(fila.id), nombre: String(fila.nombre), vigente: null };
+  vaciar(listaVersiones);
+  tituloVersiones.textContent = 'Versiones de «' + consultaAbierta.nombre + '»';
+  estadoVersiones.textContent = 'Cargando versiones…';
+  panelVersiones.hidden = false;
+  var resultado = await pedirAutomatizacion(rutaVersiones(consultaAbierta.id));
+  if (g !== generacionVersiones) { return; }
+  if (resultado === null) { estadoVersiones.textContent = 'No se pudieron leer las versiones.'; return; }
+  if (resultado.status !== 200) {
+    estadoVersiones.textContent = mensajeDeVersiones(resultado);
+    if (resultado.cuerpo.error === 'consulta-guardada-no-encontrada') { listarGuardadas(); }
+    return;
+  }
+  renderizarVersiones(resultado.cuerpo);
+}
+
+botonCerrarVersiones.addEventListener('click', function () {
+  cerrarVersiones();
+});
+
 // Switching tenants wipes the screen before anything else happens. This is the visual
 // half of the isolation guarantee: rows and saved-query names belonging to the tenant
 // the operator just left must not stay on the page next to the new tenant's name.
@@ -1962,6 +2089,7 @@ selectorTenant.addEventListener('change', function () {
   ocultarBanner();
   limpiarResultados();
   vaciar(listaGuardadas);
+  cerrarVersiones();
   limpiarParametros();
   limpiarAutomatizaciones();
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
