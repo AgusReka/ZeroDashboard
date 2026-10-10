@@ -3,6 +3,7 @@ import { conTenantActivo } from './contexto-tenant.js';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
 import { generarTokenSesion, hashTokenSesion, verificarClave } from './crypto-auth.js';
 import { camposInvalidos } from './conexiones.js';
+import { leerCookie } from './cookies.js';
 
 /**
  * CH-22a (DEC-133, DEC-134, DEC-135, DEC-136): the client-panel authentication
@@ -90,29 +91,6 @@ function cookieDeSesion(tokenPlano: string): string {
 /** The logout twin: same shape, empty value, expired immediately. */
 function cookieVacia(): string {
   return `${NOMBRE_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax; Secure`;
-}
-
-/**
- * One cookie value out of a `Cookie` request header, by name. Hand-rolled on purpose:
- * the panel surface needs exactly one cookie, and the project adds no dependency for a
- * single fixed pair. A repeated cookie name yields the first one, which is all the
- * hook needs — the token is validated against the database, not trusted by shape.
- */
-function leerCookie(cabecera: string | undefined, nombre: string): string | null {
-  if (cabecera === undefined) {
-    return null;
-  }
-  for (const parte of cabecera.split(';')) {
-    const recortada = parte.trim();
-    const igual = recortada.indexOf('=');
-    if (igual === -1) {
-      continue;
-    }
-    if (recortada.slice(0, igual) === nombre) {
-      return recortada.slice(igual + 1);
-    }
-  }
-  return null;
 }
 
 /**

@@ -8,7 +8,6 @@ Inputs: proposal.md, specs (`console-operator-auth`, `query-console` delta), DEC
 |---|---|
 | `prisma/schema.prisma` + new migration | Tables `Operador` and `SesionConsola` |
 | `src/cookies.ts` (new) | `leerCookie`, moved out of `src/panel-auth.ts` unchanged; the panel imports it |
-| `src/escapar-html.ts` (new) | `escaparHtml`, moved out of `src/panel.ts` unchanged; the panel and the console import it |
 | `src/consola-auth.ts` (new) | Constants, cookie serializers, `resolverSesionConsola`, `EXENCIONES_OPERADOR`, `requiereOperador`, `registrarGuardOperador`, `registerConsolaAuthRoutes` (`ingresar`, `salir`) |
 | `src/contexto-tenant.ts` | Two exact rows: `POST /consola/ingresar`, `POST /consola/salir` exempt from the tenant header |
 | `src/rutas.ts` (new) | `registrarRutas(app, deps)`: the guard, the tenant hooks and every `register*` call, moved out of `src/server.ts` in the same order |
@@ -73,6 +72,7 @@ No tenant column, so neither model joins `MODELOS_AISLADOS`: like `Tenant`, they
 ## 7. Console (`src/consola.ts`)
 
 - `registerConsolaRoute(app, prisma)` (gains the client). `GET /consola` stays exempt from the guard and the tenant header; it calls `resolverSesionConsola` and serves `documentoIngreso()` or `documentoConsola(nombreOperador)`.
+- The operator name is escaped with the tested `escaparHtml` that `src/correo.ts` already exports (same five characters as the panel's private copy, which stays as it is).
 - `documentoIngreso()`: a small document with its own script (form, `fetch('/consola/ingresar')`, `textContent` for the error, reload on 200). Built with the design skill's login pattern (P-01 of the panel is the reference) and `.zd-*` classes.
 - The console header gains the escaped operator name and a "Salir" button. The script's single request helper `pedir()` and the one direct `fetch('/tenants')` call `location.reload()` on 401; both paths go through one small `siNoAutenticado(respuesta)` check.
 - The guarded-ids test keeps its list; the hazard scan (one `</script>`, no backtick, no `innerHTML`) runs over both documents.
@@ -86,7 +86,7 @@ No tenant column, so neither model joins `MODELOS_AISLADOS`: like `Tenant`, they
 | `src/rutas.test.ts` | Builds the app with `registrarRutas`, collects routes with `onRoute`; every non-exempt route without a cookie is 401 `sesion-invalida`; every exempt row is a registered route and is not answered by the guard |
 | `src/operador-alta.test.ts` | Pure validators and `leerClave` with fake streams; `altaOReposicion` on the live DB (create, reset revokes sessions) |
 | `src/consola.test.ts` | Login document vs console document by session, escaped operator name, hazard scan over both |
-| `src/panel-auth.test.ts`, `src/panel.test.ts` | Unchanged, green: parity proof for the two extractions |
+| `src/panel-auth.test.ts`, `src/panel.test.ts` | Unchanged, green: parity proof for the cookie-reader extraction |
 
 ## 9. Trade-offs
 - **A second session mechanism** next to the panel's: kept separate on purpose (DEC-04, DEC-151); only the cookie reader, the hashing and the escaping are shared.
@@ -95,4 +95,4 @@ No tenant column, so neither model joins `MODELOS_AISLADOS`: like `Tenant`, they
 - **Moving the wiring** touches `src/server.ts` in one block; the order of registrations is load-bearing (the tenant hooks must precede every route), and `src/rutas.ts` keeps that comment.
 
 ## 10. Size forecast
-PR1 ~380 (schema, migration, two extractions, pure module, tests) · PR2 ~420 (guard, routes, tenant rows, wiring move, wiring and route tests) · PR3 ~260 (command, tests, smoke) · PR4 ~320 (console). Total ~1380.
+PR1 ~380 (schema, migration, the cookie-reader extraction, pure module, tests) · PR2 ~420 (guard, routes, tenant rows, wiring move, wiring and route tests) · PR3 ~260 (command, tests, smoke) · PR4 ~320 (console). Total ~1380.

@@ -1259,7 +1259,8 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     // the model list the extension actually sees at runtime. CH-13 (DEC-74, X2) adds
     // `Automatizacion` and `Ejecucion`, CH-19b (DEC-121) adds `Agente`, and CH-22a
     // (DEC-133, DEC-134) adds `Usuario` and `SesionPanel` — both scoped, proven by the
-    // fail-closed cases below, so this list pins them *in*, not out.
+    // fail-closed cases below, so this list pins them *in*, not out. CH-29 (DEC-151) adds
+    // `Operador` and `SesionConsola`, global like `Plantilla` (see the case below).
     assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
       'Agente',
       'Automatizacion',
@@ -1267,12 +1268,21 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
       'ConsultaGuardada',
       'ConsultaGuardadaVersion',
       'Ejecucion',
+      'Operador',
       'Plantilla',
+      'SesionConsola',
       'SesionPanel',
       'Tenant',
       'Usuario',
       'VistaCanonica',
     ]);
+  });
+
+  test('CH-29: Operador and SesionConsola carry no tenantId column (DEC-151)', () => {
+    // An operator works across every tenant and the tenant still arrives on each request
+    // (DEC-15), so neither table is scoped; the absence is the design, not an omission.
+    assert.ok(!Object.values(Prisma.OperadorScalarFieldEnum).includes('tenantId' as never));
+    assert.ok(!Object.values(Prisma.SesionConsolaScalarFieldEnum).includes('tenantId' as never));
   });
 
   test('Plantilla carries no tenantId column, unlike every scoped model', () => {

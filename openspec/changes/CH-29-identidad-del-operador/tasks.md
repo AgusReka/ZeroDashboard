@@ -6,16 +6,19 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 - Estimated changed lines: ~1380 (PR1 ~380, PR2 ~420, PR3 ~260, PR4 ~320)
 - 400-line budget risk: High
 - Chained PRs recommended: Yes
-- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`)
+- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-10: chained PRs, stacked-to-main**, one PR per section below; a section that comes out over 400 lines is split.
 
 ## PR0 — Planning
 - [ ] 0.1 DEC-151 to DEC-154, exploration marked decided, proposal, specs, design and tasks (this branch, `ch29/exploracion`).
 
-## PR1 — Schema and the session layer
-- [ ] 1.1 `prisma/schema.prisma` + migration for `Operador` and `SesionConsola` (generated with `prisma migrate diff`, rollback in the header, no drift after applying); client regenerated; applied to the dev database.
-- [ ] 1.2 Move `leerCookie` to `src/cookies.ts` and `escaparHtml` to `src/escapar-html.ts`; the panel imports them; panel suites green unchanged (parity proof).
-- [ ] 1.3 RED: `src/consola-auth.test.ts` (cookie attributes, `requiereOperador` incl. look-alikes and `undefined`, exemption set derived from the panel and stylesheet sets).
-- [ ] 1.4 GREEN: `src/consola-auth.ts` constants, serializers, `EXENCIONES_OPERADOR`, `requiereOperador`, `resolverSesionConsola`; export the panel's public rows from `src/contexto-tenant.ts` read-only.
+## PR1a — Schema and the cookie reader (split from the planned PR1, which came out at 475 lines)
+- [x] 1.1 `prisma/schema.prisma` + migration for `Operador` and `SesionConsola` (generated with `prisma migrate diff`, rollback in the header, no drift after applying); client regenerated; applied to the dev database.
+- [x] 1.2 Move `leerCookie` to `src/cookies.ts`; the panel imports it; panel suites green unchanged (parity proof). The console reuses `escaparHtml` from `src/correo.ts` (no new module).
+
+## PR1b — The session layer
+- [x] 1.3 RED: `src/consola-auth.test.ts` (cookie attributes, `requiereOperador` incl. look-alikes and `undefined`, exemption set derived from the panel and stylesheet sets).
+- [x] 1.4 GREEN: `src/consola-auth.ts` constants, serializers, `EXENCIONES_OPERADOR`, `requiereOperador`, `resolverSesionConsola`; export the panel's public rows from `src/contexto-tenant.ts` read-only.
+- [x] 1.5 `src/consola-auth-apoyo.ts` (shared live-DB setup) and `src/consola-sesion.test.ts`: no cookie, unknown token, live session by hash, expired row deleted on use, cascade on operator delete. Written after `resolverSesionConsola`, not before it (not a true RED).
 
 ## PR2 — Guard, routes and wiring
 - [ ] 2.1 RED: `src/consola-auth-rutas.test.ts` on the live DB: login 200/401/400, hashed token, logout revokes, expired session deleted on use, cookies do not cross, 401 before the tenant check.
