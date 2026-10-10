@@ -6,6 +6,7 @@ import { camposInvalidos } from './conexiones.js';
 import { LIMITE_LISTADO } from './listados.js';
 import {
   analizarVersion,
+  leerCuerpoRestauracion,
   mismoContenido,
   resolverNota,
   validarCuerpoConsulta,
@@ -436,4 +437,77 @@ export function registerConsultaGuardadaRoutes(
       },
     });
   });
+
+  /**
+   * CH-25 (DEC-147, DEC-150): restoring version N is an edit whose content comes from the
+   * history. The current state is archived and the row takes the chosen version's content
+   * copied exactly as stored, with `version` going up by one: nothing is deleted and the
+   * history only grows. Same transaction and same conflict mapping as the edit. The current
+   * version cannot be restored (`409 version-vigente`), and the chosen version must exist in
+   * this query's own history (`404 version-no-encontrada`), which another tenant's cannot.
+   */
+  app.post<{ Params: VersionParams; Body: unknown }>(
+    '/consultas-guardadas/:id/versiones/:version/restaurar',
+    async (request, reply) => {
+      // No body schema on purpose: "no body at all" must mean "no note", which a schema of
+      // type object cannot say. `leerCuerpoRestauracion` is the strict check instead.
+      const cuerpo = leerCuerpoRestauracion(request.body);
+      if (!cuerpo.ok) {
+        return reply.code(400).send({ error: 'solicitud-invalida', campos: cuerpo.campos });
+      }
+      const nota = resolverNota(cuerpo.nota);
+      if (!nota.ok) {
+        return reply.code(400).send({ error: 'solicitud-invalida', campos: nota.campos });
+      }
+      const id = request.params.id;
+      const numero = analizarVersion(request.params.version);
+
+      try {
+        const resultado = await prisma.$transaction(async (tx) => {
+          const vigente = await tx.consultaGuardada.findUnique({ where: { id }, select: FilaVigente });
+          if (vigente === null) {
+            return { estado: 404 as const, error: 'consulta-guardada-no-encontrada' };
+          }
+          if (numero === null) {
+            return { estado: 404 as const, error: 'version-no-encontrada' };
+          }
+          if (numero === vigente.version) {
+            return { estado: 409 as const, error: 'version-vigente' };
+          }
+          const elegida = await tx.consultaGuardadaVersion.findUnique({
+            where: { consultaGuardadaId_version: { consultaGuardadaId: id, version: numero } },
+            select: { nombre: true, descripcion: true, sql: true, parametros: true },
+          });
+          if (elegida === null) {
+            return { estado: 404 as const, error: 'version-no-encontrada' };
+          }
+          await archivarVersion(tx, vigente);
+          const consultaGuardada = await tx.consultaGuardada.update({
+            where: { id },
+            data: {
+              nombre: elegida.nombre,
+              descripcion: elegida.descripcion,
+              // Copied as stored, byte for byte: nothing is trimmed, sanitized or revalidated.
+              sql: elegida.sql,
+              parametros: elegida.parametros as Prisma.InputJsonValue,
+              nota: nota.nota,
+              version: { increment: 1 },
+            },
+            select: ConsultaGuardadaConVersion,
+          });
+          return { estado: 200 as const, consultaGuardada };
+        });
+
+        if (resultado.estado === 200) {
+          return reply.code(200).send({ consultaGuardada: resultado.consultaGuardada });
+        }
+        return reply.code(resultado.estado).send({ error: resultado.error });
+      } catch (error) {
+        if (esConflictoDeVersion(error)) {
+          return reply.code(409).send({ error: 'conflicto-de-edicion' });
+        }
+        throw error;
+      }
+    },
+  );
 }
