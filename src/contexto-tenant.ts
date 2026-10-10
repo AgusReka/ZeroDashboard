@@ -137,8 +137,11 @@ const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
  * no business sending; the session hook in `src/panel-auth.ts` is the only tenant
  * resolution the surface trusts. Rows are exact like every other entry here: a
  * look-alike path or a different method stays scoped and fails closed.
+ *
+ * Exported read-only so the console's operator guard (CH-29, DEC-152) builds its own
+ * exemption list from this set: a new public panel row needs no console session either.
  */
-const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
+export const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
   'POST /api/panel/auth/ingresar',
   'POST /api/panel/auth/salir',
   'GET /api/panel/auth/sesion',
