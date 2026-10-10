@@ -512,6 +512,27 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     assert.equal((await ejecuciones(inactiva)).length, 0);
   });
 
+  test('CH-24 a tenant whose declared window exceeds the template tolerance runs exactly like any other (DEC-142)', async () => {
+    // The template tolerates 30 minutes; the first tenant declares 1000, the second nothing.
+    const desactualizado = await tenant();
+    await prisma.tenant.update({ where: { id: desactualizado }, data: { ventanaDesactualizacionMinutos: 1000 } });
+    const idDesactualizado = await automatizacion(desactualizado);
+    const idSinDeclarar = await automatizacion(await tenant());
+
+    await tick(EN('12:00:30'), EN('12:01:30'));
+
+    const [conVentana] = await ejecuciones(idDesactualizado);
+    const [sinVentana] = await ejecuciones(idSinDeclarar);
+    assert.ok(conVentana !== undefined && sinVentana !== undefined, 'both runs happened');
+    // Not rejected, not delayed: it reached the driver and failed on the closed port as the control did.
+    assert.deepEqual(
+      columnas(conVentana, 'estado', 'fase', 'codigoError', 'error'),
+      columnas(sinVentana, 'estado', 'fase', 'codigoError', 'error'),
+    );
+    assert.equal(conVentana.fase, 'conexion');
+    assert.equal((await ejecuciones(idDesactualizado)).length, 1);
+  });
+
   test('4.3 an entity with no passing validation blocks the run before any dial, naming the entity', async () => {
     const id = await automatizacion(await tenant(), { vista: false });
 
