@@ -10,6 +10,12 @@
 # script creates its own tenants through the API rather than relying on the seeded one,
 # and deletes them at the end, so a developer's local data is left as it was found.
 #
+# Since CH-29 (DEC-152, DEC-153) every console call needs an operator session: right after
+# the first boot the script creates its own operator with the bootstrap command inside the
+# app container, logs in, and from then on `curl` is a function that sends the session
+# cookie on every call. The cookie is `Secure`, so it is sent as an explicit `Cookie:`
+# header rather than through a cookie jar over plain http://localhost.
+#
 # Requires Docker running and a local .env (copy .env.example if you don't have one yet).
 set -e
 
@@ -58,6 +64,31 @@ docker compose logs --since "$INICIO_APP" app >/tmp/smoke-arranque.log 2>&1
 grep -q "No pending migrations to apply." /tmp/smoke-arranque.log || fail "second migrate run was not a no-op"
 check_health 200 ready
 echo "OK: migrate deploy re-run was a no-op"
+
+echo "== CH-29: operator bootstrap, login and the guard (DEC-152, DEC-153) =="
+OPERADOR_SMOKE=smoke-operador
+CLAVE_SMOKE="smoke-$(date +%s)-clave-larga"
+code=$(curl -s -o /tmp/smoke-sin-sesion.json -w '%{http_code}' http://localhost:3000/tenants --max-time 10)
+[ "$code" = "401" ] || fail "expected HTTP 401 from /tenants without a console session, got $code"
+grep -q '"error":"sesion-invalida"' /tmp/smoke-sin-sesion.json || fail "/tenants without a session did not answer sesion-invalida"
+# The password goes through stdin only, never an argument (DEC-153). A rerun resets the same
+# operator instead of failing, which is what makes the script rerunnable.
+printf '%s
+' "$CLAVE_SMOKE" | docker compose exec -T app node dist/operador-alta.js "$OPERADOR_SMOKE"   >/tmp/smoke-alta.txt 2>&1 || fail "the operator bootstrap command failed: $(cat /tmp/smoke-alta.txt)"
+grep -Eq 'creado|repuesta' /tmp/smoke-alta.txt || fail "the bootstrap command did not say created or reset"
+if grep -q "$CLAVE_SMOKE" /tmp/smoke-alta.txt; then fail "the bootstrap command printed the password"; fi
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/consola/ingresar   -H 'Content-Type: application/json' -d "{\"nombre\":\"$OPERADOR_SMOKE\",\"clave\":\"otra-clave-incorrecta\"}" --max-time 10)
+[ "$code" = "401" ] || fail "expected HTTP 401 for a wrong operator password, got $code"
+code=$(curl -s -o /tmp/smoke-ingreso.json -D /tmp/smoke-ingreso.h -w '%{http_code}' -X POST   http://localhost:3000/consola/ingresar -H 'Content-Type: application/json'   -d "{\"nombre\":\"$OPERADOR_SMOKE\",\"clave\":\"$CLAVE_SMOKE\"}" --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 from the console login, got $code"
+COOKIE_CONSOLA=$(grep -i '^set-cookie: zd_consola_session=' /tmp/smoke-ingreso.h | head -1 | sed 's/^[^:]*: //; s/;.*//' | tr -d '')
+[ -n "$COOKIE_CONSOLA" ] || fail "the console login did not set zd_consola_session"
+grep -qi '^set-cookie: zd_consola_session=.*HttpOnly' /tmp/smoke-ingreso.h || fail "the console cookie is not HttpOnly"
+# From here on every call carries the session; `command curl` would bypass the function.
+curl() { command curl -H "Cookie: $COOKIE_CONSOLA" "$@"; }
+code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/tenants --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 from /tenants with the console session, got $code"
+echo "OK: 401 without a session, operator created through stdin, wrong password 401, login 200, /tenants 200 with the cookie"
 
 echo "== CH-21b: initial template catalog, seeded on every boot (DEC-125) =="
 # A tenant certainly exists on this restart, so the tenant step returns early; the catalog
@@ -514,6 +545,7 @@ DELETE FROM "ConsultaGuardada" WHERE nombre LIKE 'CH-05 smoke%' OR nombre = '<sc
 DELETE FROM "ConsultaGuardada" WHERE "tenantId" IN (SELECT id FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%');
 DELETE FROM "Conexion" WHERE "tenantId" IN (SELECT id FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%');
 DELETE FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%';
+DELETE FROM "Operador" WHERE nombre = 'smoke-operador';
 DROP SCHEMA IF EXISTS ch04_smoke CASCADE;
 DO \$limpieza\$ DECLARE rol text; BEGIN
   FOREACH rol IN ARRAY ARRAY['ch04_smoke_lector','ch04_smoke_escritor'] LOOP

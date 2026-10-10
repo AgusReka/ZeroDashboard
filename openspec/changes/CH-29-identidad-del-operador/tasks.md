@@ -33,7 +33,7 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 - [x] 3.2 GREEN: `src/operador-alta.ts`, exit codes, `package.json` script, built into `dist/`.
 
 ## PR3b — Smoke script
-- [ ] 3.3 `scripts/smoke.sh`: create the operator in the container (`docker compose exec -T app node dist/operador-alta.js …` with the password on stdin), log in, send `Cookie:` on every console call; assert 401 without it on `/tenants`; the console page checks run with the cookie.
+- [x] 3.3 `scripts/smoke.sh`: create the operator in the container (`docker compose exec -T app node dist/operador-alta.js …` with the password on stdin), log in, send `Cookie:` on every console call; assert 401 without it on `/tenants`; the console page checks run with the cookie. Run on 2026-10-10: the CH-29 section and every section before CH-03 passed with the cookie; the run stopped at CH-03 "reachable target" on the pre-existing false positive of a database password equal to `postgres` (the registration response carries `"motor":"postgres"`), the same one `src/conexiones.test.ts` shows. Not caused by CH-29.
 
 ## PR4 — Console
 - [ ] 4.1 RED: `src/consola.test.ts` cases for the login document vs the console document, the escaped operator name, the hazard scan over both documents.
