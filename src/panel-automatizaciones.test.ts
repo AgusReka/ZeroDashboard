@@ -188,11 +188,11 @@ describe('proyectarActiva — allow-list without technical fields', () => {
     assert.equal(otra.titulo, 'Automatización de tu negocio');
   });
 
-  test('1.4 estado is activa or pausada only; a failed last run does not change it', () => {
+  test('1.4 estado is activa/pausada/con_falla; con_falla when active and last finished run failed', () => {
     assert.equal(proyectarActiva(fila(), null, AHORA, 'UTC').estado, 'activa');
     assert.equal(proyectarActiva(fila({ activo: false }), null, AHORA, 'UTC').estado, 'pausada');
     const conFallo = proyectarActiva(fila(), EJECUCION_CRUDA, AHORA, 'UTC');
-    assert.equal(conFallo.estado, 'activa');
+    assert.equal(conFallo.estado, 'con_falla');
     assert.equal(conFallo.ultimaEjecucion?.resultado, 'no-realizada');
   });
 
