@@ -198,6 +198,7 @@ const IDS = [
   'versiones-titulo',
   'versiones-estado',
   'versiones-lista',
+  'versiones-comparacion',
   'versiones-cerrar',
 ] as const;
 
@@ -2290,6 +2291,17 @@ describe('the console document, served by the real route', () => {
     nota,
     esActual,
   });
+  const detalle = (numero: number, esActual: boolean, extra: Record<string, unknown> = {}) => ({
+    version: {
+      ...version(numero, esActual),
+      nombre: 'Stock',
+      descripcion: null,
+      sql: `SELECT ${numero}`,
+      parametros: [{ nombre: 'umbral', tipo: 'numero' }],
+      ...extra,
+    },
+  });
+
   /** Boots, selects the tenant with one saved query listed. */
   async function conConsulta(): Promise<Escenario> {
     const escenario = await arrancar();
@@ -2341,10 +2353,15 @@ describe('the console document, served by the real route', () => {
     assert.equal(insignia.length, 1, 'only the newest is current');
     assert.equal(insignia[0].hijos[0].tagName, 'svg', 'an icon');
     assert.equal(insignia[0].hijos[1].textContent, 'Vigente', 'and the word');
+    assert.equal(botonesCon(filas[0], 'Restaurar').length, 0, 'the current version has no restore');
+    for (const fila of filas.slice(1)) {
+      assert.equal(botonesCon(fila, 'Comparar con la actual').length, 1);
+      assert.equal(botonesCon(fila, 'Restaurar').length, 1);
+    }
     assert.equal(nodo(escenario, 'versiones-estado').textContent, '');
   });
 
-  test('CH-25 a query with one version says so', async () => {
+  test('CH-25 a query with one version says so and offers no action', async () => {
     const escenario = await conConsulta();
     await abrirPanel(escenario, [version(1, true)]);
     assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Esta es la versión inicial.');
@@ -2373,6 +2390,119 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(otra, 'versiones-estado').textContent, 'La aplicación respondió HTTP 500.');
   });
 
+  test('CH-25 comparing reads the chosen and the current version and shows both as text, side by side', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    const hostil = '<img src=x onerror=alert(1)>';
+    escenario.respuestas.push(
+      { status: 200, cuerpo: detalle(2, false, { sql: hostil, nombre: 'Stock viejo' }) },
+      { status: 200, cuerpo: detalle(3, true) },
+    );
+    botonesCon(nodo(escenario, 'versiones-lista').hijos[1], 'Comparar con la actual')[0].disparar('click');
+    await asentarVarias();
+
+    const ultimas = escenario.peticiones.slice(-2).map((p) => p.url);
+    assert.deepEqual(ultimas, ['/consultas-guardadas/q-1/versiones/2', '/consultas-guardadas/q-1/versiones/3']);
+    const bloques = buscar(nodo(escenario, 'versiones-comparacion'), (n) => n.className === 'versiones-bloque');
+    assert.equal(bloques.length, 2);
+    assert.equal(bloques[0].hijos[0].textContent, 'Versión 2');
+    assert.equal(bloques[1].hijos[0].textContent, 'Versión 3 (vigente)');
+    const sentencias = bloques.map((b) => buscar(b, (n) => n.tagName === 'pre')[0].textContent);
+    assert.deepEqual(sentencias, [hostil, 'SELECT 3'], 'the statement is text, never markup');
+    assert.ok(bloques[0].textContent.includes('Nombre: Stock viejo'));
+    assert.ok(bloques[1].textContent.includes('Parámetros: umbral (numero).'));
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, '');
+  });
+
+  test('CH-25 a refused comparison keeps the rows and says why', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    escenario.respuestas.push({ status: 404, cuerpo: { error: 'version-no-encontrada' } });
+    botonesCon(nodo(escenario, 'versiones-lista').hijos[2], 'Comparar con la actual')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Esa versión ya no existe. Se actualizó el historial.');
+    assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 3);
+    assert.equal(nodo(escenario, 'versiones-comparacion').hijos.length, 0);
+  });
+
+  test('CH-25 Restaurar asks first: the button repeats action and object, Cancelar sends nothing', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    const antes = escenario.peticiones.length;
+    const fila = nodo(escenario, 'versiones-lista').hijos[1];
+
+    botonesCon(fila, 'Restaurar')[0].disparar('click');
+    assert.equal(botonesCon(fila, 'Restaurar versión 2').length, 1, 'the confirmation names the action and the version');
+    assert.equal(botonesCon(fila, 'Cancelar').length, 1);
+    assert.equal(botonesCon(fila, 'Restaurar').length, 0, 'the first button is gone, so nobody confirms by habit');
+    assert.equal(escenario.peticiones.length, antes, 'asking sends nothing');
+
+    botonesCon(fila, 'Cancelar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'cancelling sends nothing');
+    assert.equal(botonesCon(fila, 'Comparar con la actual').length, 1, 'the original actions are back');
+    assert.equal(botonesCon(fila, 'Restaurar').length, 1);
+  });
+
+  test('CH-25 confirming restores exactly once, with the note, then reloads the list and the panel', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    const fila = nodo(escenario, 'versiones-lista').hijos[1];
+    botonesCon(fila, 'Restaurar')[0].disparar('click');
+    const campoNota = buscar(fila, (n) => n.tagName === 'input')[0];
+    campoNota.value = '  volvemos a la 2  ';
+
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+      { status: 200, cuerpo: { versiones: [version(4, true, 'volvemos a la 2'), ...TRES_VERSIONES.map((v) => ({ ...v, esActual: false }))], truncado: false } },
+    );
+    const antes = escenario.peticiones.length;
+    botonesCon(fila, 'Restaurar versión 2')[0].disparar('click');
+    await asentarVarias();
+
+    const nuevas = escenario.peticiones.slice(antes);
+    assert.deepEqual(nuevas.map((p) => p.url), [
+      '/consultas-guardadas/q-1/versiones/2/restaurar',
+      '/consultas-guardadas',
+      '/consultas-guardadas/q-1/versiones',
+    ]);
+    assert.deepEqual(nuevas[0].cuerpo, { nota: 'volvemos a la 2' }, 'one restore, with the trimmed note');
+    assert.equal(nuevas[0].tenant, 't-1');
+    assert.equal(nodo(escenario, 'banner').textContent, 'Se creó la versión 4 con el contenido de la versión 2.');
+    const filas = nodo(escenario, 'versiones-lista').hijos;
+    assert.equal(filas.length, 4);
+    assert.ok(filas[0].textContent.includes('Vigente'));
+  });
+
+  test('CH-25 without a note the restore body is empty', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    const fila = nodo(escenario, 'versiones-lista').hijos[2];
+    botonesCon(fila, 'Restaurar')[0].disparar('click');
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+      { status: 200, cuerpo: { versiones: [version(4, true)], truncado: false } },
+    );
+    const antes = escenario.peticiones.length;
+    botonesCon(fila, 'Restaurar versión 1')[0].disparar('click');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones[antes].cuerpo, {});
+  });
+
+  test('CH-25 a refused restore keeps the rows and explains the refusal', async () => {
+    const escenario = await conConsulta();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    const fila = nodo(escenario, 'versiones-lista').hijos[1];
+    botonesCon(fila, 'Restaurar')[0].disparar('click');
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'version-vigente' } });
+    botonesCon(fila, 'Restaurar versión 2')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Esa ya es la versión vigente: no hay nada que restaurar.');
+    assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 3);
+  });
+
   test('CH-25 switching tenant closes the panel and clears every row of the previous tenant', async () => {
     const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
     await elegirTenant(escenario, [FILA_GUARDADA]);
@@ -2381,6 +2511,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'versiones').hidden, true);
     assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 0);
     assert.equal(nodo(escenario, 'versiones-titulo').textContent, '');
+    assert.equal(nodo(escenario, 'versiones-comparacion').hijos.length, 0);
   });
 
   test('CH-25 Cerrar versiones hides the panel, and a response that arrives afterwards is dropped', async () => {
