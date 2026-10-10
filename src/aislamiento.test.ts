@@ -1265,6 +1265,7 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
       'Automatizacion',
       'Conexion',
       'ConsultaGuardada',
+      'ConsultaGuardadaVersion',
       'Ejecucion',
       'Plantilla',
       'SesionPanel',

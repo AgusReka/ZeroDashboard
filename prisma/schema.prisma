@@ -16,10 +16,10 @@ datasource db {
 // The `true` default is what makes the migration additive — every pre-CH-06 row
 // backfills as active and every pre-CH-06 code path stays valid on rollback.
 model Tenant {
-  id                             String             @id @default(uuid())
+  id                             String                    @id @default(uuid())
   nombre                         String
-  activo                         Boolean            @default(true)
-  creadoEn                       DateTime           @default(now())
+  activo                         Boolean                   @default(true)
+  creadoEn                       DateTime                  @default(now())
   // CH-24 (DEC-143, DEC-144): what the implementer declares about the replica. Null is
   // "sin declarar", never "fresh". The window is in minutes, 0 to 525600, checked in the
   // application; the refresh instant is set from the server clock.
@@ -27,6 +27,7 @@ model Tenant {
   replicaActualizadaEn           DateTime?
   conexiones                     Conexion[]
   consultasGuardadas             ConsultaGuardada[]
+  versionesConsulta              ConsultaGuardadaVersion[]
   vistasCanonicas                VistaCanonica[]
   automatizaciones               Automatizacion[]
   ejecuciones                    Ejecucion[]
@@ -63,16 +64,46 @@ model Conexion {
 // the application (`src/parametros.ts`), not by the database. The `[]` default is what
 // makes the migration additive: every pre-CH-11 row backfills as declaring nothing.
 model ConsultaGuardada {
-  id            String   @id @default(uuid())
+  id            String                    @id @default(uuid())
   tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id])
   nombre        String
   descripcion   String?
   sql           String
-  parametros    Json     @default("[]")
-  creadaEn      DateTime @default(now())
-  actualizadaEn DateTime @updatedAt
+  parametros    Json                      @default("[]")
+  creadaEn      DateTime                  @default(now())
+  actualizadaEn DateTime                  @updatedAt
+  // CH-25 (DEC-146, DEC-148): the current version's number and the note of the edit that
+  // produced it. A query never edited is version 1 with no note, which is what makes the
+  // migration additive: every earlier row is valid with no backfill.
+  version       Int                       @default(1)
+  nota          String?
+  versiones     ConsultaGuardadaVersion[]
 
+  @@index([tenantId])
+}
+
+// CH-25 (DEC-146, DEC-147): every previous state of a saved query. The row of
+// `ConsultaGuardada` always holds the current content, so a version appears here only
+// when an edit or a restore replaces it, and nothing in the application deletes one.
+// `desde` is the instant that state became current. The unique pair is what turns a
+// concurrent double edit into a conflict instead of a forked history. Tenant-scoped like
+// the table it belongs to (DEC-13); every foreign key is RESTRICT.
+model ConsultaGuardadaVersion {
+  id                 String           @id @default(uuid())
+  tenantId           String
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  consultaGuardadaId String
+  consultaGuardada   ConsultaGuardada @relation(fields: [consultaGuardadaId], references: [id], onDelete: Restrict)
+  version            Int
+  nombre             String
+  descripcion        String?
+  sql                String
+  parametros         Json
+  nota               String?
+  desde              DateTime
+
+  @@unique([consultaGuardadaId, version])
   @@index([tenantId])
 }
 

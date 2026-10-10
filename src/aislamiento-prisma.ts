@@ -40,6 +40,9 @@ import { exigirTenantActivo } from './contexto-tenant.js';
 const MODELOS_AISLADOS = new Set([
   'Conexion',
   'ConsultaGuardada',
+  // CH-25 (DEC-146): the history of a saved query carries its own `tenantId`, so it is
+  // scoped like the table it belongs to.
+  'ConsultaGuardadaVersion',
   'VistaCanonica',
   'Automatizacion',
   'Ejecucion',
