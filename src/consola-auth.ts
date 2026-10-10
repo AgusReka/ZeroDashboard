@@ -164,7 +164,8 @@ const ingresarSchema = {
 /**
  * A hash to verify against when the name matches no operator, so an unknown name costs
  * the same `scrypt` as a wrong password and the two failures cannot be told apart by
- * timing. Computed once, lazily, from a value that is no one's password.
+ * timing. Computed once from a value that is no one's password, started when the routes
+ * are registered so not even the first unknown-name login pays for computing it.
  */
 let hashSinOperador: Promise<string> | null = null;
 function hashDeRelleno(): Promise<string> {
@@ -178,6 +179,7 @@ function hashDeRelleno(): Promise<string> {
  * the same `401`, with no cookie.
  */
 export function registerConsolaAuthRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+  void hashDeRelleno();
   app.post<{ Body: IngresarBody }>(
     '/consola/ingresar',
     { schema: { body: ingresarSchema }, attachValidation: true },

@@ -216,6 +216,20 @@ describe(
       assert.equal(despues.statusCode, 401);
     });
 
+    test('logout deletes only the current session: another session of the same operator survives', async () => {
+      const primera = await cookieValida();
+      const segunda = await cookieValida();
+      const salir = await app.inject({ method: 'POST', url: '/consola/salir', headers: { cookie: primera } });
+      assert.equal(salir.statusCode, 200);
+      const conSegunda = await app.inject({
+        method: 'GET',
+        url: '/prueba-operador',
+        headers: { cookie: segunda, 'x-tenant-id': tenantId },
+      });
+      assert.equal(conSegunda.statusCode, 200);
+      assert.deepEqual(conSegunda.json(), { operador: { id: operadorId, nombre } });
+    });
+
     test('logout itself needs a session', async () => {
       const respuesta = await app.inject({ method: 'POST', url: '/consola/salir' });
       assert.deepEqual([respuesta.statusCode, respuesta.json()], [401, { error: 'sesion-invalida' }]);
