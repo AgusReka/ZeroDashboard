@@ -334,7 +334,10 @@ describe(
       const cuerpoA = deA.json() as { activas: Array<{ estado: string }> };
       const cuerpoB = deB.json() as { activas: Array<{ estado: string }> };
       assert.equal(cuerpoA.activas[0]?.estado, 'con_falla');
-      assert.deepEqual(cuerpoB.activas, []);
+      // B may own automations from earlier cases (2.14 creates one), so the proof is that
+      // none of A's failure reaches B, not that B's list is empty.
+      assert.ok(cuerpoB.activas.every((item) => item.estado !== 'con_falla'), 'B never sees a failed automation');
+      assert.ok(!deB.body.includes('2026-10-06T08:00:00.000Z'), "A's failed run instant must not reach B");
       assert.ok(!deA.body.includes('codigoError'));
       assert.ok(!deA.body.includes('error'));
     });
