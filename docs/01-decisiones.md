@@ -2739,6 +2739,78 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-151 — CH-29: los operadores de la consola viven en tablas propias `Operador` y `SesionConsola`
+
+**Contexto.** A5 pide auditar qué se ejecutó, cuándo, contra qué tenant **y por quién**, pero la consola no sabe quién opera: no tiene autenticación y cualquiera que llegue a `/consola` opera todos los tenants. DEC-15 se tomó cuando el proyecto no tenía infraestructura de sesión; CH-22a la construyó para el panel (DEC-133, DEC-134), pero `Usuario` y `SesionPanel` exigen `tenantId` y no pueden representar a un operador que trabaja sobre varios tenants.
+
+**Opciones.** (a) Tablas nuevas `Operador` y `SesionConsola`, reusando `scrypt` (DEC-133) y el patrón de cookie `HttpOnly` con sesión persistida (DEC-134); admite varios operadores con nombre. (b) Reusar `Usuario` con tenant nulo y un rol. (c) Una única credencial de operador en una variable de entorno, detrás de una sesión por cookie. (d) Delegar la autenticación a la infraestructura (proxy inverso o VPN) y registrar un header de identidad.
+
+**Decisión.** (a). `Operador` no tiene tenant y guarda su credencial con `scrypt`; `SesionConsola` guarda el hash del token de sesión, el operador y el vencimiento. La cookie de la consola es `HttpOnly`, `SameSite=Lax` y `Secure`, con un nombre distinto al de la del panel. DEC-15 no cambia: la sesión identifica al operador y no fija el tenant, que sigue llegando explícito en cada request.
+
+**Por qué.** Es la única opción en la que «por quién» nombra a una persona verificada y a más de una. (b) mezcla las dos superficies que DEC-04 separa y afloja la restricción de tenant obligatorio que hoy protege el aislamiento del panel. (c) nombra siempre al mismo operador. (d) saca el límite de confianza del repositorio y no se puede probar con tests.
+
+**Se resigna.** Dos tablas nuevas, una migración y un segundo mecanismo de sesión que mantener junto al del panel. Todos los operadores tienen los mismos permisos: no hay roles.
+
+**Decidido por:** el usuario, 2026-10-10. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-152 — CH-29: la autenticación de la consola es obligatoria y no se puede apagar
+
+**Contexto.** Con operadores (DEC-151), cada ruta de la consola tiene que exigir una sesión válida. Las suites de tests no importan `src/server.ts`: cada una arma su propia instancia de Fastify con las rutas que prueba, así que un guard registrado en `server.ts` no las afecta. `scripts/smoke.sh` llama a la API real sin credenciales.
+
+**Opciones.** (a) Un guard registrado en `server.ts`, siempre activo y sin forma de apagarlo. (b) El mismo guard, apagable por una variable de entorno (regla 7).
+
+**Decisión.** (a). Toda ruta registrada queda protegida salvo las de una lista cerrada de exenciones, que incluye al menos lo que no es de la consola (salud, archivos estáticos de la interfaz, el panel y sus rutas, el upgrade de los agentes) y el ingreso de la consola. Un test sobre la app que arma `server.ts` comprueba que cada ruta registrada esté protegida o figure en la lista. `scripts/smoke.sh` ingresa antes de operar.
+
+**Por qué.** Con (b), un error de configuración despliega la consola abierta a cualquiera. Como las suites existentes no pasan por `server.ts`, (a) no las obliga a autenticarse.
+
+**Se resigna.** El camino de producción se prueba con un test propio sobre `server.ts`, no con cada suite. Una exención que falte rompe el panel o los agentes, y una ruta mal listada queda sin protección; la lista cerrada y su test son la mitigación.
+
+**Decidido por:** el usuario, 2026-10-10. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-153 — CH-29: el primer operador se crea con un comando de alta
+
+**Contexto.** Con la autenticación obligatoria (DEC-152), antes del primer operador no hay nadie que pueda ingresar a la consola. Hoy no existe ningún mecanismo de alta inicial: `prisma/seed.ts` no crea usuarios.
+
+**Opciones.** (a) Un comando que crea un operador o repone la clave de uno existente, pidiendo la clave por entrada estándar. (b) Crear el primer operador al arrancar, a partir de variables de entorno, si la tabla está vacía. (c) Las dos cosas.
+
+**Decisión.** (a). Un script de `npm` recibe el nombre del operador como argumento y pide la clave por entrada estándar, sin eco, de modo que no quede en el historial del shell ni en los argumentos del proceso. Si el operador existe, repone su clave.
+
+**Por qué.** La clave no vive en texto plano en el entorno ni en un `.env`, y el mismo comando resuelve el bloqueo de un operador que olvidó su clave. (b) deja la clave en el entorno y, después del primer arranque, recuperar un bloqueo obliga a tocar la base. (c) son dos caminos que probar y mantener.
+
+**Se resigna.** Un paso manual por entorno antes de poder usar la consola. Hace falta acceso al servidor para crear o reponer un operador: no hay alta de operadores desde la interfaz.
+
+**Decidido por:** el usuario, 2026-10-10. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-154 — CH-29: alcance de la identidad del operador
+
+**Contexto.** La identidad del operador puede limitarse a que el servidor sepa quién hace cada request o incluir también la interfaz. Con la autenticación obligatoria (DEC-152), la consola no se puede usar desde el navegador sin una pantalla de ingreso.
+
+**Opciones.** (a) Solo el servidor: el operador queda asociado al request, con rutas de ingreso y salida. (b) Además, una pantalla de ingreso mínima en `/consola` y el nombre del operador en la cabecera.
+
+**Decisión.** (b). Es la consecuencia directa de DEC-152, no una elección independiente. La auditoría de qué hizo cada operador queda en CH-20, y el autor de las versiones de consultas guardadas (DEC-148) no se agrega en este change.
+
+**Por qué.** Sin pantalla de ingreso, la consola queda inaccesible desde el navegador apenas el guard está activo.
+
+**Se resigna.** CH-29 crece con una pantalla de interfaz y su copy. Quién hizo qué recién queda registrado con CH-20.
+
+**Decidido por:** el usuario, 2026-10-10, como consecuencia de DEC-152. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
