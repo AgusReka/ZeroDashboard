@@ -1,6 +1,6 @@
 # Exploration: CH-29 — Operator identity in the console (proposed 2026-10-09)
 
-Status: **proposed**, not started. Store: openspec. This exploration decides nothing: the architecture decisions below are the owner's (`AGENTS.md`) and must be registered in `docs/01-decisiones.md` before any code.
+Status: **decided** (2026-10-10). Store: openspec. The four decisions below were taken by the owner and registered as DEC-151 to DEC-154 in `docs/01-decisiones.md`: (1) option (a), own `Operador` and `SesionConsola` tables; (2) mandatory guard registered in `server.ts`, no switch; (3) bootstrap command with the password read from stdin; (4) includes a minimal login screen and the operator in the header, audit stays in CH-20.
 
 ## Why
 
@@ -43,4 +43,4 @@ Status: **proposed**, not started. Store: openspec. This exploration decides not
 
 ## Next
 
-Decide 1 to 4, register them as DEC, then propose, spec, design, tasks. CH-20 and CH-28 wait for this.
+Decisions registered (DEC-151 to DEC-154). Next: propose, spec, design, tasks. CH-20 and CH-28 wait for this.
