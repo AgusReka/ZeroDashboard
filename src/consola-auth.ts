@@ -1,7 +1,9 @@
+import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
+import { camposInvalidos } from './conexiones.js';
 import { ESTILOS_EXENTOS, RUTAS_PANEL_PUBLICAS } from './contexto-tenant.js';
 import { leerCookie } from './cookies.js';
-import { hashTokenSesion } from './crypto-auth.js';
+import { generarTokenSesion, hashTokenSesion, hashearClave, verificarClave } from './crypto-auth.js';
 
 /**
  * CH-29 (DEC-151 to DEC-154): the console operator's session — its cookie, its
@@ -104,4 +106,120 @@ export async function resolverSesionConsola(
     return { operador: null, sesionId: null, motivo: 'expirada' };
   }
   return { operador: sesion.operador, sesionId: sesion.id, motivo: 'valida' };
+}
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** Set by the operator guard on every non-exempt request that reaches a handler. */
+    operador?: OperadorAutenticado;
+    /** The id of the session that authenticated the request, for logout. */
+    sesionConsolaId?: string;
+  }
+}
+
+/**
+ * `registrarGuardOperador(app, prisma)` — the operator guard (DEC-152). One `onRequest`
+ * hook, registered by the wiring **before** `registrarContextoTenant`, so the order is
+ * guard, tenant hook 1, tenant hook 2, handler: a request without a session is a `401`
+ * before the tenant header is even read. Its lookup runs outside the tenant store, which
+ * is safe because `SesionConsola` and `Operador` are not scoped models. There is no
+ * option to turn it off; the only way past it is a listed row or a valid session.
+ */
+export function registrarGuardOperador(app: FastifyInstance, prisma: PrismaAislado): void {
+  app.addHook('onRequest', async (request, reply) => {
+    if (!requiereOperador(request.method, request.routeOptions.url)) {
+      return;
+    }
+    const desenlace = await resolverSesionConsola(prisma, request.headers.cookie);
+    if (desenlace.operador === null) {
+      const error = desenlace.motivo === 'expirada' ? 'sesion-expirada' : 'sesion-invalida';
+      return reply.code(401).send({ error });
+    }
+    request.operador = desenlace.operador;
+    request.sesionConsolaId = desenlace.sesionId;
+  });
+}
+
+interface IngresarBody {
+  nombre: string;
+  clave: string;
+}
+
+/**
+ * Strict body, `propertyNames` included for the reason the panel's `ingresarSchema`
+ * documents: under Fastify's `removeAdditional` an unknown key (a `tenantId`, say) would
+ * otherwise be stripped and the body accepted.
+ */
+const ingresarSchema = {
+  type: 'object',
+  additionalProperties: false,
+  propertyNames: { enum: ['nombre', 'clave'] },
+  required: ['nombre', 'clave'],
+  properties: {
+    nombre: { type: 'string', minLength: 1, maxLength: 64 },
+    clave: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+/**
+ * A hash to verify against when the name matches no operator, so an unknown name costs
+ * the same `scrypt` as a wrong password and the two failures cannot be told apart by
+ * timing. Computed once from a value that is no one's password, started when the routes
+ * are registered so not even the first unknown-name login pays for computing it.
+ */
+let hashSinOperador: Promise<string> | null = null;
+function hashDeRelleno(): Promise<string> {
+  hashSinOperador ??= hashearClave('sin-operador-relleno-de-tiempo');
+  return hashSinOperador;
+}
+
+/**
+ * `POST /consola/ingresar` (exempt from the guard and, by exact row, from the tenant
+ * header) and `POST /consola/salir` (guarded). An unknown name and a wrong password are
+ * the same `401`, with no cookie.
+ */
+export function registerConsolaAuthRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+  void hashDeRelleno();
+  app.post<{ Body: IngresarBody }>(
+    '/consola/ingresar',
+    { schema: { body: ingresarSchema }, attachValidation: true },
+    async (request, reply) => {
+      if (request.validationError) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: camposInvalidos(request.validationError),
+        });
+      }
+      const { nombre, clave } = request.body;
+      const operador = await prisma.operador.findUnique({
+        where: { nombre },
+        select: { id: true, nombre: true, claveHash: true },
+      });
+      const claveValida = await verificarClave(clave, operador?.claveHash ?? (await hashDeRelleno()));
+      if (operador === null || !claveValida) {
+        return reply.code(401).send({ error: 'nombre-o-clave-incorrectos' });
+      }
+      const { tokenPlano, tokenHash } = generarTokenSesion();
+      await prisma.sesionConsola.create({
+        data: {
+          tokenHash,
+          operadorId: operador.id,
+          expiraEn: new Date(Date.now() + MILISEGUNDOS_VIDA_SESION_CONSOLA),
+        },
+      });
+      reply.header('set-cookie', cookieDeSesionConsola(tokenPlano));
+      return reply.code(200).send({ operador: { id: operador.id, nombre: operador.nombre } });
+    },
+  );
+
+  app.post('/consola/salir', async (request, reply) => {
+    // The guard ran first and set the session id; reaching here without it would be a
+    // wiring bug (the route registered without the guard), so fail closed.
+    if (request.sesionConsolaId === undefined) {
+      return reply.code(401).send({ error: 'sesion-invalida' });
+    }
+    await prisma.sesionConsola.deleteMany({ where: { id: request.sesionConsolaId } });
+    reply.header('set-cookie', cookieVaciaConsola());
+    return reply.code(200).send({ ok: true });
+  });
 }

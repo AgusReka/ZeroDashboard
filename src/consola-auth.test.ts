@@ -44,6 +44,11 @@ describe('CH-29 console session cookie (DEC-151)', () => {
     assert.equal(leerCookie('zd_panel_session=p1', NOMBRE_COOKIE_CONSOLA), null);
     assert.equal(leerCookie(undefined, NOMBRE_COOKIE_CONSOLA), null);
   });
+
+  test('a repeated cookie name yields the first value, and a value may contain "="', () => {
+    assert.equal(leerCookie('zd_consola_session=a; zd_consola_session=b', NOMBRE_COOKIE_CONSOLA), 'a');
+    assert.equal(leerCookie('zd_consola_session==x', NOMBRE_COOKIE_CONSOLA), '=x');
+  });
 });
 
 describe('CH-29 operator guard exemptions (DEC-152)', () => {
