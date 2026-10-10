@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-agente/
+.tsc.err
 .env
 .env.agente
 *.log
