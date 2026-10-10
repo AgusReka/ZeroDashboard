@@ -200,12 +200,17 @@ const IDS = [
   'versiones-lista',
   'versiones-comparacion',
   'versiones-cerrar',
+  // CH-25: saving the editor as a new version of the loaded query.
+  'version-guardar',
+  'version-cargada',
+  'version-nota',
+  'version-boton',
 ] as const;
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
-/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones'];
+/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -2522,5 +2527,199 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     assert.equal(nodo(escenario, 'versiones').hidden, true);
     assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 0, 'the late answer did not repaint a closed panel');
+  });
+
+  // ---- CH-25: save the editor as a new version (spec `query-console`, DEC-148, DEC-150) ----
+
+  const COMPLETA = {
+    id: 'q-1',
+    nombre: 'Stock',
+    descripcion: 'Productos',
+    sql: 'SELECT :a',
+    parametros: [{ nombre: 'a', tipo: 'numero' }],
+    version: 3,
+    nota: null,
+  };
+
+  /** Boots, selects the tenant and loads the one saved query into the editor. */
+  async function conConsultaCargada(extra: Record<string, unknown> = {}): Promise<Escenario> {
+    const escenario = await conConsulta();
+    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, ...extra } } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    await asentarVarias();
+    return escenario;
+  }
+
+  /** Presses "Guardar como nueva versión" with `respuestas` queued, and lets it settle. */
+  async function guardarVersion(escenario: Escenario, ...respuestas: Array<{ status: number; cuerpo: unknown }>): Promise<void> {
+    escenario.respuestas.push(...respuestas);
+    nodo(escenario, 'version-boton').disparar('click');
+    await asentarVarias();
+  }
+
+  test('CH-25 the save-as-version block starts hidden, takes a note of at most 500 characters and its button does not submit', () => {
+    const bloque = marcado().match(/<div id="version-guardar"[^>]*>[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
+    assert.match(bloque, /<div id="version-guardar" hidden>/);
+    assert.match(bloque, /<input id="version-nota"[^>]*maxlength="500"/);
+    assert.match(bloque, /<button id="version-boton"[^>]*type="button"/);
+  });
+
+  test('CH-25 the help text no longer says a saved query cannot be edited, and still says it cannot be deleted', () => {
+    const seccion = marcado().slice(marcado().indexOf('<section id="guardado">'), marcado().indexOf('<section id="automatizaciones">'));
+    const ayuda = seccion.match(/<p class="ayuda">([^<]*)<\/p>/)?.[1] ?? '';
+    assert.ok(ayuda.includes('versión nueva'), ayuda);
+    assert.ok(ayuda.includes('No se puede borrar'), ayuda);
+    assert.ok(!ayuda.includes('No se puede editar'), ayuda);
+  });
+
+  test('CH-25 with nothing loaded the action is not offered', async () => {
+    const escenario = await conConsulta();
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+  });
+
+  test('CH-25 loading a saved query offers the action and brings its name, description and statement to the editor', async () => {
+    const escenario = await conConsultaCargada();
+    assert.equal(nodo(escenario, 'version-guardar').hidden, false);
+    assert.equal(
+      nodo(escenario, 'version-cargada').textContent,
+      'Consulta cargada: «Stock». Los cambios del editor se guardan como una versión nueva de esta consulta.',
+    );
+    assert.equal(nodo(escenario, 'nombre').value, 'Stock');
+    assert.equal(nodo(escenario, 'descripcion').value, 'Productos');
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT :a');
+  });
+
+  test('CH-25 a hostile name is shown as text in the loaded-query notice', async () => {
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await conConsultaCargada({ nombre: hostil });
+    assert.ok(nodo(escenario, 'version-cargada').textContent.includes(hostil));
+    assert.equal(nodo(escenario, 'version-cargada').hijos.length, 0, 'a text node holder only');
+  });
+
+  test('CH-25 saving sends one PUT for the loaded id with the editor content and the note, then refreshes the list', async () => {
+    const escenario = await conConsultaCargada();
+    nodo(escenario, 'sql').value = 'SELECT :a + 1';
+    nodo(escenario, 'version-nota').value = '  Agrega filtro  ';
+    const antes = escenario.peticiones.length;
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+    );
+    const nuevas = escenario.peticiones.slice(antes);
+    assert.deepEqual(nuevas.map((p) => p.url), ['/consultas-guardadas/q-1', '/consultas-guardadas']);
+    assert.deepEqual(nuevas[0].cuerpo, {
+      nombre: 'Stock',
+      descripcion: 'Productos',
+      sql: 'SELECT :a + 1',
+      parametros: [{ nombre: 'a', tipo: 'numero' }],
+      nota: 'Agrega filtro',
+    });
+    assert.equal(nuevas[0].tenant, 't-1');
+    assert.equal(nodo(escenario, 'banner').textContent, 'Se guardó la versión 4 de «Stock».');
+    assert.equal(nodo(escenario, 'version-nota').value, '', 'the note is spent');
+  });
+
+  test('CH-25 without a note the body carries no nota key', async () => {
+    const escenario = await conConsultaCargada();
+    nodo(escenario, 'sql').value = 'SELECT 2';
+    nodo(escenario, 'version-nota').value = '   ';
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+    );
+    const envio = escenario.peticiones.find((p) => p.url === '/consultas-guardadas/q-1' && p.cuerpo !== null);
+    assert.ok(envio !== undefined && !('nota' in (envio.cuerpo as object)));
+  });
+
+  test('CH-25 saving refreshes the open versions panel of the same query', async () => {
+    const escenario = await conConsultaCargada();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    nodo(escenario, 'sql').value = 'SELECT 9';
+    const antes = escenario.peticiones.length;
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+      { status: 200, cuerpo: { versiones: [version(4, true), ...TRES_VERSIONES.map((v) => ({ ...v, esActual: false }))], truncado: false } },
+    );
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), [
+      '/consultas-guardadas/q-1',
+      '/consultas-guardadas',
+      '/consultas-guardadas/q-1/versiones',
+    ]);
+    assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 4);
+  });
+
+  test('CH-25 each refusal reads in plain words and keeps the editor as it was', async () => {
+    const casos: Array<[number, unknown, RegExp]> = [
+      [409, { error: 'sin-cambios' }, /^No hay cambios respecto de la versión vigente\.$/],
+      [409, { error: 'conflicto-de-edicion' }, /Otra edición se guardó antes que esta\. Volvé a cargar la consulta/],
+      [400, { error: 'solicitud-invalida', campos: ['/nota'] }, /^La nota tiene que ser un texto de hasta 500 caracteres\.$/],
+      [400, { error: 'solicitud-invalida', campos: ['/sql'] }, /La solicitud es inválida\. Revise estos campos: \/sql\./],
+      [500, { error: 'interno' }, /^La aplicación respondió HTTP 500\.$/],
+    ];
+    for (const [estado, cuerpo, esperado] of casos) {
+      const escenario = await conConsultaCargada();
+      nodo(escenario, 'sql').value = 'SELECT 7';
+      await guardarVersion(escenario, { status: estado, cuerpo });
+      assert.match(nodo(escenario, 'banner').textContent, esperado, String(estado) + JSON.stringify(cuerpo));
+      assert.equal(nodo(escenario, 'sql').value, 'SELECT 7', 'the operator keeps what was typed');
+      assert.equal(nodo(escenario, 'version-guardar').hidden, false, 'and can try again');
+      assert.equal(nodo(escenario, 'version-boton').disabled, false);
+    }
+  });
+
+  test('CH-25 when the query is gone the notice disappears and the list is refreshed', async () => {
+    const escenario = await conConsultaCargada();
+    await guardarVersion(
+      escenario,
+      { status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } },
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+    );
+    assert.equal(nodo(escenario, 'banner').textContent, 'Esa consulta guardada ya no existe. Se actualizó la lista.');
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+  });
+
+  test('CH-25 switching tenant forgets the loaded query and hides the action', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(escenario, [FILA_GUARDADA]);
+    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'version-guardar').hidden, false);
+
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+    assert.equal(nodo(escenario, 'version-cargada').textContent, '');
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'version-boton').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'a forgotten query can no longer be saved');
+  });
+
+  test('CH-25 restoring the loaded query reloads the editor with the restored content', async () => {
+    const escenario = await conConsultaCargada();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    const fila = nodo(escenario, 'versiones-lista').hijos[1];
+    botonesCon(fila, 'Restaurar')[0].disparar('click');
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, sql: 'SELECT 2', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+      { status: 200, cuerpo: { versiones: [version(4, true)], truncado: false } },
+    );
+    const antes = escenario.peticiones.length;
+    botonesCon(fila, 'Restaurar versión 2')[0].disparar('click');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), [
+      '/consultas-guardadas/q-1/versiones/2/restaurar',
+      '/consultas-guardadas/q-1',
+      '/consultas-guardadas',
+      '/consultas-guardadas/q-1/versiones',
+    ]);
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT 2', 'the editor shows the restored statement');
+    assert.equal(nodo(escenario, 'banner').textContent, 'Se creó la versión 4 con el contenido de la versión 2.', 'and the confirmation survives the reload');
   });
 });
