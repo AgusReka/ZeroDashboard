@@ -7,34 +7,30 @@ The minimal P1 web console (DEC-07): the first visual surface of the project, le
 ## Requirements
 
 ### Requirement: Console Page Is Servable
+The system SHALL serve a console page at `GET /consola`, without a session and without `X-Tenant-Id`. With a valid console session the page SHALL present a SQL input control and a way to trigger execution of the entered statement against a registered connection. Without a valid session it SHALL instead present the login screen and SHALL NOT contain the SQL input control. Both documents MUST link the shared stylesheet `/ui/styles.css` and MUST NOT carry the former inline `<style>` block of the full console styling. Both MUST contain exactly one closing script tag, no backtick, and no markup-assigning properties (`innerHTML`, `outerHTML`, `insertAdjacentHTML`, `srcdoc`) in their scripts. The console document MUST keep every guarded element id. The scripts MAY use `zd-` class names. The exact markup is otherwise a design-level concern.
+(Previously: the page was served the same way to every request, with no session.)
 
-The system SHALL serve a console page, reachable by a request, that presents a SQL input control and a way to trigger execution of the entered statement against a registered connection. The page MUST link the shared stylesheet `/ui/styles.css` and MUST NOT carry the former inline `<style>` block of the full console styling; any residual console-specific stylesheet location is a design-level concern. The page MUST keep every guarded element id, the page MUST contain exactly one closing script tag, and neither the page nor its script MUST contain a backtick character. The inline script MUST NOT use markup-assigning properties (`innerHTML`, `outerHTML`, `insertAdjacentHTML`, `srcdoc`). The inline script MAY use `zd-` class names. The exact markup is otherwise a design-level concern.
-(Previously: the inline script had to be byte-identical to the script before CH-21a, and the script could not contain `zd-`; both clauses are dropped because CH-21c rewrites the automations part of the script.)
+#### Scenario: Requesting the console page with a session
+- **GIVEN** a valid console session
+- **WHEN** the console page is requested
+- **THEN** the response SHALL be a page containing a SQL input control and a way to trigger execution
 
-#### Scenario: Requesting the console page
-
-- **GIVEN** the application is running
-- **WHEN** a request for the console page is made
-- **THEN** the response SHALL be a page containing a SQL input control
-- **AND** the page SHALL provide a way to trigger execution of the entered statement
+#### Scenario: Requesting the console page without a session
+- **GIVEN** no cookie, or an expired or unknown session
+- **WHEN** the console page is requested
+- **THEN** the response SHALL be 200 with the login screen and SHALL NOT contain `<textarea id="sql"`
 
 #### Scenario: Page links the shared stylesheet
-
-- **GIVEN** the application is running
-- **WHEN** the console page is requested
+- **WHEN** the console page is requested, with or without a session
 - **THEN** it SHALL contain a `<link rel="stylesheet" href="/ui/styles.css">`
 - **AND** it SHALL NOT contain the former inline full-console `<style>` rules
 
 #### Scenario: Script hazards stay out of the page
-
-- **GIVEN** the served console page after this change
-- **WHEN** the page and its script are scanned
-- **THEN** the page SHALL contain exactly one closing script tag and no backtick
-- **AND** neither page nor script SHALL contain `innerHTML`
+- **WHEN** either document and its script are scanned
+- **THEN** each SHALL contain exactly one closing script tag and no backtick
+- **AND** neither SHALL contain `innerHTML`
 
 #### Scenario: Script may reference the shared classes
-
-- **GIVEN** the script builds picker cards and the preview
 - **WHEN** the script text is scanned for `zd-`
 - **THEN** the scan SHALL NOT fail the page
 
@@ -579,3 +575,26 @@ After a saved query is loaded into the editor, the console SHALL offer "Guardar 
 #### Scenario: Switching tenant forgets the loaded query
 - **WHEN** the operator switches tenant
 - **THEN** the loaded query is forgotten and the action disappears
+
+### Requirement: Console Login Screen
+The login screen SHALL ask for the operator's name and password, send them to `POST /consola/ingresar`, and reload the page on 200. On 401 it SHALL say "Nombre o clave incorrectos." and keep the name typed; on any other failure it SHALL say the console could not be reached. It SHALL follow the project design skill.
+
+#### Scenario: Wrong password
+- **WHEN** the operator submits a wrong password
+- **THEN** the screen shows "Nombre o clave incorrectos." and does not reload
+
+### Requirement: Operator Shown in the Header
+With a session, the console header SHALL show the operator's name, inserted as text (escaped by the server), next to a "Salir" action that calls `POST /consola/salir` and reloads the page.
+
+#### Scenario: A name with markup is shown as text
+- **GIVEN** an operator named `<b>ana</b>`
+- **WHEN** the console page is served
+- **THEN** the header contains `&lt;b&gt;ana&lt;/b&gt;` and no `<b>` element
+
+### Requirement: A 401 Returns to the Login Screen
+Every API call the console page makes, the tenant list included, SHALL reload the page when the answer is 401, so the server serves the login screen.
+
+#### Scenario: Session expires while working
+- **GIVEN** the console is open and the session expires
+- **WHEN** the operator runs any action
+- **THEN** the page reloads and shows the login screen

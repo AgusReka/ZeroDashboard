@@ -9,7 +9,7 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 - Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-10: chained PRs, stacked-to-main**, one PR per section below; a section that comes out over 400 lines is split.
 
 ## PR0 — Planning
-- [ ] 0.1 DEC-151 to DEC-154, exploration marked decided, proposal, specs, design and tasks (this branch, `ch29/exploracion`).
+- [x] 0.1 DEC-151 to DEC-154, exploration marked decided, proposal, specs, design and tasks (this branch, `ch29/exploracion`).
 
 ## PR1a — Schema and the cookie reader (split from the planned PR1, which came out at 475 lines)
 - [x] 1.1 `prisma/schema.prisma` + migration for `Operador` and `SesionConsola` (generated with `prisma migrate diff`, rollback in the header, no drift after applying); client regenerated; applied to the dev database.
@@ -47,5 +47,5 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 - [ ] 4.3 Manual visual review of the login screen and the header at 360 px and 1280 px, light and dark.
 
 ## Close
-- [ ] 5.1 Full suite, `tsc --noEmit`, `npm run build`, smoke.
-- [ ] 5.2 Verify against the specs, archive, sync `console-operator-auth` and `query-console` into `openspec/specs/`, mark CH-29 in `docs/02-mapa-de-changes.md`.
+- [x] 5.1 Full suite, `tsc --noEmit`, `npm run build`, smoke. 1198/1202 (only the 4 known `conexiones` false positives); smoke passes up to CH-03, where the same pre-existing false positive stops it (verify-report W2).
+- [x] 5.2 Verify against the specs, archive, sync `console-operator-auth` and `query-console` into `openspec/specs/`, mark CH-29 in `docs/02-mapa-de-changes.md`.
