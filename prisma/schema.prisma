@@ -16,18 +16,23 @@ datasource db {
 // The `true` default is what makes the migration additive — every pre-CH-06 row
 // backfills as active and every pre-CH-06 code path stays valid on rollback.
 model Tenant {
-  id                 String             @id @default(uuid())
-  nombre             String
-  activo             Boolean            @default(true)
-  creadoEn           DateTime           @default(now())
-  conexiones         Conexion[]
-  consultasGuardadas ConsultaGuardada[]
-  vistasCanonicas    VistaCanonica[]
-  automatizaciones   Automatizacion[]
-  ejecuciones        Ejecucion[]
-  agente             Agente?
-  usuarios           Usuario[]
-  sesionesPanel      SesionPanel[]
+  id                             String             @id @default(uuid())
+  nombre                         String
+  activo                         Boolean            @default(true)
+  creadoEn                       DateTime           @default(now())
+  // CH-24 (DEC-143, DEC-144): what the implementer declares about the replica. Null is
+  // "sin declarar", never "fresh". The window is in minutes, 0 to 525600, checked in the
+  // application; the refresh instant is set from the server clock.
+  ventanaDesactualizacionMinutos Int?
+  replicaActualizadaEn           DateTime?
+  conexiones                     Conexion[]
+  consultasGuardadas             ConsultaGuardada[]
+  vistasCanonicas                VistaCanonica[]
+  automatizaciones               Automatizacion[]
+  ejecuciones                    Ejecucion[]
+  agente                         Agente?
+  usuarios                       Usuario[]
+  sesionesPanel                  SesionPanel[]
 }
 
 model Conexion {
