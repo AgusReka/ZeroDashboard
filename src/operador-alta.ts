@@ -35,8 +35,9 @@ export function validarNombre(texto: string): ResultadoNombre {
   return { ok: true, nombre };
 }
 
+/** Counted in characters (code points), so an emoji counts once, as a person would count it. */
 export function validarClave(clave: string): boolean {
-  return clave.length >= LARGO_MINIMO_CLAVE;
+  return [...clave].length >= LARGO_MINIMO_CLAVE;
 }
 
 type EntradaTerminal = Readable & { setRawMode?: (modo: boolean) => unknown };
@@ -74,35 +75,66 @@ function leerPrimeraLinea(entrada: Readable): Promise<string> {
 }
 
 /**
- * With a terminal: raw mode, no echo, asked twice. Backspace removes the last character,
- * Enter ends a line, Ctrl+C cancels. Raw mode is always restored, whatever the outcome.
+ * With a terminal: raw mode, no echo, asked twice. Backspace removes the last character
+ * (a whole code point, so an emoji goes at once), Enter ends a line, Ctrl+C cancels.
+ * Every other control character is ignored, and so is an escape sequence (an arrow or a
+ * function key arrives as ESC plus `[` or `O` and a final letter): in raw mode they come
+ * in as ordinary bytes and would otherwise change the password without any feedback.
+ * Raw mode is always restored, whatever the outcome, including the stream ending or
+ * failing before the second Enter.
  */
 function leerEnTerminal(entrada: EntradaTerminal, salida: Writable): Promise<string> {
   return new Promise((resolve, reject) => {
     const preguntas = ['Clave: ', 'Repetí la clave: '];
     const lineas: string[] = [];
-    let actual = '';
+    let actual: string[] = [];
+    /** 0 outside a sequence; 1 right after ESC; 2 inside `ESC [` or `ESC O`. */
+    let escape = 0;
+    let cerrado = false;
     const cerrar = (): void => {
+      cerrado = true;
       entrada.off('data', alRecibir);
+      entrada.off('end', alCortarse);
+      entrada.off('close', alCortarse);
+      entrada.off('error', alCortarse);
       entrada.setRawMode?.(false);
       entrada.pause();
       salida.write('\n');
     };
+    const fallar = (mensaje: string): void => {
+      cerrar();
+      reject(new Error(mensaje));
+    };
+    const alCortarse = (): void => {
+      if (!cerrado) {
+        fallar('La entrada terminó antes de confirmar la clave.');
+      }
+    };
     const alRecibir = (trozo: string): void => {
       for (const caracter of trozo) {
+        if (escape === 1) {
+          escape = caracter === '[' || caracter === 'O' ? 2 : 0;
+          continue;
+        }
+        if (escape === 2) {
+          // A CSI or SS3 sequence ends at its final byte, '@' to '~'.
+          if (caracter >= '@' && caracter <= '~') {
+            escape = 0;
+          }
+          continue;
+        }
         if (caracter === '\u0003') {
-          cerrar();
-          reject(new Error('Operación cancelada.'));
+          fallar('Operación cancelada.');
           return;
         }
         if (caracter === '\r' || caracter === '\n') {
-          lineas.push(actual);
-          actual = '';
+          lineas.push(actual.join(''));
+          actual = [];
           if (lineas.length === preguntas.length) {
-            cerrar();
             if (lineas[0] !== lineas[1]) {
-              reject(new Error('Las claves no coinciden.'));
+              fallar('Las claves no coinciden.');
             } else {
+              cerrar();
               resolve(lineas[0]);
             }
             return;
@@ -111,15 +143,25 @@ function leerEnTerminal(entrada: EntradaTerminal, salida: Writable): Promise<str
           continue;
         }
         if (caracter === '\u007f' || caracter === '\b') {
-          actual = actual.slice(0, -1);
+          actual.pop();
           continue;
         }
-        actual += caracter;
+        if (caracter === '\u001b') {
+          escape = 1;
+          continue;
+        }
+        if (caracter < ' ') {
+          continue;
+        }
+        actual.push(caracter);
       }
     };
     entrada.setRawMode?.(true);
     entrada.setEncoding('utf8');
     entrada.on('data', alRecibir);
+    entrada.once('end', alCortarse);
+    entrada.once('close', alCortarse);
+    entrada.once('error', alCortarse);
     entrada.resume();
     salida.write(preguntas[0]);
   });
@@ -135,9 +177,22 @@ export type Desenlace = 'creado' | 'repuesto';
 /**
  * Creates the operator or replaces its password, in one transaction: on a reset every
  * session of the operator is deleted with it, so a stolen or forgotten session dies with
- * the old password.
+ * the old password. Two runs racing on the same new name both see no row; the one whose
+ * create loses on the unique name (`P2002`) runs again once and finds the row, so it
+ * resets instead of failing with a misleading "no database".
  */
 export async function altaOReposicion(prisma: PrismaClient, nombre: string, claveHash: string): Promise<Desenlace> {
+  try {
+    return await intentarAltaOReposicion(prisma, nombre, claveHash);
+  } catch (error) {
+    if ((error as { code?: unknown }).code === 'P2002') {
+      return intentarAltaOReposicion(prisma, nombre, claveHash);
+    }
+    throw error;
+  }
+}
+
+function intentarAltaOReposicion(prisma: PrismaClient, nombre: string, claveHash: string): Promise<Desenlace> {
   return prisma.$transaction(async (tx) => {
     const existente = await tx.operador.findUnique({ where: { nombre }, select: { id: true } });
     if (existente === null) {

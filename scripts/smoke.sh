@@ -19,7 +19,15 @@
 # Requires Docker running and a local .env (copy .env.example if you don't have one yet).
 set -e
 
-fail() { echo "FAIL: $1"; docker compose down >/dev/null 2>&1 || true; exit 1; }
+# A failed run must not leave the smoke's console login behind in the dev database: the
+# operator is deleted before the stack goes down (its sessions cascade). Best effort.
+fail() {
+  echo "FAIL: $1"
+  docker compose exec -T db psql -q -U "$(env_value POSTGRES_USER)" -d "$(env_value POSTGRES_DB)" \
+    -c "DELETE FROM \"Operador\" WHERE nombre = 'smoke-operador'" >/dev/null 2>&1 || true
+  docker compose down >/dev/null 2>&1 || true
+  exit 1
+}
 
 # Reads one value out of .env without sourcing (and executing) the file.
 env_value() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
@@ -67,21 +75,29 @@ echo "OK: migrate deploy re-run was a no-op"
 
 echo "== CH-29: operator bootstrap, login and the guard (DEC-152, DEC-153) =="
 OPERADOR_SMOKE=smoke-operador
-CLAVE_SMOKE="smoke-$(date +%s)-clave-larga"
+# A random throwaway password: never guessable from the run's time, never an argument.
+CLAVE_SMOKE="smoke-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
 code=$(curl -s -o /tmp/smoke-sin-sesion.json -w '%{http_code}' http://localhost:3000/tenants --max-time 10)
 [ "$code" = "401" ] || fail "expected HTTP 401 from /tenants without a console session, got $code"
-grep -q '"error":"sesion-invalida"' /tmp/smoke-sin-sesion.json || fail "/tenants without a session did not answer sesion-invalida"
+grep -q '"error":"sesion-invalida"' /tmp/smoke-sin-sesion.json ||
+  fail "/tenants without a session did not answer sesion-invalida"
 # The password goes through stdin only, never an argument (DEC-153). A rerun resets the same
 # operator instead of failing, which is what makes the script rerunnable.
-printf '%s
-' "$CLAVE_SMOKE" | docker compose exec -T app node dist/operador-alta.js "$OPERADOR_SMOKE"   >/tmp/smoke-alta.txt 2>&1 || fail "the operator bootstrap command failed: $(cat /tmp/smoke-alta.txt)"
+printf '%s\n' "$CLAVE_SMOKE" | docker compose exec -T app node dist/operador-alta.js "$OPERADOR_SMOKE" \
+  >/tmp/smoke-alta.txt 2>&1 || fail "the operator bootstrap command failed: $(cat /tmp/smoke-alta.txt)"
 grep -Eq 'creado|repuesta' /tmp/smoke-alta.txt || fail "the bootstrap command did not say created or reset"
 if grep -q "$CLAVE_SMOKE" /tmp/smoke-alta.txt; then fail "the bootstrap command printed the password"; fi
-code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/consola/ingresar   -H 'Content-Type: application/json' -d "{\"nombre\":\"$OPERADOR_SMOKE\",\"clave\":\"otra-clave-incorrecta\"}" --max-time 10)
+# The login bodies go through stdin too (`--data-binary @-`), so the password is not in curl's argv.
+code=$(printf '{"nombre":"%s","clave":"%s"}' "$OPERADOR_SMOKE" "otra-clave-incorrecta" |
+  curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/consola/ingresar \
+    -H 'Content-Type: application/json' --data-binary @- --max-time 10)
 [ "$code" = "401" ] || fail "expected HTTP 401 for a wrong operator password, got $code"
-code=$(curl -s -o /tmp/smoke-ingreso.json -D /tmp/smoke-ingreso.h -w '%{http_code}' -X POST   http://localhost:3000/consola/ingresar -H 'Content-Type: application/json'   -d "{\"nombre\":\"$OPERADOR_SMOKE\",\"clave\":\"$CLAVE_SMOKE\"}" --max-time 10)
+code=$(printf '{"nombre":"%s","clave":"%s"}' "$OPERADOR_SMOKE" "$CLAVE_SMOKE" |
+  curl -s -o /tmp/smoke-ingreso.json -D /tmp/smoke-ingreso.h -w '%{http_code}' -X POST \
+    http://localhost:3000/consola/ingresar -H 'Content-Type: application/json' --data-binary @- --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 from the console login, got $code"
-COOKIE_CONSOLA=$(grep -i '^set-cookie: zd_consola_session=' /tmp/smoke-ingreso.h | head -1 | sed 's/^[^:]*: //; s/;.*//' | tr -d '')
+COOKIE_CONSOLA=$(grep -i '^set-cookie: zd_consola_session=' /tmp/smoke-ingreso.h | head -1 |
+  sed 's/^[^:]*: //; s/;.*//' | tr -d '\r')
 [ -n "$COOKIE_CONSOLA" ] || fail "the console login did not set zd_consola_session"
 grep -qi '^set-cookie: zd_consola_session=.*HttpOnly' /tmp/smoke-ingreso.h || fail "the console cookie is not HttpOnly"
 # From here on every call carries the session; `command curl` would bypass the function.
@@ -129,7 +145,7 @@ TENANT_B=$(crear_tenant b)
 [ -n "$TENANT_A" ] && [ -n "$TENANT_B" ] || fail "the tenant creates returned no id"
 echo "OK: two tenants created, both activo:true"
 
-echo "-- /tenants is exempt and lists the new tenants (bootstrap) --"
+echo "-- /tenants is exempt from the tenant header and lists the new tenants (bootstrap) --"
 code=$(curl -s -o /tmp/smoke-tenants.json -w '%{http_code}' http://localhost:3000/tenants --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 listing tenants with no header, got $code"
 grep -q "$TENANT_A" /tmp/smoke-tenants.json || fail "tenant A is missing from the listing"

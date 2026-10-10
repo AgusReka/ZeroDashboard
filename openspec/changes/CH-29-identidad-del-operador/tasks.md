@@ -35,6 +35,11 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 ## PR3b — Smoke script
 - [x] 3.3 `scripts/smoke.sh`: create the operator in the container (`docker compose exec -T app node dist/operador-alta.js …` with the password on stdin), log in, send `Cookie:` on every console call; assert 401 without it on `/tenants`; the console page checks run with the cookie. Run on 2026-10-10: the CH-29 section and every section before CH-03 passed with the cookie; the run stopped at CH-03 "reachable target" on the pre-existing false positive of a database password equal to `postgres` (the registration response carries `"motor":"postgres"`), the same one `src/conexiones.test.ts` shows. Not caused by CH-29.
 
+## PR3c — Review fixes of PR3 (independent verifier)
+- [x] 3.4 `src/operador-alta.ts`: terminal input that ends, closes or fails before the second Enter rejects and restores raw mode (it hung, exiting 13); control characters and ESC sequences are ignored instead of typed; backspace and the 12-character minimum count code points; a create that loses the unique-name race retries once as a reset. Tests first (RED: three failures and the hang).
+- [x] 3.5 `scripts/smoke.sh`: the CH-29 block rewritten (an earlier edit had turned `
+` and `` into literal characters and joined the continued lines); random password from `/dev/urandom`; login bodies through stdin; `fail()` deletes the smoke operator; the `/tenants` comment no longer says "exempt" alone. Re-run in Docker at close (5.1).
+
 ## PR4 — Console
 - [ ] 4.1 RED: `src/consola.test.ts` cases for the login document vs the console document, the escaped operator name, the hazard scan over both documents.
 - [ ] 4.2 GREEN: `registerConsolaRoute(app, prisma)`, `documentoIngreso()` with the design skill, header name and "Salir", 401 reload in `pedir()` and the tenant list.
