@@ -2573,6 +2573,78 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-142 — CH-24: la frescura se declara y se muestra; el motor no la aplica
+
+**Contexto.** DEC-66 dejó `toleranciaFrescuraMinutos` "guardada y no aplicada hasta CH-24". F1 pide una ventana de desactualización por tenant y F2, la tolerancia por plantilla (ya existe). C-22 muestra ambas y un distintivo `desactualizada` cuando la ventana supera la tolerancia. La advertencia al cliente es CH-26 (F3, R3).
+
+**Opciones.** (a) Declarar y mostrar: ventana por tenant, tolerancia por plantilla y el distintivo, sin tocar el motor. (b) Además, una compuerta en el motor que registre `rechazo` con una categoría nueva cuando la ventana supere la tolerancia. (c) Además, la advertencia al cliente (CH-26).
+
+**Decisión.** (a).
+
+**Por qué.** (b) toca el motor y el conjunto cerrado de categorías de rechazo (regla 6, anti-alcance) y ninguna historia de CH-24 pide bloquear ejecuciones. (c) es F3, de otro release.
+
+**Se resigna.** Una automatización cuya plantilla tolera menos de lo que la réplica tarda en regenerarse sigue corriendo; solo se la marca como desactualizada en la consola. DEC-66 se cumple en lo que declara: el valor deja de estar sin uso porque la consola lo compara, pero no cambia ninguna ejecución.
+
+**Decidido por:** el usuario, 2026-10-08. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-143 — CH-24: la última actualización de la réplica la declara el implementador
+
+**Contexto.** C-22 muestra por tenant `ultima_actualizacion` (relativa) junto a la ventana. El sistema no tiene ninguna fuente de ese dato: el latido del agente es CH-19d1 y no está construido.
+
+**Opciones.** (a) El implementador la carga: una fecha opcional junto a la ventana, con una acción para marcarla como actualizada ahora. (b) Omitirla en este change: C-22 compara solo ventana y tolerancia. (c) Inferirla del latido del agente.
+
+**Decisión.** (a). Una columna `Tenant.replicaActualizadaEn` nula por defecto; nula se muestra como "sin declarar" y nunca como actualizada.
+
+**Por qué.** (b) deja a C-22 sin la mitad de sus datos; (c) depende de un change sin construir. (a) no inventa información: dice solo lo que alguien declaró.
+
+**Se resigna.** El dato puede quedar viejo si nadie lo mantiene; es una declaración, no una medición. Cuando exista CH-19d1 podrá reemplazarse por el latido sin cambiar el contrato de lectura.
+
+**Decidido por:** el usuario, 2026-10-08. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-144 — CH-24: la ventana de desactualización es una columna del tenant
+
+**Contexto.** F1 pide "ventana de desactualización registrada por tenant". Un tenant puede tener varias conexiones y cada una apuntar a una réplica distinta (el mapeo vive en la `Conexion`, DEC-33).
+
+**Opciones.** (a) `Tenant.ventanaDesactualizacionMinutos`, entero nulo. (b) La misma columna en cada `Conexion`.
+
+**Decisión.** (a). Nula significa "sin declarar": ni fresca ni desactualizada. Un entero mayor o igual a cero; cero significa que la réplica se regenera de forma continua.
+
+**Por qué.** Sigue F1 al pie de la letra y evita elegir una conexión para compararla con la tolerancia de una plantilla. (b) queda como refinamiento si un negocio llega a tener réplicas con ritmos distintos.
+
+**Se resigna.** Un tenant con réplicas de ritmos distintos declara la peor.
+
+**Decidido por:** el usuario, 2026-10-08. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-145 — CH-24: ruta propia `PUT /tenants/:id/frescura` y lectura ampliada en `GET /tenants`
+
+**Contexto.** No existe ninguna ruta para modificar un tenant más allá de crearlo y darlo de baja (DEC-14). Declarar la ventana (DEC-144) y la última actualización (DEC-143) necesita una escritura, solo de la consola (regla 2: el panel nunca la toca).
+
+**Opciones.** (a) Ruta propia y acotada. (b) `PATCH /tenants/:id` general.
+
+**Decisión.** (a). `PUT /tenants/:id/frescura` con cuerpo estricto `{ ventanaMinutos?, actualizadaAhora? }`: `ventanaMinutos` es un entero mayor o igual a cero, o `null` para volver a "sin declarar"; `actualizadaAhora: true` fija `replicaActualizadaEn` con la hora del servidor y `false` o ausente no la toca. Al menos una clave. Responde 200 con `{ tenant }`, la proyección pública (`TenantPublico`) ampliada con `ventanaDesactualizacionMinutos` y `replicaActualizadaEn`, como el resto de las rutas de tenants; 400 `solicitud-invalida` con `campos`; 404 si el tenant no existe; 409 `tenant-desactivado` si está dado de baja (DEC-14: congelado por completo). `GET /tenants` suma a cada item `ventanaDesactualizacionMinutos` y `replicaActualizadaEn` (campos aditivos). La comparación `desactualizada` (ventana mayor que tolerancia; ventana nula nunca es desactualizada) es una función pura que la consola aplica del lado del cliente entre la ventana del tenant activo y la tolerancia de cada plantilla, fijada con vectores de prueba como en DEC-129.
+
+**Por qué.** (b) abre nombre y estado, que nadie pidió y que chocan con DEC-14. Calcular el distintivo en el cliente evita una ruta que cruce tenant y plantilla: `GET /plantillas` es global (DEC-61) y no conoce el tenant.
+
+**Se resigna.** La regla de comparación vive en un solo lugar de código de servidor (el helper, para pruebas) y en el cliente; los vectores compartidos evitan que diverjan. El tenant dado de baja no puede declarar frescura.
+
+**Decidido por:** el usuario, 2026-10-08 (la ruta propia); el contrato de campos sigue ese criterio. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
