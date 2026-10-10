@@ -16,10 +16,13 @@ Branch base: the current stack (`ch24/archivo`, PR #121). Strict order inside ea
 - [x] 1.4 The create route calls `validarCuerpoConsulta`; the existing saved-query tests stay green unchanged (parity proof).
 - [x] 1.5 `src/consultas-versiones.test.ts` (pure).
 
-## PR2 — Edit and read the history
-- [ ] 2.1 `PUT /consultas-guardadas/:id` in one interactive transaction (archive, update, bump), `409 sin-cambios`, `409 conflicto-de-edicion` on `P2002`.
+## PR2a — Edit (split from the planned PR2, which came out at ~600 lines)
+- [x] 2.1 `PUT /consultas-guardadas/:id` in one interactive transaction (archive, update, bump), `409 sin-cambios`, `409 conflicto-de-edicion` on `P2002`.
+- [x] 2.3a `src/consultas-versiones-apoyo.ts` (shared test setup, as `canal-agente-apoyo.ts` is) and `src/consultas-versiones-rutas.test.ts`: every edit scenario on the live database, parity of the 400 bodies with the create, the forced-conflict case and the two-tenant block.
+
+## PR2b — Read the history
 - [ ] 2.2 `GET /consultas-guardadas/:id/versiones` and `GET /consultas-guardadas/:id/versiones/:version`.
-- [ ] 2.3 Route tests on the live database, including the forced-conflict case and a two-tenant block on all three routes.
+- [ ] 2.3b `src/consultas-versiones-historial.test.ts`: list, cap, one version, unknown versions and the two-tenant block on both reads.
 
 ## PR3 — Restore
 - [ ] 3.1 `POST /consultas-guardadas/:id/versiones/:version/restaurar` sharing the archive-and-update helper with the edit.
