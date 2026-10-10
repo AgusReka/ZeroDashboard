@@ -20,11 +20,13 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 - [x] 1.4 GREEN: `src/consola-auth.ts` constants, serializers, `EXENCIONES_OPERADOR`, `requiereOperador`, `resolverSesionConsola`; export the panel's public rows from `src/contexto-tenant.ts` read-only.
 - [x] 1.5 `src/consola-auth-apoyo.ts` (shared live-DB setup) and `src/consola-sesion.test.ts`: no cookie, unknown token, live session by hash, expired row deleted on use, cascade on operator delete. Written after `resolverSesionConsola`, not before it (not a true RED).
 
-## PR2 — Guard, routes and wiring
-- [ ] 2.1 RED: `src/consola-auth-rutas.test.ts` on the live DB: login 200/401/400, hashed token, logout revokes, expired session deleted on use, cookies do not cross, 401 before the tenant check.
-- [ ] 2.2 GREEN: `registrarGuardOperador`, `registerConsolaAuthRoutes` (`ingresar` with the dummy-hash comparison, `salir`), two exact tenant-header rows in `src/contexto-tenant.ts`.
-- [ ] 2.3 Move the wiring to `src/rutas.ts` (`registrarRutas`, guard first, order and comments kept); `src/server.ts` calls it.
-- [ ] 2.4 `src/rutas.test.ts`: every registered route is 401 without a cookie unless exempt; every exempt row is registered and not answered by the guard.
+## PR2a — Guard and the login and logout routes (split from the planned PR2, which came out at ~670 lines)
+- [x] 2.1 RED: `src/consola-auth-rutas.test.ts` on the live DB: login 200/401/400, hashed token, logout revokes, expired session deleted on use, cookies do not cross, 401 before the tenant check.
+- [x] 2.2 GREEN: `registrarGuardOperador`, `registerConsolaAuthRoutes` (`ingresar` with the dummy-hash comparison, `salir`), two exact tenant-header rows in `src/contexto-tenant.ts`.
+
+## PR2b — The route table moved to `src/rutas.ts`
+- [x] 2.3 Move the wiring to `src/rutas.ts` (`registrarRutas`, guard first, order and comments kept); `src/server.ts` calls it.
+- [x] 2.4 `src/rutas.test.ts`: every registered route is 401 without a cookie unless exempt; every exempt row is registered and not answered by the guard (a hook registered after the guard marks what got past it, because the panel answers `sesion-invalida` too). Mutation check: with the guard line removed, 2 of 5 fail.
 
 ## PR3 — Bootstrap command and smoke
 - [ ] 3.1 RED: `src/operador-alta.test.ts` (validators, `leerClave` with fake streams, `altaOReposicion` create and reset-revokes on the live DB).
