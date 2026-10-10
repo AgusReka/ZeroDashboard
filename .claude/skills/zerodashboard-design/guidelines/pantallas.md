@@ -12,7 +12,9 @@ Leyenda: EXISTE = rediseñar manteniendo ids y comportamiento · PARCIAL = hay A
 
 ---
 
-## CONSOLA (P1 · Implementador)
+## CONSOLA (P1 · Implementador) — HISTÓRICO
+> **Reemplazada por `guidelines/consola.md`** (consola v2 al 2026-10-09: arquitectura, especificación por pantalla, tabla change → pantallas, adopción incremental). Lo que sigue queda solo como referencia; ante diferencias, manda `consola.md`. Mockup vigente: `ui_kits/consola/index.html` (HTML plano).
+
 Superficie densa, escritorio primero. Toda pantalla vive bajo la **barra de tenant activo**. Mockup: `ui_kits/consola/index.html`.
 
 ### C-01 Barra de tenant activo — T4 · CH-06 · EXISTE
@@ -146,7 +148,9 @@ Reporte HTML compatible con clientes de correo: tablas, estilos inline, 600 px, 
 
 ---
 
-## Tabla resumen change → pantallas
+## Tabla resumen change → pantallas — HISTÓRICA
+> Para la consola, usar la tabla de `guidelines/consola.md`. Las filas CH-14, CH-22, CH-23, CH-26 y CH-27 (panel y correo) siguen vigentes.
+
 
 | Change | Pantallas | Estado |
 |---|---|---|

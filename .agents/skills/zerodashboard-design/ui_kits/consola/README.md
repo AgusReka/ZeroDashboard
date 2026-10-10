@@ -1,5 +1,9 @@
-# UI kit — Consola (P1)
-Mockup navegable: `index.html`. Pantallas: Consultas (CH-04/05/11, versiones CH-25), Automatizaciones + alta en dos pasos (CH-12/13, CH-21), Ejecuciones (CH-13/17a/17b/18), Agentes y conectividad (CH-19b/d1/d2), Conexión y mapeo (CH-03/09/10). Contrato, Frescura, Auditoría y Tiempos de alta: especificadas en `guidelines/pantallas.md`, sin mockup.
-- `ConsolaShell.jsx` — barra de tenant + sidebar + selector de tenant + `PageHeader` + `Modal`.
-- `Screen*.jsx` — una pantalla por archivo.
-- Datos: `../datos-muestra.js`. En Consultas hay un selector "Simular estado (mockup)" para ver éxito / tope / vacío / cargando / rechazo / timeout.
+# UI kit — Consola v2 (P1)
+Mockup navegable en **HTML + CSS + JS plano** (sin build), igual que la implementación real. Especificación: `guidelines/consola.md`.
+- `index.html` — carga `styles.css`, `assets/icons.js`, datos y scripts. `<body data-surface="consola">`.
+- `app.js` — esqueleto: barra de tenant (ninguno / activo / dado de baja, selector), navegación lateral, ruteo por hash, helpers (`esc` escribe los datos como texto).
+- `consultas.js` — editor + resultado pegado + guardadas + versiones (panel, comparar sin diff, restaurar).
+- `automatizaciones.js` — lista, alta en dos pasos con cron en vivo, ejecuciones con detalle.
+- `conexiones.js` — Conexiones | Agentes; también las pantallas especificadas sin mockup.
+- `datos-consola.js` — DATOS DE MUESTRA.
+Probá cambiar a "Dietética Raíces" (dado de baja) y a "Panadería La Espiga" (agente desconectado, automatizaciones en riesgo). En Consultas, "Mockup: simular resultado" recorre todos los estados.

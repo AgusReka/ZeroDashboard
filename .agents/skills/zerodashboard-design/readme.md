@@ -54,7 +54,7 @@ Ejemplos:
 - **Foco**: anillo `--focus-ring` (azul) 2 px con offset 2 px en todo elemento interactivo (`:focus-visible`).
 - **Movimiento**: mínimo. Transiciones de color 120 ms `cubic-bezier(.2,0,0,1)`. Spinner y skeleton; nada de rebotes ni entradas animadas. `prefers-reduced-motion` ralentiza los giros.
 - **Transparencia/blur**: solo el velo de los diálogos (`rgba(12,15,18,.45)`), sin blur.
-- **Layout**: consola = barra de tenant sticky (40 px) + sidebar 232 px + contenido max 1280 px. Panel = header sticky 60 px + columna max 960 px, una columna en móvil.
+- **Layout**: consola = barra de tenant sticky (40 px) + navegación 232 px (global arriba, tenant activo abajo) + contenido max 1280 px; paneles laterales y diálogos nunca tapan la barra de tenant; funciona desde 1024 px. Panel = header sticky 60 px + columna max 960 px, una columna en móvil.
 - **Datos**: tablas con encabezado hundido, números a la derecha en mono tabular, NULL en itálica gris (consola) o "—" (panel).
 - **Estados**: siempre ícono + texto en badges y banners. Ningún estado se distingue solo por color.
 
@@ -73,11 +73,13 @@ Ejemplos:
 - `tokens/colors.css`, `tokens/typography.css`, `tokens/spacing.css` — tokens (base + alias, claro/oscuro, densidad por superficie).
 - `components/components.css` — clases `.zd-*` usables desde **HTML plano sin build**.
 - `components/<grupo>/` — componentes React (`.jsx` + `.d.ts` + `.prompt.md` + card).
-- `guidelines/pantallas.md` — **especificación de cada pantalla** (propósito, datos, estados, acciones, historia/change/estado) y **tabla change → pantallas**.
+- `guidelines/consola.md` — **consola v2**: arquitectura de información, especificación por pantalla, tabla change → pantallas, componentes nuevos, adopción incremental, propuestas.
+- `guidelines/pantallas.md` — especificación del **panel** y el **correo** (la sección consola es histórica: manda `consola.md`).
 - `guidelines/lenguaje.md` — glosario negocio/técnico y fórmulas de copy.
 - `guidelines/cards/` — cards de fundamentos.
 - `ui_kits/datos-muestra.js` — **DATOS DE MUESTRA** (reemplazables sin tocar el diseño).
-- `ui_kits/consola/` — mockup navegable de la consola.
+- `ui_kits/consola/` — mockup navegable de la consola v2 en **HTML + CSS + JS plano** (`index.html`, `app.js`, una pantalla por `.js`, `datos-consola.js`).
+- `assets/icons.js` — íconos como `window.ZD_ICONS` para HTML plano.
 - `ui_kits/panel/` — mockup navegable del panel.
 - `ui_kits/correo/` — correo con datos y sin datos (HTML de correo real).
 - `assets/icons/` — SVGs de Lucide.
@@ -97,6 +99,13 @@ Cada uno mapea a una clase CSS para la implementación sin framework.
 - **AutomationCard** (`automation/`) — `.zd-auto-card` · CH-22.
 - **TemplatePicker** (`automation/`) — `.zd-templates .zd-template` · CH-21.
 - **Stepper** (`automation/`) — `.zd-steps .zd-step` · CH-21.
+- **SideNav** (`navigation/`) — `.zd-shell .zd-sidenav` · navegación lateral global / tenant activo.
+- **Tabs** (`navigation/`) — `.zd-tabs .zd-tab` · solo para vistas hermanas (Conexiones | Agentes).
+- **PageHeader** (`layout/`) — `.zd-pagehead` · encabezado con alcance, change y acción primaria.
+- **ScopeTag** (`layout/`) — `.zd-scope --global|--tenant|--none`.
+- **KeyValueList** (`layout/`) — `.zd-kv`, `.zd-kvgrid`.
+- **Drawer** (`overlay/`) — `.zd-drawer` · panel lateral bajo la barra de tenant.
+- **Dialog** (`overlay/`) — `.zd-dialog` · confirmación con acción + objeto.
 
 ### Intentional additions
 - **Icon** — envoltorio para renderizar Lucide como SVG inline con currentColor.

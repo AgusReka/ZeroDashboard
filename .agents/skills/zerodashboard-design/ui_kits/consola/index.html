@@ -1,4 +1,4 @@
-<!-- @dsCard group="Consola" viewport="1440x900" name="Consola (P1)" subtitle="Implementador · consultas, automatizaciones, ejecuciones, agentes" -->
+<!-- @dsCard group="Consola" viewport="1440x900" name="Consola v2 (P1)" subtitle="HTML plano · navegación lateral, consultas, automatizaciones, conexiones y agentes" -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,41 +6,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZeroDashboard — Consola</title>
 <link rel="stylesheet" href="../../styles.css">
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script src="../../_ds_bundle.js"></script>
-<script src="../datos-muestra.js"></script>
 </head>
-<body class="zd-root">
-<div id="root"></div>
-<script type="text/babel" src="ConsolaShell.jsx"></script>
-<script type="text/babel" src="ScreenConsultas.jsx"></script>
-<script type="text/babel" src="ScreenAutomatizaciones.jsx"></script>
-<script type="text/babel" src="ScreenEjecuciones.jsx"></script>
-<script type="text/babel" src="ScreenOperacion.jsx"></script>
-<script type="text/babel">
-const SIN_MOCKUP = {
-  contrato: { titulo: 'Contrato canónico', change: 'CH-08', estado: 'PARCIAL', desc: 'Entidades, campos y dependencias que las plantillas esperan.' },
-  frescura: { titulo: 'Frescura', change: 'CH-24', estado: 'PENDIENTE', desc: 'Ventana de desactualización por tenant y tolerancia por plantilla.' },
-  auditoria: { titulo: 'Auditoría de consultas', change: 'CH-20', estado: 'PENDIENTE', desc: 'Registro de solo lectura de cada consulta ejecutada.' },
-  alta: { titulo: 'Tiempos de alta', change: 'CH-15', estado: 'PARCIAL', desc: 'Cuánto tarda cada tenant desde el alta hasta su primera ejecución.' }
-};
-function App() {
-  const D = window.DATOS_MUESTRA;
-  const [tenant, setTenant] = React.useState(D.tenants[0]);
-  const [screen, setScreen] = React.useState(localStorage.getItem('zd-consola-screen') || 'ejecuciones');
-  const nav = s => { setScreen(s); localStorage.setItem('zd-consola-screen', s); window.scrollTo(0, 0); };
-  let body;
-  if (screen === 'consultas') body = <ScreenConsultas />;
-  else if (screen === 'automatizaciones') body = <ScreenAutomatizaciones />;
-  else if (screen === 'ejecuciones') body = <ScreenEjecuciones />;
-  else if (screen === 'agentes') body = <ScreenAgentes />;
-  else if (screen === 'conexion') body = <ScreenConexion />;
-  else body = <ScreenSinMockup {...SIN_MOCKUP[screen]} />;
-  return <ConsolaShell tenant={tenant} tenants={D.tenants} onTenant={setTenant} current={screen} onNav={nav}><React.Fragment key={screen + tenant.id}>{body}</React.Fragment></ConsolaShell>;
-}
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-</script>
+<body class="zd-root" data-surface="consola">
+<div id="app"></div>
+<script src="../../assets/icons.js"></script>
+<script src="datos-consola.js"></script>
+<script src="app.js"></script>
+<script src="consultas.js"></script>
+<script src="automatizaciones.js"></script>
+<script src="conexiones.js"></script>
 </body>
 </html>
