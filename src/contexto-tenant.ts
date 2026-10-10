@@ -191,6 +191,12 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
   if (RUTAS_PANEL_PUBLICAS.has(`${metodo} ${patron}`)) {
     return true;
   }
+  // CH-29 (DEC-151, DEC-152): the console's login and logout name an operator, never a
+  // tenant (DEC-15 is unchanged: tenant routes still carry the header). Exact POST rows;
+  // the operator guard, not this list, decides who may call them.
+  if (metodo === 'POST' && (patron === '/consola/ingresar' || patron === '/consola/salir')) {
+    return true;
+  }
   // Bootstrap: requiring a tenant in order to create the first tenant is unsatisfiable.
   // The exact match plus the slash-terminated prefix is what keeps `/tenants-falsos`
   // out — a bare `startsWith('/tenants')` would let it in.
