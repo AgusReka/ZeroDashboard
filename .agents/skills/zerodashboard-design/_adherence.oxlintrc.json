@@ -16,11 +16,15 @@
         "patterns": [
           {
             "group": [
+              "assets/**",
               "components/automation/**",
               "components/core/**",
               "components/data/**",
               "components/feedback/**",
               "components/forms/**",
+              "components/layout/**",
+              "components/navigation/**",
+              "components/overlay/**",
               "components/tenant/**",
               "ui_kits/**",
               "ui_kits/consola/**",
@@ -86,6 +90,14 @@
         "message": "<DataTableColumn> align must be one of 'num' | 'mono'."
       },
       {
+        "selector": "JSXOpeningElement[name.name='Dialog'] > JSXAttribute > JSXIdentifier[name!=/^(?:open|title|children|actions|onClose|key|ref|className|style|children)$/]",
+        "message": "<Dialog> doesn't accept that prop. Declared props: open, title, children, actions, onClose."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Drawer'] > JSXAttribute > JSXIdentifier[name!=/^(?:open|eyebrow|title|children|footer|onClose|wide|key|ref|className|style|children)$/]",
+        "message": "<Drawer> doesn't accept that prop. Declared props: open, eyebrow, title, children, footer, onClose, wide."
+      },
+      {
         "selector": "JSXOpeningElement[name.name='EmptyState'] > JSXAttribute > JSXIdentifier[name!=/^(?:icon|title|children|actions|key|ref|className|style|children)$/]",
         "message": "<EmptyState> doesn't accept that prop. Declared props: icon, title, children, actions."
       },
@@ -106,12 +118,40 @@
         "message": "<Icon> doesn't accept that prop. Declared props: name, size, label, spin, className, style."
       },
       {
+        "selector": "JSXOpeningElement[name.name='KeyValueList'] > JSXAttribute > JSXIdentifier[name!=/^(?:items|layout|key|ref|className|style|children)$/]",
+        "message": "<KeyValueList> doesn't accept that prop. Declared props: items, layout."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='KeyValueList'] > JSXAttribute[name.name='layout'] > Literal[value!=/^(?:rows|grid|stack)$/]",
+        "message": "<KeyValueList> layout must be one of 'rows' | 'grid' | 'stack'."
+      },
+      {
         "selector": "JSXOpeningElement[name.name='LoadingState'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|variant|rows|key|ref|className|style|children)$/]",
         "message": "<LoadingState> doesn't accept that prop. Declared props: label, variant, rows."
       },
       {
         "selector": "JSXOpeningElement[name.name='LoadingState'] > JSXAttribute[name.name='variant'] > Literal[value!=/^(?:spinner|skeleton)$/]",
         "message": "<LoadingState> variant must be one of 'spinner' | 'skeleton'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='PageHeader'] > JSXAttribute > JSXIdentifier[name!=/^(?:title|description|scope|tenantName|crumbs|change|estado|actions|key|ref|className|style|children)$/]",
+        "message": "<PageHeader> doesn't accept that prop. Declared props: title, description, scope, tenantName, crumbs, change, estado, actions."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='PageHeader'] > JSXAttribute[name.name='scope'] > Literal[value!=/^(?:global|tenant)$/]",
+        "message": "<PageHeader> scope must be one of 'global' | 'tenant'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ScopeTag'] > JSXAttribute > JSXIdentifier[name!=/^(?:scope|tenantName|key|ref|className|style|children)$/]",
+        "message": "<ScopeTag> doesn't accept that prop. Declared props: scope, tenantName."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ScopeTag'] > JSXAttribute[name.name='scope'] > Literal[value!=/^(?:global|tenant)$/]",
+        "message": "<ScopeTag> scope must be one of 'global' | 'tenant'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='SideNavItem'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|label|icon|href|meta|key|ref|className|style|children)$/]",
+        "message": "<SideNavItem> doesn't accept that prop. Declared props: id, label, icon, href, meta."
       },
       {
         "selector": "JSXOpeningElement[name.name='StatusBadge'] > JSXAttribute > JSXIdentifier[name!=/^(?:estado|tone|icon|label|square|attempt|key|ref|className|style|children)$/]",
@@ -124,6 +164,10 @@
       {
         "selector": "JSXOpeningElement[name.name='Stepper'] > JSXAttribute > JSXIdentifier[name!=/^(?:steps|current|label|key|ref|className|style|children)$/]",
         "message": "<Stepper> doesn't accept that prop. Declared props: steps, current, label."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Tabs'] > JSXAttribute > JSXIdentifier[name!=/^(?:tabs|value|onChange|label|key|ref|className|style|children)$/]",
+        "message": "<Tabs> doesn't accept that prop. Declared props: tabs, value, onChange, label."
       },
       {
         "selector": "JSXOpeningElement[name.name='TemplateOption'] > JSXAttribute > JSXIdentifier[name!=/^(?:id|nombre|descripcion|icon|meta|key|ref|className|style|children)$/]",
@@ -162,6 +206,12 @@
       "DataTableColumn": {
         "replaces": []
       },
+      "Dialog": {
+        "replaces": []
+      },
+      "Drawer": {
+        "replaces": []
+      },
       "EmptyState": {
         "replaces": []
       },
@@ -174,13 +224,28 @@
       "Icon": {
         "replaces": []
       },
+      "KeyValueList": {
+        "replaces": []
+      },
       "LoadingState": {
+        "replaces": []
+      },
+      "PageHeader": {
+        "replaces": []
+      },
+      "ScopeTag": {
+        "replaces": []
+      },
+      "SideNavItem": {
         "replaces": []
       },
       "StatusBadge": {
         "replaces": []
       },
       "Stepper": {
+        "replaces": []
+      },
+      "Tabs": {
         "replaces": []
       },
       "TemplateOption": {

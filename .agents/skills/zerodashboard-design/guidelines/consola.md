@@ -1,6 +1,6 @@
 # Consola v2 — arquitectura, pantallas y adopción
 
-Rediseño de la consola del implementador (P1). Fuente: `uploads/prompt-claude-design-consola.md` (estado al 2026-10-09: CH-01 a CH-24 archivados, CH-25 implementado a la espera de verificación visual). **Reemplaza la sección CONSOLA de `pantallas.md`.** No toca el panel (P2).
+Rediseño de la consola del implementador (P1). Fuente: `docs/design/prompt-claude-design-consola.md`, en la raíz del repositorio (estado al 2026-10-09: CH-01 a CH-24 archivados, CH-25 implementado a la espera de verificación visual). **Reemplaza la sección CONSOLA de `pantallas.md`.** No toca el panel (P2).
 Mockup navegable (HTML + CSS + JS plano, sin build): `ui_kits/consola/index.html`.
 
 Leyenda de estado: **EXISTE** = hay interfaz hoy (rediseñar manteniendo comportamiento e ids) · **API** = existe la API, la pantalla es nueva · **PENDIENTE** = diseño anticipado.
@@ -216,14 +216,14 @@ Cada paso entra solo, sin romper los demás. Los `id` actuales se **mueven, no s
 - Atajo "Ejecutar de nuevo con otros parámetros" desde el detalle de una ejecución fallida.
 - Identidad del operador (requiere autenticación: decisión de producto, registrar en `docs/01-decisiones.md`).
 
-## 7. Pendientes al importar (2026-10-09)
+## 7. Pendientes al importar (2026-10-10)
 
-Esta guía se importó de la exportación de Claude Design sin sus cambios al panel (que revertían DEC-93). Antes de implementar cualquier pantalla de acá (CH-30), resolver:
+Esta guía se importó de la exportación de Claude Design sin sus cambios al panel (que revertían DEC-93: P-06 «Último resultado» y el botón «Ver último resultado» siguen fuera de alcance). Antes de implementar cualquier pantalla de acá (CH-30), resolver:
 
 1. **Mapeo de ids.** Esta guía se escribió sin ver `src/consola.ts` y el mockup usa ids propios (`q-sql`, `q-result`, `a-cx`…). Los ids de la consola real (lista `IDS` de `src/consola.test.ts`) son contrato con el script y los tests: se mueven de lugar, no se renombran. Completar la tabla de la sección 5 contra esa lista.
-2. **El mockup no es código portable.** Arma el HTML con `innerHTML` y tiene unos 55 estilos en línea. La consola real escribe todo como texto con nodos y no asigna clases `zd-*` desde el script (guardia G3'). Usarlo como referencia visual; los estilos en línea pasan a clases.
-3. **Fuera del inventario del prompt.** El botón de modo claro u oscuro de la barra lateral (el modo va por tokens y por la preferencia del sistema) no se implementa sin decisión.
+2. **El mockup no es código portable.** Es HTML, CSS y JS plano, pero arma el marcado con cadenas e `innerHTML` y tiene unos 55 estilos en línea en sus `.js`. La consola real escribe todo como texto con nodos y no asigna clases `zd-*` desde el script (guardia G3'). Usarlo como referencia visual; los estilos en línea pasan a clases.
+3. **Fuera del inventario del prompt.** El botón de modo claro u oscuro del pie de la navegación (`app.js`; el modo va por tokens y por la preferencia del sistema) no se implementa sin decisión.
 4. **Conectividad.** La barra de tenant y el selector muestran conectado, desconectado y último latido como si existieran: son de CH-19d1 y CH-19d2, no construidos. Hasta entonces, no se muestran.
 5. **Campos que la API no devuelve hoy.** Por ejemplo, cantidad de conexiones y de automatizaciones activas por tenant (C-02), tablas visibles y latencia de una conexión. Cada uno es un cambio de API que se decide en su change, no en el diseño.
 6. **Cómo se sirven las pantallas.** Esta guía asume una sola página en `/consola` con secciones por `#ancla`. Es una decisión de arquitectura abierta en `openspec/changes/CH-30-rediseno-de-la-consola/exploration.md`.
-7. **Changes reales.** C-02 Tenants, C-05 Conexiones y agentes, C-06 Mapeo y C-12 Auditoría figuran como "sin change": corresponden a CH-30 (cortes b, c y d) y a CH-20 (auditoría, que depende de CH-29 para el "por quién"). Ver `docs/02-mapa-de-changes.md`.
+7. **Changes reales.** C-02 Tenants, C-05 Conexiones y agentes, C-06 Mapeo y C-12 Auditoría figuran como "sin change": corresponden a CH-30 (cortes b, c y d) y a CH-20 (auditoría, que depende de CH-29 para el "por quién"; el lugar reservado «Operador» de C-01 también es de CH-29). Ver `docs/02-mapa-de-changes.md`.
