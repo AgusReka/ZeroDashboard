@@ -142,6 +142,9 @@ class Nodo {
 const IDS = [
   'tenant',
   'tenant-activo',
+  // CH-29 (DEC-154): the operator's name and the logout button in the tenant bar.
+  'operador',
+  'salir',
   'formulario',
   'conexion',
   'sql',
@@ -236,6 +239,8 @@ interface Escenario {
   respuestas: Array<{ status: number; cuerpo: unknown }>;
   /** `tenant` is the `X-Tenant-Id` header the request carried, `null` when none. */
   peticiones: Array<{ url: string; cuerpo: unknown; tenant: string | null }>;
+  /** CH-29: how many times the script reloaded the page (`window.location.reload()`). */
+  recargas: number;
 }
 
 /**
@@ -264,6 +269,12 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
 
   const almacenamiento = new Map<string, string>();
   const ventana = {
+    // CH-29: a 401 and the logout both reload, so the server serves the login screen.
+    location: {
+      reload: (): void => {
+        escenario.recargas += 1;
+      },
+    },
     localStorage: {
       getItem: (clave: string): string | null => almacenamiento.get(clave) ?? null,
       setItem: (clave: string, valor: string): void => void almacenamiento.set(clave, valor),
@@ -319,7 +330,8 @@ describe('the console document, served by the real route', () => {
 
   before(async () => {
     app = Fastify({ logger: false });
-    registerConsolaRoute(app);
+    // CH-29: the resolver stands in for the session lookup; here there is always an operator.
+    registerConsolaRoute(app, async () => ({ id: 'op-1', nombre: 'Ana' }));
     await app.ready();
 
     const respuesta = await app.inject({ method: 'GET', url: '/consola' });
@@ -442,7 +454,10 @@ describe('the console document, served by the real route', () => {
   // ---- behavioural cases: the script is run, not grepped ----------------------------
 
   /** Boots the console with the tenants already selectable, then returns the scenario. */
-  async function arrancar(tenants = [{ id: 't-1', nombre: 'Food Store' }]): Promise<Escenario> {
+  async function arrancar(
+    tenants = [{ id: 't-1', nombre: 'Food Store' }],
+    respuestaTenants: { status: number; cuerpo: unknown } = { status: 200, cuerpo: { tenants } },
+  ): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
       // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
@@ -456,8 +471,9 @@ describe('the console document, served by the real route', () => {
       nodos,
       encabezado: new Nodo('thead'),
       cuerpoTabla: new Nodo('tbody'),
-      respuestas: [{ status: 200, cuerpo: { tenants } }],
+      respuestas: [respuestaTenants],
       peticiones: [],
+      recargas: 0,
     };
 
     ejecutarConsola(script, escenario);
@@ -2721,5 +2737,143 @@ describe('the console document, served by the real route', () => {
     ]);
     assert.equal(nodo(escenario, 'sql').value, 'SELECT 2', 'the editor shows the restored statement');
     assert.equal(nodo(escenario, 'banner').textContent, 'Se creó la versión 4 con el contenido de la versión 2.', 'and the confirmation survives the reload');
+  });
+
+  // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------
+
+  test('CH-29 a 401 on the tenant list reloads the page instead of showing an error', async () => {
+    const escenario = await arrancar([], { status: 401, cuerpo: { error: 'sesion-invalida' } });
+    assert.equal(escenario.recargas, 1);
+    assert.equal(nodo(escenario, 'banner').textContent, '', 'no message: the reload is the answer');
+  });
+
+  test('CH-29 a 401 on a scoped call reloads the page instead of rendering a failure', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await enviar(escenario, { error: 'sesion-expirada' }, 401);
+    assert.equal(escenario.recargas, 1);
+    assert.equal(nodo(escenario, 'banner').hidden, true);
+  });
+
+  test('CH-29 Salir posts to /consola/salir without a tenant header and reloads', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await enviar(escenario, { ok: true }, 200, 'salir', 'click');
+    const ultima = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(ultima.url, '/consola/salir');
+    assert.equal(ultima.tenant, null);
+    assert.equal(escenario.recargas, 1);
+  });
+
+  test('CH-29 Salir reloads even when the logout call fails', async () => {
+    const escenario = await arrancar();
+    await enviar(escenario, { error: 'sesion-invalida' }, 401, 'salir', 'click');
+    assert.equal(escenario.recargas, 1);
+  });
+});
+
+// ---- CH-29 (DEC-152, DEC-154): GET /consola serves the login screen or the console --------
+
+describe('CH-29 the console page by session', () => {
+  async function servir(operador: { id: string; nombre: string } | null, cookie?: string) {
+    const vistas: Array<string | undefined> = [];
+    const app = Fastify({ logger: false });
+    registerConsolaRoute(app, async (cabecera) => {
+      vistas.push(cabecera);
+      return operador;
+    });
+    await app.ready();
+    const respuesta = await app.inject({ method: 'GET', url: '/consola', headers: cookie ? { cookie } : {} });
+    await app.close();
+    return { respuesta, vistas };
+  }
+
+  function sinPeligros(documento: string): void {
+    assert.equal(documento.split('</' + 'script>').length - 1, 1, 'exactly one closing script tag');
+    assert.ok(!documento.includes('`'), 'no backtick');
+    for (const prohibido of ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'srcdoc']) {
+      assert.ok(!documento.includes(prohibido), prohibido);
+    }
+    assert.ok(documento.includes('<link rel="stylesheet" href="/ui/styles.css">'));
+  }
+
+  test('without a session it serves the login screen, never the editor', async () => {
+    const { respuesta, vistas } = await servir(null, 'zd_consola_session=x');
+    assert.equal(respuesta.statusCode, 200);
+    assert.match(String(respuesta.headers['content-type']), /text\/html/);
+    assert.equal(respuesta.headers['cache-control'], 'no-store');
+    assert.deepEqual(vistas, ['zd_consola_session=x'], 'the resolver receives the request cookie header');
+    const documento = respuesta.body;
+    assert.ok(!documento.includes('<textarea id="sql"'), 'no SQL editor without a session');
+    assert.ok(documento.includes('id="form-ingreso"'));
+    assert.ok(documento.includes('/consola/ingresar'));
+    assert.ok(documento.includes('autocomplete="current-password"'));
+    sinPeligros(documento);
+  });
+
+  test('with a session it serves the console with the operator in the header', async () => {
+    const { respuesta } = await servir({ id: 'op-1', nombre: 'Ana' });
+    assert.equal(respuesta.statusCode, 200);
+    assert.equal(respuesta.headers['cache-control'], 'no-store');
+    assert.ok(respuesta.body.includes('<textarea id="sql"'));
+    assert.match(respuesta.body, /id="operador"[^>]*>[^<]*<strong>Ana<\/strong>/);
+    sinPeligros(respuesta.body);
+  });
+
+  test('a name with markup is shown as text, escaped by the server', async () => {
+    const { respuesta } = await servir({ id: 'op-1', nombre: '<b>ana</b>' });
+    assert.ok(respuesta.body.includes('&lt;b&gt;ana&lt;/b&gt;'));
+    assert.ok(!respuesta.body.includes('<b>ana</b>'));
+  });
+
+  /** Runs the login document's script against fake nodes and one queued `fetch` answer. */
+  async function ingresarCon(status: number, cuerpo: unknown) {
+    const { respuesta } = await servir(null);
+    const documento = respuesta.body;
+    const script = documento.slice(documento.indexOf('<script>') + '<script>'.length, documento.indexOf('</' + 'script>'));
+    const nodos = new Map<string, Nodo>();
+    for (const id of ['form-ingreso', 'nombre', 'clave', 'aviso-ingreso', 'texto-aviso', 'boton-ingresar', 'etiqueta-ingresar', 'icono-cargando']) {
+      const n = new Nodo(id === 'form-ingreso' ? 'form' : 'div');
+      n.id = id;
+      nodos.set(id, n);
+    }
+    (nodos.get('nombre') as Nodo).value = 'ana';
+    (nodos.get('clave') as Nodo).value = 'clave-larga-1';
+    (nodos.get('aviso-ingreso') as Nodo).hidden = true;
+    const peticiones: Array<{ url: string; cuerpo: unknown }> = [];
+    let recargas = 0;
+    const documentoFalso = { getElementById: (id: string) => nodos.get(id) ?? null };
+    const ventana = { location: { reload: () => { recargas += 1; } } };
+    const fetchFalso = async (url: string, opciones?: { body?: string }) => {
+      peticiones.push({ url, cuerpo: opciones?.body === undefined ? null : JSON.parse(opciones.body) });
+      return { ok: status >= 200 && status < 300, status, json: async () => cuerpo };
+    };
+    // eslint-disable-next-line no-new-func -- the point is to run the served script.
+    new Function('document', 'window', 'fetch', script)(documentoFalso, ventana, fetchFalso);
+    (nodos.get('form-ingreso') as Nodo).disparar('submit');
+    await new Promise((resolver) => setImmediate(resolver));
+    await new Promise((resolver) => setImmediate(resolver));
+    return { nodos, peticiones, recargas: () => recargas };
+  }
+
+  test('the login screen posts the name and password and reloads on 200', async () => {
+    const r = await ingresarCon(200, { operador: { id: 'op-1', nombre: 'ana' } });
+    assert.deepEqual(r.peticiones, [{ url: '/consola/ingresar', cuerpo: { nombre: 'ana', clave: 'clave-larga-1' } }]);
+    assert.equal(r.recargas(), 1);
+  });
+
+  test('a wrong password says so, keeps the name, and does not reload', async () => {
+    const r = await ingresarCon(401, { error: 'nombre-o-clave-incorrectos' });
+    assert.equal(r.recargas(), 0);
+    assert.equal((r.nodos.get('aviso-ingreso') as Nodo).hidden, false);
+    assert.equal((r.nodos.get('texto-aviso') as Nodo).textContent, 'Nombre o clave incorrectos.');
+    assert.equal((r.nodos.get('nombre') as Nodo).value, 'ana');
+    assert.equal((r.nodos.get('boton-ingresar') as Nodo).disabled, false);
+  });
+
+  test('any other failure says the console could not be reached', async () => {
+    const r = await ingresarCon(500, { error: 'interno' });
+    assert.equal(r.recargas(), 0);
+    assert.match((r.nodos.get('texto-aviso') as Nodo).textContent, /No se pudo contactar/);
   });
 });

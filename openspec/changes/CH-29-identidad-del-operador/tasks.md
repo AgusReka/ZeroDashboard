@@ -38,11 +38,12 @@ Branch base: `master` (after PR #132). Strict TDD: each task pair writes the fai
 ## PR3c — Review fixes of PR3 (independent verifier)
 - [x] 3.4 `src/operador-alta.ts`: terminal input that ends, closes or fails before the second Enter rejects and restores raw mode (it hung, exiting 13); control characters and ESC sequences are ignored instead of typed; backspace and the 12-character minimum count code points; a create that loses the unique-name race retries once as a reset. Tests first (RED: three failures and the hang).
 - [x] 3.5 `scripts/smoke.sh`: the CH-29 block rewritten (an earlier edit had turned `
-` and `` into literal characters and joined the continued lines); random password from `/dev/urandom`; login bodies through stdin; `fail()` deletes the smoke operator; the `/tenants` comment no longer says "exempt" alone. Re-run in Docker at close (5.1).
+` and `
+` into literal characters and joined the continued lines); random password from `/dev/urandom`; login bodies through stdin; `fail()` deletes the smoke operator; the `/tenants` comment no longer says "exempt" alone. Re-run in Docker at close (5.1).
 
 ## PR4 — Console
-- [ ] 4.1 RED: `src/consola.test.ts` cases for the login document vs the console document, the escaped operator name, the hazard scan over both documents.
-- [ ] 4.2 GREEN: `registerConsolaRoute(app, prisma)`, `documentoIngreso()` with the design skill, header name and "Salir", 401 reload in `pedir()` and the tenant list.
+- [x] 4.1 RED: `src/consola.test.ts` cases for the login document vs the console document, the escaped operator name, the hazard scan over both documents.
+- [x] 4.2 GREEN: `registerConsolaRoute(app, resolverOperador)` (a resolver instead of the client, so the console tests stay database-free; production passes `resolverSesionConsola`), `documentoIngreso()` with the design skill, header name and "Salir", 401 reload in `pedir()` and the tenant list.
 - [ ] 4.3 Manual visual review of the login screen and the header at 360 px and 1280 px, light and dark.
 
 ## Close

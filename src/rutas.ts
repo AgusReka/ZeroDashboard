@@ -7,7 +7,7 @@ import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
 import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 import { registerConsolaRoute } from './consola.js';
-import { registerConsolaAuthRoutes, registrarGuardOperador } from './consola-auth.js';
+import { registerConsolaAuthRoutes, registrarGuardOperador, resolverSesionConsola } from './consola-auth.js';
 import { registerContratoRoutes } from './contrato-rutas.js';
 import { registerEstilosRoutes, type EstilosCargados } from './estilos-rutas.js';
 import { registerTenantRoutes } from './tenants.js';
@@ -59,7 +59,9 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   registerConsultaGuardadaRoutes(app, prisma);
   registerVistaCanonicaRoutes(app, prisma);
   registerValidacionMapeoRoutes(app, prisma, registro);
-  registerConsolaRoute(app);
+  // CH-29 (DEC-154): the page serves the login screen or the console by the session it
+  // resolves through the same path the guard uses.
+  registerConsolaRoute(app, async (cookie) => (await resolverSesionConsola(prisma, cookie)).operador);
   // CH-21a (DEC-124): the loaded sheets and the app, no client, like the console and the
   // contract around it: the assets are identical for every tenant, exempt by exact GET row.
   registerEstilosRoutes(app, estilos);

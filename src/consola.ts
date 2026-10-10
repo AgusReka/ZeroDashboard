@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import type { OperadorAutenticado } from './consola-auth.js';
+import { escaparHtml } from './correo.js';
 
 /**
  * The whole console: one self-contained HTML document held as a constant.
@@ -25,8 +27,13 @@ import type { FastifyInstance } from 'fastify';
  *
  * The inline script uses string concatenation rather than JS template literals so the
  * document can live inside this TypeScript template literal without escaping.
+ *
+ * CH-29 (DEC-154): the document is built per request because it names the operator in
+ * the tenant bar. That name is stored data, so it is interpolated only through
+ * `escaparHtml`; it is the one interpolation in the whole document.
  */
-const DOCUMENTO_CONSOLA = `<!doctype html>
+function documentoConsola(nombreOperador: string): string {
+  return `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -131,6 +138,8 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   .versiones-bloques { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); margin-top: var(--space-5); }
   .versiones-bloque pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (max-width: 40rem) { .versiones-bloques { grid-template-columns: minmax(0, 1fr); } }
+  /* CH-29 (C-01): the operator slot and Salir sit at the end of the tenant bar. */
+  #operador { margin-inline-start: auto; }
 </style>
 </head>
 <body class="zd-root">
@@ -144,6 +153,9 @@ const DOCUMENTO_CONSOLA = `<!doctype html>
   <label for="tenant" class="zd-tenantbar__label">Tenant activo</label>
   <select id="tenant" class="zd-select"></select>
   <strong id="tenant-activo" class="sin-tenant">Ningún tenant seleccionado</strong>
+  <!-- CH-29 (DEC-154, C-01): who operates. The name is escaped by the server. -->
+  <span id="operador" class="zd-operator">Operador: <strong>${escaparHtml(nombreOperador)}</strong></span>
+  <button id="salir" class="zd-btn zd-btn--ghost zd-btn--sm" type="button">Salir</button>
 </header>
 
 <h1 class="zd-h1">Consola de consultas</h1>
@@ -746,7 +758,7 @@ function renderizarSelector(tenants) {
 async function cargarTenants() {
   var respuesta;
   try {
-    respuesta = await fetch('/tenants');
+    respuesta = await fetch('/tenants').then(siNoAutenticado);
   } catch (fallaDeRed) {
     mostrarBanner('No se pudo contactar con la aplicación para leer la lista de tenants.');
     return;
@@ -761,6 +773,19 @@ async function cargarTenants() {
   }
 
   renderizarSelector(Array.isArray(cuerpo.tenants) ? cuerpo.tenants : []);
+}
+
+/**
+ * CH-29 (DEC-154): a 401 means the operator's session is gone (expired, logged out
+ * elsewhere, or reset). Reloading lets the server serve the login screen; the promise
+ * that never settles keeps every caller from rendering a failure in the meantime.
+ */
+function siNoAutenticado(respuesta) {
+  if (respuesta.status === 401) {
+    window.location.reload();
+    return new Promise(function () {});
+  }
+  return respuesta;
 }
 
 /**
@@ -781,7 +806,7 @@ function pedir(url, opciones) {
   }
   cabeceras['X-Tenant-Id'] = tenantActivo;
 
-  return fetch(url, { method: config.method, headers: cabeceras, body: config.body });
+  return fetch(url, { method: config.method, headers: cabeceras, body: config.body }).then(siNoAutenticado);
 }
 
 /**
@@ -2441,6 +2466,16 @@ botonAnterior.addEventListener('click', function () {
   ejecutar(Math.max(0, pagina.desplazamiento - pagina.limite));
 });
 
+// CH-29 (DEC-154): Salir revokes the session and reloads into the login screen; it reloads
+// even if the call fails, and it sends no tenant header (the route names no tenant).
+document.getElementById('salir').addEventListener('click', function () {
+  fetch('/consola/salir', { method: 'POST' }).then(function () {
+    window.location.reload();
+  }, function () {
+    window.location.reload();
+  });
+});
+
 // The tenant list comes first: nothing else on this page can be asked for until the
 // console knows which tenant it is operating as.
 cargarTenants().then(function () {
@@ -2453,13 +2488,130 @@ cargarTenants().then(function () {
 </body>
 </html>
 `;
+}
 
 /**
- * `GET /consola`. Takes no `PrismaClient`: the page touches no database of ours — it
- * only talks to `POST /consultas/ejecutar` from the browser. `/` is left unclaimed.
+ * CH-29 (DEC-154): the console's login screen, served by `GET /consola` when the request
+ * carries no valid operator session. Built on the panel's P-01 pattern (`src/panel.ts`)
+ * with the shared `.zd-*` classes: a centered card, one form, one error banner, a loading
+ * button. It carries no data at all, so nothing in it needs escaping. The script posts
+ * the name and password as JSON to `POST /consola/ingresar` and reloads on success, so the
+ * server serves the console; a `401` keeps the typed name and says so. Same hazards as
+ * the console: string concatenation only, `textContent` only, one script element.
  */
-export function registerConsolaRoute(app: FastifyInstance): void {
-  app.get('/consola', async (_request, reply) => {
-    return reply.code(200).type('text/html; charset=utf-8').send(DOCUMENTO_CONSOLA);
+const DOCUMENTO_INGRESO = `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZeroDashboard — Ingreso a la consola</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<style>
+  [hidden] { display: none !important; }
+  .consola-ingreso { min-height: 100vh; display: grid; place-items: center; padding: var(--space-6); }
+  .consola-ingreso__caja { width: min(420px, 100%); display: grid; gap: var(--space-8); }
+  .consola-ingreso__marca { display: grid; gap: var(--space-3); text-align: center; }
+  .consola-ingreso__marca strong { font-size: var(--text-2xl); letter-spacing: -.02em; }
+  .consola-ingreso__marca .zd-muted { margin: 0; }
+</style>
+</head>
+<body class="zd-root">
+<!-- CH-29 (DEC-154): unauthenticated /consola. -->
+<section class="consola-ingreso" data-screen-label="Ingreso a la consola" data-change="CH-29" data-estado="implementado">
+  <div class="consola-ingreso__caja">
+    <div class="consola-ingreso__marca">
+      <strong>ZeroDashboard</strong>
+      <p class="zd-muted">Consola del implementador</p>
+    </div>
+    <form id="form-ingreso" class="zd-card zd-form" action="/consola/ingresar" method="post" novalidate>
+      <h1 class="zd-h2">Ingresar</h1>
+      <div class="zd-field">
+        <label class="zd-label" for="nombre">Nombre</label>
+        <input class="zd-input" id="nombre" name="nombre" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+      </div>
+      <div class="zd-field">
+        <label class="zd-label" for="clave">Clave</label>
+        <input class="zd-input" id="clave" name="clave" type="password" autocomplete="current-password" required>
+      </div>
+      <div id="aviso-ingreso" class="zd-banner zd-banner--error" role="alert" hidden>
+        <svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg>
+        <div>
+          <p class="zd-banner__title">No se pudo ingresar</p>
+          <p class="zd-banner__body" id="texto-aviso">Nombre o clave incorrectos.</p>
+        </div>
+      </div>
+      <button id="boton-ingresar" class="zd-btn zd-btn--primary zd-btn--block" type="submit">
+        <svg id="icono-cargando" class="zd-icon zd-icon--spin" aria-hidden="true" viewBox="0 0 24 24" hidden><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+        <span id="etiqueta-ingresar">Ingresar</span>
+      </button>
+    </form>
+    <p class="zd-meta">Las cuentas de operador se crean con <code>npm run operador:alta</code>.</p>
+  </div>
+</section>
+<script>
+var formulario = document.getElementById('form-ingreso');
+var campoNombre = document.getElementById('nombre');
+var campoClave = document.getElementById('clave');
+var aviso = document.getElementById('aviso-ingreso');
+var textoAviso = document.getElementById('texto-aviso');
+var boton = document.getElementById('boton-ingresar');
+var etiqueta = document.getElementById('etiqueta-ingresar');
+var iconoCargando = document.getElementById('icono-cargando');
+var MENSAJE_CREDENCIALES = 'Nombre o clave incorrectos.';
+var MENSAJE_RED = 'No se pudo contactar con la consola. Revisá que la aplicación esté en marcha y volvé a intentar.';
+function fallar(texto) {
+  textoAviso.textContent = texto;
+  aviso.hidden = false;
+  boton.disabled = false;
+  etiqueta.textContent = 'Ingresar';
+  iconoCargando.hidden = true;
+}
+formulario.addEventListener('submit', function (evento) {
+  evento.preventDefault();
+  aviso.hidden = true;
+  boton.disabled = true;
+  etiqueta.textContent = 'Ingresando…';
+  iconoCargando.hidden = false;
+  fetch('/consola/ingresar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre: campoNombre.value, clave: campoClave.value })
+  }).then(function (respuesta) {
+    if (respuesta.ok) {
+      window.location.reload();
+      return null;
+    }
+    if (respuesta.status === 401) {
+      fallar(MENSAJE_CREDENCIALES);
+      return null;
+    }
+    fallar(MENSAJE_RED);
+    return null;
+  }).catch(function () {
+    fallar(MENSAJE_RED);
+  });
+});
+</script>
+</body>
+</html>
+`;
+
+/** Resolves the operator a request's `Cookie` header names, or `null` when there is none. */
+export type ResolverOperador = (cabeceraCookie: string | undefined) => Promise<OperadorAutenticado | null>;
+
+/**
+ * `GET /consola`. Exempt from the operator guard and from the tenant header, because it is
+ * where an operator without a session logs in (DEC-152). With a valid session it serves
+ * the console naming the operator; without one, the login screen. It takes a resolver
+ * rather than a `PrismaClient` so the page itself still touches no database: production
+ * passes `resolverSesionConsola` (`src/rutas.ts`), the console tests a fixed operator.
+ * `no-store`, because the page names a person and changes with the session. `/` is left
+ * unclaimed.
+ */
+export function registerConsolaRoute(app: FastifyInstance, resolverOperador: ResolverOperador): void {
+  app.get('/consola', async (request, reply) => {
+    const operador = await resolverOperador(request.headers.cookie);
+    const documento = operador === null ? DOCUMENTO_INGRESO : documentoConsola(operador.nombre);
+    return reply.code(200).type('text/html; charset=utf-8').header('cache-control', 'no-store').send(documento);
   });
 }

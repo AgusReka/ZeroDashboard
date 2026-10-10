@@ -407,7 +407,7 @@ describe(
       registrarContextoTenant(app, aislado);
       registerHealthRoute(app, aislado);
       registerTenantRoutes(app, aislado);
-      registerConsolaRoute(app);
+      registerConsolaRoute(app, async () => null);
       registerContratoRoutes(app);
       registerConsultaGuardadaRoutes(app, aislado);
       await app.ready();
