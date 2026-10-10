@@ -289,17 +289,37 @@ function cabeza(titulo, descripcion, insignia) {
   return cab;
 }
 function tarjetaActiva(item, zona) {
-  var activa = item.estado === 'activa';
+  var esActiva = item.estado === 'activa';
+  var esConFalla = item.estado === 'con_falla';
+  var esPausada = item.estado === 'pausada';
   var tarjeta = nodo('article', 'zd-card zd-auto-card');
-  tarjeta.appendChild(cabeza(item.titulo, item.descripcion,
-    nodo('span', activa ? 'zd-badge zd-badge--ok' : 'zd-badge', activa ? 'Activa' : 'Pausada')));
+  var badgeTexto;
+  var badgeClase;
+  if (esActiva) {
+    badgeClase = 'zd-badge zd-badge--ok';
+    badgeTexto = 'Activa';
+  } else if (esConFalla) {
+    badgeClase = 'zd-badge';
+    badgeTexto = 'Con falla';
+  } else {
+    badgeClase = 'zd-badge';
+    badgeTexto = 'Pausada';
+  }
+  tarjeta.appendChild(cabeza(item.titulo, item.descripcion, nodo('span', badgeClase, badgeTexto)));
+  if (esConFalla) {
+    var banner = nodo('div', 'zd-banner zd-banner--error');
+    banner.setAttribute('role', 'alert');
+    banner.appendChild(nodo('p', 'zd-banner__title', 'No pudimos completar esta automatización esta vez'));
+    banner.appendChild(nodo('p', 'zd-banner__body', 'La última revisión falló. La próxima vez que se ejecute, volvemos a intentarlo.'));
+    tarjeta.appendChild(banner);
+  }
   var tiempos = nodo('dl', 'zd-auto-card__times');
   var ultima = item.ultimaEjecucion;
   if (ultima === null) {
     dato(tiempos, 'Última revisión', 'Todavía no hubo una revisión');
   } else {
     var resultado = ultima.resultado === 'completada' ? 'Se completó' : 'No se pudo hacer';
-    dato(tiempos, 'Última revisión', resultado + ' · ' + formatear(ultima.fecha, zona));
+    dato(tiempos, 'Última revisión', resultado + ' — ' + formatear(ultima.fecha, zona));
   }
   if (item.proximaEjecucion) { dato(tiempos, 'Próxima revisión', formatear(item.proximaEjecucion, zona)); }
   if (item.frecuencia) { dato(tiempos, 'Frecuencia', item.frecuencia); }

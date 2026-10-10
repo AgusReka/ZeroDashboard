@@ -194,6 +194,15 @@ describe('proyectarActiva — allow-list without technical fields', () => {
     const conFallo = proyectarActiva(fila(), EJECUCION_CRUDA, AHORA, 'UTC');
     assert.equal(conFallo.estado, 'con_falla');
     assert.equal(conFallo.ultimaEjecucion?.resultado, 'no-realizada');
+    const omitida = proyectarActiva(fila(), { estado: 'omitida', iniciadaEn: new Date('2026-10-07T08:00:00Z'), finalizadaEn: new Date('2026-10-07T08:00:05Z') }, AHORA, 'UTC');
+    assert.equal(omitida.estado, 'con_falla');
+    assert.equal(omitida.ultimaEjecucion?.resultado, 'no-realizada');
+    const okRun = proyectarActiva(fila(), { estado: 'ok', iniciadaEn: new Date('2026-10-07T08:00:00Z'), finalizadaEn: new Date('2026-10-07T08:00:05Z') }, AHORA, 'UTC');
+    assert.equal(okRun.estado, 'activa');
+    const soloEnCurso = proyectarActiva(fila(), null, AHORA, 'UTC');
+    assert.equal(soloEnCurso.estado, 'activa');
+    const pausadaConFallo = proyectarActiva(fila({ activo: false }), EJECUCION_CRUDA, AHORA, 'UTC');
+    assert.equal(pausadaConFallo.estado, 'pausada');
   });
 
   test('1.4 frecuencia is a missing key, not null, outside the three patterns', () => {
@@ -618,7 +627,7 @@ describe(
       assert.deepEqual(
         cuerpo.activas.map((a) => [a.estado, a.ultimaEjecucion]),
         [
-          ['activa', { fecha: '2026-10-07T08:00:00.000Z', resultado: 'no-realizada' }],
+          ['con_falla', { fecha: '2026-10-07T08:00:00.000Z', resultado: 'no-realizada' }],
           ['activa', { fecha: '2026-10-05T08:00:00.000Z', resultado: 'completada' }],
         ],
       );
@@ -632,6 +641,22 @@ describe(
       assert.equal(cuerpo.activas.length, 1);
       assert.equal(cuerpo.activas[0]?.estado, 'pausada');
       assert.equal(cuerpo.activas[0]?.proximaEjecucion, null);
+    });
+
+    test('2.6a active automation with omitida becomes con_falla and paused stays pausada', async () => {
+      const n = await negocio('falla-omitida');
+      const activa = await automatizacion(n, fisico, { creadaEn: '2026-01-02T00:00:00Z' });
+      const pausada = await automatizacion(n, producible, { activo: false, creadaEn: '2026-01-01T00:00:00Z' });
+      await ejecucion(n, activa, 'omitida', '2026-10-07T08:00:00Z');
+      await ejecucion(n, pausada, 'fallo', '2026-10-07T08:00:00Z');
+      const { cuerpo } = await leer(n);
+      assert.deepEqual(
+        cuerpo.activas.map((a) => [a.estado, (a as any).ultimaEjecucion?.resultado]),
+        [
+          ['con_falla', 'no-realizada'],
+          ['pausada', 'no-realizada'],
+        ],
+      );
     });
 
     test('2.7 an active automation hides its template; a paused-only one does not', async () => {

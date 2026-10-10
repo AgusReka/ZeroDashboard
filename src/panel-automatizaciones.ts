@@ -147,7 +147,8 @@ export function proyectarActiva(
   if (!fila.activo) {
     estado = 'pausada';
   } else {
-    if (ultima !== null && ultimaEjecucion !== null && ultimaEjecucion.resultado === 'no-realizada') {
+    const resultadoUltima = ultima === null ? null : resultadoDe(ultima.estado);
+    if (ultima !== null && resultadoUltima === 'no-realizada') {
       estado = 'con_falla';
     } else {
       estado = 'activa';

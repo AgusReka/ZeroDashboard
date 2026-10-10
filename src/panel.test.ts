@@ -246,8 +246,11 @@ describe(
         'Todavía no hubo una revisión',
         'Activa',
         'Pausada',
+        'Con falla',
         'Se completó',
         'No se pudo hacer',
+        'No pudimos completar esta automatización esta vez',
+        'La última revisión falló. La próxima vez que se ejecute, volvemos a intentarlo.',
       ]) {
         assert.ok((html + script).includes(texto), `falta el texto: ${texto}`);
       }

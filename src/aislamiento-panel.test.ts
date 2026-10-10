@@ -239,7 +239,7 @@ describe(
     const INSTANTE_B = '2026-10-05T09:30:00.000Z';
 
     /** Tenant `t` runs `slug` actively, with one finished run at `instante`. */
-    async function montarAutomatizacion(t: FixtureAislamiento, slug: string, instante: string) {
+    async function montarAutomatizacion(t: FixtureAislamiento, slug: string, instante: string, estadoEjec?: string) {
       const plantilla = await db.plantilla.create({
         data: {
           nombre: `CH-22b ${t.etiqueta} ${Date.now()}`,
@@ -270,9 +270,9 @@ describe(
         data: {
           tenantId: t.tenantId,
           automatizacionId: automatizacion.id,
-          estado: 'ok',
+          estado: estadoEjec ?? 'ok',
           iniciadaEn: new Date(instante),
-          finalizadaEn: new Date(instante),
+          finalizadaEn: estadoEjec === 'en-curso' ? null : new Date(instante),
         },
       });
     }
@@ -323,6 +323,20 @@ describe(
         assert.equal(conConsulta.body, base.body, 'the query parameter is ignored');
         assert.ok(!conCabecera.body.includes(ajeno.tenantId) && !conCabecera.body.includes(propio.tenantId));
       }
+    });
+
+    test('2.16 con_falla isolation: only session tenant sees its failed automation', async () => {
+      await montarAutomatizacion(a, 'stock-fisico', '2026-10-06T08:00:00.000Z', 'fallo');
+      const deA = await automatizacionesDe(tokenDe(await ingresar(a)));
+      const deB = await automatizacionesDe(tokenDe(await ingresar(b)));
+      assert.equal(deA.statusCode, 200, deA.body);
+      assert.equal(deB.statusCode, 200, deB.body);
+      const cuerpoA = deA.json() as { activas: Array<{ estado: string }> };
+      const cuerpoB = deB.json() as { activas: Array<{ estado: string }> };
+      assert.equal(cuerpoA.activas[0]?.estado, 'con_falla');
+      assert.deepEqual(cuerpoB.activas, []);
+      assert.ok(!deA.body.includes('codigoError'));
+      assert.ok(!deA.body.includes('error'));
     });
   },
 );
