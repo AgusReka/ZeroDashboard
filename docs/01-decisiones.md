@@ -2501,6 +2501,78 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-138 — CH-23: el panel ajusta una automatización en el lugar; enmienda DEC-79 y DEC-82 solo para el panel
+
+**Contexto.** P-04 (P2h) pide cambiar umbral, horario y destinatario de una automatización. DEC-79 dejó la automatización sin edición ("se desactiva y se crea otra") y DEC-82 fijó el destinatario "sin edición". El planificador lee `cron` y `valores` de la base en cada tick, así que un cambio guardado rige desde la próxima ejecución sin reprogramar nada.
+
+**Opciones.** (a) Edición en el lugar desde el panel: una ruta con sesión que actualiza `valores`, `cron` y `destinatario` de la misma fila. (b) Mantener DEC-79: "Ajustar" desactiva la automatización y crea otra.
+
+**Decisión.** (a). DEC-79 y DEC-82 se enmiendan solo para la superficie del panel: la consola y `/automatizaciones` siguen sin ruta de edición.
+
+**Por qué.** (b) cambiaría la identidad de la automatización, la separaría de su historial de ejecuciones y obligaría a elegir conexión de nuevo, que el cliente no conoce.
+
+**Se resigna.** Hay una ruta de escritura nueva en el panel (reglas 1 y 2: sin SQL del cliente, tenant solo de la sesión) y su prueba con dos tenants. Quedan abiertos, para decidir en la exploración de CH-23: cómo identifica el cliente la automatización sin que el tenant salga de la petición, y qué destinatario(s) edita P-04 (DEC-130: una sola dirección).
+
+**Decidido por:** el usuario, 2026-10-08. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-139 — CH-23: la lista del panel expone el `id` de cada automatización activa y el ajuste se direcciona por ese id
+
+**Contexto.** El cliente necesita decir cuál automatización ajusta sin que el tenant salga de la petición (regla 2, DEC-135). DEC-137 omitió el `id` de la proyección y dejó abierta la puerta a agregarlo de forma aditiva.
+
+**Opciones.** (a) `id` opaco en cada item de `activas` y ruta `.../automatizaciones/:id/ajustes`. (b) Sin id, por posición o etiqueta.
+
+**Decisión.** (a). El `id` se agrega a la lista blanca de `ItemActiva`; el servidor lo resuelve con el modelo con alcance de tenant, de modo que el id de otro tenant responde igual que uno inexistente (404).
+
+**Por qué.** (b) es ambiguo con dos automatizaciones de la misma plantilla y frágil entre la lectura y el guardado. El `id` no revela datos de negocio y el tenant sigue saliendo solo de la sesión.
+
+**Se resigna.** Cambia el contrato de lectura de DEC-137 con un campo aditivo y exige la prueba con dos tenants sobre la ruta de escritura.
+
+**Decidido por:** el usuario, 2026-10-08. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-140 — CH-23: P-04 edita umbral, hora, días y un solo destinatario
+
+**Contexto.** El diseño de P-04 lista `destinatarios` (plural); el modelo guarda una sola dirección (DEC-82, DEC-130).
+
+**Opciones.** (a) Umbral, hora, días y un destinatario. (b) Solo umbral, hora y días; el destinatario queda fijo desde el alta.
+
+**Decisión.** (a). La dirección se valida con `direccionValida` y se guarda recortada como en el alta (`destinatarioDe`). La lista de destinatarios queda como límite del artefacto (DEC-130, regla 6).
+
+**Por qué.** (b) impide que el cliente corrija su propio correo; (a) cabe en el modelo sin tocar el motor.
+
+**Se resigna.** Un solo destinatario por automatización; el texto plural del diseño se lee en singular en la pantalla.
+
+**Decidido por:** el usuario, 2026-10-08. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-141 — CH-23: contrato de lectura y escritura de los ajustes del panel
+
+**Contexto.** DEC-138 a DEC-140 fijan que el panel edita en el lugar `umbral`, hora, días y un destinatario, direccionado por `id`. Falta el contrato de las rutas.
+
+**Opciones.** (a) Par `GET`/`PUT /api/panel/automatizaciones/:id/ajustes`, con la lista solo ampliada con `id`. (b) Poner los valores actuales en cada item de la lista.
+
+**Decisión.** (a). Lectura: `{ umbral?, hora?, dias?, destinatario, zonaHoraria }`; `umbral` solo si la plantilla lo declara, `hora` y `dias` solo si el cron guardado es uno de los tres patrones de DEC-129; `dias` es `todos`, `lun-vie` o `lun-sab`. Escritura: cuerpo estricto `{ umbral?, hora?, dias?, destinatario? }`, sin `tenantId`, `cron`, SQL ni `valores`. El servidor arma el cron desde `{hora, dias}`, reemplaza solo `umbral` dentro de `valores`, valida con `prepararSentencia`, `cronValido` y `direccionValida`, y hace un único `update` con alcance de tenant. Errores: 400 `solicitud-invalida` con nombres de campo de negocio; 404 `automatizacion-no-encontrada` (también para el id de otro tenant); 409 para una automatización pausada y para un cambio de horario sobre un cron no predefinido. Concurrencia: gana la última escritura. Las dos rutas se agregan a `RUTAS_PANEL_PUBLICAS`. La respuesta de `PUT` repite los campos de la lectura y suma `proximaEjecucion`.
+
+**Por qué.** (b) ensancha la lista de cada tarjeta y expone el destinatario en la pantalla principal. El cliente nunca envía cron ni SQL (reglas 1 y 2), y el servidor sigue siendo la única fuente de validación.
+
+**Se resigna.** Una lectura extra al abrir el formulario. Una automatización con cron "personalizado" solo se ajusta desde la consola. Un guardado dentro de la ventana de un tick puede disparar una vez enseguida (DEC-95: el horario no es una promesa).
+
+**Decidido por:** el usuario, 2026-10-08. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
