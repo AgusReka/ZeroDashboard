@@ -39,7 +39,7 @@ Branch base: the current stack (`ch24/archivo`, PR #121). Strict order inside ea
 ## PR4b — Console: save the editor as a new version
 - [x] 4.2b Track the loaded query; "Guardar como nueva versión" with an optional note sending `PUT`; `sin-cambios` and `conflicto-de-edicion` messages; help text; forget the loaded query on tenant switch; sync the editor after a restore of the loaded query.
 - [x] 4.3b Tests for the scenarios of the delta that concern saving.
-- [ ] 4.4 Manual check by the user in the running app (rebuild with `docker compose up -d --build app`; stop the `app` container while running the full suite).
+- [x] 4.4 Manual check by the user in the running app, 2026-10-10 ("La prueba visual salió bien"), after rebuilding with `docker compose up -d --build app`.
 
 ## Close
-- [ ] 5.1 Verify against the spec, merge the deltas into `openspec/specs/saved-queries/spec.md` and `openspec/specs/query-console/spec.md`, archive.
+- [x] 5.1 Verified against the spec (`verify-report.md`), deltas merged into `openspec/specs/saved-queries/spec.md` and `openspec/specs/query-console/spec.md`, change archived.
