@@ -1,6 +1,6 @@
 # Exploration: CH-28 — Panel users managed from the console (proposed 2026-10-09)
 
-Status: **proposed**, not started. Store: openspec. This exploration decides nothing: the architecture decisions below are the owner's (`AGENTS.md`) and must be registered in `docs/01-decisiones.md` before any code.
+Status: **decided** (2026-10-10). Store: openspec. The owner's decisions are registered as DEC-155 to DEC-158 in `docs/01-decisiones.md`: (1) generated password shown once; (2) the operator resets it; (3) the email stays globally unique; (4) no password policy is needed, since no person types a panel password; (5) deactivating deletes the sessions and can be reverted.
 
 ## Why
 
@@ -40,4 +40,4 @@ CH-22a built the client login (T3) but **nothing creates the users who log in**.
 
 ## Next
 
-CH-29 first. Then decide 1 to 5, register them as DEC, and propose, spec, design, tasks.
+CH-29 is merged and the decisions are registered (DEC-155 to DEC-158). Next: propose, spec, design, tasks.
