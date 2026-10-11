@@ -20,6 +20,7 @@ import { registerPanelAutomatizacionesRoutes } from './panel-automatizaciones.js
 import { registerPanelRoutes } from './panel.js';
 import { registerAgenteRoutes } from './agentes-rutas.js';
 import { registerUsuarioPanelRoutes } from './usuarios-panel.js';
+import { registerAuditoriaRoutes } from './auditoria.js';
 import { registrarServidorAgentes } from './agente-servidor.js';
 import type { RegistroAgentes } from './registro-agentes.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
@@ -86,6 +87,8 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-28 (DEC-155 to DEC-158): the client panel's users, managed from the console. Scoped
   // by the header and guarded by the operator, like the agent routes above.
   registerUsuarioPanelRoutes(app, prisma);
+  // CH-20 (DEC-163): the console execution audit, read-only, scoped by the header.
+  registerAuditoriaRoutes(app, prisma);
   // CH-19c1 (DEC-122): the agent's own WebSocket upgrade, outside Fastify's routing, so the
   // tenant-context hooks and their exemption list above never see it. Its `preClose` hook
   // closes every agent socket before Fastify's `server.close()` waits on them.
