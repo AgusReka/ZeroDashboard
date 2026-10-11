@@ -135,4 +135,67 @@ export function registerUsuarioPanelRoutes(app: FastifyInstance, prisma: PrismaA
     const truncado = filas.length > LIMITE_LISTADO;
     return reply.code(200).send({ usuarios: truncado ? filas.slice(0, LIMITE_LISTADO) : filas, truncado });
   });
+
+  /**
+   * DEC-156: a new generated password, answered once with `no-store`. The hash replaces
+   * the old one and every session of the user is deleted in the same transaction, so a
+   * stolen or forgotten session dies with the old password. `scrypt` runs before the
+   * transaction opens, so its cost does not hold it. An inactive user stays inactive.
+   */
+  app.post<{ Params: UsuarioParams }>('/usuarios/:id/clave', async (request, reply) => {
+    const { id } = request.params;
+    const clave = generarClavePanel();
+    const claveHash = await hashearClave(clave);
+    const usuario = await prisma.$transaction(async (tx) => {
+      // Scoped by the extension: another tenant's id is `count: 0`, like an unknown one.
+      const { count } = await tx.usuario.updateMany({ where: { id }, data: { claveHash } });
+      if (count === 0) {
+        return null;
+      }
+      await tx.sesionPanel.deleteMany({ where: { usuarioId: id } });
+      return tx.usuario.findUniqueOrThrow({ where: { id }, select: UsuarioPublico });
+    });
+    if (usuario === null) {
+      return reply.code(404).send({ error: 'usuario-no-encontrado' });
+    }
+    return reply.code(200).header('cache-control', 'no-store').send({ usuario, clave });
+  });
+
+  /**
+   * DEC-158: deactivating sets `activo` false and deletes every session in the same
+   * transaction; reactivating sets it back and touches neither the password nor the
+   * sessions. The write is guarded on the current state, so of two concurrent requests
+   * only one reports the transition; `count: 0` is then told apart by a re-read: no row
+   * (unknown, or another tenant's) is 404, a row already in the target state is 409.
+   */
+  for (const [verbo, activo, error] of [
+    ['desactivar', false, 'usuario-inactivo'],
+    ['reactivar', true, 'usuario-activo'],
+  ] as const) {
+    app.post<{ Params: UsuarioParams }>(`/usuarios/:id/${verbo}`, async (request, reply) => {
+      const { id } = request.params;
+      const usuario = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.usuario.updateMany({ where: { id, activo: !activo }, data: { activo } });
+        if (count === 0) {
+          const existe = await tx.usuario.findUnique({ where: { id }, select: { id: true } });
+          return existe === null ? 'no-encontrado' : 'sin-cambio';
+        }
+        if (!activo) {
+          await tx.sesionPanel.deleteMany({ where: { usuarioId: id } });
+        }
+        return tx.usuario.findUniqueOrThrow({ where: { id }, select: UsuarioPublico });
+      });
+      if (usuario === 'no-encontrado') {
+        return reply.code(404).send({ error: 'usuario-no-encontrado' });
+      }
+      if (usuario === 'sin-cambio') {
+        return reply.code(409).send({ error });
+      }
+      return reply.code(200).send({ usuario });
+    });
+  }
+}
+
+interface UsuarioParams {
+  id: string;
 }

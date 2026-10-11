@@ -18,9 +18,9 @@ Branch base: `master` (after CH-29). Strict TDD: each task pair writes the faili
 - [x] 1.4 GREEN: `POST /usuarios`, `GET /usuarios`, registration in `src/rutas.ts`, `normalizarCorreo` in the panel login.
 
 ## PR2 — Reset, deactivate, reactivate
-- [ ] 2.1 RED: `src/usuarios-panel-estado.test.ts` (reset, deactivate, reactivate, two-tenant 404s).
-- [ ] 2.2 GREEN: the three routes, each in one transaction with the session deletion where the spec says.
-- [ ] 2.3 `scripts/smoke.sh`: create a panel user, log into the panel with the generated password, deactivate it, panel login refused.
+- [x] 2.1 RED: `src/usuarios-panel-estado.test.ts` (reset, deactivate, reactivate, two-tenant 404s).
+- [x] 2.2 GREEN: the three routes, each in one transaction with the session deletion where the spec says.
+- [x] 2.3 `scripts/smoke.sh`: create a panel user, log into the panel with the generated password, deactivate it, panel login refused. Placed before CH-03 so it runs even where the `postgres` false positive stops the script; the final cleanup deletes the smoke tenants' users before the tenants (RESTRICT). Run in Docker on 2026-10-10: the CH-28 section passed.
 
 ## Close
 - [ ] 3.1 Full suite, `tsc --noEmit`, `npm run build`, smoke.
