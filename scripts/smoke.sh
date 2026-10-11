@@ -86,7 +86,7 @@ grep -q '"error":"sesion-invalida"' /tmp/smoke-sin-sesion.json ||
 printf '%s\n' "$CLAVE_SMOKE" | docker compose exec -T app node dist/operador-alta.js "$OPERADOR_SMOKE" \
   >/tmp/smoke-alta.txt 2>&1 || fail "the operator bootstrap command failed: $(cat /tmp/smoke-alta.txt)"
 grep -Eq 'creado|repuesta' /tmp/smoke-alta.txt || fail "the bootstrap command did not say created or reset"
-if grep -q "$CLAVE_SMOKE" /tmp/smoke-alta.txt; then fail "the bootstrap command printed the password"; fi
+if grep -qF -- "$CLAVE_SMOKE" /tmp/smoke-alta.txt; then fail "the bootstrap command printed the password"; fi
 # The login bodies go through stdin too (`--data-binary @-`), so the password is not in curl's argv.
 code=$(printf '{"nombre":"%s","clave":"%s"}' "$OPERADOR_SMOKE" "otra-clave-incorrecta" |
   curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/consola/ingresar \
@@ -175,9 +175,11 @@ grep -qi '^cache-control: no-store' /tmp/smoke-usuario.h || fail "the panel user
 USUARIO_PANEL=$(sed -n 's/.*"usuario":{"id":"\([^"]*\)".*/\1/p' /tmp/smoke-usuario.json)
 CLAVE_PANEL=$(sed -n 's/.*"clave":"\([^"]*\)".*/\1/p' /tmp/smoke-usuario.json)
 [ -n "$USUARIO_PANEL" ] && [ -n "$CLAVE_PANEL" ] || fail "the creation did not answer a user id and a password"
+# The response held the plaintext password; it lives in a shell variable now, not on disk.
+rm -f /tmp/smoke-usuario.json
 code=$(curl -s -o /tmp/smoke-usuarios.json -w '%{http_code}' http://localhost:3000/usuarios -H "X-Tenant-Id: $TENANT_A" --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 listing panel users, got $code"
-if grep -q "$CLAVE_PANEL" /tmp/smoke-usuarios.json; then fail "the user list echoed a generated password"; fi
+if grep -qF -- "$CLAVE_PANEL" /tmp/smoke-usuarios.json; then fail "the user list echoed a generated password"; fi
 # The panel login is exempt from the operator guard; the extra console cookie is ignored there.
 ingreso_panel() {
   printf '{"correo":"%s","clave":"%s"}' "$CORREO_PANEL" "$CLAVE_PANEL" |
