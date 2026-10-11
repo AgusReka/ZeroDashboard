@@ -1,4 +1,5 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { registrarEjecucion, veredictoDeEjecucion } from './auditoria.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
@@ -51,7 +52,7 @@ const pruebaSchema = {
 /** What every check before execution has established, handed on as one value. */
 interface PruebaAprobada {
   /** Stored operator SQL and its stored declaration (DEC-31, DEC-73). */
-  plantilla: { sql: string; parametros: unknown };
+  plantilla: { id: string; sql: string; parametros: unknown };
   /** The views the DEC-71 gate approved, in contract order. */
   vistas: VistaAComponer[];
   /** The request, already shape-checked; its `conexionId` is owned by the active tenant. */
@@ -68,6 +69,7 @@ interface PruebaAprobada {
 async function ejecutarPrueba(
   app: FastifyInstance,
   prisma: PrismaAislado,
+  request: FastifyRequest,
   reply: FastifyReply,
   { plantilla, vistas, cuerpo }: PruebaAprobada,
   canales: AbridorDeCanales,
@@ -123,6 +125,14 @@ async function ejecutarPrueba(
       'template test execution failed',
     );
   }
+  // CH-20 (DEC-159, DEC-160): the composed statement as executed, never the values.
+  await registrarEjecucion(prisma, app.log, request, {
+    origen: 'plantilla-prueba',
+    conexionId: destino.id,
+    sql,
+    consulta: null,
+    plantillaId: plantilla.id,
+  }, veredictoDeEjecucion(ejecucion));
   // A completed attempt is `200` whatever its verdict (the CH-04 contract).
   return reply.code(200).send(ejecucion);
 }
@@ -177,8 +187,8 @@ export function registerPlantillaPruebaRoute(
           .send({ error: 'vista-canonica-no-aprobada', entidades: compuerta.entidades });
       }
 
-      return ejecutarPrueba(app, prisma, reply, {
-        plantilla,
+      return ejecutarPrueba(app, prisma, request, reply, {
+        plantilla: { ...plantilla, id: request.params.id },
         vistas: compuerta.vistas,
         cuerpo: request.body,
       }, canales);

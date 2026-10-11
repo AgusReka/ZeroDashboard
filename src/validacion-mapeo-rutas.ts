@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { registrarEjecucion, veredictoDeSondeo } from './auditoria.js';
 import type { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { destinoDeConexion } from './conexion-destino.js';
-import { sondearEstructura } from './consulta-ejecucion.js';
+import { sentenciaDeSondeo, sondearEstructura } from './consulta-ejecucion.js';
 import { CONTRATO_CANONICO } from './contrato.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
 import { diagnosticar, informe, type FilaValidacion } from './validacion-mapeo.js';
@@ -106,6 +107,14 @@ export function registerValidacionMapeoRoutes(
         destino,
         vistas.map((v) => ({ entidad: v.entidad, sql: v.sql })),
       );
+      // CH-20 (DEC-159, DEC-160): every probe statement the session ran, in contract order.
+      await registrarEjecucion(prisma, app.log, request, {
+        origen: 'validacion-mapeo',
+        conexionId: destino.id,
+        sql: vistas.map((v) => sentenciaDeSondeo(v.sql)).join(';\n'),
+        consulta: null,
+        plantillaId: null,
+      }, veredictoDeSondeo(sondeo));
 
       if (sondeo.resultado === 'fallo') {
         // A failed *session* (no connection, a blocked role, the backstop) is a fact
