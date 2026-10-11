@@ -2883,6 +2883,96 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-159 — CH-20: se audita todo camino de la consola que ejecuta SQL contra la base de un cliente
+
+**Contexto.** A5 pide auditar qué se ejecutó, cuándo, contra qué tenant y por quién, en un registro consultable que no se pueda borrar desde la interfaz. Cuatro caminos de la consola ejecutan SQL contra la réplica de un cliente: la consulta ad hoc (`POST /consultas/ejecutar`, también como se ejecuta una consulta guardada), la prueba de plantilla, la validación del mapeo y la prueba de conexión. Hoy ninguno deja un registro consultable. Las corridas programadas ya dejan una fila en `Ejecucion`.
+
+**Opciones.** (a) Los cuatro caminos de la consola, cada uno con su operador (DEC-151). (b) Además, cada corrida programada, con "Sistema" como operador. (c) Solo la consulta ad hoc.
+
+**Decisión.** (a). Las corridas programadas siguen registradas solo en `Ejecucion`.
+
+**Por qué.** La prueba de plantilla y la validación también ejecutan SQL contra el cliente: con (c) quedarían sin rastro. (b) duplica lo que ya guarda `Ejecucion` y toca el planificador sin necesidad.
+
+**Se resigna.** Lo que corrió contra un cliente se consulta en dos lugares: este registro para la consola y `Ejecucion` para el planificador.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-160 — CH-20: el registro guarda la sentencia completa, nunca los valores ni las filas
+
+**Contexto.** "Qué se ejecutó" puede guardarse completo, resumido o como un hash. Los valores de los parámetros viajan aparte de la sentencia (`$n`), pero el texto lo escribe el operador y puede traer literales, como un correo en un `WHERE`. DEC-93 y la regla 5 prohíben persistir filas.
+
+**Opciones.** (a) La sentencia completa, tal como se ejecutó. (b) Los primeros N caracteres. (c) Un hash más el nombre de la consulta guardada.
+
+**Decisión.** (a). Se guarda el texto ejecutado y, en la validación del mapeo, las sentencias de prueba de cada entidad. Nunca los valores de los parámetros ni una fila del resultado; sí la cantidad de filas.
+
+**Por qué.** Es lo único que responde de verdad "qué se ejecutó". (b) deja irreconocible una consulta larga y no prueba nada. (c) obliga a tener el texto original para comparar.
+
+**Se resigna.** Un literal con un dato personal escrito a mano en el SQL queda en el registro. Vive en la base propia y solo lo lee el operador, pero es la excepción consciente a la minimización de la regla 5.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-161 — CH-20: una consulta guardada ejecutada desde el editor se registra con su id y su versión, si el texto coincide
+
+**Contexto.** La consola carga una consulta guardada en el editor y la ejecuta como SQL libre: el servidor no sabe qué consulta guardada corrió. Desde CH-25 las consultas tienen versiones.
+
+**Opciones.** (a) La consola manda el id y la versión de la consulta cargada, y el servidor verifica que el texto enviado sea el de esa versión. (b) La consola manda el id y el servidor lo registra sin verificar. (c) Todo se registra como "ad hoc".
+
+**Decisión.** (a). `POST /consultas/ejecutar` acepta `consultaGuardadaId` y `version` opcionales. Si el texto enviado es exactamente el de esa versión de ese tenant, el registro guarda el id, la versión y el nombre; si no coincide, o la consulta no existe, la ejecución sigue igual y se registra como "ad hoc". Nunca se rechaza una ejecución por esto.
+
+**Por qué.** El registro no puede afirmar que corrió la consulta X cuando corrió otro texto, que es el riesgo de (b). (c) deja vacía la columna "consulta" de la pantalla C-12.
+
+**Se resigna.** Un cambio en el cuerpo de `/consultas/ejecutar` y en el script de la consola, y una lectura más por ejecución cuando hay una consulta cargada.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-162 — CH-20: el registro no se modifica ni se borra, y una falla al escribirlo no rompe la ejecución
+
+**Contexto.** A5 pide que el registro no se pueda borrar desde la interfaz. Hay que decidir también qué pasa si la escritura del registro falla.
+
+**Opciones.** (a) Ninguna ruta borra ni edita, y un trigger de Postgres rechaza `UPDATE` y `DELETE` sobre la tabla; si la escritura falla, la ejecución responde igual y queda un `error` en el log. (b) Solo sin rutas. (c) Como (a), pero si no se puede escribir el registro, la ejecución se rechaza.
+
+**Decisión.** (a). Las filas se guardan para siempre, sin poda. Como el trigger impide borrar, la tabla no tiene claves foráneas: copia el id y el nombre del tenant y del operador en el momento de escribir, así borrar un tenant (como hacen las pruebas al limpiar) no choca con el registro.
+
+**Por qué.** (b) deja el registro a merced de cualquier código o consulta directa. (c) convierte una falla del registro en una consola que no puede consultar.
+
+**Se resigna.** Puede haber ejecuciones sin registro si la escritura falla justo entonces; quedan en el log de errores. La tabla crece sin límite, y en la base de desarrollo se acumulan las filas que dejan las pruebas.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-163 — CH-20: el change entrega el registro y su lectura por API; la pantalla C-12 queda para CH-30
+
+**Contexto.** La skill de diseño define la pantalla C-12 (Auditoría). CH-30 rehace la navegación y las pantallas de la consola.
+
+**Opciones.** (a) Solo el registro y `GET /auditoria` con filtros por fecha y resultado; la pantalla, en CH-30. (b) Además, una sección mínima de solo lectura en la consola actual.
+
+**Decisión.** (a).
+
+**Por qué.** Evita sumar a `src/consola.ts` una sección que CH-30 va a rehacer, igual que con la pantalla de usuarios de CH-28.
+
+**Se resigna.** Hasta CH-30, el registro se consulta solo por la API.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
