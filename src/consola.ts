@@ -49,9 +49,13 @@ function documentoConsola(nombreOperador: string): string {
 <link rel="stylesheet" href="/ui/styles.css">
 <style>
   [hidden] { display: none !important; }
-  /* The bar spans the page; everything else sits in one centered column. */
+  /* CH-30a (DEC-164): the bar spans the page; below it the shared shell (side navigation and
+     one screen at a time). On a narrow screen the navigation stacks above the screen. */
   body.zd-root { padding-bottom: var(--space-10); }
-  body.zd-root > :not(#barra-tenant) { margin-inline: max(var(--space-8), calc((100% - 58rem) / 2)); }
+  @media (max-width: 48rem) {
+    .zd-shell { grid-template-columns: minmax(0, 1fr); }
+    .zd-sidenav { border-right: 0; border-bottom: var(--border-width) solid var(--border-1); }
+  }
   /* T4: sticky and violet from the shared bar; amber while no tenant is selected, with
      the text saying so. Without :has() the bar stays violet, so the no-tenant text keeps its own
      underline to stay distinct from the active-tenant state. */
@@ -158,8 +162,33 @@ function documentoConsola(nombreOperador: string): string {
   <button id="salir" class="zd-btn zd-btn--ghost zd-btn--sm" type="button">Salir</button>
 </header>
 
-<h1 class="zd-h1">Consola de consultas</h1>
-<p class="ayuda">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
+<!--
+  CH-30a (DEC-164, DEC-165): the shell of the design guide. The navigation links the screens
+  by hash and the script shows one at a time; every id below is the one the console always
+  had, moved and never renamed. Only the three existing screens are linked: the others arrive
+  with CH-30b to CH-30e. The banner stays above every screen: it speaks for the whole page.
+-->
+<div class="zd-shell">
+<nav class="zd-sidenav" aria-label="Secciones de la consola">
+  <div class="zd-sidenav__brand"><span class="zd-sidenav__brandname">ZeroDashboard</span><span class="zd-eyebrow">Consola</span></div>
+  <div class="zd-sidenav__scope">
+    <span class="zd-sidenav__subheading">Trabajo diario</span>
+    <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
+    <a id="nav-automatizaciones" class="zd-sidenav__item" href="#automatizaciones"><span>Automatizaciones</span></a>
+    <a id="nav-frescura" class="zd-sidenav__item" href="#frescura"><span>Frescura de datos</span></a>
+  </div>
+</nav>
+<main class="zd-page">
+<p id="banner" class="banner" role="alert" hidden></p>
+
+<section id="pantalla-consultas" aria-labelledby="titulo-consultas">
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-consultas" class="zd-h1">Consultas</h1>
+    <p class="zd-pagehead__desc">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
+  </div>
+</header>
 
 <form id="formulario">
   <label for="conexion" class="zd-label">Identificador de la conexión registrada</label>
@@ -192,6 +221,18 @@ function documentoConsola(nombreOperador: string): string {
     <button id="ejecutar" class="zd-btn zd-btn--primary" type="submit">Ejecutar</button>
   </div>
 </form>
+
+<!-- CH-30a: the result of a run sits right below the execute button, before the saved queries. -->
+<p id="estado" class="estado" hidden></p>
+
+<div class="zd-table-wrap zd-table-scroll">
+  <table id="resultados" class="zd-table"><thead></thead><tbody></tbody></table>
+</div>
+
+<div class="zd-form-actions paginacion">
+  <button id="anterior" class="zd-btn zd-btn--secondary" type="button" disabled>Página anterior</button>
+  <button id="siguiente" class="zd-btn zd-btn--secondary" type="button" disabled>Página siguiente</button>
+</div>
 
 <!--
   Saved queries live OUTSIDE #formulario on purpose. #conexion and #sql are required,
@@ -242,6 +283,15 @@ function documentoConsola(nombreOperador: string): string {
     <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
   </div>
 </section>
+</section>
+
+<section id="pantalla-automatizaciones" aria-labelledby="titulo-automatizaciones" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-automatizaciones" class="zd-h1">Automatizaciones</h1>
+  </div>
+</header>
 
 <!--
   CH-13 (DEC-78, DEC-79, DEC-80): outside #formulario for the reason saved queries are,
@@ -331,6 +381,15 @@ function documentoConsola(nombreOperador: string): string {
   <h2 class="zd-h2">Ejecuciones</h2>
   <div class="zd-table-wrap zd-table-scroll"><table id="auto-ejecuciones" class="zd-table"></table></div>
 </section>
+</section>
+
+<section id="pantalla-frescura" aria-labelledby="titulo-frescura" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-frescura" class="zd-h1">Frescura de datos</h1>
+  </div>
+</header>
 
 <!--
   CH-24 (DEC-142 to DEC-145, screen C-22): what the implementer declared about the active
@@ -356,17 +415,8 @@ function documentoConsola(nombreOperador: string): string {
 
   <div class="zd-table-wrap zd-table-scroll"><table id="fresc-plantillas" class="zd-table"></table></div>
 </section>
-
-<p id="banner" class="banner" role="alert" hidden></p>
-<p id="estado" class="estado" hidden></p>
-
-<div class="zd-table-wrap zd-table-scroll">
-  <table id="resultados" class="zd-table"><thead></thead><tbody></tbody></table>
-</div>
-
-<div class="zd-form-actions paginacion">
-  <button id="anterior" class="zd-btn zd-btn--secondary" type="button" disabled>Página anterior</button>
-  <button id="siguiente" class="zd-btn zd-btn--secondary" type="button" disabled>Página siguiente</button>
+</section>
+</main>
 </div>
 
 <script>
@@ -2496,6 +2546,22 @@ document.getElementById('salir').addEventListener('click', function () {
     window.location.reload();
   });
 });
+
+// CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
+// shows Consultas. Only hidden and aria-current change: every node keeps its id and its
+// place, so nothing else in this script depends on which screen is showing.
+var PANTALLAS = ['consultas', 'automatizaciones', 'frescura'];
+function mostrarPantalla() {
+  var pedida = String(window.location.hash || '').replace(/^#/, '');
+  var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
+  PANTALLAS.forEach(function (nombre) {
+    document.getElementById('pantalla-' + nombre).hidden = nombre !== activa;
+    var enlace = document.getElementById('nav-' + nombre);
+    if (nombre === activa) { enlace.setAttribute('aria-current', 'page'); } else { enlace.removeAttribute('aria-current'); }
+  });
+}
+window.addEventListener('hashchange', mostrarPantalla);
+mostrarPantalla();
 
 // The tenant list comes first: nothing else on this page can be asked for until the
 // console knows which tenant it is operating as.

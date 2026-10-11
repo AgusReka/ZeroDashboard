@@ -12,9 +12,9 @@ Branch base: `master` (after CH-20). Strict TDD: the test cases first, against `
 - [ ] 0.1 DEC-164 to DEC-166, the CH-30 umbrella exploration marked decided, the change map split into CH-30a to CH-30e, and this change's proposal, spec, design and tasks (`ch30a/exploracion`).
 
 ## PR1 — Shell and navigation
-- [ ] 1.1 Re-vendor `public/ui/components/components.css` from the skill (byte for byte).
-- [ ] 1.2 RED: harness (`location.hash`, `hashchange`, attributes), new ids, default screen, switching, unknown hash, current link, results order, banner outside the screens.
-- [ ] 1.3 GREEN: markup in the shell, bridge style, `mostrarPantalla()`.
+- [x] 1.1 Re-vendor `public/ui/components/components.css` from the skill (byte for byte).
+- [x] 1.2 RED (10 failures): harness (`location.hash`, `hashchange`, attributes), new ids, default screen, switching, unknown hash, current link, results order, banner outside the screens.
+- [x] 1.3 GREEN: markup in the shell, bridge style, `mostrarPantalla()`.
 - [ ] 1.4 Manual visual pass at 360 px and 1280 px, light and dark.
 
 ## Close
