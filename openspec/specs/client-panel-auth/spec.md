@@ -87,3 +87,11 @@ The system SHALL serve the client panel page at `GET /panel`. If unauthenticated
 - **GIVEN** a valid session cookie
 - **WHEN** `GET /panel` is requested
 - **THEN** the served HTML SHALL display the panel shell with the tenant's business name
+
+### Requirement: Email Matched Case-Insensitively at Login
+`POST /api/panel/auth/ingresar` SHALL trim and lowercase the submitted `correo` before looking the user up. Emails are stored lowercase by the creation route.
+
+#### Scenario: Mixed-case login
+- **GIVEN** a user created as "ana@negocio.com"
+- **WHEN** the login sends `correo` " Ana@Negocio.COM " with the right password
+- **THEN** the answer is 200 and a session is created
