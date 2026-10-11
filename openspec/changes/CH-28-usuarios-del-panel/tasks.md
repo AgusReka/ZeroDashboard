@@ -6,16 +6,16 @@ Branch base: `master` (after CH-29). Strict TDD: each task pair writes the faili
 - Estimated changed lines: ~800 (PR1 ~420, PR2 ~380)
 - 400-line budget risk: High
 - Chained PRs recommended: Yes
-- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`)
+- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-10: chained PRs, stacked-to-main.**
 
 ## PR0 — Planning
 - [ ] 0.1 DEC-155 to DEC-158, exploration marked decided, proposal, specs, design and tasks (this branch, `ch28/exploracion`).
 
 ## PR1 — Create and list
-- [ ] 1.1 RED: `src/usuarios-panel.test.ts` (generator, `normalizarCorreo`, `correoValido`).
-- [ ] 1.2 GREEN: pure layer of `src/usuarios-panel.ts`.
-- [ ] 1.3 RED: `src/usuarios-panel-rutas.test.ts` (create, strict body, `correo-en-uso` across tenants, list, password never echoed elsewhere) and the mixed-case case in `src/panel-auth.test.ts`.
-- [ ] 1.4 GREEN: `POST /usuarios`, `GET /usuarios`, registration in `src/rutas.ts`, `normalizarCorreo` in the panel login.
+- [x] 1.1 RED: `src/usuarios-panel.test.ts` (generator, `normalizarCorreo`, `correoValido`).
+- [x] 1.2 GREEN: pure layer of `src/usuarios-panel.ts`.
+- [x] 1.3 RED: `src/usuarios-panel-rutas.test.ts` (create, strict body, `correo-en-uso` across tenants, list and its cap, password never in the list or the log, mixed-case panel login with the generated password); shared setup in `src/usuarios-panel-apoyo.ts`.
+- [x] 1.4 GREEN: `POST /usuarios`, `GET /usuarios`, registration in `src/rutas.ts`, `normalizarCorreo` in the panel login.
 
 ## PR2 — Reset, deactivate, reactivate
 - [ ] 2.1 RED: `src/usuarios-panel-estado.test.ts` (reset, deactivate, reactivate, two-tenant 404s).
