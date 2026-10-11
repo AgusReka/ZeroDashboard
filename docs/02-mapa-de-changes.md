@@ -81,7 +81,12 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-24 | Frescura de datos por tenant y por plantilla | F1, F2 |
 | CH-28 | Consola: alta, baja y clave de los usuarios del panel. **Archivado** (pantalla en CH-30) | T3 |
 | CH-29 | Consola: identidad del operador (ingreso de P1), para la parte «por quién» de A5. **Archivado** (revisión visual pendiente) | A5 |
-| CH-30 | Consola: rediseño, navegación y pantallas que hoy solo existen como API. **Propuesto**, se parte al explorarlo | T1, A1, A2, C1, M1–M4, G1 |
+| CH-30 | Consola: rediseño, navegación y pantallas que hoy solo existen como API. Partido en cinco changes (DEC-164 a DEC-166) | T1, A1, A2, C1, M1–M4, G1 |
+| CH-30a | Esqueleto, navegación por `#`, estados de la barra de tenant y resultado junto a Ejecutar, sobre las pantallas existentes. **Propuesto** | — |
+| CH-30b | Pantallas de Tenants y Conexiones | T1, A1 |
+| CH-30c | Pantallas de Agentes y Usuarios del panel | C1, T3 |
+| CH-30d | Pantallas de Mapeo y validación, Plantillas y Contrato | M1–M4 |
+| CH-30e | Pantallas de Auditoría y Tiempos de alta | A5, G1 |
 
 ### Partición de CH-19
 
