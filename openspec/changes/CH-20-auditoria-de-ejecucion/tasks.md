@@ -6,16 +6,18 @@ Branch base: `master` (after CH-28). Strict TDD: each task pair writes the faili
 - Estimated changed lines: ~1000 (PR1 ~400, PR2 ~350, PR3 ~250)
 - 400-line budget risk: High
 - Chained PRs recommended: Yes
-- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`)
+- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-11: chained PRs, stacked-to-main.**
 
 ## PR0 — Planning
 - [ ] 0.1 Exploration, DEC-159 to DEC-163, proposal, specs, design and tasks (this branch, `ch20/exploracion`).
 
-## PR1 — The record and its listing
-- [ ] 1.1 Schema + migration with the trigger (rollback in the header); client regenerated; applied to the dev database; `RegistroEjecucion` in `MODELOS_AISLADOS` and in the model-list test.
-- [ ] 1.2 RED: `src/auditoria.test.ts` (pure) and `src/auditoria-tabla.test.ts` (trigger refuses update, delete, truncate; tenant delete still works).
-- [ ] 1.3 GREEN: pure layer of `src/auditoria.ts`.
-- [ ] 1.4 RED: `src/auditoria-rutas.test.ts`. GREEN: `GET /auditoria` and its registration in `src/rutas.ts`.
+## PR1a — The record (split from the planned PR1, which came out at 590 lines)
+- [x] 1.1 Schema + migration with the trigger (rollback in the header); client regenerated; applied to the dev database; `RegistroEjecucion` in `MODELOS_AISLADOS` and in the model-list test.
+- [x] 1.2 RED: `src/auditoria.test.ts` (pure) and `src/auditoria-tabla.test.ts` (trigger refuses update, delete, truncate; tenant delete still works). The trigger test passed at once: the trigger was written in 1.1, before its test (not a true RED). A bug found on re-read (a date with an offset that is another day in UTC was refused) got its failing case first.
+- [x] 1.3 GREEN: pure layer of `src/auditoria.ts`.
+
+## PR1b — The listing
+- [x] 1.4 RED: `src/auditoria-rutas.test.ts`. GREEN: `GET /auditoria` and its registration in `src/rutas.ts`.
 
 ## PR2 — Recording in the four paths
 - [ ] 2.1 RED: `src/auditoria-registro.test.ts` (one row per path with the operator; refused requests write nothing; bound values absent; forced write failure keeps the answer).
