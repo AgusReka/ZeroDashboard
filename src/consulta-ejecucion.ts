@@ -597,6 +597,14 @@ export type ResultadoSondeo = SondeoExitoso | EjecucionFallida;
  * If the rollback itself fails, the connection is gone, and the error propagates to
  * `enSesionSoloLectura` as a session failure.
  */
+/**
+ * The statement the structure probe runs for one entity's view: no rows, only the shape.
+ * Exported so the audit (CH-20, DEC-160) records exactly what was executed.
+ */
+export function sentenciaDeSondeo(sql: string): string {
+  return `SELECT * FROM (${sanearSql(sql)}) AS _validacion LIMIT 0`;
+}
+
 function sondear(entidades: readonly EntidadASondear[]): CuerpoSesion<SondeoExitoso> {
   return async (cliente, iniciadoEn) => {
     const sondeos: SondeoEntidad[] = [];
@@ -604,7 +612,7 @@ function sondear(entidades: readonly EntidadASondear[]): CuerpoSesion<SondeoExit
       await cliente.query({ text: 'SAVEPOINT sondeo', values: [] });
       try {
         const resultado = await cliente.query({
-          text: `SELECT * FROM (${sanearSql(sql)}) AS _validacion LIMIT 0`,
+          text: sentenciaDeSondeo(sql),
           values: [],
         });
         sondeos.push({

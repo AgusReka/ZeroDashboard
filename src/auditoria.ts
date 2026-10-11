@@ -3,7 +3,7 @@ import type { PrismaAislado } from './aislamiento-prisma.js';
 import type { FastifyBaseLogger, FastifyRequest } from 'fastify';
 import { conTenantInyectado } from './aislamiento-prisma.js';
 import { exigirTenantActivo } from './contexto-tenant.js';
-import type { ResultadoEjecucion } from './consulta-ejecucion.js';
+import type { ResultadoEjecucion, ResultadoSondeo } from './consulta-ejecucion.js';
 import type { ProbeResult } from './db-probe.js';
 import { LIMITE_LISTADO } from './listados.js';
 
@@ -60,6 +60,29 @@ export function veredictoDeEjecucion(resultado: ResultadoEjecucion): VeredictoAu
     codigo: resultado.codigo,
     filas: null,
     duracionMs: resultado.duracionMs,
+  };
+}
+
+/**
+ * The mapping validation's verdict: a failed session is the engine's failure; otherwise
+ * the run is `fallo` if any entity failed, with the first failing entity's category. No
+ * row count: a structure probe returns no rows.
+ */
+export function veredictoDeSondeo(sondeo: ResultadoSondeo): VeredictoAuditado {
+  if (sondeo.resultado === 'fallo') {
+    return { ...veredictoDeEjecucion(sondeo), filas: null };
+  }
+  const fallida = sondeo.entidades.find((entidad) => entidad.resultado === 'fallo');
+  if (fallida === undefined || fallida.resultado !== 'fallo') {
+    return { resultado: 'ok', fase: null, categoria: null, codigo: null, filas: null, duracionMs: sondeo.duracionMs };
+  }
+  return {
+    resultado: 'fallo',
+    fase: 'ejecucion',
+    categoria: fallida.categoria,
+    codigo: fallida.codigo,
+    filas: null,
+    duracionMs: sondeo.duracionMs,
   };
 }
 
