@@ -4,6 +4,7 @@ import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js'
 import { generarTokenSesion, hashTokenSesion, verificarClave } from './crypto-auth.js';
 import { camposInvalidos } from './conexiones.js';
 import { leerCookie } from './cookies.js';
+import { normalizarCorreo } from './usuarios-panel.js';
 
 /**
  * CH-22a (DEC-133, DEC-134, DEC-135, DEC-136): the client-panel authentication
@@ -211,7 +212,8 @@ export function registerPanelAuthRoutes(app: FastifyInstance, prisma: PrismaAisl
       // (spec: "correo o clave incorrectos") except the deactivated tenant, which the
       // spec pins as `409 tenant-desactivado` — the row is real and its tenant is
       // known dead, the same answer the header hooks give a deactivated tenant.
-      const usuario = await prisma.usuario.buscarPorCorreo(correo);
+      // CH-28 (DEC-157): emails are stored normalized, so the lookup is too.
+      const usuario = await prisma.usuario.buscarPorCorreo(normalizarCorreo(correo));
       if (usuario === null || !usuario.activo) {
         return reply.code(401).send({ error: 'correo-o-clave-incorrectos' });
       }
