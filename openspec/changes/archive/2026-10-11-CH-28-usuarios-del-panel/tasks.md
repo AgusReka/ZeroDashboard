@@ -9,7 +9,7 @@ Branch base: `master` (after CH-29). Strict TDD: each task pair writes the faili
 - Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-10: chained PRs, stacked-to-main.**
 
 ## PR0 — Planning
-- [ ] 0.1 DEC-155 to DEC-158, exploration marked decided, proposal, specs, design and tasks (this branch, `ch28/exploracion`).
+- [x] 0.1 DEC-155 to DEC-158, exploration marked decided, proposal, specs, design and tasks (this branch, `ch28/exploracion`).
 
 ## PR1 — Create and list
 - [x] 1.1 RED: `src/usuarios-panel.test.ts` (generator, `normalizarCorreo`, `correoValido`).
@@ -23,5 +23,5 @@ Branch base: `master` (after CH-29). Strict TDD: each task pair writes the faili
 - [x] 2.3 `scripts/smoke.sh`: create a panel user, log into the panel with the generated password, deactivate it, panel login refused. Placed before CH-03 so it runs even where the `postgres` false positive stops the script; the final cleanup deletes the smoke tenants' users before the tenants (RESTRICT). Run in Docker on 2026-10-10: the CH-28 section passed.
 
 ## Close
-- [ ] 3.1 Full suite, `tsc --noEmit`, `npm run build`, smoke.
-- [ ] 3.2 Verify against the specs, archive, sync `panel-user-management` and `client-panel-auth` into `openspec/specs/`, mark CH-28 in `docs/02-mapa-de-changes.md`.
+- [x] 3.1 Full suite, `tsc --noEmit`, `npm run build`, smoke. 1215/1219 (only the 4 known `conexiones` false positives); smoke CH-28 section passed (verify-report W2, W3).
+- [x] 3.2 Verify against the specs, archive, sync `panel-user-management` and `client-panel-auth` into `openspec/specs/`, mark CH-28 in `docs/02-mapa-de-changes.md`.

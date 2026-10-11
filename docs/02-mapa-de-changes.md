@@ -79,7 +79,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-22 | Panel del cliente: autenticación y vista de automatizaciones. Partido en CH-22a, CH-22b y CH-22c, ver abajo | T3, P1h, P3h |
 | CH-23 | Panel: ajuste de umbrales y horarios | P2h |
 | CH-24 | Frescura de datos por tenant y por plantilla | F1, F2 |
-| CH-28 | Consola: alta, baja y clave de los usuarios del panel. **Propuesto** | T3 |
+| CH-28 | Consola: alta, baja y clave de los usuarios del panel. **Archivado** (pantalla en CH-30) | T3 |
 | CH-29 | Consola: identidad del operador (ingreso de P1), para la parte «por quién» de A5. **Archivado** (revisión visual pendiente) | A5 |
 | CH-30 | Consola: rediseño, navegación y pantallas que hoy solo existen como API. **Propuesto**, se parte al explorarlo | T1, A1, A2, C1, M1–M4, G1 |
 
@@ -124,7 +124,7 @@ Surgieron al revisar la consola con el sistema ya funcionando. Ninguno estaba en
 | ID | Qué resuelve | Depende de | Notas |
 |---|---|---|---|
 | CH-29 | **Archivado.** Que la consola sepa quién opera. Sin eso, la historia A5 («por quién») de CH-20 no se puede cumplir | — | ⚠ Cruza todas las rutas de la consola: registrar antes el mecanismo (DEC) |
-| CH-28 | Crear, desactivar y reponer la clave de los usuarios del panel desde la consola | CH-29 | Sin CH-29, cualquiera que llegue a `/consola` podría emitir un ingreso de cliente |
+| CH-28 | **Archivado.** Crear, desactivar y reponer la clave de los usuarios del panel desde la consola | CH-29 | Sin CH-29, cualquiera que llegue a `/consola` podría emitir un ingreso de cliente |
 | CH-30 | Navegación, resultado junto al editor y las pantallas que faltan (tenants, conexiones, agentes, mapeo y validación) | Salida de Claude Design (`docs/design/prompt-claude-design-consola.md`); CH-29 para lo que emite credenciales | ⚠ Decidir antes cómo se sirven las pantallas (hoy, un string de TypeScript de ~2.500 líneas). Se parte en cortes al explorarlo |
 
 Orden sugerido: CH-29, CH-28 y CH-30; CH-20 después de CH-29.
