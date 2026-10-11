@@ -93,7 +93,8 @@ describe('CH-20 audit listing filters — pure', () => {
     assert.equal(r.ok, true);
     if (r.ok) {
       assert.equal(r.filtros.desde?.toISOString(), '2026-10-01T00:00:00.000Z');
-      assert.equal(r.filtros.hasta?.toISOString(), '2026-10-11T00:00:00.000Z');
+      // A date-only `hasta` covers that whole day (UTC): the bound is inclusive.
+      assert.equal(r.filtros.hasta?.toISOString(), '2026-10-11T23:59:59.999Z');
       assert.equal(r.filtros.resultado, 'fallo');
     }
   });

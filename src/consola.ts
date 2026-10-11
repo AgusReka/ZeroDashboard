@@ -977,6 +977,25 @@ function mensajeDeSolicitudInvalida(cuerpo, declaracion) {
   return 'La solicitud es inválida. Revise estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.';
 }
 
+// CH-20 (DEC-161): the run names the loaded saved query, by id and version, only while the
+// editor still holds its statement exactly; the server checks it again against the stored
+// version, and any edit makes the run ad hoc.
+function cuerpoDeEjecucion(limite, desplazamiento, declaracion) {
+  var cuerpo = {
+    conexionId: entradaConexion.value.trim(),
+    sql: entradaSql.value,
+    parametros: declaracion,
+    valores: valoresActuales(),
+    limite: limite,
+    desplazamiento: desplazamiento
+  };
+  if (consultaCargada !== null && typeof consultaCargada.version === 'number' && entradaSql.value === consultaCargada.sql) {
+    cuerpo.consultaGuardadaId = consultaCargada.id;
+    cuerpo.version = consultaCargada.version;
+  }
+  return cuerpo;
+}
+
 async function ejecutar(desplazamiento) {
   ocultarBanner();
   botonEjecutar.disabled = true;
@@ -994,14 +1013,7 @@ async function ejecutar(desplazamiento) {
     respuesta = await pedir('/consultas/ejecutar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conexionId: entradaConexion.value.trim(),
-        sql: entradaSql.value,
-        parametros: declaracion,
-        valores: valoresActuales(),
-        limite: limite,
-        desplazamiento: desplazamiento
-      })
+      body: JSON.stringify(cuerpoDeEjecucion(limite, desplazamiento, declaracion))
     });
   } catch (fallaDeRed) {
     // A rejected fetch must not be silent either: the page says so instead.
@@ -2267,7 +2279,8 @@ var textoCargada = document.getElementById('version-cargada');
 var entradaNotaVersion = document.getElementById('version-nota');
 var botonVersion = document.getElementById('version-boton');
 
-// The query loaded in the editor ({ id, nombre }), or null when none is.
+// The query loaded in the editor ({ id, nombre, version, sql }), or null when none is.
+// CH-20 (DEC-161): version and sql let a run name the query while the editor still holds it.
 var consultaCargada = null;
 
 function olvidarConsultaCargada() {
@@ -2278,7 +2291,12 @@ function olvidarConsultaCargada() {
 }
 
 function recordarConsultaCargada(consulta) {
-  consultaCargada = { id: String(consulta.id), nombre: String(consulta.nombre) };
+  consultaCargada = {
+    id: String(consulta.id),
+    nombre: String(consulta.nombre),
+    version: consulta.version,
+    sql: String(consulta.sql)
+  };
   bloqueVersion.hidden = false;
   textoCargada.textContent = 'Consulta cargada: «' + consultaCargada.nombre +
     '». Los cambios del editor se guardan como una versión nueva de esta consulta.';
@@ -2311,6 +2329,9 @@ async function guardarNuevaVersion() {
   if (resultado.status === 200) {
     var guardada = resultado.cuerpo.consultaGuardada;
     consultaCargada.nombre = String(guardada.nombre);
+    // CH-20 (DEC-161): the editor now holds the saved version, so a run names it.
+    consultaCargada.version = guardada.version;
+    consultaCargada.sql = String(guardada.sql);
     entradaNotaVersion.value = '';
     mostrarConfirmacion('Se guardó la versión ' + guardada.version + ' de «' + consultaCargada.nombre + '».');
     await listarGuardadas();

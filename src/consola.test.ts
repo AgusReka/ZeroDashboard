@@ -2739,6 +2739,60 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'banner').textContent, 'Se creó la versión 4 con el contenido de la versión 2.', 'and the confirmation survives the reload');
   });
 
+  // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----
+
+  /** The body of the last `POST /consultas/ejecutar` the console sent. */
+  function ultimaEjecucion(escenario: Escenario): Record<string, unknown> {
+    const ejecuciones = escenario.peticiones.filter((p) => p.url === '/consultas/ejecutar');
+    assert.ok(ejecuciones.length > 0, 'the console sent no execution');
+    return ejecuciones[ejecuciones.length - 1].cuerpo as Record<string, unknown>;
+  }
+
+  test('CH-20 running the loaded query unchanged sends its id and version', async () => {
+    const escenario = await conConsultaCargada({ sql: 'SELECT 1', parametros: [] });
+    nodo(escenario, 'conexion').value = 'c-1';
+    await enviar(escenario, respuestaOk());
+    const cuerpo = ultimaEjecucion(escenario);
+    assert.equal(cuerpo.consultaGuardadaId, 'q-1');
+    assert.equal(cuerpo.version, 3);
+  });
+
+  test('CH-20 after saving a new version, running the saved text sends the new version', async () => {
+    const escenario = await conConsultaCargada({ sql: 'SELECT 1', parametros: [] });
+    nodo(escenario, 'conexion').value = 'c-1';
+    nodo(escenario, 'sql').value = 'SELECT 2';
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, sql: 'SELECT 2', parametros: [], version: 4 } } },
+      { status: 200, cuerpo: { versiones: [], truncado: false } },
+    );
+    await enviar(escenario, respuestaOk());
+    const cuerpo = ultimaEjecucion(escenario);
+    assert.equal(cuerpo.consultaGuardadaId, 'q-1');
+    assert.equal(cuerpo.version, 4);
+  });
+
+  test('CH-20 running after an edit sends neither field', async () => {
+    const escenario = await conConsultaCargada({ sql: 'SELECT 1', parametros: [] });
+    nodo(escenario, 'conexion').value = 'c-1';
+    nodo(escenario, 'sql').value = 'SELECT 1 + 1';
+    await enviar(escenario, respuestaOk());
+    const cuerpo = ultimaEjecucion(escenario);
+    assert.ok(!('consultaGuardadaId' in cuerpo));
+    assert.ok(!('version' in cuerpo));
+  });
+
+  test('CH-20 running with no query loaded sends neither field', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    nodo(escenario, 'conexion').value = 'c-1';
+    nodo(escenario, 'sql').value = 'SELECT 1';
+    await enviar(escenario, respuestaOk());
+    const cuerpo = ultimaEjecucion(escenario);
+    assert.ok(!('consultaGuardadaId' in cuerpo));
+    assert.ok(!('version' in cuerpo));
+  });
+
   // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------
 
   test('CH-29 a 401 on the tenant list reloads the page instead of showing an error', async () => {

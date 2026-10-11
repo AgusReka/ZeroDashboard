@@ -161,6 +161,9 @@ export function analizarFiltros(consulta: Record<string, unknown>): AnalisisFilt
     const instante = fecha(consulta[clave]);
     if (instante === null) {
       campos.push(`/${clave}`);
+    } else if (clave === 'hasta' && String(consulta[clave]).length === 10) {
+      // A date-only upper bound means "up to and including that day" (UTC), not its midnight.
+      filtros.hasta = new Date(instante.getTime() + 24 * 60 * 60 * 1000 - 1);
     } else {
       filtros[clave] = instante;
     }
@@ -237,7 +240,8 @@ export type ContextoDeRuta = Omit<ContextoAuditado, 'operador'>;
  * statement — and swallowed.
  *
  * A request without an operator only exists in a test app built without the operator
- * guard; `src/rutas.test.ts` proves production always has one. Nothing is written then.
+ * guard; `src/rutas.test.ts` proves production always has one. Nothing is written then,
+ * and an `error` line says so, so a future exemption of an audited route cannot go unseen.
  */
 export async function registrarEjecucion(
   prisma: PrismaAislado,
@@ -247,6 +251,7 @@ export async function registrarEjecucion(
   veredicto: VeredictoAuditado,
 ): Promise<void> {
   if (request.operador === undefined) {
+    log.error({ origen: contexto.origen, conexionId: contexto.conexionId }, 'audit skipped: no operator');
     return;
   }
   try {
@@ -261,4 +266,53 @@ export async function registrarEjecucion(
       'audit write failed',
     );
   }
+}
+
+/**
+ * DEC-161: the saved query the console says it ran, confirmed only when the text sent is
+ * byte for byte the statement stored for that version — the current row's, or the history
+ * entry's for a past version. Scoped reads, so another tenant's id is `null` like an
+ * unknown one. Anything that does not match is ad hoc (`null`); this never affects the
+ * execution, which already answered. The name is the query's current one.
+ */
+export async function consultaGuardadaVerificada(
+  prisma: PrismaAislado,
+  id: string,
+  version: number,
+  sql: string,
+): Promise<{ id: string; version: number; nombre: string } | null> {
+  try {
+    return await verificar(prisma, id, version, sql);
+  } catch {
+    // Awaited as an argument, outside `registrarEjecucion`'s own guard: a failed read must
+    // not turn an execution that already ran into a 500 (DEC-161, DEC-162). The run is
+    // recorded as ad hoc, which under-attributes and never mis-attributes.
+    return null;
+  }
+}
+
+async function verificar(
+  prisma: PrismaAislado,
+  id: string,
+  version: number,
+  sql: string,
+): Promise<{ id: string; version: number; nombre: string } | null> {
+  const consulta = await prisma.consultaGuardada.findUnique({
+    where: { id },
+    select: { id: true, nombre: true, sql: true, version: true },
+  });
+  if (consulta === null) {
+    return null;
+  }
+  let guardado: string | null = null;
+  if (version === consulta.version) {
+    guardado = consulta.sql;
+  } else {
+    const anterior = await prisma.consultaGuardadaVersion.findUnique({
+      where: { consultaGuardadaId_version: { consultaGuardadaId: id, version } },
+      select: { sql: true },
+    });
+    guardado = anterior?.sql ?? null;
+  }
+  return guardado === sql ? { id: consulta.id, version, nombre: consulta.nombre } : null;
 }

@@ -45,6 +45,7 @@ describe(
     let app!: FastifyInstance;
     let log!: () => string;
     let tenantId = '';
+    let tenantB = '';
     let conexionId = '';
     let plantillaId = '';
     let cookie = '';
@@ -143,6 +144,10 @@ describe(
     });
 
     after(async () => {
+      const tenants = [tenantId, tenantB].filter((t) => t !== '');
+      await db.consultaGuardadaVersion.deleteMany({ where: { tenantId: { in: tenants } } });
+      await db.consultaGuardada.deleteMany({ where: { tenantId: { in: tenants } } });
+      await db.tenant.deleteMany({ where: { id: tenantB } });
       await db.vistaCanonica.deleteMany({ where: { tenantId } });
       await db.conexion.deleteMany({ where: { tenantId } });
       await db.tenant.deleteMany({ where: { id: tenantId } });
@@ -260,6 +265,130 @@ describe(
         assert.ok(!lineas[0].includes('SELECT nombre'));
       } finally {
         await otra.app.close();
+      }
+    });
+
+    // ---- PR3 (DEC-161): the saved query reference, verified against the executed text ----
+
+    const SQL_V1 = `SELECT id FROM ${ESQUEMA}.producto`;
+    const SQL_V2 = `SELECT id, nombre FROM ${ESQUEMA}.producto`;
+
+    /** A saved query at version 2 whose version 1 is in the history, in tenant `tenant`. */
+    async function guardada(tenant: string, nombre: string) {
+      const consulta = await db.consultaGuardada.create({
+        data: { tenantId: tenant, nombre, sql: SQL_V2, version: 2 },
+      });
+      await db.consultaGuardadaVersion.create({
+        data: { tenantId: tenant, consultaGuardadaId: consulta.id, version: 1, nombre, sql: SQL_V1, parametros: [], desde: new Date() },
+      });
+      return consulta.id;
+    }
+
+    test('the loaded query run unchanged is recorded with its id, version and name', async () => {
+      const id = await guardada(tenantId, 'Stock bajo');
+      const r = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: id, version: 2 });
+      assert.equal(r.json().resultado, 'ok', r.body);
+      const fila = (await registros()).at(-1)!;
+      assert.deepEqual([fila.consultaGuardadaId, fila.consultaVersion, fila.consultaNombre], [id, 2, 'Stock bajo']);
+    });
+
+    test('a past version run with its own text is recorded with that version', async () => {
+      const id = await guardada(tenantId, 'Historica');
+      await post('/consultas/ejecutar', { conexionId, sql: SQL_V1, consultaGuardadaId: id, version: 1 });
+      const fila = (await registros()).at(-1)!;
+      assert.deepEqual([fila.consultaGuardadaId, fila.consultaVersion, fila.consultaNombre], [id, 1, 'Historica']);
+    });
+
+    test('an edited text, an unknown version or another tenant query is recorded as ad hoc, and answers as usual', async () => {
+      const id = await guardada(tenantId, 'Editada');
+      tenantB = (await db.tenant.create({ data: { nombre: `CH-20 registro B ${Date.now()}` } })).id;
+      const deB = await guardada(tenantB, 'De otro tenant');
+      for (const cuerpo of [
+        { conexionId, sql: `${SQL_V2} WHERE id > 0`, consultaGuardadaId: id, version: 2 },
+        { conexionId, sql: SQL_V2, consultaGuardadaId: id, version: 7 },
+        { conexionId, sql: SQL_V2, consultaGuardadaId: deB, version: 2 },
+        { conexionId, sql: `${SQL_V2};`, consultaGuardadaId: id, version: 2 },
+      ]) {
+        const r = await post('/consultas/ejecutar', cuerpo);
+        assert.equal(r.statusCode, 200, r.body);
+        assert.equal(r.json().resultado, 'ok', r.body);
+        const fila = (await registros()).at(-1)!;
+        assert.equal(fila.consultaGuardadaId, null, JSON.stringify(cuerpo));
+        assert.equal(fila.consultaVersion, null);
+      }
+    });
+
+    test('one reference field without the other is a 400 and records nothing', async () => {
+      const antes = (await registros()).length;
+      const soloId = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: 'x' });
+      assert.deepEqual([soloId.statusCode, soloId.json()], [400, { error: 'solicitud-invalida', campos: ['/version'] }]);
+      const soloVersion = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, version: 1 });
+      assert.deepEqual([soloVersion.statusCode, soloVersion.json()], [400, { error: 'solicitud-invalida', campos: ['/consultaGuardadaId'] }]);
+      const cero = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: 'x', version: 0 });
+      assert.equal(cero.statusCode, 400);
+      assert.equal((await registros()).length, antes);
+    });
+
+    test('a failing saved query lookup keeps the answer and records the run as ad hoc', async () => {
+      const id = await guardada(tenantId, 'Lectura rota');
+      // Every delegate behaves as usual except the saved query reads, which always fail.
+      const roto = new Proxy(prisma, {
+        get(objetivoProxy, propiedad, receptor) {
+          if (propiedad === 'consultaGuardada' || propiedad === 'consultaGuardadaVersion') {
+            return { findUnique: () => Promise.reject(new Error('lectura rota')) };
+          }
+          return Reflect.get(objetivoProxy, propiedad, receptor);
+        },
+      });
+      const otra = construir(roto);
+      await otra.app.ready();
+      try {
+        const antes = (await registros()).length;
+        const r = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: id, version: 2 }, otra.app);
+        assert.equal(r.statusCode, 200, r.body);
+        assert.equal(r.json().resultado, 'ok');
+        const filas = await registros();
+        assert.equal(filas.length, antes + 1);
+        assert.equal(filas.at(-1)!.consultaGuardadaId, null);
+      } finally {
+        await otra.app.close();
+      }
+    });
+
+    test('a version beyond a 32-bit integer is a 400 and records nothing', async () => {
+      const antes = (await registros()).length;
+      const r = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: 'x', version: 3_000_000_000 });
+      assert.equal(r.statusCode, 400);
+      assert.equal((await registros()).length, antes);
+    });
+
+    test('a request without an operator records nothing and logs an error', async () => {
+      const partes: string[] = [];
+      const stream = new Writable({
+        write(trozo, _codificacion, listo) {
+          partes.push(String(trozo));
+          listo();
+        },
+      });
+      const sinGuard = Fastify({ logger: { level: 'info', stream } });
+      registrarContextoTenant(sinGuard, prisma);
+      registerConsultaRoutes(sinGuard, prisma);
+      await sinGuard.ready();
+      try {
+        const antes = (await registros()).length;
+        const r = await sinGuard.inject({
+          method: 'POST',
+          url: '/consultas/ejecutar',
+          payload: { conexionId, sql: SQL_V1 },
+          headers: { 'x-tenant-id': tenantId },
+        });
+        assert.equal(r.statusCode, 200);
+        assert.equal((await registros()).length, antes);
+        const lineas = partes.join('').split('\n').filter((l) => l.includes('audit skipped'));
+        assert.equal(lineas.length, 1);
+        assert.equal(JSON.parse(lineas[0]).level, 50);
+      } finally {
+        await sinGuard.close();
       }
     });
 
