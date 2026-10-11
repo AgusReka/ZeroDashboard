@@ -2811,6 +2811,78 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-155 — CH-28: la clave inicial de un usuario del panel la genera el sistema y se muestra una sola vez
+
+**Contexto.** CH-22a construyó el ingreso del panel (T3), pero nada crea a los usuarios que ingresan: hoy un administrador de la PYME (P2) solo existe con un insert a mano. P1 tiene que poder darle acceso desde la consola, que desde CH-29 exige operador (DEC-152).
+
+**Opciones.** (a) El sistema genera una clave fuerte y la muestra una sola vez en la respuesta del alta, como el token del agente (DEC-121). (b) El operador escribe la clave. (c) Una invitación por correo para que el cliente elija la suya; SMTP es opcional en el proyecto (DEC-86), así que no puede ser el único camino.
+
+**Decisión.** (a). La clave se genera con `randomBytes` en base64url, la misma construcción que el token del agente, y se guarda solo su hash con `scrypt` (DEC-133). La respuesta del alta es el único lugar donde aparece en claro: nunca en un log, en un listado ni en un mensaje de error, y no hay forma de volver a verla.
+
+**Por qué.** Nadie elige una clave débil y el operador no inventa la clave del cliente. (b) obliga a una política de largo y deja la clave en manos de quien la tipea. (c) depende de un SMTP que puede no estar y suma tokens de invitación con vencimiento.
+
+**Se resigna.** El operador tiene que pasarle la clave al cliente por un canal propio. Como ninguna clave del panel la tipea una persona, no hay política de claves: la fuerza la da el generador. El cliente no puede elegir la suya (ver DEC-156).
+
+**Decidido por:** el usuario, 2026-10-10. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-156 — CH-28: la clave de un usuario del panel la repone el operador
+
+**Contexto.** DEC-133 dejó fuera la recuperación de contraseñas por correo. Con la clave generada (DEC-155), un cliente que la pierde no tiene cómo volver a entrar.
+
+**Opciones.** (a) El operador repone la clave desde la consola: se genera una nueva, se muestra una vez y se cierran las sesiones abiertas del usuario. (b) El cliente cambia su propia clave desde el panel. (c) Las dos. (d) Ninguna, como límite del artefacto.
+
+**Decisión.** (a). Reponer reutiliza el generador del alta, reemplaza el hash y borra en la misma transacción todas las sesiones del usuario.
+
+**Por qué.** Resuelve el olvido, que (b) no resuelve, con la misma pieza que el alta y sin tocar el panel. (c) casi duplica el trabajo y suma una pantalla al panel. (d) obliga a dar de baja y crear otro usuario, que con el correo único (DEC-157) ni siquiera es posible.
+
+**Se resigna.** El cliente depende del operador para cambiar su clave y no puede elegirla. Un cambio de clave desde el panel queda como mejora posterior.
+
+**Decidido por:** el usuario, 2026-10-10. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-157 — CH-28: el correo de un usuario del panel sigue siendo único en todo el sistema
+
+**Contexto.** `Usuario.correo` es único global porque el ingreso del panel encuentra al usuario, y con él a su tenant, solo por el correo: las credenciales no nombran un tenant (regla 2, DEC-135).
+
+**Opciones.** (a) Mantenerlo único global: una persona pertenece a un solo negocio. (b) Único por tenant, lo que obliga a que el ingreso pida elegir el negocio.
+
+**Decisión.** (a). Un alta con un correo que ya existe, en cualquier tenant, responde un conflicto que no dice en qué tenant está.
+
+**Por qué.** No cambia el ingreso y no toca la regla 2. (b) choca con DEC-135: el tenant del panel se deduce de la sesión y nunca se elige.
+
+**Se resigna.** Una persona que administre dos negocios necesita dos correos. El conflicto le confirma al operador que el correo existe en algún tenant; es aceptable porque el operador ya opera todos los tenants.
+
+**Decidido por:** el usuario, 2026-10-10. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-158 — CH-28: desactivar un usuario del panel borra sus sesiones y se puede revertir
+
+**Contexto.** `Usuario.activo` existe y el hook de sesión del panel ya rechaza a un usuario inactivo en cada request (CH-22a), pero ninguna ruta lo cambia.
+
+**Opciones.** (a) Desactivar marca `activo = false` y borra en la misma transacción todas sus sesiones; reactivar lo vuelve a habilitar con su misma clave. (b) Igual, sin reactivar. (c) Solo marcar inactivo y dejar las sesiones, que el hook ya rechaza.
+
+**Decisión.** (a). Nunca se borra la fila de un usuario. Reactivar no cambia la clave; si hace falta, se repone aparte (DEC-156).
+
+**Por qué.** Cortar el acceso deja la base sin sesiones vivas de alguien que ya no debería entrar. (b) dejaría el correo tomado para siempre, por el correo único (DEC-157). (c) deja filas de sesión muertas hasta que alguien las use.
+
+**Se resigna.** Dos rutas en lugar de una. Un usuario reactivado vuelve con la clave que tenía; si la clave se filtró, hay que reponerla además de reactivar.
+
+**Decidido por:** el usuario, 2026-10-10. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
