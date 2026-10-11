@@ -9,7 +9,7 @@ Branch base: `master` (after CH-28). Strict TDD: each task pair writes the faili
 - Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-11: chained PRs, stacked-to-main.**
 
 ## PR0 — Planning
-- [ ] 0.1 Exploration, DEC-159 to DEC-163, proposal, specs, design and tasks (this branch, `ch20/exploracion`).
+- [x] 0.1 Exploration, DEC-159 to DEC-163, proposal, specs, design and tasks (this branch, `ch20/exploracion`).
 
 ## PR1a — The record (split from the planned PR1, which came out at 590 lines)
 - [x] 1.1 Schema + migration with the trigger (rollback in the header); client regenerated; applied to the dev database; `RegistroEjecucion` in `MODELOS_AISLADOS` and in the model-list test.
@@ -34,5 +34,5 @@ Branch base: `master` (after CH-28). Strict TDD: each task pair writes the faili
 - [x] 3.3 RED first (5 failures): the saved query check could throw outside the audit guard and turn an executed query into a 500 — now it falls back to ad hoc; `version` bounded to a 32-bit integer; a date-only `hasta` covers that whole day; after "Guardar como nueva versión" the console keeps the saved version and text; a request without an operator logs `audit skipped` at `error`.
 
 ## Close
-- [ ] 4.1 Full suite, `tsc --noEmit`, `npm run build`, smoke.
-- [ ] 4.2 Verify against the specs, archive, sync `execution-audit`, `query-execution` and `query-console` into `openspec/specs/`, mark CH-20 in `docs/02-mapa-de-changes.md`.
+- [x] 4.1 Full suite, `tsc --noEmit`, `npm run build`. 1252/1256 (only the 4 known `conexiones` false positives). Smoke not run: CH-20 does not touch it (verify-report).
+- [x] 4.2 Verify against the specs, archive, sync `execution-audit`, `query-execution` and `query-console` into `openspec/specs/`, mark CH-20 in `docs/02-mapa-de-changes.md`.

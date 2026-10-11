@@ -74,7 +74,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-17 | Motor: solapamientos, reintentos, ejecuciones interrumpidas. Partido en CH-17a (X7, X4) y CH-17b (X5), ver DEC-101 | X4, X5, X7 |
 | CH-18 | Motor: control de notificaciones duplicadas y aislamiento de fallos entre tenants | X6, X8 |
 | CH-19 | Conectividad definitiva según D-2. Partido en seis cortes, ver abajo y DEC-112 a DEC-120 | C1, C2, C3 |
-| CH-20 | Auditoría de ejecución de consultas | A5 |
+| CH-20 | Auditoría de ejecución de consultas. **Archivado** (pantalla C-12 en CH-30) | A5 |
 | CH-21 | Catálogo: instanciación de plantillas y casos iniciales. Partido en CH-21a, CH-21b y CH-21c, ver abajo | D2, D3, N3 |
 | CH-22 | Panel del cliente: autenticación y vista de automatizaciones. Partido en CH-22a, CH-22b y CH-22c, ver abajo | T3, P1h, P3h |
 | CH-23 | Panel: ajuste de umbrales y horarios | P2h |
