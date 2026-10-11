@@ -262,3 +262,36 @@ export async function registrarEjecucion(
     );
   }
 }
+
+/**
+ * DEC-161: the saved query the console says it ran, confirmed only when the text sent is
+ * byte for byte the statement stored for that version — the current row's, or the history
+ * entry's for a past version. Scoped reads, so another tenant's id is `null` like an
+ * unknown one. Anything that does not match is ad hoc (`null`); this never affects the
+ * execution, which already answered. The name is the query's current one.
+ */
+export async function consultaGuardadaVerificada(
+  prisma: PrismaAislado,
+  id: string,
+  version: number,
+  sql: string,
+): Promise<{ id: string; version: number; nombre: string } | null> {
+  const consulta = await prisma.consultaGuardada.findUnique({
+    where: { id },
+    select: { id: true, nombre: true, sql: true, version: true },
+  });
+  if (consulta === null) {
+    return null;
+  }
+  let guardado: string | null = null;
+  if (version === consulta.version) {
+    guardado = consulta.sql;
+  } else {
+    const anterior = await prisma.consultaGuardadaVersion.findUnique({
+      where: { consultaGuardadaId_version: { consultaGuardadaId: id, version } },
+      select: { sql: true },
+    });
+    guardado = anterior?.sql ?? null;
+  }
+  return guardado === sql ? { id: consulta.id, version, nombre: consulta.nombre } : null;
+}

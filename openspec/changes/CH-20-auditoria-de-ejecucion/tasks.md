@@ -27,8 +27,8 @@ Branch base: `master` (after CH-28). Strict TDD: each task pair writes the faili
 - [x] 2.3 GREEN with their cases in `src/auditoria-registro.test.ts`: the composed statement and the template id; every probe statement (`sentenciaDeSondeo`, exported by the engine) and `veredictoDeSondeo`.
 
 ## PR3 — Saved query reference
-- [ ] 3.1 RED: `src/consultas-auditoria.test.ts` and the console case in `src/consola.test.ts`.
-- [ ] 3.2 GREEN: the optional body fields, `consultaGuardadaVerificada`, and the console sending id and version.
+- [x] 3.1 RED: the saved query cases in `src/auditoria-registro.test.ts` (it already holds the tenant, the connection and the operator) and the console cases in `src/consola.test.ts`.
+- [x] 3.2 GREEN: the optional body fields, `consultaGuardadaVerificada`, and the console sending id and version.
 
 ## Close
 - [ ] 4.1 Full suite, `tsc --noEmit`, `npm run build`, smoke.

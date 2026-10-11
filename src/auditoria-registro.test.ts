@@ -45,6 +45,7 @@ describe(
     let app!: FastifyInstance;
     let log!: () => string;
     let tenantId = '';
+    let tenantB = '';
     let conexionId = '';
     let plantillaId = '';
     let cookie = '';
@@ -143,6 +144,10 @@ describe(
     });
 
     after(async () => {
+      const tenants = [tenantId, tenantB].filter((t) => t !== '');
+      await db.consultaGuardadaVersion.deleteMany({ where: { tenantId: { in: tenants } } });
+      await db.consultaGuardada.deleteMany({ where: { tenantId: { in: tenants } } });
+      await db.tenant.deleteMany({ where: { id: tenantB } });
       await db.vistaCanonica.deleteMany({ where: { tenantId } });
       await db.conexion.deleteMany({ where: { tenantId } });
       await db.tenant.deleteMany({ where: { id: tenantId } });
@@ -261,6 +266,67 @@ describe(
       } finally {
         await otra.app.close();
       }
+    });
+
+    // ---- PR3 (DEC-161): the saved query reference, verified against the executed text ----
+
+    const SQL_V1 = `SELECT id FROM ${ESQUEMA}.producto`;
+    const SQL_V2 = `SELECT id, nombre FROM ${ESQUEMA}.producto`;
+
+    /** A saved query at version 2 whose version 1 is in the history, in tenant `tenant`. */
+    async function guardada(tenant: string, nombre: string) {
+      const consulta = await db.consultaGuardada.create({
+        data: { tenantId: tenant, nombre, sql: SQL_V2, version: 2 },
+      });
+      await db.consultaGuardadaVersion.create({
+        data: { tenantId: tenant, consultaGuardadaId: consulta.id, version: 1, nombre, sql: SQL_V1, parametros: [], desde: new Date() },
+      });
+      return consulta.id;
+    }
+
+    test('the loaded query run unchanged is recorded with its id, version and name', async () => {
+      const id = await guardada(tenantId, 'Stock bajo');
+      const r = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: id, version: 2 });
+      assert.equal(r.json().resultado, 'ok', r.body);
+      const fila = (await registros()).at(-1)!;
+      assert.deepEqual([fila.consultaGuardadaId, fila.consultaVersion, fila.consultaNombre], [id, 2, 'Stock bajo']);
+    });
+
+    test('a past version run with its own text is recorded with that version', async () => {
+      const id = await guardada(tenantId, 'Historica');
+      await post('/consultas/ejecutar', { conexionId, sql: SQL_V1, consultaGuardadaId: id, version: 1 });
+      const fila = (await registros()).at(-1)!;
+      assert.deepEqual([fila.consultaGuardadaId, fila.consultaVersion, fila.consultaNombre], [id, 1, 'Historica']);
+    });
+
+    test('an edited text, an unknown version or another tenant query is recorded as ad hoc, and answers as usual', async () => {
+      const id = await guardada(tenantId, 'Editada');
+      tenantB = (await db.tenant.create({ data: { nombre: `CH-20 registro B ${Date.now()}` } })).id;
+      const deB = await guardada(tenantB, 'De otro tenant');
+      for (const cuerpo of [
+        { conexionId, sql: `${SQL_V2} WHERE id > 0`, consultaGuardadaId: id, version: 2 },
+        { conexionId, sql: SQL_V2, consultaGuardadaId: id, version: 7 },
+        { conexionId, sql: SQL_V2, consultaGuardadaId: deB, version: 2 },
+        { conexionId, sql: `${SQL_V2};`, consultaGuardadaId: id, version: 2 },
+      ]) {
+        const r = await post('/consultas/ejecutar', cuerpo);
+        assert.equal(r.statusCode, 200, r.body);
+        assert.equal(r.json().resultado, 'ok', r.body);
+        const fila = (await registros()).at(-1)!;
+        assert.equal(fila.consultaGuardadaId, null, JSON.stringify(cuerpo));
+        assert.equal(fila.consultaVersion, null);
+      }
+    });
+
+    test('one reference field without the other is a 400 and records nothing', async () => {
+      const antes = (await registros()).length;
+      const soloId = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: 'x' });
+      assert.deepEqual([soloId.statusCode, soloId.json()], [400, { error: 'solicitud-invalida', campos: ['/version'] }]);
+      const soloVersion = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, version: 1 });
+      assert.deepEqual([soloVersion.statusCode, soloVersion.json()], [400, { error: 'solicitud-invalida', campos: ['/consultaGuardadaId'] }]);
+      const cero = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: 'x', version: 0 });
+      assert.equal(cero.statusCode, 400);
+      assert.equal((await registros()).length, antes);
     });
 
     test('the log of the normal app never carries a statement', () => {

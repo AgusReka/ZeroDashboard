@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { registrarEjecucion, veredictoDeEjecucion } from './auditoria.js';
+import { consultaGuardadaVerificada, registrarEjecucion, veredictoDeEjecucion } from './auditoria.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
@@ -17,6 +17,9 @@ interface EjecucionBody {
   /** The inline declaration (DEC-48). Its content is checked by `prepararSentencia`. */
   parametros: unknown[];
   valores: Record<string, unknown>;
+  /** CH-20 (DEC-161): the saved query the editor holds, both or neither. Never changes the answer. */
+  consultaGuardadaId?: string;
+  version?: number;
 }
 
 /**
@@ -56,6 +59,8 @@ const ejecucionSchema = {
       },
     },
     valores: { type: 'object', default: {} },
+    consultaGuardadaId: { type: 'string', minLength: 1 },
+    version: { type: 'integer', minimum: 1 },
   },
 } as const;
 
@@ -76,6 +81,13 @@ export function registerConsultaRoutes(
       }
 
       const body = request.body;
+      // CH-20 (DEC-161): the saved query reference comes as a pair or not at all.
+      if ((body.consultaGuardadaId === undefined) !== (body.version === undefined)) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: [body.version === undefined ? '/version' : '/consultaGuardadaId'],
+        });
+      }
       // Sanitized exactly once, here: `sanearSql` is not idempotent (`SELECT 1;;`), so
       // the engine no longer repeats it. A statement that is empty once trimmed is a
       // failure of the request's shape, not a verdict about the tenant's database.
@@ -152,7 +164,10 @@ export function registerConsultaRoutes(
         origen: 'consulta',
         conexionId: conexion.id,
         sql,
-        consulta: null,
+        consulta:
+          body.consultaGuardadaId !== undefined && body.version !== undefined
+            ? await consultaGuardadaVerificada(prisma, body.consultaGuardadaId, body.version, body.sql)
+            : null,
         plantillaId: null,
       }, veredictoDeEjecucion(ejecucion));
 
