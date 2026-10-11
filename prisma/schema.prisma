@@ -350,3 +350,34 @@ model SesionConsola {
 
   @@index([operadorId])
 }
+
+// CH-20 (DEC-159 to DEC-162): one row per console execution against a client's database
+// (ad hoc query, template test, mapping validation, connection probe), with the operator
+// who ran it. Scoped by `tenantId` like every tenant model, but with NO relations on
+// purpose: a trigger created by the migration refuses UPDATE, DELETE and TRUNCATE, so a
+// foreign key to `Tenant` would make deleting a tenant fail. Tenant and operator are
+// copied by id and name at write time, a snapshot an audit wants anyway. `sql` is the
+// statement as executed (DEC-160); parameter values and returned rows are never stored.
+model RegistroEjecucion {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  tenantNombre       String
+  operadorId         String
+  operadorNombre     String
+  origen             String
+  conexionId         String
+  consultaGuardadaId String?
+  consultaVersion    Int?
+  consultaNombre     String?
+  plantillaId        String?
+  sql                String
+  resultado          String
+  fase               String?
+  categoria          String?
+  codigo             String?
+  filas              Int?
+  duracionMs         Int?
+  creadoEn           DateTime @default(now())
+
+  @@index([tenantId, creadoEn])
+}

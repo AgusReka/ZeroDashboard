@@ -1270,6 +1270,7 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
       'Ejecucion',
       'Operador',
       'Plantilla',
+      'RegistroEjecucion',
       'SesionConsola',
       'SesionPanel',
       'Tenant',
