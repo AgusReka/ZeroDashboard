@@ -165,6 +165,34 @@ grep -q '"error":"tenant-no-encontrado"' /tmp/smoke-sin-tenant.json ||
   fail "expected tenant-no-encontrado, got $(cat /tmp/smoke-sin-tenant.json)"
 echo "OK: no header -> 400 tenant-no-indicado; unknown id -> 404 tenant-no-encontrado"
 
+echo "== CH-28: a panel user created from the console logs into the panel (DEC-155, DEC-158) =="
+CORREO_PANEL="smoke-panel-$(date +%s)@prueba.test"
+code=$(printf '{"correo":"%s","nombre":"Smoke"}' "$CORREO_PANEL" |
+  curl -s -o /tmp/smoke-usuario.json -D /tmp/smoke-usuario.h -w '%{http_code}' -X POST http://localhost:3000/usuarios \
+    -H 'Content-Type: application/json' -H "X-Tenant-Id: $TENANT_A" --data-binary @- --max-time 10)
+[ "$code" = "201" ] || fail "expected HTTP 201 creating a panel user, got $code ($(cat /tmp/smoke-usuario.json))"
+grep -qi '^cache-control: no-store' /tmp/smoke-usuario.h || fail "the panel user creation is not no-store"
+USUARIO_PANEL=$(sed -n 's/.*"usuario":{"id":"\([^"]*\)".*/\1/p' /tmp/smoke-usuario.json)
+CLAVE_PANEL=$(sed -n 's/.*"clave":"\([^"]*\)".*/\1/p' /tmp/smoke-usuario.json)
+[ -n "$USUARIO_PANEL" ] && [ -n "$CLAVE_PANEL" ] || fail "the creation did not answer a user id and a password"
+code=$(curl -s -o /tmp/smoke-usuarios.json -w '%{http_code}' http://localhost:3000/usuarios -H "X-Tenant-Id: $TENANT_A" --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 listing panel users, got $code"
+if grep -q "$CLAVE_PANEL" /tmp/smoke-usuarios.json; then fail "the user list echoed a generated password"; fi
+# The panel login is exempt from the operator guard; the extra console cookie is ignored there.
+ingreso_panel() {
+  printf '{"correo":"%s","clave":"%s"}' "$CORREO_PANEL" "$CLAVE_PANEL" |
+    curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/api/panel/auth/ingresar \
+      -H 'Content-Type: application/json' --data-binary @- --max-time 10
+}
+code=$(ingreso_panel)
+[ "$code" = "200" ] || fail "expected HTTP 200 logging into the panel with the generated password, got $code"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://localhost:3000/usuarios/$USUARIO_PANEL/desactivar" \
+  -H "X-Tenant-Id: $TENANT_A" --max-time 10)
+[ "$code" = "200" ] || fail "expected HTTP 200 deactivating the panel user, got $code"
+code=$(ingreso_panel)
+[ "$code" = "401" ] || fail "expected HTTP 401 logging into the panel after deactivation, got $code"
+echo "OK: panel user created (no-store, not in the list), panel login 200, deactivated, panel login 401"
+
 echo "== CH-03: connection registration and test =="
 DB_USER=$(env_value POSTGRES_USER)
 DB_PASSWORD=$(env_value POSTGRES_PASSWORD)
@@ -560,6 +588,7 @@ DELETE FROM "ConsultaGuardada" WHERE nombre LIKE 'CH-05 smoke%' OR nombre = '<sc
 -- (and the seeded one) live in this same table.
 DELETE FROM "ConsultaGuardada" WHERE "tenantId" IN (SELECT id FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%');
 DELETE FROM "Conexion" WHERE "tenantId" IN (SELECT id FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%');
+DELETE FROM "Usuario" WHERE "tenantId" IN (SELECT id FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%');
 DELETE FROM "Tenant" WHERE nombre LIKE 'CH-06 smoke%';
 DELETE FROM "Operador" WHERE nombre = 'smoke-operador';
 DROP SCHEMA IF EXISTS ch04_smoke CASCADE;
