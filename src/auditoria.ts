@@ -1,4 +1,7 @@
+import type { FastifyInstance } from 'fastify';
+import type { PrismaAislado } from './aislamiento-prisma.js';
 import type { ResultadoEjecucion } from './consulta-ejecucion.js';
+import { LIMITE_LISTADO } from './listados.js';
 
 /**
  * CH-20 (DEC-159 to DEC-163): the audit of what the console executes against a client's
@@ -131,4 +134,55 @@ export function analizarFiltros(consulta: Record<string, unknown>): AnalisisFilt
     }
   }
   return campos.length > 0 ? { ok: false, campos } : { ok: true, filtros };
+}
+
+/** Every column a listing answers: all but `tenantId`, which is the header's anyway. */
+const RegistroPublico = {
+  id: true,
+  creadoEn: true,
+  tenantNombre: true,
+  operadorId: true,
+  operadorNombre: true,
+  origen: true,
+  conexionId: true,
+  consultaGuardadaId: true,
+  consultaVersion: true,
+  consultaNombre: true,
+  plantillaId: true,
+  sql: true,
+  resultado: true,
+  fase: true,
+  categoria: true,
+  codigo: true,
+  filas: true,
+  duracionMs: true,
+} as const;
+
+/**
+ * `GET /auditoria` (DEC-163): the header tenant's rows (scoped model), newest first,
+ * filtered by `desde`, `hasta` and `resultado`, capped like every listing. There is no
+ * route that writes or deletes a row: rows are written by the audited routes themselves,
+ * and the table refuses any change (DEC-162).
+ */
+export function registerAuditoriaRoutes(app: FastifyInstance, prisma: PrismaAislado): void {
+  app.get('/auditoria', async (request, reply) => {
+    const analisis = analizarFiltros(request.query as Record<string, unknown>);
+    if (!analisis.ok) {
+      return reply.code(400).send({ error: 'solicitud-invalida', campos: analisis.campos });
+    }
+    const { desde, hasta, resultado } = analisis.filtros;
+    const filas = await prisma.registroEjecucion.findMany({
+      where: {
+        ...(resultado === undefined ? {} : { resultado }),
+        ...(desde === undefined && hasta === undefined
+          ? {}
+          : { creadoEn: { ...(desde === undefined ? {} : { gte: desde }), ...(hasta === undefined ? {} : { lte: hasta }) } }),
+      },
+      select: RegistroPublico,
+      orderBy: [{ creadoEn: 'desc' }, { id: 'desc' }],
+      take: LIMITE_LISTADO + 1,
+    });
+    const truncado = filas.length > LIMITE_LISTADO;
+    return reply.code(200).send({ registros: truncado ? filas.slice(0, LIMITE_LISTADO) : filas, truncado });
+  });
 }
