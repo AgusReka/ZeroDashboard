@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { registrarEjecucion, veredictoDePrueba } from './auditoria.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { conTenantInyectado } from './aislamiento-prisma.js';
 import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { cifrarCredencial, ErrorCredencialIlegible } from './cripto-credencial.js';
-import { probeConnection } from './db-probe.js';
+import { probeConnection, SENTENCIA_PRUEBA } from './db-probe.js';
 import { LIMITE_LISTADO } from './listados.js';
 
 /**
@@ -286,6 +287,14 @@ export function registerConexionRoutes(
       // The probe is fixed and unconditional: `motor` is stored but never consulted
       // here, so a non-PostgreSQL target fails legibly instead of being refused.
       const prueba = await probeConnection(camposDeDestino(conexion));
+      // CH-20 (DEC-159): the probe dials the client's database too, so it is recorded.
+      await registrarEjecucion(prisma, app.log, request, {
+        origen: 'conexion-prueba',
+        conexionId: conexion.id,
+        sql: SENTENCIA_PRUEBA,
+        consulta: null,
+        plantillaId: null,
+      }, veredictoDePrueba(prueba));
 
       if (prueba.resultado === 'fallo') {
         // Sanitized summary only. The `app.log.error(error, …)` form used by

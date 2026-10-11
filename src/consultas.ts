@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registrarEjecucion, veredictoDeEjecucion } from './auditoria.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
 import { camposInvalidos } from './conexiones.js';
@@ -144,6 +145,16 @@ export function registerConsultaRoutes(
           'query execution failed',
         );
       }
+
+      // CH-20 (DEC-159, DEC-160): the statement as executed (sanitized, binds as written),
+      // never the values. Recording cannot change this answer (DEC-162).
+      await registrarEjecucion(prisma, app.log, request, {
+        origen: 'consulta',
+        conexionId: conexion.id,
+        sql,
+        consulta: null,
+        plantillaId: null,
+      }, veredictoDeEjecucion(ejecucion));
 
       // An attempt that completed is `200` whatever its verdict: the operation
       // succeeded and the verdict is in the body. HTTP error codes stay reserved for

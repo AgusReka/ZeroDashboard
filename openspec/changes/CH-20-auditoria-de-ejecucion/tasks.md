@@ -19,9 +19,12 @@ Branch base: `master` (after CH-28). Strict TDD: each task pair writes the faili
 ## PR1b — The listing
 - [x] 1.4 RED: `src/auditoria-rutas.test.ts`. GREEN: `GET /auditoria` and its registration in `src/rutas.ts`.
 
-## PR2 — Recording in the four paths
-- [ ] 2.1 RED: `src/auditoria-registro.test.ts` (one row per path with the operator; refused requests write nothing; bound values absent; forced write failure keeps the answer).
-- [ ] 2.2 GREEN: `registrarEjecucion` and its call in `consultas.ts`, `plantilla-prueba.ts`, `validacion-mapeo-rutas.ts` and `conexiones.ts`.
+## PR2a — Recording: the write, the ad hoc query and the connection probe (split from the planned PR2, which came out at 414 lines)
+- [x] 2.1 RED: `src/auditoria-registro.test.ts` (one row per path with the operator; refused requests write nothing; bound values absent; forced write failure keeps the answer and logs `error` without the statement). Target: the Compose database through the suite's own read-only role `ch20_lector`. RED: 7 failures, the queries themselves answering `ok`.
+- [x] 2.2 GREEN: `registrarEjecucion` (skips a request with no operator, which only a guard-less test app has) and its call in `consultas.ts` and `conexiones.ts`; `SENTENCIA_PRUEBA` exported by `db-probe.ts`.
+
+## PR2b — Recording: the template test and the mapping validation
+- [x] 2.3 GREEN with their cases in `src/auditoria-registro.test.ts`: the composed statement and the template id; every probe statement (`sentenciaDeSondeo`, exported by the engine) and `veredictoDeSondeo`.
 
 ## PR3 — Saved query reference
 - [ ] 3.1 RED: `src/consultas-auditoria.test.ts` and the console case in `src/consola.test.ts`.

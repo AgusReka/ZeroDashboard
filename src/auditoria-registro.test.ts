@@ -1,0 +1,249 @@
+import assert from 'node:assert/strict';
+import { Writable } from 'node:stream';
+import { after, before, describe, test } from 'node:test';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from './generated/prisma/client.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
+import { registrarContextoTenant } from './contexto-tenant.js';
+import { NOMBRE_COOKIE_CONSOLA, registrarGuardOperador } from './consola-auth.js';
+import { registerConexionRoutes } from './conexiones.js';
+import { registerConsultaRoutes } from './consultas.js';
+import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
+import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
+import {
+  alcanzable,
+  borrarOperadores,
+  crearOperador,
+  crearSesion,
+  databaseUrl,
+  motivoSkip,
+  nombreUnico,
+  objetivo,
+} from './consola-auth-apoyo.js';
+
+process.env.APP_PORT ??= '3000';
+process.env.DATABASE_URL ??= databaseUrl;
+process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
+
+/**
+ * CH-20 (DEC-159 to DEC-162): each audited console path writes one row per execution, with
+ * the operator of the session. The target is the Compose database itself, reached through
+ * a read-only role of this suite (`ch20_lector`), so a query can succeed. Audit rows cannot
+ * be deleted (DEC-162): they stay, under tenants this suite creates and deletes.
+ */
+const ESQUEMA = 'ch20_auditoria';
+const ROL = 'ch20_lector';
+const CLAVE_ROL = 'ch20-clave-lector';
+
+describe(
+  'CH-20 recording in the four audited paths — live PostgreSQL target (DEC-159, DEC-160, DEC-162)',
+  { skip: alcanzable ? false : motivoSkip },
+  () => {
+    let db!: PrismaClient;
+    let prisma!: PrismaAislado;
+    let app!: FastifyInstance;
+    let log!: () => string;
+    let tenantId = '';
+    let conexionId = '';
+    let plantillaId = '';
+    let cookie = '';
+    const operador = nombreUnico('op-auditoria');
+    let operadorId = '';
+
+    function construir(cliente: PrismaAislado): { app: FastifyInstance; log: () => string } {
+      const partes: string[] = [];
+      const stream = new Writable({
+        write(trozo, _codificacion, listo) {
+          partes.push(String(trozo));
+          listo();
+        },
+      });
+      const nueva = Fastify({ logger: { level: 'info', stream } });
+      registrarGuardOperador(nueva, cliente);
+      registrarContextoTenant(nueva, cliente);
+      registerConexionRoutes(nueva, cliente);
+      registerConsultaRoutes(nueva, cliente);
+      registerPlantillaPruebaRoute(nueva, cliente);
+      registerValidacionMapeoRoutes(nueva, cliente);
+      return { app: nueva, log: () => partes.join('') };
+    }
+
+    function post(url: string, payload: object, destino = app) {
+      return destino.inject({
+        method: 'POST',
+        url,
+        payload,
+        headers: { cookie, 'x-tenant-id': tenantId },
+      });
+    }
+
+    function registros() {
+      return db.registroEjecucion.findMany({ where: { tenantId }, orderBy: { creadoEn: 'asc' } });
+    }
+
+    before(async () => {
+      db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+      prisma = extenderConAislamiento(db);
+      await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS ${ESQUEMA} CASCADE`);
+      await db.$executeRawUnsafe(`DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${ROL}') THEN
+          EXECUTE 'DROP OWNED BY ${ROL}'; EXECUTE 'DROP ROLE ${ROL}';
+        END IF; END $$`);
+      await db.$executeRawUnsafe(`CREATE ROLE ${ROL} LOGIN PASSWORD '${CLAVE_ROL}'`);
+      await db.$executeRawUnsafe(`CREATE SCHEMA ${ESQUEMA}`);
+      await db.$executeRawUnsafe(`CREATE TABLE ${ESQUEMA}.producto (id int, nombre text)`);
+      await db.$executeRawUnsafe(`INSERT INTO ${ESQUEMA}.producto VALUES (1, 'a'), (2, 'b')`);
+      await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA ${ESQUEMA} TO ${ROL}`);
+      await db.$executeRawUnsafe(`GRANT SELECT ON ${ESQUEMA}.producto TO ${ROL}`);
+
+      ({ app, log } = construir(prisma));
+      await app.ready();
+      const tenant = await db.tenant.create({ data: { nombre: `CH-20 registro ${Date.now()}` } });
+      tenantId = tenant.id;
+      operadorId = (await crearOperador(prisma, operador, 'clave-de-operador-larga')).id;
+      const { tokenPlano } = await crearSesion(prisma, operadorId, new Date(Date.now() + 3_600_000));
+      cookie = `${NOMBRE_COOKIE_CONSOLA}=${tokenPlano}`;
+
+      const alta = await post('/conexiones', {
+        nombre: 'CH-20 lector',
+        motor: 'postgres',
+        host: objetivo.host,
+        puerto: objetivo.port,
+        baseDeDatos: objetivo.database,
+        usuarioDb: ROL,
+        credencial: CLAVE_ROL,
+      });
+      assert.equal(alta.statusCode, 201, alta.body);
+      conexionId = alta.json().conexion?.id ?? alta.json().id;
+      assert.ok(conexionId, alta.body);
+
+      await db.vistaCanonica.create({
+        data: {
+          tenantId,
+          conexionId,
+          entidad: 'producto',
+          sql: `SELECT id, nombre FROM ${ESQUEMA}.producto`,
+          estadoValidacion: 'valida',
+        },
+      });
+      plantillaId = (
+        await db.plantilla.create({
+          data: {
+            nombre: 'CH-20 prueba',
+            sql: 'SELECT count(*) AS n FROM v_producto',
+            parametros: [],
+            entidades: ['producto'],
+            automatizacion: 'stock-fisico',
+            formato: 'tabla',
+            toleranciaFrescuraMinutos: 60,
+          },
+        })
+      ).id;
+    });
+
+    after(async () => {
+      await db.vistaCanonica.deleteMany({ where: { tenantId } });
+      await db.conexion.deleteMany({ where: { tenantId } });
+      await db.tenant.deleteMany({ where: { id: tenantId } });
+      await db.plantilla.deleteMany({ where: { id: plantillaId } });
+      await borrarOperadores(prisma, [operador]);
+      await db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS ${ESQUEMA} CASCADE`);
+      await db.$executeRawUnsafe(`DROP OWNED BY ${ROL}`);
+      await db.$executeRawUnsafe(`DROP ROLE IF EXISTS ${ROL}`);
+      await db.$disconnect();
+      await app.close();
+    });
+
+    test('an ad hoc query writes one row with the operator, the statement and the row count', async () => {
+      const antes = (await registros()).length;
+      const r = await post('/consultas/ejecutar', { conexionId, sql: `SELECT id FROM ${ESQUEMA}.producto` });
+      assert.equal(r.statusCode, 200);
+      assert.equal(r.json().resultado, 'ok', r.body);
+      const filas = await registros();
+      assert.equal(filas.length, antes + 1);
+      const fila = filas[filas.length - 1];
+      assert.equal(fila.origen, 'consulta');
+      assert.equal(fila.operadorId, operadorId);
+      assert.equal(fila.operadorNombre, operador);
+      assert.equal(fila.conexionId, conexionId);
+      assert.equal(fila.sql, `SELECT id FROM ${ESQUEMA}.producto`);
+      assert.equal(fila.resultado, 'ok');
+      assert.equal(fila.filas, 2);
+      assert.equal(fila.consultaGuardadaId, null);
+      assert.ok(fila.tenantNombre.startsWith('CH-20 registro'));
+    });
+
+    test('bound values never reach the row', async () => {
+      const r = await post('/consultas/ejecutar', {
+        conexionId,
+        sql: `SELECT id FROM ${ESQUEMA}.producto WHERE nombre = :nombre`,
+        parametros: [{ nombre: 'nombre', tipo: 'texto' }],
+        valores: { nombre: 'valor-que-no-se-guarda' },
+      });
+      assert.equal(r.json().resultado, 'ok', r.body);
+      const fila = (await registros()).at(-1)!;
+      assert.equal(fila.sql, `SELECT id FROM ${ESQUEMA}.producto WHERE nombre = :nombre`);
+      assert.ok(!JSON.stringify(fila).includes('valor-que-no-se-guarda'));
+    });
+
+    test('a read-only rejection is recorded as a failure with its phase and category', async () => {
+      const r = await post('/consultas/ejecutar', { conexionId, sql: `UPDATE ${ESQUEMA}.producto SET nombre = 'x'` });
+      assert.equal(r.json().resultado, 'fallo');
+      const fila = (await registros()).at(-1)!;
+      assert.equal(fila.resultado, 'fallo');
+      assert.equal(fila.fase, r.json().fase);
+      assert.equal(fila.categoria, r.json().categoria);
+      assert.equal(fila.filas, null);
+    });
+
+    test('a request refused before the engine writes nothing', async () => {
+      const antes = (await registros()).length;
+      const desconocida = await post('/consultas/ejecutar', { conexionId: '00000000-0000-4000-8000-000000000000', sql: 'SELECT 1' });
+      assert.equal(desconocida.statusCode, 404);
+      const vacia = await post('/consultas/ejecutar', { conexionId, sql: '   ' });
+      assert.equal(vacia.statusCode, 400);
+      assert.equal((await registros()).length, antes);
+    });
+
+    test('the connection probe records its fixed statement', async () => {
+      const r = await post(`/conexiones/${conexionId}/prueba`, {});
+      assert.equal(r.statusCode, 200, r.body);
+      const fila = (await registros()).at(-1)!;
+      assert.equal(fila.origen, 'conexion-prueba');
+      assert.equal(fila.sql, 'SELECT 1');
+      assert.equal(fila.resultado, r.json().resultado);
+    });
+
+    test('a failed audit write keeps the answer and logs an error without the statement', async () => {
+      // Every delegate behaves as usual except the audit one, whose create always fails.
+      const roto = new Proxy(prisma, {
+        get(objetivoProxy, propiedad, receptor) {
+          if (propiedad === 'registroEjecucion') {
+            return { create: () => Promise.reject(new Error('escritura de auditoria rota')) };
+          }
+          return Reflect.get(objetivoProxy, propiedad, receptor);
+        },
+      });
+      const otra = construir(roto);
+      await otra.app.ready();
+      try {
+        const antes = (await registros()).length;
+        const r = await post('/consultas/ejecutar', { conexionId, sql: `SELECT nombre FROM ${ESQUEMA}.producto` }, otra.app);
+        assert.equal(r.statusCode, 200);
+        assert.equal(r.json().resultado, 'ok');
+        assert.equal((await registros()).length, antes);
+        const lineas = otra.log().split('\n').filter((l) => l.includes('audit write failed'));
+        assert.equal(lineas.length, 1);
+        assert.equal(JSON.parse(lineas[0]).level, 50);
+        assert.ok(!lineas[0].includes('SELECT nombre'));
+      } finally {
+        await otra.app.close();
+      }
+    });
+
+    test('the log of the normal app never carries a statement', () => {
+      assert.ok(!log().includes(`${ESQUEMA}.producto`));
+    });
+  },
+);

@@ -1,6 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { FastifyBaseLogger, FastifyRequest } from 'fastify';
+import { conTenantInyectado } from './aislamiento-prisma.js';
+import { exigirTenantActivo } from './contexto-tenant.js';
 import type { ResultadoEjecucion } from './consulta-ejecucion.js';
+import type { ProbeResult } from './db-probe.js';
 import { LIMITE_LISTADO } from './listados.js';
 
 /**
@@ -56,6 +60,18 @@ export function veredictoDeEjecucion(resultado: ResultadoEjecucion): VeredictoAu
     codigo: resultado.codigo,
     filas: null,
     duracionMs: resultado.duracionMs,
+  };
+}
+
+/** The connection probe's verdict: a failure is always a connection-phase failure. */
+export function veredictoDePrueba(prueba: ProbeResult): VeredictoAuditado {
+  return {
+    resultado: prueba.resultado,
+    fase: prueba.resultado === 'fallo' ? 'conexion' : null,
+    categoria: prueba.categoria,
+    codigo: prueba.codigo,
+    filas: null,
+    duracionMs: prueba.duracionMs,
   };
 }
 
@@ -185,4 +201,41 @@ export function registerAuditoriaRoutes(app: FastifyInstance, prisma: PrismaAisl
     const truncado = filas.length > LIMITE_LISTADO;
     return reply.code(200).send({ registros: truncado ? filas.slice(0, LIMITE_LISTADO) : filas, truncado });
   });
+}
+
+/** The context of an audited execution, without the operator: the write takes it from the request. */
+export type ContextoDeRuta = Omit<ContextoAuditado, 'operador'>;
+
+/**
+ * Writes one audit row for an execution that reached the engine (DEC-159), inside the
+ * request's tenant context: the tenant id is injected and its name copied, the operator
+ * comes from the session the guard resolved. The write can never change the request's
+ * answer (DEC-162): any failure is logged at `error` with closed fields — never the
+ * statement — and swallowed.
+ *
+ * A request without an operator only exists in a test app built without the operator
+ * guard; `src/rutas.test.ts` proves production always has one. Nothing is written then.
+ */
+export async function registrarEjecucion(
+  prisma: PrismaAislado,
+  log: FastifyBaseLogger,
+  request: FastifyRequest,
+  contexto: ContextoDeRuta,
+  veredicto: VeredictoAuditado,
+): Promise<void> {
+  if (request.operador === undefined) {
+    return;
+  }
+  try {
+    const tenant = exigirTenantActivo();
+    const fila = filaDeAuditoria({ ...contexto, operador: request.operador }, veredicto);
+    await prisma.registroEjecucion.create({
+      data: conTenantInyectado({ ...fila, tenantNombre: tenant.nombre }),
+    });
+  } catch (error) {
+    log.error(
+      { origen: contexto.origen, conexionId: contexto.conexionId, error: (error as Error).name },
+      'audit write failed',
+    );
+  }
 }

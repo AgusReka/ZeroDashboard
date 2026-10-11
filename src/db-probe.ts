@@ -60,6 +60,9 @@ export interface ProbeTarget extends DestinoPostgres {
 }
 
 /** The only value that crosses the probe boundary. The raw error never does. */
+/** The one statement the connection probe runs; exported for the audit (CH-20, DEC-160). */
+export const SENTENCIA_PRUEBA = 'SELECT 1';
+
 export interface ProbeResult {
   resultado: 'ok' | 'fallo';
   categoria: CategoriaFallo | null;
@@ -243,7 +246,7 @@ export async function probeConnection(target: ProbeTarget): Promise<ProbeResult>
     // `connect()` won: the budget it guarded is spent, so the timer must not survive
     // into the query phase and fire behind an already-decided race.
     cancelarTemporizador();
-    await cliente.query('SELECT 1');
+    await cliente.query(SENTENCIA_PRUEBA);
     return {
       resultado: 'ok',
       categoria: null,
