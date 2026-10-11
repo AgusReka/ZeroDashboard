@@ -2757,6 +2757,21 @@ describe('the console document, served by the real route', () => {
     assert.equal(cuerpo.version, 3);
   });
 
+  test('CH-20 after saving a new version, running the saved text sends the new version', async () => {
+    const escenario = await conConsultaCargada({ sql: 'SELECT 1', parametros: [] });
+    nodo(escenario, 'conexion').value = 'c-1';
+    nodo(escenario, 'sql').value = 'SELECT 2';
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, sql: 'SELECT 2', parametros: [], version: 4 } } },
+      { status: 200, cuerpo: { versiones: [], truncado: false } },
+    );
+    await enviar(escenario, respuestaOk());
+    const cuerpo = ultimaEjecucion(escenario);
+    assert.equal(cuerpo.consultaGuardadaId, 'q-1');
+    assert.equal(cuerpo.version, 4);
+  });
+
   test('CH-20 running after an edit sends neither field', async () => {
     const escenario = await conConsultaCargada({ sql: 'SELECT 1', parametros: [] });
     nodo(escenario, 'conexion').value = 'c-1';

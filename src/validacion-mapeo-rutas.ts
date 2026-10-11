@@ -107,7 +107,8 @@ export function registerValidacionMapeoRoutes(
         destino,
         vistas.map((v) => ({ entidad: v.entidad, sql: v.sql })),
       );
-      // CH-20 (DEC-159, DEC-160): every probe statement the session ran, in contract order.
+      // CH-20 (DEC-159, DEC-160): the probe statements of the session, in contract order. On a
+      // session failure (connection, role) none of them ran; the verdict's `fase` says so.
       await registrarEjecucion(prisma, app.log, request, {
         origen: 'validacion-mapeo',
         conexionId: destino.id,

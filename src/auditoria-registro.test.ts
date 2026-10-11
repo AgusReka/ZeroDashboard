@@ -329,6 +329,69 @@ describe(
       assert.equal((await registros()).length, antes);
     });
 
+    test('a failing saved query lookup keeps the answer and records the run as ad hoc', async () => {
+      const id = await guardada(tenantId, 'Lectura rota');
+      // Every delegate behaves as usual except the saved query reads, which always fail.
+      const roto = new Proxy(prisma, {
+        get(objetivoProxy, propiedad, receptor) {
+          if (propiedad === 'consultaGuardada' || propiedad === 'consultaGuardadaVersion') {
+            return { findUnique: () => Promise.reject(new Error('lectura rota')) };
+          }
+          return Reflect.get(objetivoProxy, propiedad, receptor);
+        },
+      });
+      const otra = construir(roto);
+      await otra.app.ready();
+      try {
+        const antes = (await registros()).length;
+        const r = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: id, version: 2 }, otra.app);
+        assert.equal(r.statusCode, 200, r.body);
+        assert.equal(r.json().resultado, 'ok');
+        const filas = await registros();
+        assert.equal(filas.length, antes + 1);
+        assert.equal(filas.at(-1)!.consultaGuardadaId, null);
+      } finally {
+        await otra.app.close();
+      }
+    });
+
+    test('a version beyond a 32-bit integer is a 400 and records nothing', async () => {
+      const antes = (await registros()).length;
+      const r = await post('/consultas/ejecutar', { conexionId, sql: SQL_V2, consultaGuardadaId: 'x', version: 3_000_000_000 });
+      assert.equal(r.statusCode, 400);
+      assert.equal((await registros()).length, antes);
+    });
+
+    test('a request without an operator records nothing and logs an error', async () => {
+      const partes: string[] = [];
+      const stream = new Writable({
+        write(trozo, _codificacion, listo) {
+          partes.push(String(trozo));
+          listo();
+        },
+      });
+      const sinGuard = Fastify({ logger: { level: 'info', stream } });
+      registrarContextoTenant(sinGuard, prisma);
+      registerConsultaRoutes(sinGuard, prisma);
+      await sinGuard.ready();
+      try {
+        const antes = (await registros()).length;
+        const r = await sinGuard.inject({
+          method: 'POST',
+          url: '/consultas/ejecutar',
+          payload: { conexionId, sql: SQL_V1 },
+          headers: { 'x-tenant-id': tenantId },
+        });
+        assert.equal(r.statusCode, 200);
+        assert.equal((await registros()).length, antes);
+        const lineas = partes.join('').split('\n').filter((l) => l.includes('audit skipped'));
+        assert.equal(lineas.length, 1);
+        assert.equal(JSON.parse(lineas[0]).level, 50);
+      } finally {
+        await sinGuard.close();
+      }
+    });
+
     test('the log of the normal app never carries a statement', () => {
       assert.ok(!log().includes(`${ESQUEMA}.producto`));
     });

@@ -2329,6 +2329,9 @@ async function guardarNuevaVersion() {
   if (resultado.status === 200) {
     var guardada = resultado.cuerpo.consultaGuardada;
     consultaCargada.nombre = String(guardada.nombre);
+    // CH-20 (DEC-161): the editor now holds the saved version, so a run names it.
+    consultaCargada.version = guardada.version;
+    consultaCargada.sql = String(guardada.sql);
     entradaNotaVersion.value = '';
     mostrarConfirmacion('Se guardó la versión ' + guardada.version + ' de «' + consultaCargada.nombre + '».');
     await listarGuardadas();

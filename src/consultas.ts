@@ -60,7 +60,8 @@ const ejecucionSchema = {
     },
     valores: { type: 'object', default: {} },
     consultaGuardadaId: { type: 'string', minLength: 1 },
-    version: { type: 'integer', minimum: 1 },
+    // `Int` in the schema: anything larger could not name a version and would fail the read.
+    version: { type: 'integer', minimum: 1, maximum: 2147483647 },
   },
 } as const;
 

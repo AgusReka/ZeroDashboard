@@ -30,6 +30,9 @@ Branch base: `master` (after CH-28). Strict TDD: each task pair writes the faili
 - [x] 3.1 RED: the saved query cases in `src/auditoria-registro.test.ts` (it already holds the tenant, the connection and the operator) and the console cases in `src/consola.test.ts`.
 - [x] 3.2 GREEN: the optional body fields, `consultaGuardadaVerificada`, and the console sending id and version.
 
+## PR3 — Review fixes (independent verifier)
+- [x] 3.3 RED first (5 failures): the saved query check could throw outside the audit guard and turn an executed query into a 500 — now it falls back to ad hoc; `version` bounded to a 32-bit integer; a date-only `hasta` covers that whole day; after "Guardar como nueva versión" the console keeps the saved version and text; a request without an operator logs `audit skipped` at `error`.
+
 ## Close
 - [ ] 4.1 Full suite, `tsc --noEmit`, `npm run build`, smoke.
 - [ ] 4.2 Verify against the specs, archive, sync `execution-audit`, `query-execution` and `query-console` into `openspec/specs/`, mark CH-20 in `docs/02-mapa-de-changes.md`.
