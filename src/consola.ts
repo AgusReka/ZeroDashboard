@@ -174,6 +174,8 @@ function documentoConsola(nombreOperador: string): string {
   <div class="zd-sidenav__group">
     <span class="zd-sidenav__heading">Global</span>
     <a id="nav-tenants" class="zd-sidenav__item" href="#tenants"><span>Tenants</span></a>
+    <a id="nav-plantillas" class="zd-sidenav__item" href="#plantillas"><span>Plantillas</span></a>
+    <a id="nav-contrato" class="zd-sidenav__item" href="#contrato"><span>Contrato canónico</span></a>
   </div>
   <div class="zd-sidenav__scope">
     <span class="zd-sidenav__subheading">Puesta en marcha</span>
@@ -317,6 +319,56 @@ function documentoConsola(nombreOperador: string): string {
   <table class="zd-table">
     <thead><tr><th>Correo</th><th>Nombre</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr></thead>
     <tbody id="usuarios-cuerpo"></tbody>
+  </table>
+</div>
+</section>
+
+<!--
+  CH-30d (DEC-61, screen C-03): the template catalog, global and read-only. Creating and
+  replacing a template stay API-only. A template's statement is written as text.
+-->
+<section id="pantalla-plantillas" aria-labelledby="titulo-plantillas" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span></div>
+    <h1 id="titulo-plantillas" class="zd-h1">Plantillas</h1>
+    <p class="zd-pagehead__desc">El catálogo de automatizaciones que se pueden activar. Cada plantilla necesita ciertas entidades mapeadas.</p>
+  </div>
+</header>
+<p id="plantillas-aviso" class="ayuda" role="status"></p>
+<div class="zd-table-wrap zd-table-scroll">
+  <table class="zd-table">
+    <thead><tr><th>Nombre</th><th>Automatización</th><th>Formato</th><th>Tolera</th><th></th></tr></thead>
+    <tbody id="plantillas-cuerpo"></tbody>
+  </table>
+</div>
+<aside id="plantilla-panel" class="zd-drawer" aria-labelledby="plantilla-titulo" hidden>
+  <div class="zd-drawer__head"><h2 id="plantilla-titulo" class="zd-h2"></h2></div>
+  <div class="zd-drawer__body">
+    <p id="plantilla-entidades"></p>
+    <p id="plantilla-parametros"></p>
+    <pre id="plantilla-sql"></pre>
+    <button id="plantilla-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar</button>
+  </div>
+</aside>
+</section>
+
+<!--
+  CH-30d (DEC-21, DEC-24, screen C-04): the canonical contract, global and read-only.
+-->
+<section id="pantalla-contrato" aria-labelledby="titulo-contrato" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span></div>
+    <h1 id="titulo-contrato" class="zd-h1">Contrato canónico</h1>
+    <p class="zd-pagehead__desc">Lo que cada tenant tiene que exponer, entidad por entidad, y qué automatización usa cada campo.</p>
+  </div>
+</header>
+<p id="contrato-aviso" class="ayuda" role="status"></p>
+<div class="zd-table-wrap zd-table-scroll">
+  <table class="zd-table">
+    <thead><tr><th>Campo</th><th>Tipo</th><th>Obligatorio</th><th>Lo usan</th></tr></thead>
+    <tbody id="contrato-cuerpo"></tbody>
   </table>
 </div>
 </section>
@@ -3219,10 +3271,99 @@ formularioUsuario.addEventListener('submit', async function (evento) {
   await cargarPantallaUsuarios();
 });
 
+// ---- CH-30d (DEC-61, screen C-03): Plantillas -------------------------------------------
+
+var avisoPlantillas = document.getElementById('plantillas-aviso');
+var cuerpoPlantillas = document.getElementById('plantillas-cuerpo');
+var panelPlantilla = document.getElementById('plantilla-panel');
+
+function toleranciaTexto(minutos) {
+  if (typeof minutos !== 'number') { return '—'; }
+  return minutos % 60 === 0 ? (minutos / 60) + ' h' : minutos + ' min';
+}
+
+// Global reads: plain fetch with the 401 check; null on any failure, after saying why.
+async function leerGlobal(url, aviso) {
+  var respuesta;
+  try { respuesta = await fetch(url).then(siNoAutenticado); } catch (fallaDeRed) {
+    aviso.textContent = 'No se pudo contactar con la aplicación.';
+    return null;
+  }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (cuerpo === null || respuesta.status !== 200) {
+    aviso.textContent = 'No se pudo leer ' + url + ' (HTTP ' + respuesta.status + ').';
+    return null;
+  }
+  return cuerpo;
+}
+
+async function verPlantilla(id) {
+  var cuerpo = await leerGlobal('/plantillas/' + encodeURIComponent(id), avisoPlantillas);
+  if (cuerpo === null || cuerpo.plantilla === undefined) { return; }
+  var plantilla = cuerpo.plantilla;
+  document.getElementById('plantilla-titulo').textContent = String(plantilla.nombre);
+  var entidades = Array.isArray(plantilla.entidades) ? plantilla.entidades : [];
+  document.getElementById('plantilla-entidades').textContent = 'Necesita: ' + (entidades.length === 0 ? '—' : entidades.join(', '));
+  var parametros = Array.isArray(plantilla.parametros) ? plantilla.parametros : [];
+  document.getElementById('plantilla-parametros').textContent = 'Parámetros: ' + (parametros.length === 0 ? 'ninguno'
+    : parametros.map(function (p) { return String(p.nombre) + ' (' + String(p.tipo) + ')'; }).join(', '));
+  document.getElementById('plantilla-sql').textContent = String(plantilla.sql);
+  panelPlantilla.hidden = false;
+}
+
+async function cargarPantallaPlantillas() {
+  var cuerpo = await leerGlobal('/plantillas', avisoPlantillas);
+  if (cuerpo === null || !Array.isArray(cuerpo.plantillas)) { return; }
+  vaciar(cuerpoPlantillas);
+  cuerpo.plantillas.forEach(function (plantilla) {
+    var fila = document.createElement('tr');
+    celdaTenant(fila, String(plantilla.nombre));
+    celdaTenant(fila, String(plantilla.automatizacion));
+    celdaTenant(fila, String(plantilla.formato));
+    celdaTenant(fila, toleranciaTexto(plantilla.toleranciaFrescuraMinutos));
+    celdaTenant(fila, '').appendChild(botonTenant('Ver', function () { verPlantilla(String(plantilla.id)); }));
+    cuerpoPlantillas.appendChild(fila);
+  });
+  avisoPlantillas.textContent = cuerpo.truncado === true
+    ? 'Se muestran solo las primeras ' + cuerpo.plantillas.length + ' plantillas.'
+    : (cuerpo.plantillas.length === 0 ? 'Todavía no hay plantillas.' : '');
+}
+
+document.getElementById('plantilla-cerrar').addEventListener('click', function () { panelPlantilla.hidden = true; });
+
+// ---- CH-30d (DEC-21, screen C-04): Contrato -----------------------------------------------
+
+var avisoContrato = document.getElementById('contrato-aviso');
+var cuerpoContrato = document.getElementById('contrato-cuerpo');
+
+async function cargarPantallaContrato() {
+  var cuerpo = await leerGlobal('/contrato', avisoContrato);
+  if (cuerpo === null || cuerpo.contrato === undefined || !Array.isArray(cuerpo.contrato.entidades)) { return; }
+  vaciar(cuerpoContrato);
+  cuerpo.contrato.entidades.forEach(function (entidad) {
+    var encabezado = document.createElement('tr');
+    var titulo = document.createElement('th');
+    titulo.colSpan = 4;
+    titulo.textContent = String(entidad.nombre) + ' · ' + (entidad.obligatoriedad === 'obligatorio' ? 'obligatoria' : 'opcional');
+    encabezado.appendChild(titulo);
+    cuerpoContrato.appendChild(encabezado);
+    (Array.isArray(entidad.campos) ? entidad.campos : []).forEach(function (campo) {
+      var fila = document.createElement('tr');
+      celdaTenant(fila, String(campo.nombre));
+      celdaTenant(fila, String(campo.tipo));
+      celdaTenant(fila, campo.obligatoriedad === 'obligatorio' ? 'Sí' : 'No');
+      celdaTenant(fila, Array.isArray(campo.automatizaciones) ? campo.automatizaciones.join(', ') : '');
+      cuerpoContrato.appendChild(fila);
+    });
+  });
+  avisoContrato.textContent = '';
+}
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'conexiones', 'agentes', 'usuarios', 'consultas', 'automatizaciones', 'frescura'];
+var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'usuarios', 'consultas', 'automatizaciones', 'frescura'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -3234,6 +3375,8 @@ function mostrarPantalla() {
   });
   // CH-30b: a screen that reads its own data loads it when it is shown.
   if (activa === 'tenants') { cargarTenantsPantalla(); }
+  if (activa === 'plantillas') { cargarPantallaPlantillas(); }
+  if (activa === 'contrato') { cargarPantallaContrato(); }
   if (activa === 'conexiones') { cargarPantallaConexiones(); }
   if (activa === 'agentes') { cargarPantallaAgentes(); }
   if (activa === 'usuarios') { cargarPantallaUsuarios(); }

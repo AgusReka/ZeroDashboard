@@ -6,14 +6,14 @@ Branch base: `master` (after CH-30c). Strict TDD: the test cases first, against 
 - Estimated changed lines: ~860 (PR1 ~380, PR2 ~480)
 - 400-line budget risk: High
 - Chained PRs recommended: Yes
-- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`)
+- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-13: chained PRs, stacked-to-main.**
 
 ## PR0 — Planning
-- [ ] 0.1 DEC-169, exploration, proposal, spec, design and tasks (`ch30d/exploracion`); the change map row.
+- [x] 0.1 DEC-169, exploration, proposal, spec, design and tasks (`ch30d/exploracion`); the change map row.
 
 ## PR1 — Plantillas and Contrato
-- [ ] 1.1 RED: navigation order; Plantillas rows, detail panel as text, cut notice; Contrato entities and fields.
-- [ ] 1.2 GREEN: markup and script of both screens.
+- [x] 1.1 RED (9 failures): navigation order; Plantillas rows, detail panel as text, cut notice; Contrato entities and fields.
+- [x] 1.2 GREEN: markup and script of both screens.
 
 ## PR2 — Mapeo y validación
 - [ ] 2.1 RED: no tenant / no connection, the entity blocks, saving, a session failure, an invalid field with its hint, automations with reasons, SQL with markup as text.
