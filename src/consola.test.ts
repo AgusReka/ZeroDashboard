@@ -191,6 +191,21 @@ const IDS = [
   'usuario-copiar',
   'usuario-guardado',
   'usuarios-cuerpo',
+  // CH-30d: the Plantillas and Contrato screens.
+  'pantalla-plantillas',
+  'nav-plantillas',
+  'plantillas-aviso',
+  'plantillas-cuerpo',
+  'plantilla-panel',
+  'plantilla-titulo',
+  'plantilla-entidades',
+  'plantilla-parametros',
+  'plantilla-sql',
+  'plantilla-cerrar',
+  'pantalla-contrato',
+  'nav-contrato',
+  'contrato-aviso',
+  'contrato-cuerpo',
   'pantalla-consultas',
   'pantalla-automatizaciones',
   'pantalla-frescura',
@@ -265,7 +280,7 @@ const IDS = [
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -2807,7 +2822,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'conexiones', 'agentes', 'usuarios', 'consultas', 'automatizaciones', 'frescura'] as const;
+  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'usuarios', 'consultas', 'automatizaciones', 'frescura'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -3328,6 +3343,86 @@ describe('the console document, served by the real route', () => {
     selector.disparar('change');
     await asentarVarias();
     assert.ok(!textoDeLaPagina(escenario).includes(CLAVE));
+  });
+
+  // ---- CH-30d (DEC-61, M1): the Plantillas and Contrato screens, global and read-only ----
+
+  const PLANTILLA_LISTADA = {
+    id: 'p-9', nombre: 'Stock diario', automatizacion: 'stock-fisico', formato: 'correo-html', toleranciaFrescuraMinutos: 60,
+  };
+
+  test('CH-30d Plantillas and Contrato follow Tenants in the Global group', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    const en = (id: string): number => marcado.indexOf(`id="${id}"`);
+    assert.ok(en('nav-tenants') < en('nav-plantillas'));
+    assert.ok(en('nav-plantillas') < en('nav-contrato'));
+    assert.ok(en('nav-contrato') < en('nav-conexiones'));
+  });
+
+  test('CH-30d Plantillas lists the catalog with no tenant header, and says when it was cut', async () => {
+    const escenario = await arrancar();
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: true } });
+    irA(escenario, '#plantillas');
+    await asentarVarias();
+    const pedido = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(pedido.url, '/plantillas');
+    assert.equal(pedido.tenant, null);
+    const fila = nodo(escenario, 'plantillas-cuerpo').hijos[0];
+    for (const texto of ['Stock diario', 'stock-fisico', 'correo-html', '1 h']) {
+      assert.ok(fila.textContent.includes(texto), texto);
+    }
+    assert.match(nodo(escenario, 'plantillas-aviso').textContent, /primeras/);
+  });
+
+  test('CH-30d Ver shows the entities, parameters and statement of a template, as text', async () => {
+    const escenario = await arrancar();
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: false } });
+    irA(escenario, '#plantillas');
+    await asentarVarias();
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: { plantilla: { ...PLANTILLA_LISTADA, sql: 'SELECT <b>x</b> FROM v_producto', parametros: [{ nombre: 'umbral', tipo: 'numero' }], entidades: ['producto', 'insumo'] } },
+    });
+    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[0], 'Ver')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/plantillas/p-9');
+    assert.equal(nodo(escenario, 'plantilla-panel').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-titulo').textContent, 'Stock diario');
+    assert.equal(nodo(escenario, 'plantilla-entidades').textContent, 'Necesita: producto, insumo');
+    assert.equal(nodo(escenario, 'plantilla-parametros').textContent, 'Parámetros: umbral (numero)');
+    assert.equal(nodo(escenario, 'plantilla-sql').textContent, 'SELECT <b>x</b> FROM v_producto');
+    nodo(escenario, 'plantilla-cerrar').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-panel').hidden, true);
+  });
+
+  test('CH-30d Contrato shows each entity with its fields, type, obligatoriness and automations', async () => {
+    const escenario = await arrancar();
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        contrato: {
+          entidades: [
+            { nombre: 'producto', obligatoriedad: 'obligatorio', campos: [
+              { nombre: 'id', obligatoriedad: 'obligatorio', tipo: 'identificador', automatizaciones: ['stock-fisico', 'reporte-diario'] },
+              { nombre: 'sku', obligatoriedad: 'opcional', tipo: 'texto', automatizaciones: ['stock-fisico'] },
+            ] },
+            { nombre: 'insumo', obligatoriedad: 'opcional', campos: [
+              { nombre: 'id', obligatoriedad: 'obligatorio', tipo: 'identificador', automatizaciones: ['stock-producible'] },
+            ] },
+          ],
+        },
+      },
+    });
+    irA(escenario, '#contrato');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/contrato');
+    const filas = nodo(escenario, 'contrato-cuerpo').hijos.map((f) => f.textContent);
+    assert.equal(filas.length, 5, 'two entity headers and three fields');
+    assert.match(filas[0], /producto/);
+    assert.match(filas[0], /obligatoria/);
+    assert.match(filas[1], /id.*identificador.*Sí.*stock-fisico, reporte-diario/);
+    assert.match(filas[2], /sku.*texto.*No/);
+    assert.match(filas[3], /insumo.*opcional/);
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----
