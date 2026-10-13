@@ -144,6 +144,10 @@ function documentoConsola(nombreOperador: string): string {
   @media (max-width: 40rem) { .versiones-bloques { grid-template-columns: minmax(0, 1fr); } }
   /* CH-29 (C-01): the operator slot and Salir sit at the end of the tenant bar. */
   #operador { margin-inline-start: auto; }
+  /* CH-30d: the mapping editors the script builds, one per contract entity. */
+  #mapeo-entidades { display: grid; gap: var(--space-6); }
+  #mapeo-entidades textarea { width: 100%; min-height: 8rem; font-family: var(--font-mono); font-size: var(--text-sm); }
+  #mapeo-entidades ul { margin: var(--space-3) 0 0; padding-inline-start: var(--space-6); }
 </style>
 </head>
 <body class="zd-root">
@@ -181,6 +185,7 @@ function documentoConsola(nombreOperador: string): string {
     <span class="zd-sidenav__subheading">Puesta en marcha</span>
     <a id="nav-conexiones" class="zd-sidenav__item" href="#conexiones"><span>Conexiones</span></a>
     <a id="nav-agentes" class="zd-sidenav__item" href="#agentes"><span>Agentes</span></a>
+    <a id="nav-mapeo" class="zd-sidenav__item" href="#mapeo"><span>Mapeo y validación</span></a>
     <a id="nav-usuarios" class="zd-sidenav__item" href="#usuarios"><span>Usuarios del panel</span></a>
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
@@ -369,6 +374,38 @@ function documentoConsola(nombreOperador: string): string {
   <table class="zd-table">
     <thead><tr><th>Campo</th><th>Tipo</th><th>Obligatorio</th><th>Lo usan</th></tr></thead>
     <tbody id="contrato-cuerpo"></tbody>
+  </table>
+</div>
+</section>
+
+<!--
+  CH-30d (DEC-169, DEC-30 to DEC-46, screen C-06): one SQL statement per contract entity, written
+  by the operator. "Validar" probes them with zero rows and stores a verdict per field; the
+  automations' state (aplicable, inaplicable, bloqueada, pendiente) is computed from it. The
+  statements are editor values and every diagnostic is text.
+-->
+<section id="pantalla-mapeo" aria-labelledby="titulo-mapeo" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-mapeo" class="zd-h1">Mapeo y validación</h1>
+    <p class="zd-pagehead__desc">Por cada entidad del contrato, la consulta que la arma desde la réplica del cliente. Validar la prueba sin leer filas.</p>
+  </div>
+  <div class="zd-pagehead__actions">
+    <button id="mapeo-validar" class="zd-btn zd-btn--primary" type="button">Validar mapeo</button>
+  </div>
+</header>
+<div>
+  <label for="mapeo-conexion" class="zd-label">Conexión</label>
+  <select id="mapeo-conexion" class="zd-select"></select>
+</div>
+<p id="mapeo-aviso" class="ayuda" role="status"></p>
+<div id="mapeo-entidades"></div>
+<h2 class="zd-h2">Automatizaciones</h2>
+<div class="zd-table-wrap zd-table-scroll">
+  <table class="zd-table">
+    <thead><tr><th>Automatización</th><th>Estado</th><th>Motivos</th></tr></thead>
+    <tbody id="mapeo-automatizaciones"></tbody>
   </table>
 </div>
 </section>
@@ -2627,6 +2664,7 @@ function cambiarTenant(id) {
   olvidarSecretos();
   if (!document.getElementById('pantalla-conexiones').hidden) { cargarPantallaConexiones(); }
   if (!document.getElementById('pantalla-agentes').hidden) { cargarPantallaAgentes(); }
+  if (!document.getElementById('pantalla-mapeo').hidden) { cargarPantallaMapeo(); }
   if (!document.getElementById('pantalla-usuarios').hidden) { cargarPantallaUsuarios(); }
 }
 
@@ -3360,10 +3398,199 @@ async function cargarPantallaContrato() {
   avisoContrato.textContent = '';
 }
 
+// ---- CH-30d (DEC-169, screen C-06): Mapeo y validación ------------------------------------
+
+var avisoMapeo = document.getElementById('mapeo-aviso');
+var selectorMapeo = document.getElementById('mapeo-conexion');
+var contenedorEntidades = document.getElementById('mapeo-entidades');
+var cuerpoAutomatizacionesMapeo = document.getElementById('mapeo-automatizaciones');
+// One entry per entity block: its state line, its editor and its diagnostics list.
+var bloquesMapeo = {};
+var conexionMapeo = null;
+
+var ESTADOS_ENTIDAD = { 'no-mapeada': 'Sin mapear', 'no-validado': 'Sin validar', valida: 'Válida', invalida: 'Inválida' };
+
+function textoDeEstado(estado) {
+  return 'Estado: ' + (ESTADOS_ENTIDAD[estado] || String(estado));
+}
+
+function urlMapeo(sufijo) {
+  return '/conexiones/' + encodeURIComponent(String(conexionMapeo)) + sufijo;
+}
+
+// Reads one JSON answer through pedir(); null when there is nothing to show (and says why).
+async function leerMapeo(url, opciones) {
+  var respuesta;
+  try { respuesta = await pedir(url, opciones); } catch (fallaDeRed) {
+    avisoMapeo.textContent = 'No se pudo contactar con la aplicación.';
+    return null;
+  }
+  if (respuesta === null) { return null; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return null; }
+  return { status: respuesta.status, cuerpo: cuerpo };
+}
+
+async function guardarVista(entidad) {
+  var bloque = bloquesMapeo[entidad];
+  var leido = await leerMapeo(urlMapeo('/vistas-canonicas/' + encodeURIComponent(entidad)), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql: bloque.editor.value })
+  });
+  if (leido === null) { return; }
+  if (leido.status === 200 || leido.status === 201) {
+    // DEC-41: replacing a view always resets it to not validated.
+    bloque.estado.textContent = textoDeEstado('no-validado');
+    vaciar(bloque.diagnostico);
+    avisoMapeo.textContent = 'Se guardó la vista de ' + entidad + '. Validá el mapeo para comprobarla.';
+  } else if (leido.status === 400 && leido.cuerpo !== null && Array.isArray(leido.cuerpo.campos)) {
+    avisoMapeo.textContent = 'Revisá estos campos: ' + leido.cuerpo.campos.join(', ') + '.';
+  } else {
+    avisoMapeo.textContent = 'No se pudo guardar la vista (HTTP ' + leido.status + ').';
+  }
+}
+
+// Builds the entity's block the first time and keeps it, so a repaint never loses an edit.
+function bloqueDeEntidad(fila) {
+  var entidad = String(fila.entidad);
+  if (bloquesMapeo[entidad] === undefined) {
+    var bloque = document.createElement('div');
+    var titulo = document.createElement('h3');
+    titulo.textContent = entidad + ' · ' + (fila.obligatoriedad === 'obligatorio' ? 'obligatoria' : 'opcional');
+    var estado = document.createElement('p');
+    var editor = document.createElement('textarea');
+    editor.spellcheck = false;
+    var diagnostico = document.createElement('ul');
+    bloque.appendChild(titulo);
+    bloque.appendChild(estado);
+    bloque.appendChild(editor);
+    bloque.appendChild(botonTenant('Guardar', function () { guardarVista(entidad); }));
+    bloque.appendChild(diagnostico);
+    contenedorEntidades.appendChild(bloque);
+    bloquesMapeo[entidad] = { estado: estado, editor: editor, diagnostico: diagnostico };
+  }
+  return bloquesMapeo[entidad];
+}
+
+function renderizarInforme(informe) {
+  (Array.isArray(informe.entidades) ? informe.entidades : []).forEach(function (fila) {
+    var bloque = bloqueDeEntidad(fila);
+    bloque.estado.textContent = textoDeEstado(fila.estado);
+    vaciar(bloque.diagnostico);
+    var diagnostico = fila.diagnostico;
+    if (diagnostico && diagnostico.sondeo && diagnostico.sondeo.resultado === 'fallo') {
+      var linea = document.createElement('li');
+      linea.textContent = 'La consulta no corrió: ' + String(diagnostico.sondeo.categoria);
+      bloque.diagnostico.appendChild(linea);
+    }
+    (diagnostico && Array.isArray(diagnostico.campos) ? diagnostico.campos : []).forEach(function (campo) {
+      if (campo.veredicto === 'ok') { return; }
+      var item = document.createElement('li');
+      item.textContent = String(campo.campo) + ': ' + String(campo.veredicto) +
+        (campo.columna ? ' · columna ' + String(campo.columna) : '') +
+        (campo.tipoObservado ? ' · tipo ' + String(campo.tipoObservado) : '') +
+        (campo.pista && campo.pista.sugerencia ? ' · probá castear con ' + String(campo.pista.sugerencia) : '');
+      bloque.diagnostico.appendChild(item);
+    });
+    (diagnostico && Array.isArray(diagnostico.columnasSobrantes) ? diagnostico.columnasSobrantes : []).forEach(function (sobrante) {
+      var item = document.createElement('li');
+      item.textContent = 'Columna sobrante: ' + String(sobrante.columna);
+      bloque.diagnostico.appendChild(item);
+    });
+  });
+  vaciar(cuerpoAutomatizacionesMapeo);
+  (Array.isArray(informe.automatizaciones) ? informe.automatizaciones : []).forEach(function (auto) {
+    var fila = document.createElement('tr');
+    celdaTenant(fila, String(auto.automatizacion));
+    celdaTenant(fila, String(auto.estado));
+    celdaTenant(fila, (Array.isArray(auto.motivos) ? auto.motivos : []).map(function (m) {
+      return String(m.entidad) + (m.campo ? '.' + String(m.campo) : '') + ': ' + String(m.motivo);
+    }).join('; '));
+    cuerpoAutomatizacionesMapeo.appendChild(fila);
+  });
+}
+
+async function cargarMapeoDeConexion(id) {
+  conexionMapeo = id;
+  bloquesMapeo = {};
+  vaciar(contenedorEntidades);
+  vaciar(cuerpoAutomatizacionesMapeo);
+  if (id === '') { conexionMapeo = null; avisoMapeo.textContent = 'Elegí una conexión para ver su mapeo.'; return; }
+  var informe = await leerMapeo(urlMapeo('/validacion-mapeo'));
+  if (informe === null || informe.status !== 200 || informe.cuerpo === null) {
+    if (informe !== null) { avisoMapeo.textContent = 'No se pudo leer el mapeo (HTTP ' + informe.status + ').'; }
+    return;
+  }
+  avisoMapeo.textContent = '';
+  renderizarInforme(informe.cuerpo.validacionMapeo || {});
+  var vistas = await leerMapeo(urlMapeo('/vistas-canonicas'));
+  if (vistas === null || vistas.status !== 200 || vistas.cuerpo === null || !Array.isArray(vistas.cuerpo.vistasCanonicas)) { return; }
+  for (var i = 0; i < vistas.cuerpo.vistasCanonicas.length; i++) {
+    var entidad = String(vistas.cuerpo.vistasCanonicas[i].entidad);
+    var vista = await leerMapeo(urlMapeo('/vistas-canonicas/' + encodeURIComponent(entidad)));
+    if (vista !== null && vista.status === 200 && vista.cuerpo !== null && vista.cuerpo.vistaCanonica && bloquesMapeo[entidad]) {
+      // The stored statement is an editor value, never markup.
+      bloquesMapeo[entidad].editor.value = String(vista.cuerpo.vistaCanonica.sql);
+    }
+  }
+}
+
+async function cargarPantallaMapeo() {
+  vaciar(selectorMapeo);
+  bloquesMapeo = {};
+  vaciar(contenedorEntidades);
+  vaciar(cuerpoAutomatizacionesMapeo);
+  conexionMapeo = null;
+  if (tenantActivo === null) { avisoMapeo.textContent = 'Elegí un tenant para mapear sus conexiones.'; return; }
+  var leido = await leerMapeo('/conexiones');
+  if (leido === null || leido.status !== 200 || leido.cuerpo === null || !Array.isArray(leido.cuerpo.conexiones)) { return; }
+  var vacia = document.createElement('option');
+  vacia.value = '';
+  vacia.textContent = leido.cuerpo.conexiones.length === 0 ? 'No hay conexiones' : 'Elegí una conexión';
+  selectorMapeo.appendChild(vacia);
+  leido.cuerpo.conexiones.forEach(function (cx) {
+    var opcion = document.createElement('option');
+    opcion.value = String(cx.id);
+    opcion.textContent = String(cx.nombre);
+    selectorMapeo.appendChild(opcion);
+  });
+  avisoMapeo.textContent = leido.cuerpo.conexiones.length === 0
+    ? 'Registrá una conexión antes de mapear.'
+    : 'Elegí una conexión para ver su mapeo.';
+}
+
+selectorMapeo.addEventListener('change', function () { cargarMapeoDeConexion(selectorMapeo.value); });
+
+document.getElementById('mapeo-validar').addEventListener('click', async function () {
+  if (conexionMapeo === null) { avisoMapeo.textContent = 'Elegí una conexión para validar.'; return; }
+  avisoMapeo.textContent = 'Validando…';
+  var leido = await leerMapeo(urlMapeo('/validacion-mapeo'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  if (leido === null) { return; }
+  if (leido.status !== 200 || leido.cuerpo === null) {
+    avisoMapeo.textContent = 'No se pudo validar (HTTP ' + leido.status + ').';
+    return;
+  }
+  if (leido.cuerpo.resultado === 'fallo') {
+    // A failed session writes nothing (CH-10): the last stored report stays on screen.
+    avisoMapeo.textContent = 'La validación no pudo conectarse: ' + String(leido.cuerpo.fase) + ' · ' +
+      String(leido.cuerpo.categoria) + (leido.cuerpo.codigo ? ' (' + String(leido.cuerpo.codigo) + ')' : '') +
+      '. Se mantiene el último resultado.';
+    return;
+  }
+  avisoMapeo.textContent = 'Validación terminada.';
+  renderizarInforme(leido.cuerpo.validacionMapeo || {});
+});
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'usuarios', 'consultas', 'automatizaciones', 'frescura'];
+var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -3379,6 +3606,7 @@ function mostrarPantalla() {
   if (activa === 'contrato') { cargarPantallaContrato(); }
   if (activa === 'conexiones') { cargarPantallaConexiones(); }
   if (activa === 'agentes') { cargarPantallaAgentes(); }
+  if (activa === 'mapeo') { cargarPantallaMapeo(); }
   if (activa === 'usuarios') { cargarPantallaUsuarios(); }
 }
 window.addEventListener('hashchange', mostrarPantalla);

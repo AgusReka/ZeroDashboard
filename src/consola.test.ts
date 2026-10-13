@@ -206,6 +206,14 @@ const IDS = [
   'nav-contrato',
   'contrato-aviso',
   'contrato-cuerpo',
+  // CH-30d: the Mapeo y validación screen.
+  'pantalla-mapeo',
+  'nav-mapeo',
+  'mapeo-conexion',
+  'mapeo-validar',
+  'mapeo-aviso',
+  'mapeo-entidades',
+  'mapeo-automatizaciones',
   'pantalla-consultas',
   'pantalla-automatizaciones',
   'pantalla-frescura',
@@ -280,7 +288,7 @@ const IDS = [
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -541,7 +549,7 @@ describe('the console document, served by the real route', () => {
     for (const id of IDS) {
       // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
       // auto-frecuencia is a select from PR3.
-      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via'].includes(id) ? 'select' : 'div');
+      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion'].includes(id) ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -2822,7 +2830,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'usuarios', 'consultas', 'automatizaciones', 'frescura'] as const;
+  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -3423,6 +3431,147 @@ describe('the console document, served by the real route', () => {
     assert.match(filas[1], /id.*identificador.*Sí.*stock-fisico, reporte-diario/);
     assert.match(filas[2], /sku.*texto.*No/);
     assert.match(filas[3], /insumo.*opcional/);
+  });
+
+  // ---- CH-30d (DEC-169, M2–M4): the Mapeo y validación screen -----------------------------
+
+  const ENTIDADES_CONTRATO = ['producto', 'pedido', 'item_pedido', 'insumo', 'receta_componente'];
+  const SQL_PRODUCTO = 'SELECT id, nombre, stock AS "stockDisponible", <b>activo</b> FROM tienda.productos';
+
+  /** A stored report: producto invalid (a type mismatch with a cast hint), the rest unmapped. */
+  function informeDePrueba(): Record<string, unknown> {
+    return {
+      entidades: ENTIDADES_CONTRATO.map((entidad, i) => i === 0
+        ? {
+            entidad, obligatoriedad: 'obligatorio', estado: 'invalida', validadaEn: '2026-10-12T10:00:00.000Z',
+            diagnostico: {
+              version: 1, sondeo: { resultado: 'ok' }, columnasSobrantes: [],
+              campos: [{ campo: 'stockDisponible', tipoEsperado: 'numero', columna: 'stockDisponible', veredicto: 'tipo-incorrecto', oid: 25, tipoPostgres: 'text', tipoObservado: 'texto', pista: { accion: 'castear-en-la-vista', sugerencia: '::numeric' } }],
+            },
+          }
+        : { entidad, obligatoriedad: i < 3 ? 'obligatorio' : 'opcional', estado: 'no-mapeada', validadaEn: null, diagnostico: null }),
+      automatizaciones: [
+        { automatizacion: 'stock-fisico', estado: 'bloqueada', motivos: [{ entidad: 'producto', campo: 'stockDisponible', motivo: 'tipo-incorrecto' }] },
+        { automatizacion: 'stock-producible', estado: 'inaplicable', motivos: [{ entidad: 'insumo', campo: null, motivo: 'entidad-no-mapeada' }] },
+        { automatizacion: 'reporte-diario', estado: 'bloqueada', motivos: [{ entidad: 'pedido', campo: null, motivo: 'entidad-no-mapeada' }] },
+      ],
+    };
+  }
+
+  /** Selects the tenant, opens Mapeo, and chooses connection c-1 with the stored report. */
+  async function abrirMapeo(): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CONEXION_LISTADA], truncado: false } });
+    irA(escenario, '#mapeo');
+    await asentarVarias();
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { validacionMapeo: informeDePrueba() } },
+      { status: 200, cuerpo: { vistasCanonicas: [{ id: 'v-1', entidad: 'producto', creadaEn: '2026-10-01T10:00:00.000Z', actualizadaEn: '2026-10-01T10:00:00.000Z' }] } },
+      { status: 200, cuerpo: { vistaCanonica: { id: 'v-1', entidad: 'producto', sql: SQL_PRODUCTO } } },
+    );
+    const selector = nodo(escenario, 'mapeo-conexion');
+    selector.value = 'c-1';
+    selector.disparar('change');
+    await asentarVarias();
+    return escenario;
+  }
+
+  function bloqueEntidad(escenario: Escenario, entidad: string): Nodo {
+    const bloque = nodo(escenario, 'mapeo-entidades').hijos.find((h) => h.hijos.some((n) => n.tagName === 'h3' && n.textContent.startsWith(entidad + ' ')));
+    assert.ok(bloque, `no block for ${entidad}`);
+    return bloque;
+  }
+
+  const editorDe = (bloque: Nodo): Nodo => buscar(bloque, (n) => n.tagName === 'textarea')[0];
+
+  test('CH-30d Mapeo y validación sits between Agentes and Usuarios del panel', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="nav-agentes"') < marcado.indexOf('id="nav-mapeo"'));
+    assert.ok(marcado.indexOf('id="nav-mapeo"') < marcado.indexOf('id="nav-usuarios"'));
+  });
+
+  test('CH-30d with no tenant Mapeo asks for one, and with no connection it asks for one too', async () => {
+    const sinTenant = await arrancar();
+    const antes = sinTenant.peticiones.length;
+    irA(sinTenant, '#mapeo');
+    await asentarVarias();
+    assert.equal(sinTenant.peticiones.length, antes);
+    assert.equal(nodo(sinTenant, 'mapeo-aviso').textContent, 'Elegí un tenant para mapear sus conexiones.');
+
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CONEXION_LISTADA], truncado: false } });
+    irA(escenario, '#mapeo');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones');
+    assert.deepEqual(nodo(escenario, 'mapeo-conexion').options.map((o) => o.value), ['', 'c-1']);
+    assert.equal(nodo(escenario, 'mapeo-aviso').textContent, 'Elegí una conexión para ver su mapeo.');
+  });
+
+  test('CH-30d choosing a connection shows the five entities with their state and stored SQL as text', async () => {
+    const escenario = await abrirMapeo();
+    const urls = escenario.peticiones.slice(-3).map((p) => p.url);
+    assert.deepEqual(urls, ['/conexiones/c-1/validacion-mapeo', '/conexiones/c-1/vistas-canonicas', '/conexiones/c-1/vistas-canonicas/producto']);
+    assert.equal(nodo(escenario, 'mapeo-entidades').hijos.length, 5);
+    const producto = bloqueEntidad(escenario, 'producto');
+    assert.match(producto.textContent, /obligatoria/);
+    assert.match(producto.textContent, /Inválida/);
+    assert.equal(editorDe(producto).value, SQL_PRODUCTO, 'the statement is the editor value, never markup');
+    assert.match(bloqueEntidad(escenario, 'pedido').textContent, /Sin mapear/);
+    assert.match(bloqueEntidad(escenario, 'insumo').textContent, /opcional/);
+  });
+
+  test('CH-30d an invalid field shows its verdict, column, observed type and the cast hint', async () => {
+    const escenario = await abrirMapeo();
+    const texto = bloqueEntidad(escenario, 'producto').textContent;
+    for (const parte of ['stockDisponible', 'tipo-incorrecto', 'texto', '::numeric']) {
+      assert.ok(texto.includes(parte), parte);
+    }
+  });
+
+  test('CH-30d the automations show their state and every reason', async () => {
+    const escenario = await abrirMapeo();
+    const filas = nodo(escenario, 'mapeo-automatizaciones').hijos.map((f) => f.textContent);
+    assert.equal(filas.length, 3);
+    assert.match(filas[0], /stock-fisico.*bloqueada.*producto\.stockDisponible: tipo-incorrecto/);
+    assert.match(filas[1], /stock-producible.*inaplicable.*insumo: entidad-no-mapeada/);
+  });
+
+  test('CH-30d Guardar sends the entity SQL and shows it as not validated', async () => {
+    const escenario = await abrirMapeo();
+    const producto = bloqueEntidad(escenario, 'producto');
+    editorDe(producto).value = 'SELECT 1 AS id';
+    escenario.respuestas.push({ status: 200, cuerpo: { vistaCanonica: { id: 'v-1', entidad: 'producto', sql: 'SELECT 1 AS id' } } });
+    botonesCon(producto, 'Guardar')[0].disparar('click');
+    await asentarVarias();
+    const ultima = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(ultima.url, '/conexiones/c-1/vistas-canonicas/producto');
+    assert.deepEqual(ultima.cuerpo, { sql: 'SELECT 1 AS id' });
+    assert.match(producto.textContent, /Sin validar/);
+  });
+
+  test('CH-30d a session failure while validating is shown apart and keeps the last report', async () => {
+    const escenario = await abrirMapeo();
+    escenario.respuestas.push({ status: 200, cuerpo: { resultado: 'fallo', fase: 'conexion', categoria: 'credenciales-invalidas', codigo: '28P01', duracionMs: 20 } });
+    nodo(escenario, 'mapeo-validar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones/c-1/validacion-mapeo');
+    assert.match(nodo(escenario, 'mapeo-aviso').textContent, /credenciales-invalidas/);
+    assert.match(bloqueEntidad(escenario, 'producto').textContent, /Inválida/);
+    assert.equal(editorDe(bloqueEntidad(escenario, 'producto')).value, SQL_PRODUCTO);
+  });
+
+  test('CH-30d a successful validation repaints the states and keeps what is in the editors', async () => {
+    const escenario = await abrirMapeo();
+    editorDe(bloqueEntidad(escenario, 'producto')).value = 'SELECT 2 AS id';
+    const valido = informeDePrueba();
+    (valido.entidades as Array<Record<string, unknown>>)[0] = { entidad: 'producto', obligatoriedad: 'obligatorio', estado: 'valida', validadaEn: '2026-10-13T10:00:00.000Z', diagnostico: null };
+    escenario.respuestas.push({ status: 200, cuerpo: { resultado: 'ok', validacionMapeo: valido } });
+    nodo(escenario, 'mapeo-validar').disparar('click');
+    await asentarVarias();
+    assert.match(bloqueEntidad(escenario, 'producto').textContent, /Válida/);
+    assert.equal(editorDe(bloqueEntidad(escenario, 'producto')).value, 'SELECT 2 AS id');
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----
