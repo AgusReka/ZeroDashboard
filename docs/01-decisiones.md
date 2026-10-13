@@ -2973,6 +2973,60 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-164 — CH-30: la consola sigue siendo un solo documento, con navegación por `#`
+
+**Contexto.** La consola creció change a change como una sola página larga: el resultado de una consulta aparece al final, debajo de Automatizaciones y Frescura, y varias tareas que la API ya resuelve no tienen pantalla. La guía de diseño de la consola (`.claude/skills/zerodashboard-design/guidelines/consola.md`) propone navegación lateral y una pantalla por vez. Queda por decidir cómo se sirven esas pantallas.
+
+**Opciones.** (a) Un solo documento en `/consola`, con navegación lateral y una sección visible por vez según `location.hash`. (b) Una ruta por pantalla (`/consola/consultas`, `/consola/conexiones`…) con un layout compartido. (c) Archivos HTML y JS estáticos bajo `public/`, como los estilos (DEC-124).
+
+**Decisión.** (a). Los ids existentes se mueven, no se renombran: son el contrato con el script, los tests y el smoke.
+
+**Por qué.** Es el camino incremental que propone la guía: cada paso entra sin romper los demás, el arnés de tests y el smoke siguen funcionando sobre un documento. (b) obliga a partir el script y el arnés en varios documentos; (c) es el cambio más grande (exenciones del guard, la guardia G3' y todos los tests de la consola).
+
+**Se resigna.** El string de `src/consola.ts` sigue creciendo con cada pantalla nueva. Partirlo queda como mejora posterior si se vuelve inmanejable.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-165 — CH-30: navegación de la guía de diseño, más "Usuarios del panel"
+
+**Contexto.** La guía de diseño define la navegación de la consola. Es anterior a CH-28, que creó la gestión de los usuarios del panel sin pantalla.
+
+**Opciones.** (a) La navegación de la guía, sumando "Usuarios del panel". (b) La de la guía sin agregados.
+
+**Decisión.** (a). Global: Tenants, Plantillas, Contrato canónico. Del tenant activo, en "Puesta en marcha": Conexiones y agentes, Mapeo y validación, Usuarios del panel, Tiempos de alta; en "Trabajo diario": Consultas, Automatizaciones, Frescura de datos, Auditoría. El botón de tema claro u oscuro del mockup no se implementa: los tokens ya siguen la preferencia del sistema. La conectividad de los agentes (CH-19d1) no se muestra hasta que exista.
+
+**Por qué.** Dar acceso al panel es parte de la puesta en marcha de un tenant; sin el ítem, la API de CH-28 quedaría sin pantalla.
+
+**Se resigna.** "Usuarios del panel" no tiene diseño propio en la guía: se arma con los componentes existentes.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-166 — CH-30: el rediseño se entrega en cinco changes
+
+**Contexto.** El rediseño completo no entra en un change: son el esqueleto y diez pantallas.
+
+**Opciones.** (a) Cinco cortes: 30a esqueleto y pantallas existentes; 30b Tenants y Conexiones; 30c Agentes y Usuarios del panel; 30d Mapeo y validación, Plantillas y Contrato; 30e Auditoría y Tiempos de alta. (b) Tres cortes más grandes.
+
+**Decisión.** (a), en ese orden. CH-30a no agrega pantallas: arma el esqueleto, la navegación por `#`, los estados de la barra de tenant (ningún tenant, dado de baja) y lleva el resultado de la consulta junto al botón Ejecutar, con las secciones que ya existen.
+
+**Por qué.** Cada corte entra solo y se revisa en PRs chicos; (b) deja changes de 1.500 líneas o más.
+
+**Se resigna.** Cinco ciclos de planificación, verificación y archivo en lugar de tres.
+
+**Decidido por:** el usuario, 2026-10-11. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

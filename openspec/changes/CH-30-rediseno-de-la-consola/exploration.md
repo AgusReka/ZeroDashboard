@@ -1,6 +1,6 @@
 # Exploration: CH-30 — Console redesign and missing admin screens (proposed 2026-10-09)
 
-Status: **proposed**, not started. Store: openspec. This exploration decides nothing: the architecture decisions below are the owner's (`AGENTS.md`) and must be registered in `docs/01-decisiones.md` before any code.
+Status: **decided** (2026-10-11). Store: openspec. Registered as DEC-164 to DEC-166: (1) one document with `#` navigation, ids moved and never renamed; (2) the design guide's navigation plus "Usuarios del panel"; (3) resolved by CH-29 (merged): credential screens may proceed; (4) five changes, CH-30a to CH-30e. The design output exists: `.claude/skills/zerodashboard-design/guidelines/consola.md`. This folder stays as the umbrella exploration; each cut gets its own change folder.
 
 ## Why
 
@@ -44,4 +44,4 @@ Not estimated until decision 1 and the design output exist. Each cut should aim 
 
 ## Next
 
-Run the brief in Claude Design, decide 1 to 4, register them as DEC, then propose, spec, design and tasks for CH-30a first.
+Decided. CH-30a is planned in `openspec/changes/CH-30a-esqueleto-consola/`.
