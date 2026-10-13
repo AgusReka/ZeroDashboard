@@ -551,7 +551,18 @@ describe(
         assert.ok(!respuesta.body.includes(duenio.conexionId));
         assert.ok(!respuesta.body.includes(nombreDuenio), `${llamante.nombre} saw ${nombreDuenio}`);
         assert.ok(!respuesta.body.includes(duenio.tenantId));
-        assert.ok(!respuesta.body.includes(objetivo.password));
+        // CH-30b (DEC-167): the listing now carries `motor`, whose value `postgres` can equal
+        // a development database password, so the credential is looked for in every other
+        // field's value instead of anywhere in the body; `credencial` is never a key.
+        const filas = (respuesta.json() as { conexiones: Record<string, unknown>[] }).conexiones;
+        for (const fila of filas) {
+          assert.ok(!('credencial' in fila));
+          for (const [campo, valor] of Object.entries(fila)) {
+            if (campo !== 'motor') {
+              assert.ok(!String(valor).includes(objetivo.password), `${campo} carries the credential`);
+            }
+          }
+        }
       }
     });
 

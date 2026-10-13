@@ -539,7 +539,7 @@ describe(
       credencial,
     });
 
-    test("C1 the listing has exactly the tenant's rows, id and nombre only, by nombre then id", async () => {
+    test("C1 the listing has exactly the tenant's rows, with the public fields only, by nombre then id", async () => {
       const tenantId = await tenantListado('C1');
       const secreto = `clave-del-listado-ch21c-${Date.now()}`;
       const sobre = cifrarCredencial(secreto);
@@ -550,18 +550,20 @@ describe(
       const respuesta = await listar(tenantId);
       assert.equal(respuesta.statusCode, 200, respuesta.body);
       const cuerpo = respuesta.json() as { conexiones: Record<string, unknown>[]; truncado: boolean };
-      assert.deepEqual(cuerpo, {
-        conexiones: [
-          { id: alfa.id, nombre: 'Replica Alfa' },
-          { id: beta.id, nombre: 'Replica Beta' },
-        ],
-        truncado: false,
-      });
+      assert.equal(cuerpo.truncado, false);
+      assert.deepEqual(cuerpo.conexiones.map((c) => [c.id, c.nombre]), [
+        [alfa.id, 'Replica Alfa'],
+        [beta.id, 'Replica Beta'],
+      ]);
+      // CH-30b (DEC-167): exactly the public fields the registration answers, for the
+      // console's Conexiones screen; never the credential.
       for (const fila of cuerpo.conexiones) {
-        assert.deepEqual(Object.keys(fila), ['id', 'nombre']);
+        assert.deepEqual(Object.keys(fila).sort(), [
+          'actualizadaEn', 'agenteId', 'baseDeDatos', 'creadaEn', 'host', 'id', 'motor', 'nombre', 'puerto', 'soloLectura', 'usuarioDb',
+        ]);
       }
-      // Rules 5 and 7: no credential key, value or envelope, and no other column either.
-      for (const fuga of ['credencial', secreto, sobre, 'host-del-listado-ch21c.invalid', tenantId]) {
+      // Rules 5 and 7: no credential key, value or envelope, and no tenant id.
+      for (const fuga of ['credencial', secreto, sobre, tenantId]) {
         assert.ok(!respuesta.body.includes(fuga), `the listing leaked ${fuga === secreto ? 'the secret' : fuga}`);
       }
     });

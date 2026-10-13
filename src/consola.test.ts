@@ -153,6 +153,22 @@ const IDS = [
   'tenant-nombre',
   'tenant-aviso',
   'tenants-cuerpo',
+  // CH-30b: the Conexiones screen, its side panel and its controls.
+  'pantalla-conexiones',
+  'nav-conexiones',
+  'conexion-nueva',
+  'conexiones-aviso',
+  'conexiones-cuerpo',
+  'conexion-panel',
+  'conexion-alta',
+  'cx-nombre',
+  'cx-host',
+  'cx-puerto',
+  'cx-base',
+  'cx-usuario',
+  'cx-clave',
+  'cx-cerrar',
+  'cx-resultado',
   'pantalla-consultas',
   'pantalla-automatizaciones',
   'pantalla-frescura',
@@ -227,7 +243,7 @@ const IDS = [
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -2769,7 +2785,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'consultas', 'automatizaciones', 'frescura'] as const;
+  const PANTALLAS = ['tenants', 'conexiones', 'consultas', 'automatizaciones', 'frescura'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -2957,6 +2973,101 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Ningún tenant seleccionado');
     assert.match(nodo(escenario, 'banner').textContent, /Diste de baja el tenant activo/);
     assert.match(filaTenant(escenario, 'Food Store').textContent, /Dado de baja/);
+  });
+
+  // ---- CH-30b (DEC-167): the Conexiones screen -------------------------------------------
+
+  const CONEXION_LISTADA = {
+    id: 'c-1', nombre: 'Réplica principal', motor: 'postgres', host: 'db.cliente.test', puerto: 5432,
+    baseDeDatos: 'tienda', usuarioDb: 'lector', soloLectura: true, agenteId: null, creadaEn: '2026-10-01T10:00:00.000Z',
+  };
+
+  /** Selects the tenant, then opens Conexiones with `conexiones` queued as its listing. */
+  async function abrirConexiones(conexiones: unknown[] = [CONEXION_LISTADA]): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones, truncado: false } });
+    irA(escenario, '#conexiones');
+    await asentarVarias();
+    return escenario;
+  }
+
+  /** Every text the page shows: every guarded node and everything the script built under it. */
+  function textoDeLaPagina(escenario: Escenario): string {
+    return [...escenario.nodos.values()].map((n) => n.textContent).join(' | ');
+  }
+
+  test('CH-30b Puesta en marcha with Conexiones sits between Tenants and the daily work', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="nav-tenants"') < marcado.indexOf('id="nav-conexiones"'));
+    assert.ok(marcado.indexOf('id="nav-conexiones"') < marcado.indexOf('id="nav-consultas"'));
+    assert.match(marcado, /<aside id="conexion-panel" class="zd-drawer"[^>]*hidden/);
+    assert.match(marcado, /<input id="cx-clave"[^>]*type="password"/);
+  });
+
+  test('CH-30b with no tenant, Conexiones asks for one and sends nothing', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    irA(escenario, '#conexiones');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'conexiones-aviso').textContent, 'Elegí un tenant para ver sus conexiones.');
+  });
+
+  test('CH-30b Conexiones lists the tenant connections as text, each with Probar', async () => {
+    const escenario = await abrirConexiones();
+    const pedido = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(pedido.url, '/conexiones');
+    assert.equal(pedido.tenant, 't-1');
+    const fila = nodo(escenario, 'conexiones-cuerpo').hijos[0];
+    for (const texto of ['Réplica principal', 'postgres', 'db.cliente.test:5432', 'tienda', 'lector']) {
+      assert.ok(fila.textContent.includes(texto), texto);
+    }
+    assert.equal(botonesCon(fila, 'Probar').length, 1);
+  });
+
+  test('CH-30b Guardar y probar registers, empties the password, tests and reloads the list', async () => {
+    const escenario = await abrirConexiones([]);
+    nodo(escenario, 'conexion-nueva').disparar('click');
+    assert.equal(nodo(escenario, 'conexion-panel').hidden, false);
+    nodo(escenario, 'cx-nombre').value = 'Réplica nueva';
+    nodo(escenario, 'cx-host').value = 'db.nueva.test';
+    nodo(escenario, 'cx-puerto').value = '6543';
+    nodo(escenario, 'cx-base').value = 'tienda';
+    nodo(escenario, 'cx-usuario').value = 'lector';
+    nodo(escenario, 'cx-clave').value = 'clave-secreta-del-cliente';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { conexion: { ...CONEXION_LISTADA, id: 'c-9', nombre: 'Réplica nueva' } } },
+      { status: 200, cuerpo: { resultado: 'ok', categoria: null, codigo: null, host: 'db.nueva.test', puerto: 6543, duracionMs: 12 } },
+      { status: 200, cuerpo: { conexiones: [{ ...CONEXION_LISTADA, id: 'c-9', nombre: 'Réplica nueva' }], truncado: false } },
+    );
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    const [alta, prueba, lista] = escenario.peticiones.slice(-3);
+    assert.equal(alta.url, '/conexiones');
+    assert.deepEqual(alta.cuerpo, {
+      nombre: 'Réplica nueva', motor: 'postgres', host: 'db.nueva.test', puerto: 6543,
+      baseDeDatos: 'tienda', usuarioDb: 'lector', credencial: 'clave-secreta-del-cliente',
+    });
+    assert.equal(prueba.url, '/conexiones/c-9/prueba');
+    assert.equal(lista.url, '/conexiones');
+    assert.equal(nodo(escenario, 'cx-clave').value, '');
+    assert.match(nodo(escenario, 'cx-resultado').textContent, /OK/);
+    assert.ok(!textoDeLaPagina(escenario).includes('clave-secreta-del-cliente'));
+  });
+
+  test('CH-30b Probar shows a failure with its category and code next to the row', async () => {
+    const escenario = await abrirConexiones();
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: { resultado: 'fallo', categoria: 'credenciales-invalidas', codigo: '28P01', host: 'db.cliente.test', puerto: 5432, duracionMs: 30 },
+    });
+    const fila = nodo(escenario, 'conexiones-cuerpo').hijos[0];
+    botonesCon(fila, 'Probar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones/c-1/prueba');
+    assert.match(fila.textContent, /credenciales-invalidas/);
+    assert.match(fila.textContent, /28P01/);
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----
