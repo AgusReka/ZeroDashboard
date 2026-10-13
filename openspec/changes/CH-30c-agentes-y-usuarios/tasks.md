@@ -16,8 +16,8 @@ Branch base: `master` (after CH-30b). Strict TDD: the test cases first, against 
 - [x] 1.2 GREEN: markup, `mostrarSecreto`/`olvidarSecretos`, the Agentes script, `cx-via`.
 
 ## PR2 — Usuarios del panel
-- [ ] 2.1 RED: list, create with the password once, 409, reset, deactivate confirmation, reactivate, clearing on leave and on tenant switch.
-- [ ] 2.2 GREEN: markup and script.
+- [x] 2.1 RED (13 failures): list, create with the password once, 409, reset, deactivate confirmation, reactivate, clearing on leave and on tenant switch.
+- [x] 2.2 GREEN: markup and script.
 - [ ] 2.3 Manual visual pass of both screens at 360 px and 1280 px, light and dark.
 
 ## Close
