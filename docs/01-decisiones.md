@@ -3033,7 +3033,7 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 **Opciones.** (a) Mostrar lo que existe: ampliar `GET /conexiones` con los campos públicos de la conexión, y mostrar el resultado de una prueba solo junto al botón, en el momento; sin fecha de baja, conteos ni última prueba guardada. (b) Además, una migración para guardar la última prueba y la fecha de baja, y conteos en el listado de tenants.
 
-**Decisión.** (a). `GET /conexiones` responde los mismos campos públicos que el alta (`ConexionPublica`: nombre, motor, host, puerto, base, usuario, solo lectura, agente, alta), nunca la credencial.
+**Decisión.** (a). `GET /conexiones` responde los mismos campos públicos que el alta (`ConexionPublica`: nombre, motor, host, puerto, base, usuario, solo lectura, agente, alta y última modificación), nunca la credencial.
 
 **Por qué.** Cubre la puesta en marcha sin migraciones ni cambios de modelo. (b) casi duplica el change por datos que no bloquean el recorrido.
 

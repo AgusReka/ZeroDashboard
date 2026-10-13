@@ -31,15 +31,6 @@ export const ConexionPublica = {
   actualizadaEn: true,
 } as const;
 
-/**
- * CH-21c (DEC-132): the listing projection for the console's connection picker. Only `id`
- * and `nombre`: the picker needs nothing else, so host, user, engine and the agent binding
- * stay out as well (rule 5), and `credencial` is never fetched (rule 7).
- */
-export const ConexionListada = {
-  id: true,
-  nombre: true,
-} as const;
 
 interface RegistroConexionBody {
   nombre: string;
@@ -250,7 +241,9 @@ export function registerConexionRoutes(
    */
   app.get('/conexiones', async (_request, reply) => {
     const filas = await prisma.conexion.findMany({
-      select: ConexionListada,
+      // CH-30b (DEC-167): the public fields, for the console's Conexiones screen; the
+      // automation picker of CH-21c still reads only id and nombre. Never `credencial`.
+      select: ConexionPublica,
       orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
       take: LIMITE_LISTADO + 1,
     });

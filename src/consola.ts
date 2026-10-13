@@ -176,6 +176,8 @@ function documentoConsola(nombreOperador: string): string {
     <a id="nav-tenants" class="zd-sidenav__item" href="#tenants"><span>Tenants</span></a>
   </div>
   <div class="zd-sidenav__scope">
+    <span class="zd-sidenav__subheading">Puesta en marcha</span>
+    <a id="nav-conexiones" class="zd-sidenav__item" href="#conexiones"><span>Conexiones</span></a>
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
     <a id="nav-automatizaciones" class="zd-sidenav__item" href="#automatizaciones"><span>Automatizaciones</span></a>
@@ -212,6 +214,48 @@ function documentoConsola(nombreOperador: string): string {
     <tbody id="tenants-cuerpo"></tbody>
   </table>
 </div>
+</section>
+
+<!--
+  CH-30b (DEC-167, screen C-05): the active tenant's connections. Registering opens a side
+  panel; "Guardar y probar" registers and tests at once. The password is sent once and never
+  written back to the page: the field is emptied right after reading it.
+-->
+<section id="pantalla-conexiones" aria-labelledby="titulo-conexiones" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-conexiones" class="zd-h1">Conexiones</h1>
+    <p class="zd-pagehead__desc">Cómo llega la consola a la réplica del tenant. Probá cada conexión antes de usarla.</p>
+  </div>
+  <div class="zd-pagehead__actions">
+    <button id="conexion-nueva" class="zd-btn zd-btn--primary" type="button">Nueva conexión</button>
+  </div>
+</header>
+<p id="conexiones-aviso" class="ayuda" role="status"></p>
+<div class="zd-table-wrap zd-table-scroll">
+  <table class="zd-table">
+    <thead><tr><th>Nombre</th><th>Motor</th><th>Servidor</th><th>Base</th><th>Usuario</th><th>Prueba</th></tr></thead>
+    <tbody id="conexiones-cuerpo"></tbody>
+  </table>
+</div>
+<aside id="conexion-panel" class="zd-drawer" aria-labelledby="titulo-conexion-nueva" hidden>
+  <div class="zd-drawer__head"><h2 id="titulo-conexion-nueva" class="zd-h2">Nueva conexión</h2></div>
+  <form id="conexion-alta" class="zd-drawer__body">
+    <div><label for="cx-nombre" class="zd-label">Nombre</label><input id="cx-nombre" class="zd-input" type="text" autocomplete="off" required></div>
+    <div><label for="cx-host" class="zd-label">Servidor</label><input id="cx-host" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+    <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required></div>
+    <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+    <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+    <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required></div>
+    <p class="ayuda">La contraseña se guarda cifrada y no se vuelve a mostrar.</p>
+    <p id="cx-resultado" class="ayuda" role="status"></p>
+    <div class="zd-form-actions">
+      <button class="zd-btn zd-btn--primary" type="submit">Guardar y probar</button>
+      <button id="cx-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar</button>
+    </div>
+  </form>
+</aside>
 </section>
 
 <section id="pantalla-consultas" aria-labelledby="titulo-consultas">
@@ -2464,6 +2508,8 @@ function cambiarTenant(id) {
     listarGuardadas();
     cargarAutomatizaciones();
   }
+  panelConexion.hidden = true;
+  if (!document.getElementById('pantalla-conexiones').hidden) { cargarPantallaConexiones(); }
 }
 
 selectorTenant.addEventListener('change', function () {
@@ -2705,10 +2751,140 @@ formularioTenant.addEventListener('submit', async function (evento) {
   await cargarTenants();
 });
 
+// ---- CH-30b (DEC-167, screen C-05): Conexiones -------------------------------------------
+
+var avisoConexiones = document.getElementById('conexiones-aviso');
+var cuerpoConexiones = document.getElementById('conexiones-cuerpo');
+var panelConexion = document.getElementById('conexion-panel');
+var formularioConexion = document.getElementById('conexion-alta');
+var resultadoConexion = document.getElementById('cx-resultado');
+
+// The verdict of a connection test, as one line of text.
+function textoDePrueba(cuerpo) {
+  if (cuerpo === null || typeof cuerpo !== 'object') { return 'No se pudo leer el resultado de la prueba.'; }
+  if (cuerpo.resultado === 'ok') { return 'OK · ' + cuerpo.duracionMs + ' ms'; }
+  return 'Falló · ' + String(cuerpo.categoria) + (cuerpo.codigo ? ' (' + String(cuerpo.codigo) + ')' : '');
+}
+
+async function probarConexionPorId(id) {
+  var respuesta;
+  try {
+    respuesta = await pedir('/conexiones/' + encodeURIComponent(id) + '/prueba', { method: 'POST' });
+  } catch (fallaDeRed) {
+    return 'No se pudo contactar con la aplicación.';
+  }
+  if (respuesta === null) { return 'Elegí un tenant.'; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return ''; }
+  if (respuesta.status !== 200) { return 'La prueba no se pudo hacer (HTTP ' + respuesta.status + ').'; }
+  return textoDePrueba(cuerpo);
+}
+
+function renderizarPantallaConexiones(conexiones) {
+  vaciar(cuerpoConexiones);
+  conexiones.forEach(function (cx) {
+    var fila = document.createElement('tr');
+    celdaTenant(fila, String(cx.nombre));
+    celdaTenant(fila, String(cx.motor));
+    celdaTenant(fila, String(cx.host) + ':' + String(cx.puerto));
+    celdaTenant(fila, String(cx.baseDeDatos));
+    celdaTenant(fila, String(cx.usuarioDb));
+    var prueba = celdaTenant(fila, '');
+    var resultado = document.createElement('span');
+    prueba.appendChild(botonTenant('Probar', async function () {
+      resultado.textContent = 'Probando…';
+      resultado.textContent = await probarConexionPorId(String(cx.id));
+    }));
+    prueba.appendChild(resultado);
+    cuerpoConexiones.appendChild(fila);
+  });
+  avisoConexiones.textContent = conexiones.length === 0
+    ? 'Todavía no hay conexiones. Registrá la primera: es el primer paso de la puesta en marcha.'
+    : '';
+}
+
+async function cargarPantallaConexiones() {
+  if (tenantActivo === null) {
+    vaciar(cuerpoConexiones);
+    avisoConexiones.textContent = 'Elegí un tenant para ver sus conexiones.';
+    return;
+  }
+  var respuesta;
+  try {
+    respuesta = await pedir('/conexiones');
+  } catch (fallaDeRed) {
+    avisoConexiones.textContent = 'No se pudo contactar con la aplicación.';
+    return;
+  }
+  if (respuesta === null) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.conexiones)) {
+    avisoConexiones.textContent = 'No se pudo leer la lista de conexiones (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  renderizarPantallaConexiones(cuerpo.conexiones);
+}
+
+document.getElementById('conexion-nueva').addEventListener('click', function () {
+  resultadoConexion.textContent = '';
+  panelConexion.hidden = false;
+});
+
+document.getElementById('cx-cerrar').addEventListener('click', function () {
+  panelConexion.hidden = true;
+});
+
+// "Guardar y probar": the password is read once into the request and the field emptied at
+// once, so it never stays in the page; it is never written back (rule 7).
+formularioConexion.addEventListener('submit', async function (evento) {
+  evento.preventDefault();
+  var campoClave = document.getElementById('cx-clave');
+  var cuerpoAlta = {
+    nombre: document.getElementById('cx-nombre').value.trim(),
+    motor: 'postgres',
+    host: document.getElementById('cx-host').value.trim(),
+    puerto: parseInt(document.getElementById('cx-puerto').value, 10),
+    baseDeDatos: document.getElementById('cx-base').value.trim(),
+    usuarioDb: document.getElementById('cx-usuario').value.trim(),
+    credencial: campoClave.value
+  };
+  campoClave.value = '';
+  resultadoConexion.textContent = 'Guardando…';
+  var respuesta;
+  try {
+    respuesta = await pedir('/conexiones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpoAlta)
+    });
+  } catch (fallaDeRed) {
+    resultadoConexion.textContent = 'No se pudo contactar con la aplicación.';
+    return;
+  }
+  if (respuesta === null) { resultadoConexion.textContent = 'Elegí un tenant.'; return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (respuesta.status === 400 && cuerpo !== null && Array.isArray(cuerpo.campos)) {
+    resultadoConexion.textContent = 'Revisá estos campos: ' + cuerpo.campos.join(', ') + '. Volvé a escribir la contraseña.';
+    return;
+  }
+  if (respuesta.status !== 201 || cuerpo === null || cuerpo.conexion === undefined) {
+    resultadoConexion.textContent = 'No se pudo registrar la conexión (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  resultadoConexion.textContent = 'Guardada. Probando…';
+  resultadoConexion.textContent = 'Guardada. Prueba: ' + await probarConexionPorId(String(cuerpo.conexion.id));
+  await cargarPantallaConexiones();
+});
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'consultas', 'automatizaciones', 'frescura'];
+var PANTALLAS = ['tenants', 'conexiones', 'consultas', 'automatizaciones', 'frescura'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -2719,6 +2895,7 @@ function mostrarPantalla() {
   });
   // CH-30b: a screen that reads its own data loads it when it is shown.
   if (activa === 'tenants') { cargarTenantsPantalla(); }
+  if (activa === 'conexiones') { cargarPantallaConexiones(); }
 }
 window.addEventListener('hashchange', mostrarPantalla);
 mostrarPantalla();

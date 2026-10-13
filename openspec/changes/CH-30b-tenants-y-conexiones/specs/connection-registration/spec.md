@@ -7,7 +7,7 @@ The console's Conexiones screen lists a tenant's connections with their public f
 
 ### Requirement: Listing the Active Tenant's Connections (DEC-132)
 
-The system SHALL expose `GET /conexiones`, scoped to the active tenant, returning only the tenant's connections, each with exactly the public connection fields the registration answers: `id`, `nombre`, `motor`, `host`, `puerto`, `baseDeDatos`, `usuarioDb`, `soloLectura`, `agenteId` and `creadaEn`. The route MUST require `X-Tenant-Id` and MUST NOT be added to the tenant-context exemption allowlist. The result SHALL be capped to a fixed maximum number of rows, with cap value and ordering fixed by design. No other field, including `credencial`, MUST appear in the response.
+The system SHALL expose `GET /conexiones`, scoped to the active tenant, returning only the tenant's connections, each with exactly the public connection fields the registration answers: `id`, `nombre`, `motor`, `host`, `puerto`, `baseDeDatos`, `usuarioDb`, `soloLectura`, `agenteId`, `creadaEn` and `actualizadaEn`. The route MUST require `X-Tenant-Id` and MUST NOT be added to the tenant-context exemption allowlist. The result SHALL be capped to a fixed maximum number of rows, with cap value and ordering fixed by design. No other field, including `credencial`, MUST appear in the response.
 (Previously: each entry had exactly `id` and `nombre`.)
 
 #### Scenario: Listing own connections
