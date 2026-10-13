@@ -145,6 +145,13 @@ const IDS = [
   // CH-29 (DEC-154): the operator's name and the logout button in the tenant bar.
   'operador',
   'salir',
+  // CH-30a (DEC-164, DEC-165): the three screens and their navigation links.
+  'pantalla-consultas',
+  'pantalla-automatizaciones',
+  'pantalla-frescura',
+  'nav-consultas',
+  'nav-automatizaciones',
+  'nav-frescura',
   'formulario',
   'conexion',
   'sql',
@@ -213,7 +220,7 @@ const IDS = [
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -241,6 +248,9 @@ interface Escenario {
   peticiones: Array<{ url: string; cuerpo: unknown; tenant: string | null }>;
   /** CH-29: how many times the script reloaded the page (`window.location.reload()`). */
   recargas: number;
+  /** CH-30a: the page's `location.hash`, and the window listeners the script registered. */
+  ubicacion: { hash: string };
+  oyentesVentana: Map<string, Array<() => void>>;
 }
 
 /**
@@ -271,9 +281,17 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
   const ventana = {
     // CH-29: a 401 and the logout both reload, so the server serves the login screen.
     location: {
+      get hash(): string {
+        return escenario.ubicacion.hash;
+      },
       reload: (): void => {
         escenario.recargas += 1;
       },
+    },
+    addEventListener: (tipo: string, fn: () => void): void => {
+      const lista = escenario.oyentesVentana.get(tipo) ?? [];
+      lista.push(fn);
+      escenario.oyentesVentana.set(tipo, lista);
     },
     localStorage: {
       getItem: (clave: string): string | null => almacenamiento.get(clave) ?? null,
@@ -457,6 +475,7 @@ describe('the console document, served by the real route', () => {
   async function arrancar(
     tenants = [{ id: 't-1', nombre: 'Food Store' }],
     respuestaTenants: { status: number; cuerpo: unknown } = { status: 200, cuerpo: { tenants } },
+    hash = '',
   ): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
@@ -474,6 +493,8 @@ describe('the console document, served by the real route', () => {
       respuestas: [respuestaTenants],
       peticiones: [],
       recargas: 0,
+      ubicacion: { hash },
+      oyentesVentana: new Map(),
     };
 
     ejecutarConsola(script, escenario);
@@ -2737,6 +2758,83 @@ describe('the console document, served by the real route', () => {
     ]);
     assert.equal(nodo(escenario, 'sql').value, 'SELECT 2', 'the editor shows the restored statement');
     assert.equal(nodo(escenario, 'banner').textContent, 'Se creó la versión 4 con el contenido de la versión 2.', 'and the confirmation survives the reload');
+  });
+
+  // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
+
+  const PANTALLAS = ['consultas', 'automatizaciones', 'frescura'] as const;
+
+  /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
+  function irA(escenario: Escenario, hash: string): void {
+    escenario.ubicacion.hash = hash;
+    for (const fn of escenario.oyentesVentana.get('hashchange') ?? []) {
+      fn();
+    }
+  }
+
+  /** Asserts that only `activa` is visible and only its link is current. */
+  function soloVisible(escenario: Escenario, activa: (typeof PANTALLAS)[number]): void {
+    for (const nombre of PANTALLAS) {
+      assert.equal(nodo(escenario, `pantalla-${nombre}`).hidden, nombre !== activa, `pantalla-${nombre}`);
+      assert.equal(
+        nodo(escenario, `nav-${nombre}`).getAttribute('aria-current'),
+        nombre === activa ? 'page' : null,
+        `nav-${nombre}`,
+      );
+    }
+  }
+
+  test('CH-30a with no hash, Consultas is the one visible screen and its link is current', async () => {
+    soloVisible(await arrancar(), 'consultas');
+  });
+
+  test('CH-30a the hash on load picks the screen', async () => {
+    soloVisible(await arrancar(undefined, undefined, '#frescura'), 'frescura');
+  });
+
+  test('CH-30a a hashchange switches the screen, and an unknown hash falls back to Consultas', async () => {
+    const escenario = await arrancar();
+    irA(escenario, '#automatizaciones');
+    soloVisible(escenario, 'automatizaciones');
+    irA(escenario, '#frescura');
+    soloVisible(escenario, 'frescura');
+    irA(escenario, '#no-existe');
+    soloVisible(escenario, 'consultas');
+  });
+
+  test('CH-30a the markup is a shell: navigation links, three screens, Consultas visible first', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.match(marcado, /<div class="zd-shell">/);
+    assert.match(marcado, /<nav class="zd-sidenav" aria-label="Secciones de la consola">/);
+    for (const nombre of PANTALLAS) {
+      assert.match(marcado, new RegExp(`<a id="nav-${nombre}" class="zd-sidenav__item" href="#${nombre}">`));
+    }
+    assert.match(marcado, /<section id="pantalla-consultas"(?![^>]*hidden)[^>]*>/);
+    assert.match(marcado, /<section id="pantalla-automatizaciones"[^>]*hidden/);
+    assert.match(marcado, /<section id="pantalla-frescura"[^>]*hidden/);
+  });
+
+  test('CH-30a the result sits right below the execute button, before the saved queries, inside Consultas', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    const en = (texto: string): number => {
+      const i = marcado.indexOf(texto);
+      assert.ok(i !== -1, texto);
+      return i;
+    };
+    const consultas = en('id="pantalla-consultas"');
+    const ejecutar = en('id="ejecutar"');
+    const resultados = en('id="resultados"');
+    const anterior = en('id="anterior"');
+    const guardado = en('id="guardado"');
+    const automatizaciones = en('id="pantalla-automatizaciones"');
+    assert.ok(consultas < ejecutar && ejecutar < resultados && resultados < anterior && anterior < guardado);
+    assert.ok(guardado < automatizaciones, 'the saved queries stay inside Consultas');
+  });
+
+  test('CH-30a the alert banner sits above every screen', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="banner"') < marcado.indexOf('id="pantalla-consultas"'));
+    assert.ok(marcado.indexOf('id="banner"') > marcado.indexOf('<main class="zd-page">'));
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----
