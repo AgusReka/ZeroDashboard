@@ -18,8 +18,8 @@ Branch base: `master` (after CH-30b). Strict TDD: the test cases first, against 
 ## PR2 — Usuarios del panel
 - [x] 2.1 RED (13 failures): list, create with the password once, 409, reset, deactivate confirmation, reactivate, clearing on leave and on tenant switch.
 - [x] 2.2 GREEN: markup and script.
-- [ ] 2.3 Manual visual pass of both screens at 360 px and 1280 px, light and dark.
+- [x] 2.3 Manual visual pass of both screens at 360 px and 1280 px, light and dark. Done by the user on 2026-10-13.
 
 ## Close
-- [ ] 3.1 Full suite, `tsc --noEmit`, `npm run build`.
-- [ ] 3.2 Verify, archive, sync `query-console` (replace "Navigation by Hash" with every scenario kept; append the new requirements), mark CH-30c in `docs/02-mapa-de-changes.md`.
+- [x] 3.1 Full suite, `tsc --noEmit`, `npm run build`. 1285/1289 (the 4 known `conexiones` false positives); the documented intermittent cleanup error of `panel-automatizaciones.test.ts` once, passing alone twice.
+- [x] 3.2 Verify, archive, sync `query-console` (replace "Navigation by Hash" with every scenario kept; append the new requirements), mark CH-30c in `docs/02-mapa-de-changes.md`.

@@ -84,7 +84,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-30 | Consola: rediseño, navegación y pantallas que hoy solo existen como API. Partido en cinco changes (DEC-164 a DEC-166) | T1, A1, A2, C1, M1–M4, G1 |
 | CH-30a | Esqueleto, navegación por `#` y resultado junto a Ejecutar, sobre las pantallas existentes. **Archivado** (el estado "dado de baja" de la barra pasa a CH-30b) | — |
 | CH-30b | Pantallas de Tenants y Conexiones (un tenant dado de baja se ve en Tenants y no se elige, DEC-168). **Archivado** | T1, A1 |
-| CH-30c | Pantallas de Agentes y Usuarios del panel, y conexión por el agente. **Propuesto** | C1, T3 |
+| CH-30c | Pantallas de Agentes y Usuarios del panel, y conexión por el agente. **Archivado** | C1, T3 |
 | CH-30d | Pantallas de Mapeo y validación, Plantillas y Contrato | M1–M4 |
 | CH-30e | Pantallas de Auditoría y Tiempos de alta | A5, G1 |
 
