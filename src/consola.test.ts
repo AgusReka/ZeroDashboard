@@ -179,6 +179,18 @@ const IDS = [
   'agente-copiar',
   'agente-guardado',
   'cx-via',
+  // CH-30c: the Usuarios del panel screen and its secret notice.
+  'pantalla-usuarios',
+  'nav-usuarios',
+  'usuarios-aviso',
+  'usuario-alta',
+  'usuario-correo',
+  'usuario-nombre',
+  'usuario-secreto',
+  'usuario-secreto-valor',
+  'usuario-copiar',
+  'usuario-guardado',
+  'usuarios-cuerpo',
   'pantalla-consultas',
   'pantalla-automatizaciones',
   'pantalla-frescura',
@@ -253,7 +265,7 @@ const IDS = [
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -2795,7 +2807,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'conexiones', 'agentes', 'consultas', 'automatizaciones', 'frescura'] as const;
+  const PANTALLAS = ['tenants', 'conexiones', 'agentes', 'usuarios', 'consultas', 'automatizaciones', 'frescura'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -3186,6 +3198,136 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     const alta = escenario.peticiones.find((p) => p.url === '/conexiones' && p.cuerpo !== null);
     assert.equal((alta?.cuerpo as { agenteId?: string }).agenteId, 'a-1');
+  });
+
+  // ---- CH-30c (DEC-155 to DEC-158): the Usuarios del panel screen ------------------------
+
+  const USUARIO_ACTIVO = { id: 'u-1', correo: 'ana@negocio.com', nombre: 'Ana', activo: true, creadoEn: '2026-10-02T10:00:00.000Z' };
+  const USUARIO_INACTIVO = { id: 'u-2', correo: 'beto@negocio.com', nombre: null, activo: false, creadoEn: '2026-10-03T10:00:00.000Z' };
+  const CLAVE = 'ClaveGeneradaDePrueba123';
+
+  /** Selects the tenant, then opens Usuarios del panel with `usuarios` queued as its listing. */
+  async function abrirUsuarios(usuarios: unknown[] = [USUARIO_ACTIVO, USUARIO_INACTIVO]): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { usuarios, truncado: false } });
+    irA(escenario, '#usuarios');
+    await asentarVarias();
+    return escenario;
+  }
+
+  function filaUsuario(escenario: Escenario, correo: string): Nodo {
+    const fila = nodo(escenario, 'usuarios-cuerpo').hijos.find((h) => h.textContent.includes(correo));
+    assert.ok(fila, `no row for ${correo}`);
+    return fila;
+  }
+
+  test('CH-30c Usuarios del panel sits after Agentes in Puesta en marcha', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="nav-agentes"') < marcado.indexOf('id="nav-usuarios"'));
+    assert.ok(marcado.indexOf('id="nav-usuarios"') < marcado.indexOf('id="nav-consultas"'));
+  });
+
+  test('CH-30c with no tenant, Usuarios del panel asks for one and sends nothing', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    irA(escenario, '#usuarios');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'usuarios-aviso').textContent, 'Elegí un tenant para ver sus usuarios del panel.');
+  });
+
+  test('CH-30c the list shows each user with the actions of its state', async () => {
+    const escenario = await abrirUsuarios();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/usuarios');
+    const activo = filaUsuario(escenario, 'ana@negocio.com');
+    assert.match(activo.textContent, /Ana/);
+    assert.match(activo.textContent, /Activo/);
+    assert.equal(botonesCon(activo, 'Reponer clave').length, 1);
+    assert.equal(botonesCon(activo, 'Desactivar').length, 1);
+    const inactivo = filaUsuario(escenario, 'beto@negocio.com');
+    assert.match(inactivo.textContent, /Desactivado/);
+    assert.equal(botonesCon(inactivo, 'Reactivar').length, 1);
+    assert.equal(botonesCon(inactivo, 'Reponer clave').length, 1);
+  });
+
+  test('CH-30c creating a user sends the email and name and shows the password once', async () => {
+    const escenario = await abrirUsuarios([]);
+    nodo(escenario, 'usuario-correo').value = ' Ana@Negocio.com ';
+    nodo(escenario, 'usuario-nombre').value = 'Ana';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO], truncado: false } },
+    );
+    nodo(escenario, 'usuario-alta').disparar('submit');
+    await asentarVarias();
+    const alta = escenario.peticiones.find((p) => p.url === '/usuarios' && p.cuerpo !== null);
+    assert.deepEqual(alta?.cuerpo, { correo: 'Ana@Negocio.com', nombre: 'Ana' });
+    assert.equal(nodo(escenario, 'usuario-secreto').hidden, false);
+    assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
+    assert.equal(nodo(escenario, 'usuario-correo').value, '');
+    assert.ok(filaUsuario(escenario, 'ana@negocio.com'));
+  });
+
+  test('CH-30c an email in use says so and shows no password', async () => {
+    const escenario = await abrirUsuarios([]);
+    nodo(escenario, 'usuario-correo').value = 'ana@negocio.com';
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'correo-en-uso' } });
+    nodo(escenario, 'usuario-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'usuarios-aviso').textContent, 'Ese correo ya está en uso.');
+    assert.equal(nodo(escenario, 'usuario-secreto').hidden, true);
+  });
+
+  test('CH-30c Reponer clave shows the new password once', async () => {
+    const escenario = await abrirUsuarios();
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO, USUARIO_INACTIVO], truncado: false } },
+    );
+    botonesCon(filaUsuario(escenario, 'ana@negocio.com'), 'Reponer clave')[0].disparar('click');
+    await asentarVarias();
+    assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-1/clave'));
+    assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
+  });
+
+  test('CH-30c Desactivar asks inline first; Reactivar sends at once', async () => {
+    const escenario = await abrirUsuarios();
+    const fila = filaUsuario(escenario, 'ana@negocio.com');
+    const antes = escenario.peticiones.length;
+    botonesCon(fila, 'Desactivar')[0].disparar('click');
+    assert.equal(escenario.peticiones.length, antes);
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { usuario: { ...USUARIO_ACTIVO, activo: false } } },
+      { status: 200, cuerpo: { usuarios: [{ ...USUARIO_ACTIVO, activo: false }, USUARIO_INACTIVO], truncado: false } },
+    );
+    botonesCon(fila, 'Desactivar ana@negocio.com')[0].disparar('click');
+    await asentarVarias();
+    assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-1/desactivar'));
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { usuario: { ...USUARIO_INACTIVO, activo: true } } },
+      { status: 200, cuerpo: { usuarios: [], truncado: false } },
+    );
+    botonesCon(filaUsuario(escenario, 'beto@negocio.com'), 'Reactivar')[0].disparar('click');
+    await asentarVarias();
+    assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-2/reactivar'));
+  });
+
+  test('CH-30c switching the tenant removes a shown password from every node', async () => {
+    const escenario = await abrirUsuarios([]);
+    nodo(escenario, 'usuario-correo').value = 'ana@negocio.com';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO], truncado: false } },
+    );
+    nodo(escenario, 'usuario-alta').disparar('submit');
+    await asentarVarias();
+    assert.ok(textoDeLaPagina(escenario).includes(CLAVE));
+    const selector = nodo(escenario, 'tenant');
+    selector.value = '';
+    selector.disparar('change');
+    await asentarVarias();
+    assert.ok(!textoDeLaPagina(escenario).includes(CLAVE));
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----
