@@ -3027,6 +3027,42 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-167 — CH-30b: las pantallas de Tenants y Conexiones muestran lo que la API ya tiene
+
+**Contexto.** La guía de diseño (C-02, C-05) muestra la fecha de baja de un tenant, conteos de conexiones y automatizaciones por tenant, y la última prueba de cada conexión (cuándo, latencia, tablas visibles, error). La API no guarda nada de eso: el tenant solo tiene `activo`, y el resultado de "Probar" vuelve en la respuesta y no se persiste. `GET /conexiones` devuelve solo el id y el nombre.
+
+**Opciones.** (a) Mostrar lo que existe: ampliar `GET /conexiones` con los campos públicos de la conexión, y mostrar el resultado de una prueba solo junto al botón, en el momento; sin fecha de baja, conteos ni última prueba guardada. (b) Además, una migración para guardar la última prueba y la fecha de baja, y conteos en el listado de tenants.
+
+**Decisión.** (a). `GET /conexiones` responde los mismos campos públicos que el alta (`ConexionPublica`: nombre, motor, host, puerto, base, usuario, solo lectura, agente, alta), nunca la credencial.
+
+**Por qué.** Cubre la puesta en marcha sin migraciones ni cambios de modelo. (b) casi duplica el change por datos que no bloquean el recorrido.
+
+**Se resigna.** La pantalla de Tenants no dice desde cuándo un tenant está dado de baja ni cuántas conexiones tiene; la de Conexiones no recuerda la última prueba al volver a entrar. Quedan como mejora posterior.
+
+**Decidido por:** el usuario, 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-168 — CH-30b: un tenant dado de baja no se puede elegir como activo
+
+**Contexto.** La guía muestra un estado "congelado" de la barra cuando el tenant activo está dado de baja, con lectura del historial. Pero DEC-14 rechaza toda llamada con alcance de tenant para un tenant dado de baja (`409 tenant-desactivado`): no se puede leer nada de él.
+
+**Opciones.** (a) Como hoy: el selector ofrece solo tenants activos; la pantalla de Tenants lista los dados de baja como "Dado de baja", sin acciones; si el tenant activo se da de baja mientras se lo opera, la consola vuelve a "ningún tenant" con un aviso. (b) Permitir elegirlo en solo lectura, cambiando DEC-14.
+
+**Decisión.** (a). DEC-14 no cambia.
+
+**Por qué.** (b) es una decisión de arquitectura sobre el congelamiento de un tenant, grande para una pantalla, y no la pide ninguna historia.
+
+**Se resigna.** El estado "congelado" de la barra de la guía no se implementa: un tenant dado de baja solo se ve en la pantalla de Tenants.
+
+**Decidido por:** el usuario, 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
