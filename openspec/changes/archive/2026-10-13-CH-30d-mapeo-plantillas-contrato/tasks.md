@@ -18,8 +18,8 @@ Branch base: `master` (after CH-30c). Strict TDD: the test cases first, against 
 ## PR2 — Mapeo y validación
 - [x] 2.1 RED: no tenant / no connection, the entity blocks, saving, a session failure, an invalid field with its hint, automations with reasons, SQL with markup as text.
 - [x] 2.2 GREEN: markup, script and bridge style.
-- [ ] 2.3 Manual visual pass of the three screens at 360 px and 1280 px, light and dark.
+- [x] 2.3 Manual visual pass of the three screens at 360 px and 1280 px, light and dark.
 
 ## Close
-- [ ] 3.1 Full suite, `tsc --noEmit`, `npm run build`.
-- [ ] 3.2 Verify, archive, sync `query-console` (replace "Navigation by Hash" keeping every scenario; append the new requirements), mark CH-30d in `docs/02-mapa-de-changes.md`.
+- [x] 3.1 Full suite, `tsc --noEmit`, `npm run build`.
+- [x] 3.2 Verify, archive, sync `query-console` (replace "Navigation by Hash" keeping every scenario; append the new requirements), mark CH-30d in `docs/02-mapa-de-changes.md`.
