@@ -146,6 +146,13 @@ const IDS = [
   'operador',
   'salir',
   // CH-30a (DEC-164, DEC-165): the three screens and their navigation links.
+  // CH-30b (DEC-165): the Tenants screen and its controls.
+  'pantalla-tenants',
+  'nav-tenants',
+  'tenant-alta',
+  'tenant-nombre',
+  'tenant-aviso',
+  'tenants-cuerpo',
   'pantalla-consultas',
   'pantalla-automatizaciones',
   'pantalla-frescura',
@@ -220,7 +227,7 @@ const IDS = [
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -2762,7 +2769,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['consultas', 'automatizaciones', 'frescura'] as const;
+  const PANTALLAS = ['tenants', 'consultas', 'automatizaciones', 'frescura'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -2802,6 +2809,12 @@ describe('the console document, served by the real route', () => {
     soloVisible(escenario, 'consultas');
   });
 
+  test('CH-30b no function is declared twice in the script: a later one would silently replace the first', () => {
+    const nombres = [...script.matchAll(/^(?:async )?function (\w+)\(/gm)].map((m) => m[1]);
+    const repetidos = nombres.filter((nombre, i) => nombres.indexOf(nombre) !== i);
+    assert.deepEqual(repetidos, []);
+  });
+
   test('CH-30a the markup is a shell: navigation links, three screens, Consultas visible first', () => {
     const marcado = documento.slice(0, documento.indexOf('<script>'));
     assert.match(marcado, /<div class="zd-shell">/);
@@ -2835,6 +2848,115 @@ describe('the console document, served by the real route', () => {
     const marcado = documento.slice(0, documento.indexOf('<script>'));
     assert.ok(marcado.indexOf('id="banner"') < marcado.indexOf('id="pantalla-consultas"'));
     assert.ok(marcado.indexOf('id="banner"') > marcado.indexOf('<main class="zd-page">'));
+  });
+
+  // ---- CH-30b (DEC-167, DEC-168): the Tenants screen -------------------------------------
+
+  const TENANTS_PANTALLA = [
+    { id: 't-1', nombre: 'Food Store', activo: true, creadoEn: '2026-09-01T12:00:00.000Z' },
+    { id: 't-2', nombre: 'Almacén cerrado', activo: false, creadoEn: '2026-08-15T12:00:00.000Z' },
+  ];
+
+  /** Opens the Tenants screen with `tenants` queued as the listing, and lets it settle. */
+  async function abrirTenants(escenario: Escenario, tenants: unknown[] = TENANTS_PANTALLA): Promise<void> {
+    escenario.respuestas.push({ status: 200, cuerpo: { tenants } });
+    irA(escenario, '#tenants');
+    await asentarVarias();
+  }
+
+  /** The row of the Tenants table whose text includes `nombre`. */
+  function filaTenant(escenario: Escenario, nombre: string): Nodo {
+    const fila = nodo(escenario, 'tenants-cuerpo').hijos.find((h) => h.textContent.includes(nombre));
+    assert.ok(fila, `no row for ${nombre}`);
+    return fila;
+  }
+
+  test('CH-30b the Global group with Tenants comes before the daily-work screens', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="nav-tenants"') < marcado.indexOf('id="nav-consultas"'));
+    assert.match(marcado, /<a id="nav-tenants" class="zd-sidenav__item" href="#tenants">/);
+  });
+
+  test('CH-30b showing Tenants lists active and deactivated tenants, with actions only for the active ones', async () => {
+    const escenario = await arrancar();
+    await abrirTenants(escenario);
+    soloVisible(escenario, 'tenants');
+    const pedido = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(pedido.url, '/tenants?incluirInactivos=true');
+    assert.equal(pedido.tenant, null, 'a global call carries no tenant header');
+    const activa = filaTenant(escenario, 'Food Store');
+    assert.match(activa.textContent, /t-1/);
+    assert.match(activa.textContent, /Activo/);
+    assert.equal(botonesCon(activa, 'Elegir como activo').length, 1);
+    assert.equal(botonesCon(activa, 'Dar de baja').length, 1);
+    const baja = filaTenant(escenario, 'Almacén cerrado');
+    assert.match(baja.textContent, /Dado de baja/);
+    assert.equal(buscar(baja, (n) => n.tagName === 'button').length, 0);
+  });
+
+  test('CH-30b creating a tenant posts the name and reloads the list and the selector', async () => {
+    const escenario = await arrancar();
+    await abrirTenants(escenario);
+    nodo(escenario, 'tenant-nombre').value = '  Almacén Don Tito  ';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { tenant: { id: 't-3', nombre: 'Almacén Don Tito', activo: true } } },
+      { status: 200, cuerpo: { tenants: [...TENANTS_PANTALLA, { id: 't-3', nombre: 'Almacén Don Tito', activo: true, creadoEn: '2026-10-13T12:00:00.000Z' }] } },
+      { status: 200, cuerpo: { tenants: [{ id: 't-1', nombre: 'Food Store' }, { id: 't-3', nombre: 'Almacén Don Tito' }] } },
+    );
+    nodo(escenario, 'tenant-alta').disparar('submit');
+    await asentarVarias();
+    const urls = escenario.peticiones.slice(-3).map((p) => p.url);
+    assert.deepEqual(urls, ['/tenants', '/tenants?incluirInactivos=true', '/tenants']);
+    assert.deepEqual(escenario.peticiones[escenario.peticiones.length - 3].cuerpo, { nombre: 'Almacén Don Tito' });
+    assert.equal(nodo(escenario, 'tenant-nombre').value, '');
+    assert.ok(filaTenant(escenario, 'Almacén Don Tito'));
+  });
+
+  test('CH-30b choosing a tenant makes it the active one', async () => {
+    const escenario = await arrancar();
+    await abrirTenants(escenario);
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+      { status: 200, cuerpo: { plantillas: [], truncado: false } },
+      { status: 200, cuerpo: { automatizaciones: [], truncado: false } },
+    );
+    botonesCon(filaTenant(escenario, 'Food Store'), 'Elegir como activo')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'tenant').value, 't-1');
+    assert.match(nodo(escenario, 'tenant-activo').textContent, /Food Store/);
+  });
+
+  test('CH-30b Dar de baja asks inline first, and cancelling sends nothing', async () => {
+    const escenario = await arrancar();
+    await abrirTenants(escenario);
+    const antes = escenario.peticiones.length;
+    const fila = filaTenant(escenario, 'Food Store');
+    botonesCon(fila, 'Dar de baja')[0].disparar('click');
+    assert.equal(botonesCon(fila, 'Dar de baja Food Store').length, 1);
+    botonesCon(fila, 'Cancelar')[0].disparar('click');
+    assert.equal(botonesCon(fila, 'Dar de baja').length, 1);
+    assert.equal(escenario.peticiones.length, antes);
+  });
+
+  test('CH-30b deactivating the active tenant returns the console to no tenant and says so', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirTenants(escenario);
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { tenant: { id: 't-1', nombre: 'Food Store', activo: false } } },
+      { status: 200, cuerpo: { tenants: [{ ...TENANTS_PANTALLA[0], activo: false }, TENANTS_PANTALLA[1]] } },
+      { status: 200, cuerpo: { tenants: [] } },
+    );
+    const fila = filaTenant(escenario, 'Food Store');
+    botonesCon(fila, 'Dar de baja')[0].disparar('click');
+    botonesCon(fila, 'Dar de baja Food Store')[0].disparar('click');
+    await asentarVarias();
+    const baja = escenario.peticiones.find((p) => p.url === '/tenants/t-1/baja');
+    assert.ok(baja, 'the baja was sent');
+    assert.equal(baja.tenant, null);
+    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Ningún tenant seleccionado');
+    assert.match(nodo(escenario, 'banner').textContent, /Diste de baja el tenant activo/);
+    assert.match(filaTenant(escenario, 'Food Store').textContent, /Dado de baja/);
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----

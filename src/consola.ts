@@ -171,6 +171,10 @@ function documentoConsola(nombreOperador: string): string {
 <div class="zd-shell">
 <nav class="zd-sidenav" aria-label="Secciones de la consola">
   <div class="zd-sidenav__brand"><span class="zd-sidenav__brandname">ZeroDashboard</span><span class="zd-eyebrow">Consola</span></div>
+  <div class="zd-sidenav__group">
+    <span class="zd-sidenav__heading">Global</span>
+    <a id="nav-tenants" class="zd-sidenav__item" href="#tenants"><span>Tenants</span></a>
+  </div>
   <div class="zd-sidenav__scope">
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
@@ -180,6 +184,35 @@ function documentoConsola(nombreOperador: string): string {
 </nav>
 <main class="zd-page">
 <p id="banner" class="banner" role="alert" hidden></p>
+
+<!--
+  CH-30b (DEC-167, DEC-168, screen C-02): every tenant, active and deactivated. Global: it
+  does not depend on the selector. A deactivated tenant is listed with no action and can
+  never be chosen (DEC-14 refuses every call for it). Rows are built by the script as text.
+-->
+<section id="pantalla-tenants" aria-labelledby="titulo-tenants" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span></div>
+    <h1 id="titulo-tenants" class="zd-h1">Tenants</h1>
+    <p class="zd-pagehead__desc">Dar de baja congela el tenant: sus conexiones, consultas y automatizaciones dejan de operar y no se borra nada.</p>
+  </div>
+</header>
+<form id="tenant-alta" class="controles">
+  <div>
+    <label for="tenant-nombre" class="zd-label">Nuevo tenant</label>
+    <input id="tenant-nombre" class="zd-input" type="text" autocomplete="off" placeholder="Nombre del negocio" required>
+  </div>
+  <button class="zd-btn zd-btn--primary" type="submit">Crear tenant</button>
+</form>
+<p id="tenant-aviso" class="ayuda" role="status"></p>
+<div class="zd-table-wrap zd-table-scroll">
+  <table class="zd-table">
+    <thead><tr><th>Nombre</th><th>Id</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr></thead>
+    <tbody id="tenants-cuerpo"></tbody>
+  </table>
+</div>
+</section>
 
 <section id="pantalla-consultas" aria-labelledby="titulo-consultas">
 <header class="zd-pagehead">
@@ -2415,8 +2448,10 @@ botonVersion.addEventListener('click', function () {
 // Switching tenants wipes the screen before anything else happens. This is the visual
 // half of the isolation guarantee: rows and saved-query names belonging to the tenant
 // the operator just left must not stay on the page next to the new tenant's name.
-selectorTenant.addEventListener('change', function () {
-  fijarTenant(selectorTenant.value);
+// CH-30b: the one path that changes the active tenant, from the selector, from the Tenants
+// screen's "Elegir como activo", or to none after deactivating the active tenant.
+function cambiarTenant(id) {
+  fijarTenant(id);
   ocultarBanner();
   limpiarResultados();
   vaciar(listaGuardadas);
@@ -2429,6 +2464,10 @@ selectorTenant.addEventListener('change', function () {
     listarGuardadas();
     cargarAutomatizaciones();
   }
+}
+
+selectorTenant.addEventListener('change', function () {
+  cambiarTenant(selectorTenant.value);
 });
 
 // The probe starts by re-evaluating Siguiente, so a placeholder choice disables it at once.
@@ -2547,10 +2586,129 @@ document.getElementById('salir').addEventListener('click', function () {
   });
 });
 
+// ---- CH-30b (DEC-167, DEC-168, screen C-02): Tenants --------------------------------------
+
+var formularioTenant = document.getElementById('tenant-alta');
+var entradaNombreTenant = document.getElementById('tenant-nombre');
+var avisoTenant = document.getElementById('tenant-aviso');
+var cuerpoTenants = document.getElementById('tenants-cuerpo');
+
+function fechaTenant(iso) {
+  var fecha = new Date(String(iso));
+  if (isNaN(fecha.getTime())) { return ''; }
+  var dos = function (n) { return (n < 10 ? '0' : '') + n; };
+  return dos(fecha.getDate()) + '/' + dos(fecha.getMonth() + 1) + '/' + fecha.getFullYear();
+}
+
+function celdaTenant(fila, texto) {
+  var td = document.createElement('td');
+  td.textContent = texto;
+  fila.appendChild(td);
+  return td;
+}
+
+function botonTenant(texto, alHacerClic) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = texto;
+  b.addEventListener('click', alHacerClic);
+  return b;
+}
+
+// The action cell of an active tenant: Elegir and Dar de baja, or the inline confirmation.
+function accionesTenant(td, tenant) {
+  vaciar(td);
+  td.appendChild(botonTenant('Elegir como activo', function () { cambiarTenant(String(tenant.id)); }));
+  td.appendChild(botonTenant('Dar de baja', function () {
+    vaciar(td);
+    td.appendChild(botonTenant('Dar de baja ' + String(tenant.nombre), function () { darDeBaja(tenant); }));
+    td.appendChild(botonTenant('Cancelar', function () { accionesTenant(td, tenant); }));
+  }));
+}
+
+function renderizarTenants(tenants) {
+  vaciar(cuerpoTenants);
+  tenants.forEach(function (tenant) {
+    var fila = document.createElement('tr');
+    celdaTenant(fila, String(tenant.nombre));
+    celdaTenant(fila, String(tenant.id).slice(0, 8) + '…');
+    celdaTenant(fila, tenant.activo === true ? 'Activo' : 'Dado de baja');
+    celdaTenant(fila, fechaTenant(tenant.creadoEn));
+    var acciones = celdaTenant(fila, '');
+    if (tenant.activo === true) { accionesTenant(acciones, tenant); }
+    cuerpoTenants.appendChild(fila);
+  });
+  avisoTenant.textContent = tenants.length === 0 ? 'Todavía no hay tenants.' : '';
+}
+
+// Global calls: plain fetch with the 401 check, never pedir() (they carry no tenant).
+async function cargarTenantsPantalla() {
+  var respuesta;
+  try {
+    respuesta = await fetch('/tenants?incluirInactivos=true').then(siNoAutenticado);
+  } catch (fallaDeRed) {
+    avisoTenant.textContent = 'No se pudo contactar con la aplicación para leer los tenants.';
+    return;
+  }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.tenants)) {
+    avisoTenant.textContent = 'No se pudo leer la lista de tenants (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  renderizarTenants(cuerpo.tenants);
+}
+
+async function darDeBaja(tenant) {
+  var id = String(tenant.id);
+  var respuesta;
+  try {
+    respuesta = await fetch('/tenants/' + encodeURIComponent(id) + '/baja', { method: 'POST' }).then(siNoAutenticado);
+  } catch (fallaDeRed) {
+    avisoTenant.textContent = 'No se pudo contactar con la aplicación.';
+    return;
+  }
+  if (respuesta.status !== 200) {
+    avisoTenant.textContent = 'No se pudo dar de baja el tenant (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  if (id === tenantActivo) {
+    cambiarTenant(null);
+    mostrarBanner('Diste de baja el tenant activo. Elegí otro en la barra superior.');
+  }
+  await cargarTenantsPantalla();
+  await cargarTenants();
+}
+
+formularioTenant.addEventListener('submit', async function (evento) {
+  evento.preventDefault();
+  var nombre = entradaNombreTenant.value.trim();
+  if (nombre === '') { avisoTenant.textContent = 'Escribí el nombre del tenant.'; return; }
+  var respuesta;
+  try {
+    respuesta = await fetch('/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: nombre })
+    }).then(siNoAutenticado);
+  } catch (fallaDeRed) {
+    avisoTenant.textContent = 'No se pudo contactar con la aplicación.';
+    return;
+  }
+  if (respuesta.status !== 201) {
+    avisoTenant.textContent = 'No se pudo crear el tenant (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  entradaNombreTenant.value = '';
+  await cargarTenantsPantalla();
+  avisoTenant.textContent = 'Se creó el tenant «' + nombre + '».';
+  await cargarTenants();
+});
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['consultas', 'automatizaciones', 'frescura'];
+var PANTALLAS = ['tenants', 'consultas', 'automatizaciones', 'frescura'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -2559,6 +2717,8 @@ function mostrarPantalla() {
     var enlace = document.getElementById('nav-' + nombre);
     if (nombre === activa) { enlace.setAttribute('aria-current', 'page'); } else { enlace.removeAttribute('aria-current'); }
   });
+  // CH-30b: a screen that reads its own data loads it when it is shown.
+  if (activa === 'tenants') { cargarTenantsPantalla(); }
 }
 window.addEventListener('hashchange', mostrarPantalla);
 mostrarPantalla();
