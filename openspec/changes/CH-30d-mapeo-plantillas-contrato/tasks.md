@@ -16,8 +16,8 @@ Branch base: `master` (after CH-30c). Strict TDD: the test cases first, against 
 - [x] 1.2 GREEN: markup and script of both screens.
 
 ## PR2 — Mapeo y validación
-- [ ] 2.1 RED: no tenant / no connection, the entity blocks, saving, a session failure, an invalid field with its hint, automations with reasons, SQL with markup as text.
-- [ ] 2.2 GREEN: markup, script and bridge style.
+- [x] 2.1 RED: no tenant / no connection, the entity blocks, saving, a session failure, an invalid field with its hint, automations with reasons, SQL with markup as text.
+- [x] 2.2 GREEN: markup, script and bridge style.
 - [ ] 2.3 Manual visual pass of the three screens at 360 px and 1280 px, light and dark.
 
 ## Close
