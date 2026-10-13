@@ -3063,6 +3063,24 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-169 — CH-30d: la pantalla de Mapeo sigue el modelo de un SQL por entidad
+
+**Contexto.** La guía de diseño (C-06) mapea eligiendo una columna de origen por campo y deja marcar una entidad como "inaplicable" con un motivo. El modelo del proyecto es otro: el mapeo es una vista SQL por entidad del contrato, escrita por el operador (DEC-30, DEC-32); la validación devuelve un veredicto por campo (DEC-42 a DEC-45), e "inaplicable" es un estado calculado por automatización (DEC-46), no algo que se marca.
+
+**Opciones.** (a) Seguir el modelo: por entidad, un editor con su SQL y "Guardar"; "Validar" corre la sonda y la pantalla muestra el veredicto de cada campo, la pista de casteo y el estado de cada automatización con sus motivos. (b) El selector de columnas de la guía, generando el SQL de cada entidad a partir de las columnas elegidas.
+
+**Decisión.** (a). No cambia ninguna ruta ni decisión.
+
+**Por qué.** (b) contradice DEC-30 (las vistas las escribe el operador, no se generan) y necesita una ruta nueva que liste las columnas de la réplica.
+
+**Se resigna.** Mapear exige escribir SQL, como hasta ahora por API: la pantalla lo hace visible y validable, no lo simplifica. La parte de la guía sobre marcar inaplicable con motivo no se implementa.
+
+**Decidido por:** el usuario, 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
