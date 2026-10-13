@@ -178,6 +178,7 @@ function documentoConsola(nombreOperador: string): string {
   <div class="zd-sidenav__scope">
     <span class="zd-sidenav__subheading">Puesta en marcha</span>
     <a id="nav-conexiones" class="zd-sidenav__item" href="#conexiones"><span>Conexiones</span></a>
+    <a id="nav-agentes" class="zd-sidenav__item" href="#agentes"><span>Agentes</span></a>
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
     <a id="nav-automatizaciones" class="zd-sidenav__item" href="#automatizaciones"><span>Automatizaciones</span></a>
@@ -247,6 +248,7 @@ function documentoConsola(nombreOperador: string): string {
     <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required></div>
     <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
     <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+    <div><label for="cx-via" class="zd-label">Cómo llega</label><select id="cx-via" class="zd-select"><option value="">Directa</option></select></div>
     <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required></div>
     <p class="ayuda">La contraseña se guarda cifrada y no se vuelve a mostrar.</p>
     <p id="cx-resultado" class="ayuda" role="status"></p>
@@ -256,6 +258,31 @@ function documentoConsola(nombreOperador: string): string {
     </div>
   </form>
 </aside>
+</section>
+
+<!--
+  CH-30c (DEC-121, screen C-05 "Agentes"): the tenant's one agent. Its token is shown once,
+  in the notice below, and cleared on "Ya lo guardé", on leaving the screen and on a tenant
+  switch; it is never written anywhere else.
+-->
+<section id="pantalla-agentes" aria-labelledby="titulo-agentes" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-agentes" class="zd-h1">Agentes</h1>
+    <p class="zd-pagehead__desc">El agente corre en la red del cliente y abre la conexión hacia la consola: el cliente no expone puertos.</p>
+  </div>
+</header>
+<p id="agentes-aviso" class="ayuda" role="status"></p>
+<div id="agente-secreto" class="zd-card" role="alert" hidden>
+  <p class="ayuda">Este es el token del agente. Copialo ahora: no se vuelve a mostrar.</p>
+  <code id="agente-secreto-valor"></code>
+  <div class="zd-form-actions">
+    <button id="agente-copiar" class="zd-btn zd-btn--secondary" type="button">Copiar</button>
+    <button id="agente-guardado" class="zd-btn zd-btn--ghost" type="button">Ya lo guardé</button>
+  </div>
+</div>
+<div id="agente-estado"></div>
 </section>
 
 <section id="pantalla-consultas" aria-labelledby="titulo-consultas">
@@ -2509,7 +2536,9 @@ function cambiarTenant(id) {
     cargarAutomatizaciones();
   }
   panelConexion.hidden = true;
+  olvidarSecretos();
   if (!document.getElementById('pantalla-conexiones').hidden) { cargarPantallaConexiones(); }
+  if (!document.getElementById('pantalla-agentes').hidden) { cargarPantallaAgentes(); }
 }
 
 selectorTenant.addEventListener('change', function () {
@@ -2831,7 +2860,30 @@ async function cargarPantallaConexiones() {
 document.getElementById('conexion-nueva').addEventListener('click', function () {
   resultadoConexion.textContent = '';
   panelConexion.hidden = false;
+  opcionesDeVia();
 });
+
+// CH-30c: "Cómo llega" offers the tenant's agent only while it is active.
+async function opcionesDeVia() {
+  var via = document.getElementById('cx-via');
+  vaciar(via);
+  var directa = document.createElement('option');
+  directa.value = '';
+  directa.textContent = 'Directa';
+  via.appendChild(directa);
+  var respuesta;
+  try { respuesta = await pedir('/agentes'); } catch (fallaDeRed) { return; }
+  if (respuesta === null || respuesta.status !== 200) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  var agente = cuerpo !== null && Array.isArray(cuerpo.agentes) ? cuerpo.agentes[0] : undefined;
+  if (agente !== undefined && agente.revocadoEn === null) {
+    var opcion = document.createElement('option');
+    opcion.value = String(agente.id);
+    opcion.textContent = 'Por el agente del tenant';
+    via.appendChild(opcion);
+  }
+}
 
 document.getElementById('cx-cerrar').addEventListener('click', function () {
   panelConexion.hidden = true;
@@ -2852,6 +2904,8 @@ formularioConexion.addEventListener('submit', async function (evento) {
     credencial: campoClave.value
   };
   campoClave.value = '';
+  var via = document.getElementById('cx-via').value;
+  if (via !== '') { cuerpoAlta.agenteId = via; }
   resultadoConexion.textContent = 'Guardando…';
   var respuesta;
   try {
@@ -2881,13 +2935,141 @@ formularioConexion.addEventListener('submit', async function (evento) {
   await cargarPantallaConexiones();
 });
 
+// ---- CH-30c: secrets shown once (agent tokens, panel passwords) --------------------------
+
+// Each entry is a notice and the node that holds the secret's text. The secret lives only
+// there, and only until it is dismissed, the screen changes or the tenant changes.
+var SECRETOS = [
+  { contenedor: document.getElementById('agente-secreto'), valor: document.getElementById('agente-secreto-valor') }
+];
+
+function mostrarSecreto(indice, texto) {
+  SECRETOS[indice].valor.textContent = String(texto);
+  SECRETOS[indice].contenedor.hidden = false;
+}
+
+function olvidarSecretos() {
+  SECRETOS.forEach(function (secreto) {
+    secreto.valor.textContent = '';
+    secreto.contenedor.hidden = true;
+  });
+}
+
+// Copies the shown secret when the browser allows it; otherwise asks to copy by hand.
+function copiarSecreto(indice, aviso) {
+  var texto = SECRETOS[indice].valor.textContent;
+  var portapapeles = window.navigator && window.navigator.clipboard;
+  if (!portapapeles || texto === '') { aviso.textContent = 'Seleccioná el texto y copialo a mano.'; return; }
+  portapapeles.writeText(texto).then(function () {
+    aviso.textContent = 'Copiado.';
+  }, function () {
+    aviso.textContent = 'Seleccioná el texto y copialo a mano.';
+  });
+}
+
+// ---- CH-30c (DEC-121, screen C-05 "Agentes"): Agentes ------------------------------------
+
+var avisoAgentes = document.getElementById('agentes-aviso');
+var estadoAgente = document.getElementById('agente-estado');
+
+document.getElementById('agente-guardado').addEventListener('click', olvidarSecretos);
+document.getElementById('agente-copiar').addEventListener('click', function () { copiarSecreto(0, avisoAgentes); });
+
+function lineaAgente(texto) {
+  var p = document.createElement('p');
+  p.textContent = texto;
+  estadoAgente.appendChild(p);
+}
+
+function renderizarAgente(agente) {
+  vaciar(estadoAgente);
+  if (agente === null) {
+    lineaAgente('Este tenant todavía no tiene agente.');
+    estadoAgente.appendChild(botonTenant('Crear agente', emitirTokenAgente));
+    return;
+  }
+  if (agente.revocadoEn !== null) {
+    lineaAgente('Revocado desde el ' + fechaTenant(agente.revocadoEn) + '. Sus conexiones no funcionan hasta emitir un token nuevo.');
+    estadoAgente.appendChild(botonTenant('Emitir un token nuevo', emitirTokenAgente));
+    return;
+  }
+  lineaAgente('Activo · creado el ' + fechaTenant(agente.creadoEn) + ' · token emitido el ' + fechaTenant(agente.tokenEmitidoEn));
+  estadoAgente.appendChild(botonTenant('Revocar', function () {
+    vaciar(estadoAgente);
+    lineaAgente('Al revocar el token, las conexiones que pasan por este agente dejan de funcionar hasta emitir uno nuevo.');
+    estadoAgente.appendChild(botonTenant('Revocar el token', function () { revocarAgente(String(agente.id)); }));
+    estadoAgente.appendChild(botonTenant('Cancelar', function () { renderizarAgente(agente); }));
+  }));
+}
+
+async function cargarPantallaAgentes() {
+  if (tenantActivo === null) {
+    vaciar(estadoAgente);
+    avisoAgentes.textContent = 'Elegí un tenant para ver su agente.';
+    return;
+  }
+  var respuesta;
+  try { respuesta = await pedir('/agentes'); } catch (fallaDeRed) {
+    avisoAgentes.textContent = 'No se pudo contactar con la aplicación.';
+    return;
+  }
+  if (respuesta === null) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.agentes)) {
+    avisoAgentes.textContent = 'No se pudo leer el agente (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  avisoAgentes.textContent = '';
+  renderizarAgente(cuerpo.agentes.length > 0 ? cuerpo.agentes[0] : null);
+}
+
+async function emitirTokenAgente() {
+  var respuesta;
+  try {
+    respuesta = await pedir('/agentes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+  } catch (fallaDeRed) {
+    avisoAgentes.textContent = 'No se pudo contactar con la aplicación.';
+    return;
+  }
+  if (respuesta === null) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if ((respuesta.status === 201 || respuesta.status === 200) && cuerpo !== null && typeof cuerpo.token === 'string') {
+    mostrarSecreto(0, cuerpo.token);
+  } else if (respuesta.status === 409) {
+    avisoAgentes.textContent = 'El tenant ya tiene un agente activo.';
+  } else {
+    avisoAgentes.textContent = 'No se pudo emitir el token (HTTP ' + respuesta.status + ').';
+  }
+  await cargarPantallaAgentes();
+}
+
+async function revocarAgente(id) {
+  var respuesta;
+  try {
+    respuesta = await pedir('/agentes/' + encodeURIComponent(id) + '/revocar', { method: 'POST' });
+  } catch (fallaDeRed) {
+    avisoAgentes.textContent = 'No se pudo contactar con la aplicación.';
+    return;
+  }
+  if (respuesta === null) { return; }
+  if (respuesta.status !== 200 && respuesta.status !== 409) {
+    avisoAgentes.textContent = 'No se pudo revocar el token (HTTP ' + respuesta.status + ').';
+  }
+  await cargarPantallaAgentes();
+}
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'conexiones', 'consultas', 'automatizaciones', 'frescura'];
+var PANTALLAS = ['tenants', 'conexiones', 'agentes', 'consultas', 'automatizaciones', 'frescura'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
+  olvidarSecretos();
   PANTALLAS.forEach(function (nombre) {
     document.getElementById('pantalla-' + nombre).hidden = nombre !== activa;
     var enlace = document.getElementById('nav-' + nombre);
@@ -2896,6 +3078,7 @@ function mostrarPantalla() {
   // CH-30b: a screen that reads its own data loads it when it is shown.
   if (activa === 'tenants') { cargarTenantsPantalla(); }
   if (activa === 'conexiones') { cargarPantallaConexiones(); }
+  if (activa === 'agentes') { cargarPantallaAgentes(); }
 }
 window.addEventListener('hashchange', mostrarPantalla);
 mostrarPantalla();
