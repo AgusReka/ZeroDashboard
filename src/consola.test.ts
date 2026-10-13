@@ -169,6 +169,16 @@ const IDS = [
   'cx-clave',
   'cx-cerrar',
   'cx-resultado',
+  // CH-30c: the Agentes screen, its secret notice and the panel's agent option.
+  'pantalla-agentes',
+  'nav-agentes',
+  'agentes-aviso',
+  'agente-estado',
+  'agente-secreto',
+  'agente-secreto-valor',
+  'agente-copiar',
+  'agente-guardado',
+  'cx-via',
   'pantalla-consultas',
   'pantalla-automatizaciones',
   'pantalla-frescura',
@@ -243,7 +253,7 @@ const IDS = [
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -504,7 +514,7 @@ describe('the console document, served by the real route', () => {
     for (const id of IDS) {
       // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
       // auto-frecuencia is a select from PR3.
-      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia'].includes(id) ? 'select' : 'div');
+      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via'].includes(id) ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -2785,7 +2795,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'conexiones', 'consultas', 'automatizaciones', 'frescura'] as const;
+  const PANTALLAS = ['tenants', 'conexiones', 'agentes', 'consultas', 'automatizaciones', 'frescura'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -3028,7 +3038,9 @@ describe('the console document, served by the real route', () => {
 
   test('CH-30b Guardar y probar registers, empties the password, tests and reloads the list', async () => {
     const escenario = await abrirConexiones([]);
+    escenario.respuestas.push({ status: 200, cuerpo: { agentes: [] } });
     nodo(escenario, 'conexion-nueva').disparar('click');
+    await asentarVarias();
     assert.equal(nodo(escenario, 'conexion-panel').hidden, false);
     nodo(escenario, 'cx-nombre').value = 'Réplica nueva';
     nodo(escenario, 'cx-host').value = 'db.nueva.test';
@@ -3068,6 +3080,112 @@ describe('the console document, served by the real route', () => {
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones/c-1/prueba');
     assert.match(fila.textContent, /credenciales-invalidas/);
     assert.match(fila.textContent, /28P01/);
+  });
+
+  // ---- CH-30c (DEC-121): the Agentes screen and secrets shown once ------------------------
+
+  const AGENTE_ACTIVO = { id: 'a-1', creadoEn: '2026-10-01T10:00:00.000Z', tokenEmitidoEn: '2026-10-05T10:00:00.000Z', revocadoEn: null };
+  const TOKEN = 'zd_ag_token-de-prueba-que-no-debe-quedar';
+
+  /** Selects the tenant, then opens Agentes with `agentes` queued as its listing. */
+  async function abrirAgentes(agentes: unknown[]): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { agentes } });
+    irA(escenario, '#agentes');
+    await asentarVarias();
+    return escenario;
+  }
+
+  /** Creates the agent from an empty screen, leaving the token on screen. */
+  async function crearAgente(escenario: Escenario): Promise<void> {
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { agente: AGENTE_ACTIVO, token: TOKEN } },
+      { status: 200, cuerpo: { agentes: [AGENTE_ACTIVO] } },
+    );
+    botonesCon(nodo(escenario, 'agente-estado'), 'Crear agente')[0].disparar('click');
+    await asentarVarias();
+  }
+
+  test('CH-30c Agentes and Usuarios del panel come after Conexiones, before the daily work', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="nav-conexiones"') < marcado.indexOf('id="nav-agentes"'));
+    assert.ok(marcado.indexOf('id="nav-agentes"') < marcado.indexOf('id="nav-consultas"'));
+  });
+
+  test('CH-30c with no tenant, Agentes asks for one and sends nothing', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    irA(escenario, '#agentes');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'agentes-aviso').textContent, 'Elegí un tenant para ver su agente.');
+  });
+
+  test('CH-30c creating the agent shows the token once, then the agent as active with Revocar', async () => {
+    const escenario = await abrirAgentes([]);
+    await crearAgente(escenario);
+    const alta = escenario.peticiones.find((p) => p.url === '/agentes' && p.cuerpo !== null);
+    assert.deepEqual(alta?.cuerpo, {});
+    assert.equal(nodo(escenario, 'agente-secreto').hidden, false);
+    assert.equal(nodo(escenario, 'agente-secreto-valor').textContent, TOKEN);
+    assert.match(nodo(escenario, 'agente-estado').textContent, /Activo/);
+    assert.equal(botonesCon(nodo(escenario, 'agente-estado'), 'Revocar').length, 1);
+  });
+
+  test('CH-30c Ya lo guardé removes the token from every node of the page', async () => {
+    const escenario = await abrirAgentes([]);
+    await crearAgente(escenario);
+    nodo(escenario, 'agente-guardado').disparar('click');
+    assert.equal(nodo(escenario, 'agente-secreto').hidden, true);
+    assert.ok(!textoDeLaPagina(escenario).includes(TOKEN));
+  });
+
+  test('CH-30c leaving the screen removes the token too', async () => {
+    const escenario = await abrirAgentes([]);
+    await crearAgente(escenario);
+    irA(escenario, '#consultas');
+    assert.ok(!textoDeLaPagina(escenario).includes(TOKEN));
+  });
+
+  test('CH-30c Revocar asks inline, explaining the impact, before sending', async () => {
+    const escenario = await abrirAgentes([AGENTE_ACTIVO]);
+    const estado = nodo(escenario, 'agente-estado');
+    const antes = escenario.peticiones.length;
+    botonesCon(estado, 'Revocar')[0].disparar('click');
+    assert.equal(escenario.peticiones.length, antes);
+    assert.match(estado.textContent, /dejan de funcionar/);
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { agente: { ...AGENTE_ACTIVO, revocadoEn: '2026-10-13T10:00:00.000Z' } } },
+      { status: 200, cuerpo: { agentes: [{ ...AGENTE_ACTIVO, revocadoEn: '2026-10-13T10:00:00.000Z' }] } },
+    );
+    botonesCon(estado, 'Revocar el token')[0].disparar('click');
+    await asentarVarias();
+    assert.ok(escenario.peticiones.some((p) => p.url === '/agentes/a-1/revocar'));
+    assert.match(estado.textContent, /Revocado/);
+    assert.equal(botonesCon(estado, 'Emitir un token nuevo').length, 1);
+  });
+
+  test('CH-30c a new connection can go through the tenant active agent', async () => {
+    const escenario = await abrirConexiones([]);
+    escenario.respuestas.push({ status: 200, cuerpo: { agentes: [AGENTE_ACTIVO] } });
+    nodo(escenario, 'conexion-nueva').disparar('click');
+    await asentarVarias();
+    const via = nodo(escenario, 'cx-via');
+    assert.deepEqual(via.options.map((o) => o.value), ['', 'a-1']);
+    via.value = 'a-1';
+    for (const [id, valor] of [['cx-nombre', 'Por agente'], ['cx-host', 'db.interna'], ['cx-puerto', '5432'], ['cx-base', 'tienda'], ['cx-usuario', 'lector'], ['cx-clave', 'otra-clave-secreta']]) {
+      nodo(escenario, id).value = valor;
+    }
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { conexion: { ...CONEXION_LISTADA, id: 'c-8', agenteId: 'a-1' } } },
+      { status: 200, cuerpo: { resultado: 'ok', categoria: null, codigo: null, host: 'db.interna', puerto: 5432, duracionMs: 9 } },
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+    );
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    const alta = escenario.peticiones.find((p) => p.url === '/conexiones' && p.cuerpo !== null);
+    assert.equal((alta?.cuerpo as { agenteId?: string }).agenteId, 'a-1');
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----
