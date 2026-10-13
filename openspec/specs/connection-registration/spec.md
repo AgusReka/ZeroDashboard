@@ -178,13 +178,14 @@ WHEN `agenteId` is supplied, the system SHALL resolve it only among agents of th
 
 ### Requirement: Listing the Active Tenant's Connections (DEC-132)
 
-The system SHALL expose `GET /conexiones`, scoped to the active tenant, returning only the tenant's connections, each with exactly `id` and `nombre`. The route MUST require `X-Tenant-Id` and MUST NOT be added to the tenant-context exemption allowlist. The result SHALL be capped to a fixed maximum number of rows, with cap value and ordering fixed by design. No other field, including `credencial`, MUST appear in the response.
+The system SHALL expose `GET /conexiones`, scoped to the active tenant, returning only the tenant's connections, each with exactly the public connection fields the registration answers: `id`, `nombre`, `motor`, `host`, `puerto`, `baseDeDatos`, `usuarioDb`, `soloLectura`, `agenteId`, `creadaEn` and `actualizadaEn`. The route MUST require `X-Tenant-Id` and MUST NOT be added to the tenant-context exemption allowlist. The result SHALL be capped to a fixed maximum number of rows, with cap value and ordering fixed by design. No other field, including `credencial`, MUST appear in the response.
+(Previously: each entry had exactly `id` and `nombre`.)
 
 #### Scenario: Listing own connections
 
 - **GIVEN** tenant A with two connections
 - **WHEN** `GET /conexiones` is sent with A's `X-Tenant-Id`
-- **THEN** the response SHALL list exactly those two, each with only `id` and `nombre`
+- **THEN** the response SHALL list exactly those two, each with exactly the public fields and no `credencial`
 
 #### Scenario: Two tenants
 
@@ -209,4 +210,3 @@ The system SHALL expose `GET /conexiones`, scoped to the active tenant, returnin
 - **GIVEN** a tenant with more connections than the cap
 - **WHEN** the listing is requested
 - **THEN** no more than the cap SHALL be returned
-
