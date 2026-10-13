@@ -27,3 +27,15 @@ The system SHALL expose `GET /conexiones`, scoped to the active tenant, returnin
 - **GIVEN** a request with no `X-Tenant-Id`
 - **WHEN** `GET /conexiones` is handled
 - **THEN** the response SHALL be `400 tenant-no-indicado`
+
+#### Scenario: Tenant without connections
+
+- **GIVEN** an active tenant with no connections
+- **WHEN** the listing is requested
+- **THEN** the response SHALL be successful with an empty list
+
+#### Scenario: Row cap
+
+- **GIVEN** a tenant with more connections than the cap
+- **WHEN** the listing is requested
+- **THEN** no more than the cap SHALL be returned
