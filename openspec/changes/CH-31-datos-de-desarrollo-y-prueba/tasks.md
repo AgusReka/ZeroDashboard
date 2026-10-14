@@ -6,7 +6,7 @@ Branch base: `master` (after CH-30d). Tests first where there is code to test, a
 - Estimated changed lines: ~520 hand-written (PR1 ~170, PR2 ~350), plus the `food_store` dump (generated data, ~600 lines)
 - 400-line budget risk: High
 - Chained PRs recommended: Yes
-- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`)
+- Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-13: chained PRs, stacked-to-main.** PR1 carries the `food_store` dump, generated data that cannot be split cleanly: that PR is marked `size:exception` for the dump only; its hand-written part stays within budget.
 
 ## PR0 — Planning
 - [ ] 0.1 DEC-170, DEC-171, exploration, proposal, specs, design and tasks (`ch31/exploracion`); the change map row; the audit's screen changes renumbered to CH-32a and CH-32b.
