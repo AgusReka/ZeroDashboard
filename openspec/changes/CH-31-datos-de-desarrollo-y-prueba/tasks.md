@@ -9,15 +9,15 @@ Branch base: `master` (after CH-30d). Tests first where there is code to test, a
 - Decision needed before apply: Yes (session strategy `single-pr`: split into chained PRs or accept `size:exception`). **Decided 2026-10-13: chained PRs, stacked-to-main.** PR1 carries the `food_store` dump, generated data that cannot be split cleanly: that PR is marked `size:exception` for the dump only; its hand-written part stays within budget.
 
 ## PR0 — Planning
-- [ ] 0.1 DEC-170, DEC-171, exploration, proposal, specs, design and tasks (`ch31/exploracion`); the change map row; the audit's screen changes renumbered to CH-32a and CH-32b.
+- [x] 0.1 DEC-170, DEC-171, exploration, proposal, specs, design and tasks (`ch31/exploracion`); the change map row; the audit's screen changes renumbered to CH-32a and CH-32b.
 
 ## PR1 — Test database and demo replica
-- [ ] 1.1 `scripts/test-db.mjs` and `npm run test:db`: resolve `TEST_DB_*`, refuse `zerodashboard`/`POSTGRES_DB`, create the database if absent, migrate, run the suite.
-- [ ] 1.2 The owner dumps `food_store` (`pg_dump --no-owner --no-privileges`) into `docker/replica-demo/01-esquema-y-datos.sql`; replace the `user` rows with neutral values; check that no other table holds personal data.
-- [ ] 1.3 `docker/replica-demo/02-lector.sh`: the read-only user from `REPLICA_DEMO_PASSWORD`, `SELECT` only.
-- [ ] 1.4 `replica-demo` service under the `demo` profile, its volume, and the app's optional `depends_on`.
-- [ ] 1.5 `.env.example`: `SEED_DEMO`, `REPLICA_DEMO_PASSWORD`, `DEMO_OPERADOR_CLAVE`, `DEMO_PANEL_CORREO`, `DEMO_PANEL_CLAVE` as placeholders; how to start the demo; `TEST_DB_*` for `test:db`.
-- [ ] 1.6 Check: full `npm run test:db` with `app` running; the dev tenant count is the same before and after; `--profile demo` brings `replica-demo` up, its views answer, an `INSERT` by the read-only user is refused.
+- [x] 1.1 `scripts/test-db.mjs` and `npm run test:db`: resolve `TEST_DB_*`, refuse `zerodashboard`/`POSTGRES_DB`, create the database if absent, migrate, run the suite.
+- [x] 1.2 The owner dumps `food_store` (`pg_dump --no-owner --no-privileges`) into `docker/replica-demo/01-esquema-y-datos.sql`; replace the `user` rows with neutral values; check that no other table holds personal data.
+- [x] 1.3 `docker/replica-demo/02-lector.sh`: the read-only user from `REPLICA_DEMO_PASSWORD`, `SELECT` only.
+- [x] 1.4 `replica-demo` service under the `demo` profile, its volume, and the app's optional `depends_on`.
+- [x] 1.5 `.env.example`: `SEED_DEMO`, `REPLICA_DEMO_PASSWORD`, `DEMO_OPERADOR_CLAVE`, `DEMO_PANEL_CORREO`, `DEMO_PANEL_CLAVE` as placeholders; how to start the demo; `TEST_DB_*` for `test:db`.
+- [x] 1.6 Check: full `npm run test:db` with `app` running; the dev tenant count is the same before and after; `--profile demo` brings `replica-demo` up, its views answer, an `INSERT` by the read-only user is refused.
 
 ## PR2 — Shared probe and demo seed
 - [ ] 2.1 Extract `registrarVeredictos` from the validation route; `validacion-mapeo-rutas.test.ts` passes unchanged.
