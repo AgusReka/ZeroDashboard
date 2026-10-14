@@ -54,3 +54,10 @@ No route SHALL update or delete an audit row. The database SHALL refuse `UPDATE`
 #### Scenario: An invalid filter
 - **WHEN** `desde` is "ayer" or `resultado` is "quizas"
 - **THEN** the answer is 400 `solicitud-invalida` with the filter in `campos`
+
+### Requirement: The Demo Seed's Validation Is Audited
+When the demo seed validates the mapping, it SHALL write exactly one `RegistroEjecucion` row with the tenant "Food Store", the operator `demo`, `origen` `validacion-mapeo`, the connection, the probe statements of every entity in contract order, and the result, exactly as `POST /conexiones/:id/validacion-mapeo` would record it.
+
+#### Scenario: Auditing the seed's probe
+- **WHEN** the demo seed validates the five entities
+- **THEN** one row exists with operator `demo`, `origen` "validacion-mapeo", the five probe statements and `resultado` "ok"

@@ -27,5 +27,5 @@ Branch base: `master` (after CH-30d). Tests first where there is code to test, a
 - [x] 2.5 Manual: `docker compose down -v`, then `--profile demo --profile correo up` with `SEED_DEMO=1`; walk the console and the panel per the "Fresh demo" scenario.
 
 ## Close
-- [ ] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
-- [ ] 3.2 Verify, archive, sync `project-environment` and `execution-audit` (append the new requirements), mark CH-31 in `docs/02-mapa-de-changes.md`; update the memory note on how to run tests with a database.
+- [x] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
+- [x] 3.2 Verify, archive, sync `project-environment` and `execution-audit` (append the new requirements), mark CH-31 in `docs/02-mapa-de-changes.md`; update the memory note on how to run tests with a database.
