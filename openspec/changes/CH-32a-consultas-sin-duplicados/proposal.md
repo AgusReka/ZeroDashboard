@@ -12,7 +12,7 @@
 ### In Scope
 - **Saving with a query loaded (DEC-172):** "Guardar consulta" is hidden while a saved query is loaded; "Guardar como nueva versión" stays. With no query loaded, it shows as today.
 - **"Consulta nueva":** empties the SQL, the parameters, the name and the description, and forgets the loaded query. When the editor holds edits that are not saved, it first asks inline with «Descartar cambios» before discarding them.
-- **Connection picker:** `#conexion` becomes a `select` filled from `GET /conexiones` (option text: the connection's name; value: its id), loaded when the tenant is set, like the saved queries. No connection: the select says so. "Ejecutar" with no connection chosen says «Elegí una conexión para ejecutar» and sends nothing.
+- **Connection picker:** `#conexion` becomes a `select` filled from `GET /conexiones` (option text: the connection's name and a short id, as in the automation wizard; value: its id), loaded when the tenant is set, like the saved queries. No connection: the select says so. "Ejecutar" with no connection chosen says «Elegí una conexión para ejecutar» and sends nothing.
 - Help text of the saved-queries section updated to the new behaviour.
 
 ### Out of Scope

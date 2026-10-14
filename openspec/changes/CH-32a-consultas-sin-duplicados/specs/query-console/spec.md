@@ -36,12 +36,12 @@ The saved-queries section SHALL offer "Consulta nueva", which empties the SQL ed
 - THEN the console asks «Descartar cambios» and the editor keeps the edit until it is confirmed
 
 ### Requirement: Connection Picker
-The connection to run a statement against SHALL be chosen from a list of the active tenant's connections (`GET /conexiones`), each shown by its name with its id as the value; it SHALL be loaded when the active tenant is set and when the Consultas screen is shown. With no tenant, or a tenant with no connections, the list SHALL say so. Executing with no connection chosen SHALL say «Elegí una conexión para ejecutar» and send nothing. Loading a saved query SHALL NOT change the chosen connection (DEC-11).
+The connection to run a statement against SHALL be chosen from a list of the active tenant's connections (`GET /conexiones`), each shown by its name and a short id (as in the automation wizard) with the full id as the value; it SHALL be loaded when the active tenant is set and when the Consultas screen is shown. With no tenant, or a tenant with no connections, the list SHALL say so. Executing with no connection chosen SHALL say «Elegí una conexión para ejecutar» and send nothing. Loading a saved query SHALL NOT change the chosen connection (DEC-11).
 
 #### Scenario: Picking a connection
 - GIVEN the tenant has connections "food-store" and "replica-b"
 - WHEN the operator opens Consultas
-- THEN the picker lists both by name, and executing sends the chosen one's id as `conexionId`
+- THEN the picker lists both by name and short id, and executing sends the chosen one's id as `conexionId`
 
 #### Scenario: No connection chosen
 - WHEN the operator executes without choosing a connection

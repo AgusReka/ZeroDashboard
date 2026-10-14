@@ -10,7 +10,7 @@ Inputs: proposal.md, the `query-console` delta, DEC-172, DEC-11, DEC-132/DEC-167
 - `cargarConexionesConsulta()`: with no tenant, one placeholder option «Elegí un tenant para ver sus conexiones» and nothing sent. Otherwise:
   - first, the placeholder «Cargando conexiones…» and the select disabled;
   - then `pedir('/conexiones')`:
-    - **200 with rows:** placeholder «Elegí una conexión», then one `option` per connection (`textContent` = nombre, `value` = id). The previous choice is kept if it is still in the list.
+    - **200 with rows:** placeholder «Elegí una conexión», then one `option` per connection (`textContent` = nombre plus the first 8 characters of the id, as `renderizarConexiones` does for the automation wizard and as C-08 asks: id + nombre; `value` = id). The previous choice is kept if it is still in the list.
     - **200 with no rows:** placeholder «No hay conexiones registradas», and the notice «Este tenant no tiene conexiones. Registrá una en Conexiones para poder ejecutar.» with a link to `#conexiones`.
     - **`truncado`:** the notice «Se muestran las primeras N conexiones, en orden alfabético.».
     - **Any other answer, or a network failure:** the notice «No se pudieron cargar las conexiones.» and a «Reintentar» button (`button#conexion-reintentar`, `type="button"`) that calls the function again.
