@@ -110,6 +110,11 @@ function documentoConsola(nombreOperador: string): string {
   .zd-table-wrap:not(:has(th, td)) { border: 0; }
   .zd-table td { white-space: pre-wrap; vertical-align: top; }
   .zd-table td.nulo { color: var(--text-3); font-style: italic; }
+  /* CH-32a PR2 (DEC-173): the strip above the editor, one line that wraps; its text sits level with the button. */
+  #consulta-franja { margin: var(--space-5) 0 0; }
+  #franja-sin-guardar, #version-guardar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); }
+  #consulta-franja .ayuda { margin: 0; }
+  #consulta-nueva-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
   #guardadas { list-style: none; padding: 0; margin: var(--space-5) 0 0; }
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
     border-bottom: var(--border-width) solid var(--border-1); }
@@ -417,7 +422,38 @@ function documentoConsola(nombreOperador: string): string {
     <h1 id="titulo-consultas" class="zd-h1">Consultas</h1>
     <p class="zd-pagehead__desc">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
   </div>
+  <!--
+    CH-32a (DEC-172): empties the editor, the parameters, the name and the description and
+    forgets the loaded query, so "Guardar consulta" is offered again. With edits not saved it
+    asks inline first (same pattern as "Dar de baja" in Tenants); every button is type="button".
+  -->
+  <div class="zd-pagehead__actions">
+    <button id="consulta-nueva" class="zd-btn zd-btn--secondary" type="button">Consulta nueva</button>
+    <span id="consulta-nueva-confirmar" hidden>
+      Hay cambios sin guardar en el editor.
+      <button id="consulta-nueva-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+      <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Cancelar</button>
+    </span>
+  </div>
 </header>
+
+<!--
+  CH-32a PR2 (DEC-172, DEC-173): the strip says what the editor holds. With no saved query
+  loaded it reads "Consulta sin guardar" and opens the save panel to create one; with one
+  loaded (#version-guardar, hidden until then) it names the query and its version and opens
+  the same panel to save a new version. The script switches between the two and writes the
+  loaded query's text as text.
+-->
+<div id="consulta-franja">
+  <div id="franja-sin-guardar">
+    <span class="ayuda">Consulta sin guardar</span>
+    <button id="guardar-abrir" class="zd-btn zd-btn--secondary" type="button">Guardar consulta</button>
+  </div>
+  <div id="version-guardar" hidden>
+    <p id="version-cargada" class="ayuda"></p>
+    <button id="version-abrir" class="zd-btn zd-btn--secondary" type="button">Guardar como nueva versión</button>
+  </div>
+</div>
 
 <form id="formulario">
   <!--
@@ -482,58 +518,54 @@ function documentoConsola(nombreOperador: string): string {
   <h2 class="zd-h2">Consultas guardadas</h2>
   <p class="ayuda">Con una consulta cargada, los cambios se guardan como una versión nueva de esa consulta. Para guardar el editor como otra consulta, empezá con «Consulta nueva». No se puede borrar.</p>
 
-  <!--
-    CH-32a (DEC-172): empties the editor, the parameters, the name and the description and
-    forgets the loaded query, so "Guardar consulta" is offered again. With edits not saved it
-    asks inline first (same pattern as "Dar de baja" in Tenants); every button is type="button".
-  -->
-  <div class="controles">
-    <button id="consulta-nueva" class="zd-btn zd-btn--secondary" type="button">Consulta nueva</button>
-    <span id="consulta-nueva-confirmar" hidden>
-      Hay cambios sin guardar en el editor.
-      <button id="consulta-nueva-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
-      <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Cancelar</button>
-    </span>
-  </div>
-
-  <label for="nombre" class="zd-label">Nombre</label>
-  <input id="nombre" class="zd-input" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
-
-  <label for="descripcion" class="zd-label">Descripción (opcional)</label>
-  <input id="descripcion" class="zd-input" type="text" autocomplete="off">
-
-  <div class="controles">
-    <button id="guardar" class="zd-btn zd-btn--secondary" type="button">Guardar consulta</button>
-  </div>
-
-  <!--
-    CH-25 (DEC-148, DEC-150): shown only while a saved query is loaded in the editor. The
-    note is optional; the button sends the editor's content as a new version of that query.
-  -->
-  <div id="version-guardar" hidden>
-    <p id="version-cargada" class="ayuda"></p>
-    <label for="version-nota" class="zd-label">Nota de la versión (opcional)</label>
-    <input id="version-nota" class="zd-input" type="text" maxlength="500" autocomplete="off" placeholder="por ejemplo: Agrega filtro por depósito">
-    <div class="controles">
-      <button id="version-boton" class="zd-btn zd-btn--secondary" type="button">Guardar como nueva versión</button>
-    </div>
-  </div>
-
   <ul id="guardadas"></ul>
 
   <!--
     CH-25 (DEC-146 to DEC-150, screen C-05): the history of one saved query. Starts closed;
     the script fills it as text. Every button is type="button". Restoring never deletes: it
-    creates a new version.
+    creates a new version. CH-32a PR2 (DEC-173): a wide side panel, not a block under the list.
   -->
-  <div id="versiones" hidden>
-    <h3 id="versiones-titulo" class="zd-h2"></h3>
-    <p id="versiones-estado" class="ayuda" role="status"></p>
-    <ul id="versiones-lista"></ul>
-    <div id="versiones-comparacion"></div>
-    <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
-  </div>
+  <aside id="versiones" class="zd-drawer zd-drawer--wide" aria-labelledby="versiones-titulo" hidden>
+    <div class="zd-drawer__head"><h2 id="versiones-titulo" class="zd-h2"></h2></div>
+    <div class="zd-drawer__body">
+      <p id="versiones-estado" class="ayuda" role="status"></p>
+      <ul id="versiones-lista"></ul>
+      <div id="versiones-comparacion"></div>
+    </div>
+    <div class="zd-drawer__foot">
+      <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
+    </div>
+  </aside>
 </section>
+
+<!--
+  CH-32a PR2 (DEC-173): saving opens here, in a side panel, never inline. Two modes, set by the
+  script: a new query (name and description, "Guardar consulta") or a new version of the loaded
+  one (name, description and the optional note, "Guardar versión N+1"; CH-25, DEC-148, DEC-150).
+  "Cancelar" closes it without sending anything. After the history so it stacks above it.
+-->
+<aside id="guardado-panel" class="zd-drawer" aria-labelledby="guardado-titulo" hidden>
+  <div class="zd-drawer__head"><h2 id="guardado-titulo" class="zd-h2">Guardar consulta</h2></div>
+  <div class="zd-drawer__body">
+    <div>
+      <label for="nombre" class="zd-label">Nombre</label>
+      <input id="nombre" class="zd-input" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
+    </div>
+    <div>
+      <label for="descripcion" class="zd-label">Descripción (opcional)</label>
+      <input id="descripcion" class="zd-input" type="text" autocomplete="off">
+    </div>
+    <div id="version-campos" hidden>
+      <label for="version-nota" class="zd-label">Nota de la versión (opcional)</label>
+      <input id="version-nota" class="zd-input" type="text" maxlength="500" autocomplete="off" placeholder="por ejemplo: Agrega filtro por depósito">
+    </div>
+  </div>
+  <div class="zd-drawer__foot">
+    <button id="guardar" class="zd-btn zd-btn--primary" type="button">Guardar consulta</button>
+    <button id="version-boton" class="zd-btn zd-btn--primary" type="button" hidden>Guardar versión nueva</button>
+    <button id="guardado-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+  </div>
+</aside>
 </section>
 
 <section id="pantalla-automatizaciones" aria-labelledby="titulo-automatizaciones" hidden>
@@ -1616,6 +1648,7 @@ async function guardar() {
 
   entradaNombre.value = '';
   entradaDescripcion.value = '';
+  cerrarGuardado();
   mostrarConfirmacion('Se guardó la consulta y ya aparece en la lista.');
   await listarGuardadas();
 }
@@ -2668,9 +2701,76 @@ var textoCargada = document.getElementById('version-cargada');
 var entradaNotaVersion = document.getElementById('version-nota');
 var botonVersion = document.getElementById('version-boton');
 
-// The query loaded in the editor ({ id, nombre, version, sql }), or null when none is.
+// CH-32a PR2 (DEC-173): the strip above the editor and the save side panel it opens.
+var franjaSinGuardar = document.getElementById('franja-sin-guardar');
+var botonAbrirGuardar = document.getElementById('guardar-abrir');
+var botonAbrirVersion = document.getElementById('version-abrir');
+var panelGuardado = document.getElementById('guardado-panel');
+var tituloGuardado = document.getElementById('guardado-titulo');
+var camposVersion = document.getElementById('version-campos');
+var botonCancelarGuardado = document.getElementById('guardado-cancelar');
+
+// The query loaded in the editor ({ id, nombre, descripcion, version, sql }), or null when none is.
 // CH-20 (DEC-161): version and sql let a run name the query while the editor still holds it.
+// CH-32a PR2: descripcion lets the save panel open with the loaded query's description.
 var consultaCargada = null;
+
+// "Guardar versión 4" for a loaded query at version 3; without a numeric version, a plain wording.
+function numeroDeVersionNueva() {
+  return consultaCargada !== null && typeof consultaCargada.version === 'number' ? consultaCargada.version + 1 : null;
+}
+
+// The strip's loaded state: «Stock» · Versión 3 · vigente. Written as text, never as markup.
+function escribirFranja() {
+  if (consultaCargada === null) { textoCargada.textContent = ''; return; }
+  textoCargada.textContent = '«' + consultaCargada.nombre + '»' +
+    (typeof consultaCargada.version === 'number' ? ' · Versión ' + consultaCargada.version + ' · vigente' : '');
+}
+
+function cerrarGuardado() {
+  panelGuardado.hidden = true;
+}
+
+// Two modes. 'nueva' (no query loaded): empty name and description, only "Guardar consulta".
+// 'version' (a query loaded): its name and description, the optional note, only the version
+// button; the panel never offers to create a copy. Opening sends nothing.
+function abrirGuardado(modo) {
+  if (modo === 'version') {
+    if (consultaCargada === null) { return; }
+    var siguiente = numeroDeVersionNueva();
+    entradaNombre.value = consultaCargada.nombre;
+    entradaDescripcion.value = consultaCargada.descripcion;
+    entradaNotaVersion.value = '';
+    tituloGuardado.textContent = siguiente === null ? 'Guardar como versión nueva' : 'Guardar como versión ' + siguiente;
+    botonVersion.textContent = siguiente === null ? 'Guardar versión nueva' : 'Guardar versión ' + siguiente;
+    camposVersion.hidden = false;
+    botonVersion.hidden = false;
+    botonGuardar.hidden = true;
+  } else {
+    if (consultaCargada !== null) { return; }
+    entradaNombre.value = '';
+    entradaDescripcion.value = '';
+    entradaNotaVersion.value = '';
+    tituloGuardado.textContent = 'Guardar consulta';
+    camposVersion.hidden = true;
+    botonVersion.hidden = true;
+    botonGuardar.hidden = false;
+  }
+  panelGuardado.hidden = false;
+  entradaNombre.focus();
+}
+
+botonAbrirGuardar.addEventListener('click', function () {
+  abrirGuardado('nueva');
+});
+
+botonAbrirVersion.addEventListener('click', function () {
+  abrirGuardado('version');
+});
+
+botonCancelarGuardado.addEventListener('click', function () {
+  cerrarGuardado();
+});
 
 // CH-32a (DEC-172): "Consulta nueva" and its inline confirmation.
 var botonConsultaNueva = document.getElementById('consulta-nueva');
@@ -2685,25 +2785,30 @@ var botonCancelarNueva = document.getElementById('consulta-nueva-cancelar');
 function olvidarConsultaCargada() {
   consultaCargada = null;
   bloqueVersion.hidden = true;
+  franjaSinGuardar.hidden = false;
   botonGuardar.hidden = false;
   confirmarConsultaNueva.hidden = true;
-  textoCargada.textContent = '';
+  escribirFranja();
   entradaNotaVersion.value = '';
+  // CH-32a PR2: the save panel was opened for the query that is no longer loaded.
+  cerrarGuardado();
 }
 
 function recordarConsultaCargada(consulta) {
   consultaCargada = {
     id: String(consulta.id),
     nombre: String(consulta.nombre),
+    descripcion: consulta.descripcion === null || consulta.descripcion === undefined ? '' : String(consulta.descripcion),
     version: consulta.version,
     sql: String(consulta.sql)
   };
   bloqueVersion.hidden = false;
+  franjaSinGuardar.hidden = true;
   botonGuardar.hidden = true;
   confirmarConsultaNueva.hidden = true;
-  textoCargada.textContent = 'Consulta cargada: «' + consultaCargada.nombre +
-    '». Los cambios del editor se guardan como una versión nueva de esta consulta.';
+  escribirFranja();
   entradaNotaVersion.value = '';
+  cerrarGuardado();
 }
 
 // Edits not saved: with a query loaded, a statement that differs from the stored one; with
@@ -2726,6 +2831,7 @@ function empezarConsultaNueva() {
 }
 
 function consultaNueva() {
+  cerrarGuardado();
   if (hayCambiosSinGuardar()) {
     confirmarConsultaNueva.hidden = false;
     return;
@@ -2774,6 +2880,10 @@ async function guardarNuevaVersion() {
     // CH-20 (DEC-161): the editor now holds the saved version, so a run names it.
     consultaCargada.version = guardada.version;
     consultaCargada.sql = String(guardada.sql);
+    // CH-32a PR2: what was sent is what is stored, so the next opening of the panel starts from it.
+    consultaCargada.descripcion = cuerpo.descripcion;
+    escribirFranja();
+    cerrarGuardado();
     entradaNotaVersion.value = '';
     mostrarConfirmacion('Se guardó la versión ' + guardada.version + ' de «' + consultaCargada.nombre + '».');
     await listarGuardadas();

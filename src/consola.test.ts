@@ -290,12 +290,21 @@ const IDS = [
   'consulta-nueva-confirmar',
   'consulta-nueva-descartar',
   'consulta-nueva-cancelar',
+  // CH-32a PR2 (DEC-173): the strip above the editor and the save side panel.
+  'consulta-franja',
+  'franja-sin-guardar',
+  'guardar-abrir',
+  'version-abrir',
+  'guardado-panel',
+  'guardado-titulo',
+  'version-campos',
+  'guardado-cancelar',
 ] as const;
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
-/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button and confirmation. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-nueva-confirmar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
+/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, confirmation, save panel and its version-only nodes. */
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-nueva-confirmar', 'guardado-panel', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -2456,7 +2465,8 @@ describe('the console document, served by the real route', () => {
 
   test('CH-25 the panel markup starts closed, keeps its ids once and every button is type="button"', () => {
     verificarIds(marcado());
-    assert.match(marcado(), /<div id="versiones" hidden>/);
+    // CH-32a PR2 (DEC-173): the history is a wide side panel now, closed at load.
+    assert.match(marcado(), /<aside id="versiones" class="zd-drawer zd-drawer--wide"[^>]*\bhidden\b/);
     const seccion = marcado().slice(marcado().indexOf('id="guardado"'), marcado().indexOf('id="automatizaciones"'));
     const botones = seccion.match(/<button[^>]*>/g) ?? [];
     assert.ok(botones.length >= 2, 'Guardar consulta and Cerrar versiones');
@@ -2689,10 +2699,14 @@ describe('the console document, served by the real route', () => {
   }
 
   test('CH-25 the save-as-version block starts hidden, takes a note of at most 500 characters and its button does not submit', () => {
-    const bloque = marcado().match(/<div id="version-guardar"[^>]*>[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
+    // CH-32a PR2 (DEC-173): the block is the strip's loaded state; the note and the button that
+    // sends it moved into the save side panel, so the assertions follow them there.
+    const bloque = marcado().match(/<div id="version-guardar"[^>]*>[\s\S]*?<\/div>/)?.[0] ?? '';
     assert.match(bloque, /<div id="version-guardar" hidden>/);
-    assert.match(bloque, /<input id="version-nota"[^>]*maxlength="500"/);
-    assert.match(bloque, /<button id="version-boton"[^>]*type="button"/);
+    assert.match(bloque, /<button id="version-abrir"[^>]*type="button"/);
+    const panel = marcado().match(/<aside id="guardado-panel"[\s\S]*?<\/aside>/)?.[0] ?? '';
+    assert.match(panel, /<input id="version-nota"[^>]*maxlength="500"/);
+    assert.match(panel, /<button id="version-boton"[^>]*type="button"/);
   });
 
   test('CH-25 the help text no longer says a saved query cannot be edited, and still says it cannot be deleted', () => {
@@ -2711,10 +2725,8 @@ describe('the console document, served by the real route', () => {
   test('CH-25 loading a saved query offers the action and brings its name, description and statement to the editor', async () => {
     const escenario = await conConsultaCargada();
     assert.equal(nodo(escenario, 'version-guardar').hidden, false);
-    assert.equal(
-      nodo(escenario, 'version-cargada').textContent,
-      'Consulta cargada: «Stock». Los cambios del editor se guardan como una versión nueva de esta consulta.',
-    );
+    // CH-32a PR2 (DEC-173): the strip states the loaded query and its version, as the spec asks.
+    assert.equal(nodo(escenario, 'version-cargada').textContent, '«Stock» · Versión 3 · vigente');
     assert.equal(nodo(escenario, 'nombre').value, 'Stock');
     assert.equal(nodo(escenario, 'descripcion').value, 'Productos');
     assert.equal(nodo(escenario, 'sql').value, 'SELECT :a');
@@ -3912,9 +3924,11 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-32a (DEC-172): "Consulta nueva" ----
 
-  test('CH-32a "Consulta nueva" sits at the top of the saved queries, before the name, and its buttons do not submit', () => {
-    const seccion = marcado().slice(marcado().indexOf('<section id="guardado">'), marcado().indexOf('<section id="automatizaciones">'));
-    assert.ok(seccion.indexOf('id="consulta-nueva"') !== -1 && seccion.indexOf('id="consulta-nueva"') < seccion.indexOf('id="nombre"'));
+  test('CH-32a "Consulta nueva" sits in the page header actions, before the editor, and its buttons do not submit', () => {
+    // PR2 (DEC-173): moved from the top of the saved queries to the page header; the section
+    // under test is now the screen from its header to the editor.
+    const seccion = marcado().slice(marcado().indexOf('<section id="pantalla-consultas"'), marcado().indexOf('<form id="formulario">'));
+    assert.ok(seccion.indexOf('id="consulta-nueva"') !== -1 && seccion.indexOf('id="consulta-nueva"') < seccion.indexOf('</header>'));
     assert.match(seccion, /<button id="consulta-nueva" class="zd-btn zd-btn--secondary" type="button">Consulta nueva<\/button>/);
     assert.match(seccion, /<span id="consulta-nueva-confirmar" hidden>/);
     assert.match(seccion, /Hay cambios sin guardar en el editor\./);
@@ -4012,6 +4026,320 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false);
     await elegirTenant(escenario);
     assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, 'a tenant switch forgets the loaded query');
+  });
+
+  // ---- CH-32a PR2 (DEC-173): the screen path, the strip and the save side panel ----
+
+  /** The screen's markup from its header to the start of the next screen. */
+  const pantallaConsultas = (): string =>
+    marcado().slice(marcado().indexOf('<section id="pantalla-consultas"'), marcado().indexOf('<section id="pantalla-automatizaciones"'));
+
+  /** Replaces the node's `focus` with a spy and returns the list of ids that took the focus. */
+  function espiarFoco(escenario: Escenario, ...ids: string[]): string[] {
+    const enfocados: string[] = [];
+    for (const id of ids) nodo(escenario, id).focus = () => void enfocados.push(id);
+    return enfocados;
+  }
+
+  /** Opens the save panel from the strip's button. */
+  const abrirDesdeFranja = (escenario: Escenario, id: 'guardar-abrir' | 'version-abrir'): void =>
+    nodo(escenario, id).disparar('click');
+
+  test('CH-32a PR2 the screen reads header action, strip, editor, result, then the saved queries', () => {
+    verificarIds(marcado());
+    const pantalla = pantallaConsultas();
+    const en = (id: string): number => pantalla.indexOf('id="' + id + '"');
+    const cabecera = pantalla.slice(0, pantalla.indexOf('</header>'));
+    assert.match(cabecera, /<div class="zd-pagehead__actions">[\s\S]*<button id="consulta-nueva"[^>]*type="button">Consulta nueva<\/button>[\s\S]*<span id="consulta-nueva-confirmar" hidden>/);
+    const orden = ['consulta-nueva', 'consulta-franja', 'formulario', 'estado', 'resultados', 'guardado', 'guardadas'].map(en);
+    assert.ok(orden.every((posicion) => posicion !== -1), 'every piece is on the screen');
+    assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'in that order, top to bottom');
+    // The strip is above the editor, and the form's own connection and SQL fields stay inside it.
+    assert.ok(en('consulta-franja') < en('conexion') && en('consulta-franja') < en('sql'));
+  });
+
+  test('CH-32a PR2 the name, description, note and save buttons left the saved queries for a hidden side panel', () => {
+    const pantalla = pantallaConsultas();
+    const guardado = pantalla.slice(pantalla.indexOf('<section id="guardado">'), pantalla.indexOf('</section>', pantalla.indexOf('<section id="guardado">')));
+    for (const id of ['nombre', 'descripcion', 'version-nota', 'guardar', 'version-boton']) {
+      assert.ok(!guardado.includes('id="' + id + '"'), id + ' is no longer inline in the saved queries');
+    }
+    assert.ok(guardado.includes('id="guardadas"'), 'the list stays');
+    assert.match(guardado, /<h2 class="zd-h2">Consultas guardadas<\/h2>/);
+
+    const panel = pantalla.match(/<aside id="guardado-panel"[\s\S]*?<\/aside>/)?.[0] ?? '';
+    assert.match(panel, /^<aside id="guardado-panel" class="zd-drawer" aria-labelledby="guardado-titulo" hidden>/);
+    assert.match(panel, /<div class="zd-drawer__head"><h2 id="guardado-titulo" class="zd-h2">Guardar consulta<\/h2><\/div>/);
+    const cuerpo = panel.match(/<div class="zd-drawer__body">[\s\S]*?<\/div>\s*<div class="zd-drawer__foot">/)?.[0] ?? '';
+    for (const id of ['nombre', 'descripcion', 'version-campos', 'version-nota']) {
+      assert.ok(cuerpo.includes('id="' + id + '"'), id + ' is in the panel body');
+    }
+    assert.match(cuerpo, /<div id="version-campos" hidden>/);
+    const pie = panel.slice(panel.indexOf('<div class="zd-drawer__foot">'));
+    assert.match(pie, /<button id="guardar"[^>]*type="button">Guardar consulta<\/button>/);
+    assert.match(pie, /<button id="version-boton"[^>]*type="button"[^>]*\bhidden\b/);
+    assert.match(pie, /<button id="guardado-cancelar"[^>]*type="button">Cancelar<\/button>/);
+    const botones = panel.match(/<button[^>]*>/g) ?? [];
+    assert.ok(botones.length === 3 && botones.every((etiqueta) => etiqueta.includes('type="button"')), 'no button submits');
+  });
+
+  test('CH-32a PR2 the history is a wide side panel that keeps its ids and its Cerrar versiones button', () => {
+    const panel = pantallaConsultas().match(/<aside id="versiones"[\s\S]*?<\/aside>/)?.[0] ?? '';
+    assert.match(panel, /^<aside id="versiones" class="zd-drawer zd-drawer--wide" aria-labelledby="versiones-titulo" hidden>/);
+    assert.match(panel, /<div class="zd-drawer__head"><h2 id="versiones-titulo" class="zd-h2"><\/h2><\/div>/);
+    for (const id of ['versiones-estado', 'versiones-lista', 'versiones-comparacion']) {
+      assert.ok(panel.includes('id="' + id + '"'), id);
+    }
+    assert.match(panel, /<div class="zd-drawer__foot">\s*<button id="versiones-cerrar"[^>]*type="button">Cerrar versiones<\/button>/);
+  });
+
+  test('CH-32a PR2 the strip says the editor is unsaved, with Guardar consulta, until a query is loaded', async () => {
+    const pantalla = pantallaConsultas();
+    assert.match(pantalla, /<div id="franja-sin-guardar">[\s\S]*Consulta sin guardar[\s\S]*<button id="guardar-abrir"[^>]*type="button">Guardar consulta<\/button>/);
+    assert.match(pantalla, /<div id="version-guardar" hidden>\s*<p id="version-cargada"[^>]*><\/p>\s*<button id="version-abrir"[^>]*type="button">Guardar como nueva versión<\/button>/);
+
+    const escenario = await conConsulta();
+    assert.equal(nodo(escenario, 'franja-sin-guardar').hidden, false);
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+    assert.equal(nodo(escenario, 'version-cargada').textContent, '');
+  });
+
+  test('CH-32a PR2 with a query loaded the strip names it and its version, and offers Guardar como nueva versión', async () => {
+    const escenario = await conConsultaCargada();
+    assert.equal(nodo(escenario, 'franja-sin-guardar').hidden, true);
+    assert.equal(nodo(escenario, 'version-guardar').hidden, false);
+    assert.equal(nodo(escenario, 'version-cargada').textContent, '«Stock» · Versión 3 · vigente');
+
+    nodo(escenario, 'consulta-nueva').disparar('click');
+    assert.equal(nodo(escenario, 'franja-sin-guardar').hidden, false, '"Consulta nueva" brings the unsaved state back');
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+  });
+
+  test('CH-32a PR2 the strip follows the version after a save and goes back with a tenant switch', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(escenario, [FILA_GUARDADA]);
+    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    await asentarVarias();
+    nodo(escenario, 'sql').value = 'SELECT 2';
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+    );
+    assert.equal(nodo(escenario, 'version-cargada').textContent, '«Stock» · Versión 4 · vigente');
+
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'franja-sin-guardar').hidden, false);
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+  });
+
+  test('CH-32a PR2 Guardar consulta in the strip opens the panel for a new query: title, empty fields, only its button, name focused', async () => {
+    const escenario = await conConsulta();
+    nodo(escenario, 'nombre').value = 'sobrante';
+    nodo(escenario, 'descripcion').value = 'sobrante';
+    const enfocados = espiarFoco(escenario, 'nombre', 'sql');
+    const antes = escenario.peticiones.length;
+
+    abrirDesdeFranja(escenario, 'guardar-abrir');
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, false);
+    assert.equal(nodo(escenario, 'guardado-titulo').textContent, 'Guardar consulta');
+    assert.equal(nodo(escenario, 'nombre').value, '');
+    assert.equal(nodo(escenario, 'descripcion').value, '');
+    assert.equal(nodo(escenario, 'version-campos').hidden, true, 'no note for a new query');
+    assert.equal(nodo(escenario, 'guardar').hidden, false);
+    assert.equal(nodo(escenario, 'version-boton').hidden, true);
+    assert.deepEqual(enfocados, ['nombre']);
+    assert.equal(escenario.peticiones.length, antes, 'opening sends nothing');
+  });
+
+  test('CH-32a PR2 Guardar como nueva versión opens the panel as N+1 with the loaded name and description, an empty note and no way to create', async () => {
+    const escenario = await conConsultaCargada();
+    nodo(escenario, 'nombre').value = 'otro nombre';
+    nodo(escenario, 'version-nota').value = 'nota vieja';
+    const enfocados = espiarFoco(escenario, 'nombre');
+    const antes = escenario.peticiones.length;
+
+    abrirDesdeFranja(escenario, 'version-abrir');
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, false);
+    assert.equal(nodo(escenario, 'guardado-titulo').textContent, 'Guardar como versión 4');
+    assert.equal(nodo(escenario, 'nombre').value, 'Stock');
+    assert.equal(nodo(escenario, 'descripcion').value, 'Productos');
+    assert.equal(nodo(escenario, 'version-nota').value, '');
+    assert.equal(nodo(escenario, 'version-campos').hidden, false);
+    assert.equal(nodo(escenario, 'version-boton').hidden, false);
+    assert.equal(nodo(escenario, 'version-boton').textContent, 'Guardar versión 4');
+    assert.equal(nodo(escenario, 'guardar').hidden, true, 'the panel never offers to create a copy');
+    assert.deepEqual(enfocados, ['nombre']);
+    assert.equal(escenario.peticiones.length, antes);
+  });
+
+  test('CH-32a PR2 a loaded query with no description opens the version panel with an empty one', async () => {
+    const escenario = await conConsultaCargada({ descripcion: null });
+    abrirDesdeFranja(escenario, 'version-abrir');
+    assert.equal(nodo(escenario, 'descripcion').value, '');
+  });
+
+  test('CH-32a PR2 with a query loaded the strip cannot open the panel to create', async () => {
+    const escenario = await conConsultaCargada();
+    abrirDesdeFranja(escenario, 'guardar-abrir');
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, true);
+    abrirDesdeFranja(escenario, 'version-abrir');
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, false);
+    assert.equal(nodo(escenario, 'guardar').hidden, true);
+  });
+
+  test('CH-32a PR2 Cancelar closes the panel in either mode and sends nothing', async () => {
+    const nueva = await conConsulta();
+    abrirDesdeFranja(nueva, 'guardar-abrir');
+    nodo(nueva, 'nombre').value = 'Borrador';
+    const antesNueva = nueva.peticiones.length;
+    nodo(nueva, 'guardado-cancelar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(nueva, 'guardado-panel').hidden, true);
+    assert.equal(nueva.peticiones.length, antesNueva);
+    abrirDesdeFranja(nueva, 'guardar-abrir');
+    assert.equal(nodo(nueva, 'nombre').value, '', 'what was typed was discarded');
+
+    const version = await conConsultaCargada();
+    abrirDesdeFranja(version, 'version-abrir');
+    nodo(version, 'version-nota').value = 'nota';
+    const antesVersion = version.peticiones.length;
+    nodo(version, 'guardado-cancelar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(version, 'guardado-panel').hidden, true);
+    assert.equal(version.peticiones.length, antesVersion);
+    assert.equal(nodo(version, 'version-guardar').hidden, false, 'the query stays loaded');
+  });
+
+  test('CH-32a PR2 a 201 creates the query from the panel and closes it', async () => {
+    const escenario = await conConsulta();
+    abrirDesdeFranja(escenario, 'guardar-abrir');
+    nodo(escenario, 'nombre').value = 'Ventas';
+    escenario.respuestas.push({ status: 201, cuerpo: { consultaGuardada: FILA_GUARDADA } });
+    const antes = escenario.peticiones.length;
+    await enviar(escenario, { consultasGuardadas: [FILA_GUARDADA], truncado: false }, 200, 'guardar', 'click');
+    const nuevas = escenario.peticiones.slice(antes);
+    assert.deepEqual(nuevas.map((p) => p.url), ['/consultas-guardadas', '/consultas-guardadas']);
+    assert.equal((nuevas[0].cuerpo as Record<string, unknown>).nombre, 'Ventas');
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, true);
+  });
+
+  test('CH-32a PR2 a 200 saves the version from the panel and closes it, and the next opening is N+1 of the new state', async () => {
+    const escenario = await conConsultaCargada();
+    abrirDesdeFranja(escenario, 'version-abrir');
+    nodo(escenario, 'descripcion').value = 'Descripción nueva';
+    nodo(escenario, 'version-nota').value = 'Cambio';
+    nodo(escenario, 'sql').value = 'SELECT :a + 1';
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+    );
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, true);
+    const envio = escenario.peticiones.find((p) => p.url === '/consultas-guardadas/q-1' && p.cuerpo !== null);
+    assert.equal((envio?.cuerpo as Record<string, unknown>).descripcion, 'Descripción nueva');
+
+    abrirDesdeFranja(escenario, 'version-abrir');
+    assert.equal(nodo(escenario, 'guardado-titulo').textContent, 'Guardar como versión 5');
+    assert.equal(nodo(escenario, 'descripcion').value, 'Descripción nueva', 'the saved description is the one remembered');
+    assert.equal(nodo(escenario, 'version-nota').value, '');
+  });
+
+  test('CH-32a PR2 a refused save keeps the panel open with the banner and what was typed', async () => {
+    const escenario = await conConsultaCargada();
+    abrirDesdeFranja(escenario, 'version-abrir');
+    nodo(escenario, 'version-nota').value = 'Cambio';
+    await guardarVersion(escenario, { status: 409, cuerpo: { error: 'sin-cambios' } });
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'No hay cambios respecto de la versión vigente.');
+    assert.equal(nodo(escenario, 'version-nota').value, 'Cambio');
+
+    const nueva = await conConsulta();
+    abrirDesdeFranja(nueva, 'guardar-abrir');
+    nodo(nueva, 'nombre').value = 'Ventas';
+    await enviar(nueva, { error: 'solicitud-invalida', campos: ['/nombre'] }, 400, 'guardar', 'click');
+    assert.equal(nodo(nueva, 'guardado-panel').hidden, false);
+    assert.equal(nodo(nueva, 'banner').hidden, false);
+    assert.equal(nodo(nueva, 'nombre').value, 'Ventas');
+  });
+
+  test('CH-32a PR2 a tenant switch closes the panel in either mode', async () => {
+    const nueva = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(nueva, [FILA_GUARDADA]);
+    abrirDesdeFranja(nueva, 'guardar-abrir');
+    assert.equal(nodo(nueva, 'guardado-panel').hidden, false);
+    await elegirTenant(nueva, [], [], 't-2');
+    assert.equal(nodo(nueva, 'guardado-panel').hidden, true);
+
+    const version = await conConsultaCargada();
+    abrirDesdeFranja(version, 'version-abrir');
+    assert.equal(nodo(version, 'guardado-panel').hidden, false);
+    nodo(version, 'tenant').value = 't-1';
+    version.respuestas.push(
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+      { status: 200, cuerpo: { plantillas: [], truncado: false } },
+      { status: 200, cuerpo: { automatizaciones: [], truncado: false } },
+    );
+    nodo(version, 'tenant').disparar('change');
+    await asentarVarias();
+    assert.equal(nodo(version, 'guardado-panel').hidden, true);
+  });
+
+  test('CH-32a PR2 loading a query, forgetting it and "Consulta nueva" each close the panel', async () => {
+    // Loading: the panel for a new query is open when a saved query is loaded over the editor.
+    const cargando = await conConsulta();
+    abrirDesdeFranja(cargando, 'guardar-abrir');
+    cargando.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
+    botonesCon(nodo(cargando, 'guardadas'), 'Cargar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(cargando, 'guardado-panel').hidden, true);
+
+    // Forgetting: the query is gone (404) while its version panel is open.
+    const olvidando = await conConsultaCargada();
+    abrirDesdeFranja(olvidando, 'version-abrir');
+    await guardarVersion(
+      olvidando,
+      { status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } },
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+    );
+    assert.equal(nodo(olvidando, 'guardado-panel').hidden, true);
+
+    // "Consulta nueva": with the loaded query unchanged, and with edits that are confirmed.
+    const nueva = await conConsultaCargada();
+    abrirDesdeFranja(nueva, 'version-abrir');
+    nodo(nueva, 'consulta-nueva').disparar('click');
+    assert.equal(nodo(nueva, 'guardado-panel').hidden, true);
+
+    const editada = await conConsultaCargada();
+    abrirDesdeFranja(editada, 'version-abrir');
+    nodo(editada, 'sql').value = 'SELECT 99';
+    nodo(editada, 'consulta-nueva').disparar('click');
+    nodo(editada, 'consulta-nueva-descartar').disparar('click');
+    assert.equal(nodo(editada, 'guardado-panel').hidden, true);
+  });
+
+  test('CH-32a PR2 opening the history leaves the save panel alone, and saving closes only the save panel', async () => {
+    const escenario = await conConsultaCargada();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    abrirDesdeFranja(escenario, 'version-abrir');
+    assert.equal(nodo(escenario, 'versiones').hidden, false);
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, false);
+    nodo(escenario, 'guardado-cancelar').disparar('click');
+    assert.equal(nodo(escenario, 'guardado-panel').hidden, true);
+    assert.equal(nodo(escenario, 'versiones').hidden, false, 'Cancelar does not touch the history');
+  });
+
+  test("CH-32a PR2 the strip and panel add no shared class from the script and write API text only as text", async () => {
+    assert.ok(!/zd-(drawer|btn|badge)/.test(script), 'the script assigns no drawer, button or badge class');
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await conConsultaCargada({ nombre: hostil, descripcion: hostil });
+    assert.equal(nodo(escenario, 'version-cargada').hijos.length, 0);
+    abrirDesdeFranja(escenario, 'version-abrir');
+    assert.equal(nodo(escenario, 'nombre').value, hostil);
+    assert.equal(nodo(escenario, 'descripcion').value, hostil);
+    assert.equal(nodo(escenario, 'guardado-titulo').hijos.length, 0);
   });
 
   // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------

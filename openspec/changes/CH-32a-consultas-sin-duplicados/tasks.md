@@ -20,9 +20,9 @@ Branch base: `master` (after #174). Tests first, against `npm run test:db` for t
 - [x] 1.5 Existing `consola.test.ts` scenarios still pass; add the `GET /conexiones` answer where a scenario needs the select populated.
 
 ## PR2 — Screen path and save panel (DEC-173)
-- [ ] 2.1 RED: the tests of design §7; new ids (`consulta-franja`, `franja-sin-guardar`, `guardar-abrir`, `version-abrir`, `guardado-panel`, `guardado-titulo`, `version-campos`, `guardado-cancelar`) in `IDS`, hidden ones in `IDS_OCULTOS`.
-- [ ] 2.2 GREEN: header action, strip, save panel with its two modes, versions in a wide side panel.
-- [ ] 2.3 Existing suites still pass.
+- [x] 2.1 RED: the tests of design §7; new ids (`consulta-franja`, `franja-sin-guardar`, `guardar-abrir`, `version-abrir`, `guardado-panel`, `guardado-titulo`, `version-campos`, `guardado-cancelar`) in `IDS`, hidden ones in `IDS_OCULTOS`.
+- [x] 2.2 GREEN: header action, strip, save panel with its two modes, versions in a wide side panel.
+- [x] 2.3 Existing suites still pass.
 
 ## Close
 - [ ] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
