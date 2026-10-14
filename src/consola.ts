@@ -111,17 +111,19 @@ function documentoConsola(nombreOperador: string): string {
   .zd-table td { white-space: pre-wrap; vertical-align: top; }
   .zd-table td.nulo { color: var(--text-3); font-style: italic; }
   /* CH-32a PR2 (DEC-173): the query pop-up holds the whole form and the result, so it is wider than the
-     shared dialog; its unsaved-changes question sits in the actions row, level with the buttons. */
+     shared dialog; every pop-up's unsaved-changes question sits in its actions row, level with the buttons. */
   #consulta-dialogo .zd-dialog { width: min(1100px, 100%); }
-  #consulta-nueva-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+  #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar {
+    display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
   #guardadas { list-style: none; padding: 0; margin: var(--space-5) 0 0; }
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
     border-bottom: var(--border-width) solid var(--border-1); }
   #guardadas .ayuda { margin: 0; }
-  /* CH-21c wizard. The script moves aria-current only, so step 1 reads as done whenever
+  /* CH-21c wizard, in a wide pop-up since CH-32b (DEC-173). The script moves aria-current only, so step 1 reads as done whenever
      it is not the current step (the shared sheet's done look needs a class the script
      does not assign). */
-  #auto-alta { margin-top: var(--space-5); }
+  #auto-alta .zd-dialog { width: min(900px, 100%); }
+  #auto-confirmar { justify-self: end; }
   #auto-alta .zd-form-actions { margin-top: var(--space-6); }
   #auto-marca-1:not([aria-current]) { color: var(--text-2); }
   #auto-marca-1:not([aria-current]) .zd-step__n { border-color: var(--accent); color: var(--accent-text); }
@@ -212,15 +214,37 @@ function documentoConsola(nombreOperador: string): string {
     <h1 id="titulo-tenants" class="zd-h1">Tenants</h1>
     <p class="zd-pagehead__desc">Dar de baja congela el tenant: sus conexiones, consultas y automatizaciones dejan de operar y no se borra nada.</p>
   </div>
-</header>
-<form id="tenant-alta" class="controles">
-  <div>
-    <label for="tenant-nombre" class="zd-label">Nuevo tenant</label>
-    <input id="tenant-nombre" class="zd-input" type="text" autocomplete="off" placeholder="Nombre del negocio" required>
+  <div class="zd-pagehead__actions">
+    <button id="tenant-nuevo" class="zd-btn zd-btn--primary" type="button">Nuevo tenant</button>
   </div>
-  <button class="zd-btn zd-btn--primary" type="submit">Crear tenant</button>
-</form>
+</header>
 <p id="tenant-aviso" class="ayuda" role="status"></p>
+<!--
+  CH-32b (DEC-173): «Nuevo tenant» opens here. «Crear tenant» creates it; «Crear y elegir» creates it and
+  makes it the active one. Errors are written in the status line inside the pop-up, successes in the notice above.
+-->
+<div id="tenant-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="tenant-dialogo-titulo">
+    <h2 id="tenant-dialogo-titulo" class="zd-dialog__title">Nuevo tenant</h2>
+    <form id="tenant-alta" class="zd-form">
+      <div>
+        <label for="tenant-nombre" class="zd-label">Nombre</label>
+        <input id="tenant-nombre" class="zd-input" type="text" autocomplete="off" placeholder="Nombre del negocio" required>
+      </div>
+    </form>
+    <p id="tenant-dialogo-aviso" class="ayuda" role="status"></p>
+    <div class="zd-dialog__actions">
+      <span id="tenant-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="tenant-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="tenant-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button class="zd-btn zd-btn--primary" type="submit" form="tenant-alta">Crear tenant</button>
+      <button id="tenant-crear-elegir" class="zd-btn zd-btn--secondary" type="button">Crear y elegir</button>
+      <button id="tenant-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
 <div class="zd-table-wrap zd-table-scroll">
   <table class="zd-table">
     <thead><tr><th>Nombre</th><th>Id</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr></thead>
@@ -230,8 +254,8 @@ function documentoConsola(nombreOperador: string): string {
 </section>
 
 <!--
-  CH-30b (DEC-167, screen C-05): the active tenant's connections. Registering opens a side
-  panel; "Guardar y probar" registers and tests at once. The password is sent once and never
+  CH-30b (DEC-167, screen C-05): the active tenant's connections. Registering opens a pop-up
+  (CH-32b); "Guardar y probar" registers and tests at once. The password is sent once and never
   written back to the page: the field is emptied right after reading it.
 -->
 <section id="pantalla-conexiones" aria-labelledby="titulo-conexiones" hidden>
@@ -252,24 +276,36 @@ function documentoConsola(nombreOperador: string): string {
     <tbody id="conexiones-cuerpo"></tbody>
   </table>
 </div>
-<aside id="conexion-panel" class="zd-drawer" aria-labelledby="titulo-conexion-nueva" hidden>
-  <div class="zd-drawer__head"><h2 id="titulo-conexion-nueva" class="zd-h2">Nueva conexión</h2></div>
-  <form id="conexion-alta" class="zd-drawer__body">
-    <div><label for="cx-nombre" class="zd-label">Nombre</label><input id="cx-nombre" class="zd-input" type="text" autocomplete="off" required></div>
-    <div><label for="cx-host" class="zd-label">Servidor</label><input id="cx-host" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-    <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required></div>
-    <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-    <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-    <div><label for="cx-via" class="zd-label">Cómo llega</label><select id="cx-via" class="zd-select"><option value="">Directa</option></select></div>
-    <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required></div>
-    <p class="ayuda">La contraseña se guarda cifrada y no se vuelve a mostrar.</p>
+<!--
+  CH-32b (DEC-173): «Nueva conexión» opens here, over the screen. «Guardar y probar» registers and tests at
+  once; the result goes to the notice above the table. A rejected registration is written in #cx-resultado,
+  inside the pop-up, which stays open. The password is read once and the field emptied; it is never shown again.
+-->
+<div id="conexion-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="conexion-dialogo-titulo">
+    <h2 id="conexion-dialogo-titulo" class="zd-dialog__title">Nueva conexión</h2>
+    <form id="conexion-alta" class="zd-form">
+      <div><label for="cx-nombre" class="zd-label">Nombre</label><input id="cx-nombre" class="zd-input" type="text" autocomplete="off" required></div>
+      <div><label for="cx-host" class="zd-label">Servidor</label><input id="cx-host" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+      <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required></div>
+      <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+      <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+      <div><label for="cx-via" class="zd-label">Cómo llega</label><select id="cx-via" class="zd-select"><option value="">Directa</option></select></div>
+      <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required></div>
+      <p class="ayuda">La contraseña se guarda cifrada y no se vuelve a mostrar.</p>
+    </form>
     <p id="cx-resultado" class="ayuda" role="status"></p>
-    <div class="zd-form-actions">
-      <button class="zd-btn zd-btn--primary" type="submit">Guardar y probar</button>
-      <button id="cx-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar</button>
+    <div class="zd-dialog__actions">
+      <span id="conexion-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="conexion-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="conexion-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button class="zd-btn zd-btn--primary" type="submit" form="conexion-alta">Guardar y probar</button>
+      <button id="cx-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
-  </form>
-</aside>
+  </div>
+</div>
 </section>
 
 <!--
@@ -309,13 +345,31 @@ function documentoConsola(nombreOperador: string): string {
     <h1 id="titulo-usuarios" class="zd-h1">Usuarios del panel</h1>
     <p class="zd-pagehead__desc">Quién del negocio entra al panel. La clave la genera el sistema y se muestra una sola vez.</p>
   </div>
+  <div class="zd-pagehead__actions">
+    <button id="usuario-nuevo" class="zd-btn zd-btn--primary" type="button">Nuevo usuario</button>
+  </div>
 </header>
-<form id="usuario-alta" class="controles">
-  <div><label for="usuario-correo" class="zd-label">Correo</label><input id="usuario-correo" class="zd-input" type="email" autocomplete="off" required></div>
-  <div><label for="usuario-nombre" class="zd-label">Nombre (opcional)</label><input id="usuario-nombre" class="zd-input" type="text" autocomplete="off"></div>
-  <button class="zd-btn zd-btn--primary" type="submit">Crear usuario</button>
-</form>
 <p id="usuarios-aviso" class="ayuda" role="status"></p>
+<!-- CH-32b (DEC-173): «Nuevo usuario» opens here. The generated password is shown once in the notice below. -->
+<div id="usuario-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="usuario-dialogo-titulo">
+    <h2 id="usuario-dialogo-titulo" class="zd-dialog__title">Nuevo usuario</h2>
+    <form id="usuario-alta" class="zd-form">
+      <div><label for="usuario-correo" class="zd-label">Correo</label><input id="usuario-correo" class="zd-input" type="email" autocomplete="off" required></div>
+      <div><label for="usuario-nombre" class="zd-label">Nombre (opcional)</label><input id="usuario-nombre" class="zd-input" type="text" autocomplete="off"></div>
+    </form>
+    <p id="usuario-dialogo-aviso" class="ayuda" role="status"></p>
+    <div class="zd-dialog__actions">
+      <span id="usuario-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="usuario-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="usuario-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button class="zd-btn zd-btn--primary" type="submit" form="usuario-alta">Crear usuario</button>
+      <button id="usuario-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
 <div id="usuario-secreto" class="zd-card" role="alert" hidden>
   <p class="ayuda">Esta es la clave del usuario. Pasásela por un canal seguro: no se vuelve a mostrar.</p>
   <code id="usuario-secreto-valor"></code>
@@ -574,6 +628,9 @@ function documentoConsola(nombreOperador: string): string {
     <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-automatizaciones" class="zd-h1">Automatizaciones</h1>
   </div>
+  <div class="zd-pagehead__actions">
+    <button id="auto-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
+  </div>
 </header>
 
 <!--
@@ -585,13 +642,16 @@ function documentoConsola(nombreOperador: string): string {
   <h2 class="zd-h2">Automatizaciones</h2>
   <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. No se puede editar ni reactivar una automatización: para corregirla, se desactiva y se crea otra.</p>
 
-  <button id="auto-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
-
   <!--
     CH-21c (DEC-129): creation is a two-step wizard. The stepper and both panels are static
     markup; the script only toggles hidden and aria-current on them, never their classes.
+    CH-32b (DEC-173): it lives in a wide pop-up opened by «Nueva automatización» in the page header.
+    #auto-alta is the backdrop and keeps its id and its hidden: open is not hidden. A refusal of the
+    create is written in #auto-dialogo-aviso, since the page banner is behind the pop-up.
   -->
-  <div id="auto-alta" class="zd-card zd-form" hidden>
+  <div id="auto-alta" class="zd-dialog-backdrop" hidden>
+   <div class="zd-dialog zd-form" role="dialog" aria-modal="true" aria-labelledby="auto-dialogo-titulo">
+    <h2 id="auto-dialogo-titulo" class="zd-dialog__title">Nueva automatización</h2>
     <ol class="zd-steps" aria-label="Pasos del alta">
       <li id="auto-marca-1" class="zd-step" aria-current="step"><span class="zd-step__n">1</span><span>Conexión y plantilla</span></li>
       <li id="auto-marca-2" class="zd-step"><span class="zd-step__n">2</span><span>Parámetros y horario</span></li>
@@ -656,8 +716,17 @@ function documentoConsola(nombreOperador: string): string {
       <div class="zd-form-actions">
         <button id="auto-volver" class="zd-btn zd-btn--secondary" type="button">Volver</button>
         <button id="auto-crear" class="zd-btn zd-btn--primary" type="button">Crear automatización</button>
+        <button id="auto-cancelar-2" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
       </div>
     </div>
+
+    <p id="auto-dialogo-aviso" class="ayuda" role="status"></p>
+    <span id="auto-confirmar" hidden>
+      Hay cambios sin guardar.
+      <button id="auto-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+      <button id="auto-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+    </span>
+   </div>
   </div>
 
   <div class="zd-table-wrap zd-table-scroll"><table id="auto-lista" class="zd-table"></table></div>
@@ -857,7 +926,6 @@ var botonCrearAuto = document.getElementById('auto-crear');
 var tablaAutomatizaciones = document.getElementById('auto-lista');
 var tablaEjecuciones = document.getElementById('auto-ejecuciones');
 var botonNuevaAuto = document.getElementById('auto-nueva');
-var altaAuto = document.getElementById('auto-alta');
 var marcaAlta1 = document.getElementById('auto-marca-1');
 var marcaAlta2 = document.getElementById('auto-marca-2');
 var pasoAlta1 = document.getElementById('auto-paso-1');
@@ -868,6 +936,8 @@ var vistaAsunto = document.getElementById('auto-vista-asunto');
 var vistaPara = document.getElementById('auto-vista-para');
 var vistaTitulo = document.getElementById('auto-vista-titulo');
 var botonCancelarAuto = document.getElementById('auto-cancelar');
+var botonCancelarAuto2 = document.getElementById('auto-cancelar-2');
+var avisoDialogoAlta = document.getElementById('auto-dialogo-aviso');
 var resumenAlta = document.getElementById('auto-resumen');
 var botonVolverAuto = document.getElementById('auto-volver');
 var selectorFrecuencia = document.getElementById('auto-frecuencia');
@@ -878,6 +948,11 @@ var textoHorario = document.getElementById('auto-horario-texto');
 // the value controls of the template chosen in the create form.
 var nombresPlantilla = Object.create(null);
 var filasValoresAuto = [];
+
+// CH-32b: the tenant's connections by id, for the list's Conexión column. Empty when they could not be
+// read, and the column then shows the short id. The token drops an answer that lands after a tenant switch.
+var nombresConexion = Object.create(null);
+var generacionNombres = 0;
 
 // CH-21c: the catalog rows the picker draws its cards from, the chosen card's id ('' when
 // none), and the template details read during this wizard, by id. Every reset empties the
@@ -940,6 +1015,68 @@ function ocultarBanner() {
 
 function vaciar(nodo) {
   while (nodo.firstChild) { nodo.removeChild(nodo.firstChild); }
+}
+
+// --- Pop-ups (CH-32a, CH-32b; DEC-173) --------------------------------------------------------
+// Every create form opens in a pop-up. Cancelar and Escape close it without sending anything; with
+// something typed they first ask «Descartar cambios». A tenant switch closes it at once. Not added
+// (DEC-173 does not ask): a focus trap, returning the focus, and closing by a click on the backdrop.
+// opciones: { fondo, primerCampo, cancelar, confirmar, descartar, seguir, hayCambios, alAbrir, alCerrar }
+var dialogos = [];
+
+function crearDialogo(opciones) {
+  function cerrar() {
+    opciones.fondo.hidden = true;
+    opciones.confirmar.hidden = true;
+    if (opciones.alCerrar) { opciones.alCerrar(); }
+  }
+  function pedirCerrar() {
+    if (opciones.hayCambios()) {
+      opciones.confirmar.hidden = false;
+      return;
+    }
+    cerrar();
+  }
+  function abrir() {
+    opciones.confirmar.hidden = true;
+    if (opciones.alAbrir) { opciones.alAbrir(); }
+    opciones.fondo.hidden = false;
+    opciones.primerCampo.focus();
+  }
+  opciones.cancelar.addEventListener('click', pedirCerrar);
+  opciones.fondo.addEventListener('keydown', function (evento) {
+    if (evento.key === 'Escape') { pedirCerrar(); }
+  });
+  opciones.descartar.addEventListener('click', cerrar);
+  opciones.seguir.addEventListener('click', function () { opciones.confirmar.hidden = true; });
+  var dialogo = { abrir: abrir, cerrar: cerrar, pedirCerrar: pedirCerrar, abierto: function () { return !opciones.fondo.hidden; } };
+  dialogos.push(dialogo);
+  return dialogo;
+}
+
+// A tenant switch: nothing typed for the tenant just left may be sent to the new one.
+function cerrarDialogos() {
+  dialogos.forEach(function (dialogo) { dialogo.cerrar(); });
+}
+
+// The pop-up covers the page banner, so while it is open a refusal is written in its own status
+// line; closed, it goes to the banner as everywhere else. Text only.
+function avisarEnDialogo(dialogo, linea, texto) {
+  if (!dialogo.abierto()) {
+    mostrarBanner(texto);
+    return;
+  }
+  vaciar(linea);
+  linea.textContent = texto;
+  linea.hidden = false;
+}
+
+// A helper that answers null has already written its refusal in the page banner, which is behind
+// the pop-up: the same sentence is moved inside it.
+function llevarBannerA(dialogo, linea) {
+  if (!dialogo.abierto() || banner.hidden) { return; }
+  avisarEnDialogo(dialogo, linea, banner.textContent);
+  ocultarBanner();
 }
 
 function limpiarResultados() {
@@ -1160,8 +1297,8 @@ function manejarFalloDeTenant(cuerpo) {
   if (!Object.prototype.hasOwnProperty.call(MENSAJES_TENANT, cuerpo.error)) { return false; }
 
   mostrarBanner(MENSAJES_TENANT[cuerpo.error]);
-  // CH-32a PR2: the banner is behind the query pop-up, so a refusal about the tenant closes it.
-  cerrarConsulta();
+  // CH-32a PR2: the banner is behind every pop-up, so a refusal about the tenant closes them.
+  cerrarDialogos();
   if (cuerpo.error === 'tenant-no-encontrado' || cuerpo.error === 'tenant-desactivado') {
     limpiarResultados();
     vaciar(listaGuardadas);
@@ -1789,6 +1926,8 @@ function limpiarAutomatizaciones() {
   vaciar(tablaEjecuciones);
   catalogoPlantillas = [];
   nombresPlantilla = Object.create(null);
+  generacionNombres += 1;
+  nombresConexion = Object.create(null);
   // The wizard goes too, values and all: nothing typed for one tenant survives the switch.
   cerrarAlta();
   // The freshness table is drawn from the catalog just emptied.
@@ -1916,6 +2055,7 @@ async function cargarConexiones() {
     return;
   }
   var filas = Array.isArray(resultado.cuerpo.conexiones) ? resultado.cuerpo.conexiones : [];
+  guardarNombresDeConexion(filas);
   renderizarConexiones(filas, filas.length === 0 ? 'No hay conexiones registradas' : 'Elegí una conexión');
   if (filas.length === 0) {
     mostrarAviso('Este tenant no tiene conexiones registradas. Registrá una para poder crear una automatización.');
@@ -1959,26 +2099,49 @@ function reiniciarAlta() {
   resumenAlta.textContent = '';
   avisoAlta.textContent = '';
   avisoAlta.hidden = true;
+  avisoDialogoAlta.textContent = '';
   actualizarSiguiente();
 }
+
+// What Cancelar and Escape would throw away: a connection or a template chosen, a parameter value or a
+// recipient typed. The schedule alone is not counted: it always holds a value.
+function hayCambiosEnAlta() {
+  return selectorConexionAuto.value !== '' || plantillaElegida !== '' || entradaDestinatario.value.trim() !== ''
+    || Object.keys(valoresDe(filasValoresAuto)).length > 0;
+}
+
+// CH-32b (DEC-173): opening resets the wizard and asks for the connections; closing, however it happens,
+// resets it again so nothing typed survives.
+var dialogoAlta = crearDialogo({
+  fondo: document.getElementById('auto-alta'),
+  primerCampo: selectorConexionAuto,
+  cancelar: botonCancelarAuto,
+  confirmar: document.getElementById('auto-confirmar'),
+  descartar: document.getElementById('auto-descartar'),
+  seguir: document.getElementById('auto-seguir'),
+  hayCambios: hayCambiosEnAlta,
+  alAbrir: function () {
+    ocultarBanner();
+    reiniciarAlta();
+    irAPaso(1);
+    cargarConexiones();
+  },
+  alCerrar: reiniciarAlta
+});
+
+// Step 2 has its own Cancelar: it asks the same question.
+botonCancelarAuto2.addEventListener('click', dialogoAlta.pedirCerrar);
 
 function abrirAlta() {
   if (tenantActivo === null) {
     mostrarBanner(SIN_TENANT);
     return;
   }
-  ocultarBanner();
-  reiniciarAlta();
-  altaAuto.hidden = false;
-  botonNuevaAuto.hidden = true;
-  irAPaso(1);
-  cargarConexiones();
+  dialogoAlta.abrir();
 }
 
 function cerrarAlta() {
-  altaAuto.hidden = true;
-  reiniciarAlta();
-  botonNuevaAuto.hidden = false;
+  dialogoAlta.cerrar();
 }
 
 // The shared head of every automations call: null when the page has already said why,
@@ -2002,10 +2165,14 @@ async function pedirAutomatizacion(url, opciones) {
   return { status: respuesta.status, cuerpo: cuerpo };
 }
 
-function mostrarRechazo(resultado) {
+function textoDeRechazo(resultado) {
   var error = resultado.cuerpo.error;
-  mostrarBanner(Object.prototype.hasOwnProperty.call(MENSAJES_AUTOMATIZACION, error)
-    ? MENSAJES_AUTOMATIZACION[error] : 'La aplicación respondió HTTP ' + resultado.status + '.');
+  return Object.prototype.hasOwnProperty.call(MENSAJES_AUTOMATIZACION, error)
+    ? MENSAJES_AUTOMATIZACION[error] : 'La aplicación respondió HTTP ' + resultado.status + '.';
+}
+
+function mostrarRechazo(resultado) {
+  mostrarBanner(textoDeRechazo(resultado));
 }
 
 function boton(texto, clase, accion) {
@@ -2189,6 +2356,78 @@ async function sondearConexion() {
   if (incompleto) { mostrarAviso(AVISO_SIN_SONDEO); } else { ocultarAviso(); }
 }
 
+// CH-32b (audit obs. 12): the list reads in words. «De lunes a viernes a las 06:00» for a cron of the three
+// presets (DEC-129), the reverse of cronDeFrecuencia and the same wording as frecuenciaDeCron on the server
+// (src/panel-automatizaciones.ts); null for any other expression. Five fields on single spaces, the day-of-month
+// and month fields a star, the day-of-week one of the preset values, and a minute and an hour of one or two digits
+// in range, checked by characters (no pattern literal in this page).
+function esNumeroDeUnoODosDigitos(texto) {
+  if (texto.length < 1 || texto.length > 2) { return false; }
+  for (var i = 0; i < texto.length; i++) {
+    if (DIGITOS.indexOf(texto.charAt(i)) === -1) { return false; }
+  }
+  return true;
+}
+
+function dosDigitos(numero) {
+  return (numero < 10 ? '0' : '') + numero;
+}
+
+function horarioEnPalabras(cron) {
+  var campos = String(cron).split(' ');
+  if (campos.length !== 5 || campos[2] !== '*' || campos[3] !== '*') { return null; }
+  if (!esNumeroDeUnoODosDigitos(campos[0]) || !esNumeroDeUnoODosDigitos(campos[1])) { return null; }
+  var minuto = Number(campos[0]);
+  var hora = Number(campos[1]);
+  if (minuto > 59 || hora > 23) { return null; }
+  var frecuencia = null;
+  Object.keys(DIAS_FRECUENCIA).forEach(function (clave) {
+    if (DIAS_FRECUENCIA[clave] === campos[4]) { frecuencia = clave; }
+  });
+  if (frecuencia === null) { return null; }
+  return NOMBRES_FRECUENCIA[frecuencia] + ' a las ' + dosDigitos(hora) + ':' + dosDigitos(minuto);
+}
+
+// The Horario cell: the words, then the expression in monospace; the expression alone when it is none of
+// the presets. A code element carries no class of this page's own.
+function celdaDeHorario(cron) {
+  var celda = document.createElement('span');
+  var palabras = horarioEnPalabras(cron);
+  if (palabras !== null) { celda.appendChild(document.createTextNode(palabras + ' ')); }
+  var codigo = document.createElement('code');
+  codigo.textContent = String(cron);
+  celda.appendChild(codigo);
+  return celda;
+}
+
+// The Conexión cell: the connection's name, or the first 8 characters of its id when it is not one of the
+// tenant's connections (or the names could not be read).
+function nombreDeConexion(id) {
+  var texto = String(id);
+  return nombresConexion[texto] !== undefined ? nombresConexion[texto] : texto.slice(0, 8) + '…';
+}
+
+function guardarNombresDeConexion(filas) {
+  var nombres = Object.create(null);
+  filas.forEach(function (fila) { nombres[String(fila.id)] = String(fila.nombre); });
+  nombresConexion = nombres;
+}
+
+// Read alongside the list. Any failure, refusal or network error leaves the names empty and says
+// nothing: the list is the answer, and the column falls back to the short id.
+async function cargarNombresConexiones() {
+  generacionNombres += 1;
+  var g = generacionNombres;
+  nombresConexion = Object.create(null);
+  var respuesta;
+  try { respuesta = await pedir('/conexiones'); } catch (fallaDeRed) { return; }
+  if (respuesta === null || respuesta.status !== 200) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { return; }
+  if (g !== generacionNombres || cuerpo === null || typeof cuerpo !== 'object' || !Array.isArray(cuerpo.conexiones)) { return; }
+  guardarNombresDeConexion(cuerpo.conexiones);
+}
+
 async function listarAutomatizaciones() {
   var resultado = await pedirAutomatizacion('/automatizaciones');
   if (resultado === null) { return; }
@@ -2205,8 +2444,8 @@ async function listarAutomatizaciones() {
         acciones.appendChild(boton('Desactivar', 'desactivar', function () { desactivar(fila.id); }));
       }
       var nombre = nombresPlantilla[fila.plantillaId];
-      return [nombre === undefined ? String(fila.plantillaId) : nombre, String(fila.conexionId),
-        String(fila.cron), fila.activo === true ? 'activa' : 'desactivada', String(fila.creadaEn), acciones];
+      return [nombre === undefined ? String(fila.plantillaId) : nombre, nombreDeConexion(fila.conexionId),
+        celdaDeHorario(fila.cron), fila.activo === true ? 'activa' : 'desactivada', String(fila.creadaEn), acciones];
     }),
     'automatizacion',
     resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' automatizaciones más recientes.' : null
@@ -2215,15 +2454,17 @@ async function listarAutomatizaciones() {
 
 async function cargarAutomatizaciones() {
   await cargarCatalogoPlantillas();
+  await cargarNombresConexiones();
   await listarAutomatizaciones();
 }
 
 async function crearAutomatizacion() {
   ocultarBanner();
+  avisoDialogoAlta.textContent = '';
   // A preset's cron is rebuilt from the hour as it is now; an invalid hour sends nothing.
   actualizarHorario();
   if (selectorFrecuencia.value !== 'personalizado' && cronDeFrecuencia(selectorFrecuencia.value, entradaHora.value) === null) {
-    mostrarBanner('La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
+    avisarEnDialogo(dialogoAlta, avisoDialogoAlta, 'La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
     return;
   }
   botonCrearAuto.disabled = true;
@@ -2245,18 +2486,20 @@ async function crearAutomatizacion() {
   });
   botonCrearAuto.disabled = false;
   // Dropped when the wizard was reset meanwhile (a tenant switch): it no longer exists.
-  if (resultado === null || g !== generacionAlta) { return; }
-  // A 400 leaves the wizard on step 2 with every value as typed.
+  if (g !== generacionAlta) { return; }
+  // A helper that answered null wrote its refusal in the banner, behind the pop-up: it is moved inside.
+  if (resultado === null) { llevarBannerA(dialogoAlta, avisoDialogoAlta); return; }
+  // A 400, like any other refusal, is told inside the pop-up and leaves it on step 2 with every value as typed.
   if (resultado.status === 400) {
     var campos = Array.isArray(resultado.cuerpo.campos) ? resultado.cuerpo.campos : [];
-    mostrarBanner(campos.indexOf('/cron') !== -1
+    avisarEnDialogo(dialogoAlta, avisoDialogoAlta, campos.indexOf('/cron') !== -1
       ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
       : campos.indexOf('/destinatario') !== -1
         ? 'El correo del destinatario no es válido. Escriba una sola dirección, por ejemplo operaciones@empresa.com, sin espacios, comas ni punto y coma.'
         : mensajeDeSolicitudInvalida(resultado.cuerpo, []));
     return;
   }
-  if (resultado.status !== 201) { mostrarRechazo(resultado); return; }
+  if (resultado.status !== 201) { avisarEnDialogo(dialogoAlta, avisoDialogoAlta, textoDeRechazo(resultado)); return; }
   cerrarAlta();
   mostrarConfirmacion(confirmacionDeAlta(resultado.cuerpo));
   await listarAutomatizaciones();
@@ -2806,24 +3049,14 @@ function motivoDeGuardadoCerrado() {
   return 'Probá la consulta para poder guardarla.';
 }
 
-// The pop-up covers the page banner, so while it is open a refusal of a run or a save is written
-// in its status line; closed, it goes to the banner as everywhere else. Text only.
+// A refusal of a run or a save is written in the pop-up's status line while it is open (see
+// avisarEnDialogo); these two names are what the query code calls.
 function avisarEnConsulta(texto) {
-  if (dialogoConsulta.hidden) {
-    mostrarBanner(texto);
-    return;
-  }
-  vaciar(estado);
-  estado.textContent = texto;
-  estado.hidden = false;
+  avisarEnDialogo(dialogoDeConsulta, estado, texto);
 }
 
-// A helper that answers null has already written its refusal in the page banner, which is behind
-// the pop-up: the same sentence is moved inside it.
 function llevarBannerAlDialogo() {
-  if (dialogoConsulta.hidden || banner.hidden) { return; }
-  avisarEnConsulta(banner.textContent);
-  ocultarBanner();
+  llevarBannerA(dialogoDeConsulta, estado);
 }
 
 // What the pop-up shows by whether a query is loaded: its title, the loaded-query line and the version
@@ -2849,21 +3082,31 @@ var confirmarConsultaNueva = document.getElementById('consulta-nueva-confirmar')
 var botonDescartarNueva = document.getElementById('consulta-nueva-descartar');
 var botonCancelarNueva = document.getElementById('consulta-nueva-cancelar');
 
-// Opens the pop-up on whatever the editor holds. It starts untested and with no result of an earlier run.
+// The unsaved-changes logic is the shared pop-up's (crearDialogo). Opening starts the pop-up on whatever
+// the editor holds, untested and with no result of an earlier run.
+var dialogoDeConsulta = crearDialogo({
+  fondo: dialogoConsulta,
+  primerCampo: entradaNombre,
+  cancelar: botonCancelarConsulta,
+  confirmar: confirmarConsultaNueva,
+  descartar: botonDescartarNueva,
+  seguir: botonCancelarNueva,
+  hayCambios: hayCambiosSinGuardar,
+  alAbrir: function () {
+    ultimaPruebaOk = null;
+    estadoPrueba = 'sin-probar';
+    limpiarResultados();
+    reflejarConsultaCargada();
+    actualizarGuardado();
+  }
+});
+
 function abrirConsulta() {
-  ultimaPruebaOk = null;
-  estadoPrueba = 'sin-probar';
-  limpiarResultados();
-  confirmarConsultaNueva.hidden = true;
-  reflejarConsultaCargada();
-  actualizarGuardado();
-  dialogoConsulta.hidden = false;
-  entradaNombre.focus();
+  dialogoDeConsulta.abrir();
 }
 
 function cerrarConsulta() {
-  dialogoConsulta.hidden = true;
-  confirmarConsultaNueva.hidden = true;
+  dialogoDeConsulta.cerrar();
 }
 
 // The single switch between the two save controls: every path that loads or forgets a query goes
@@ -2907,31 +3150,6 @@ function hayCambiosSinGuardar() {
     || entradaDescripcion.value.trim() !== ''
     || declaracionActual().length > 0;
 }
-
-// Cancelar and Escape: close at once, or ask first when there is something to lose. Sends nothing.
-function pedirCerrarConsulta() {
-  if (hayCambiosSinGuardar()) {
-    confirmarConsultaNueva.hidden = false;
-    return;
-  }
-  cerrarConsulta();
-}
-
-botonCancelarConsulta.addEventListener('click', function () {
-  pedirCerrarConsulta();
-});
-
-dialogoConsulta.addEventListener('keydown', function (evento) {
-  if (evento.key === 'Escape') { pedirCerrarConsulta(); }
-});
-
-botonDescartarNueva.addEventListener('click', function () {
-  cerrarConsulta();
-});
-
-botonCancelarNueva.addEventListener('click', function () {
-  confirmarConsultaNueva.hidden = true;
-});
 
 // CH-32a (DEC-172): empties the editor, the parameters, the name and the description and forgets
 // the loaded query, so "Guardar consulta" is offered again. No request.
@@ -3053,8 +3271,8 @@ function cambiarTenant(id) {
   limpiarResultados();
   vaciar(listaGuardadas);
   cerrarVersiones();
-  // CH-32a PR2: the query pop-up belongs to the tenant it was opened for, and so does a passing test.
-  cerrarConsulta();
+  // CH-32a PR2: a pop-up belongs to the tenant it was opened for, and so does a passing test.
+  cerrarDialogos();
   ultimaPruebaOk = null;
   estadoPrueba = 'sin-probar';
   olvidarConsultaCargada();
@@ -3071,7 +3289,6 @@ function cambiarTenant(id) {
   } else {
     cargarConexionesConsulta();
   }
-  panelConexion.hidden = true;
   olvidarSecretos();
   if (!document.getElementById('pantalla-conexiones').hidden) { cargarPantallaConexiones(); }
   if (!document.getElementById('pantalla-agentes').hidden) { cargarPantallaAgentes(); }
@@ -3090,10 +3307,6 @@ selectorConexionAuto.addEventListener('change', function () {
 
 botonNuevaAuto.addEventListener('click', function () {
   abrirAlta();
-});
-
-botonCancelarAuto.addEventListener('click', function () {
-  cerrarAlta();
 });
 
 // CH-21c (DEC-131): the accent and emoji per label, a copy of the closed palette in
@@ -3304,10 +3517,37 @@ async function darDeBaja(tenant) {
   await cargarTenants();
 }
 
-formularioTenant.addEventListener('submit', async function (evento) {
-  evento.preventDefault();
+// CH-32b (DEC-173): «Nuevo tenant» is a pop-up with the name. Typing anything makes Cancelar ask first.
+var avisoDialogoTenant = document.getElementById('tenant-dialogo-aviso');
+
+// The form starts blank when it opens and is blank again once it closes, however it closed.
+function limpiarFormularioTenant() {
+  entradaNombreTenant.value = '';
+  avisoDialogoTenant.textContent = '';
+}
+
+var dialogoTenant = crearDialogo({
+  fondo: document.getElementById('tenant-dialogo'),
+  primerCampo: entradaNombreTenant,
+  cancelar: document.getElementById('tenant-cancelar'),
+  confirmar: document.getElementById('tenant-confirmar'),
+  descartar: document.getElementById('tenant-descartar'),
+  seguir: document.getElementById('tenant-seguir'),
+  hayCambios: function () { return entradaNombreTenant.value.trim() !== ''; },
+  alAbrir: limpiarFormularioTenant,
+  alCerrar: limpiarFormularioTenant
+});
+
+// True while a creation is on its way, so a second press cannot create the tenant twice.
+var creandoTenant = false;
+
+// «Crear tenant» (elegir false) and «Crear y elegir» (elegir true). The second makes the new tenant the
+// active one through cambiarTenant, the path «Elegir como activo» takes. Both send the same request.
+async function crearTenant(elegir) {
+  if (creandoTenant) { return; }
   var nombre = entradaNombreTenant.value.trim();
-  if (nombre === '') { avisoTenant.textContent = 'Escribí el nombre del tenant.'; return; }
+  if (nombre === '') { avisoDialogoTenant.textContent = 'Escribí el nombre del tenant.'; return; }
+  creandoTenant = true;
   var respuesta;
   try {
     respuesta = await fetch('/tenants', {
@@ -3316,24 +3556,47 @@ formularioTenant.addEventListener('submit', async function (evento) {
       body: JSON.stringify({ nombre: nombre })
     }).then(siNoAutenticado);
   } catch (fallaDeRed) {
-    avisoTenant.textContent = 'No se pudo contactar con la aplicación.';
+    creandoTenant = false;
+    avisoDialogoTenant.textContent = 'No se pudo contactar con la aplicación.';
     return;
   }
+  creandoTenant = false;
   if (respuesta.status !== 201) {
-    avisoTenant.textContent = 'No se pudo crear el tenant (HTTP ' + respuesta.status + ').';
+    avisoDialogoTenant.textContent = 'No se pudo crear el tenant (HTTP ' + respuesta.status + ').';
     return;
   }
-  entradaNombreTenant.value = '';
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  var creado = cuerpo !== null && typeof cuerpo === 'object' && cuerpo.tenant !== null && typeof cuerpo.tenant === 'object'
+    && cuerpo.tenant.id !== undefined && cuerpo.tenant.id !== null ? String(cuerpo.tenant.id) : '';
+  dialogoTenant.cerrar();
   await cargarTenantsPantalla();
-  avisoTenant.textContent = 'Se creó el tenant «' + nombre + '».';
   await cargarTenants();
+  if (elegir && creado !== '') {
+    cambiarTenant(creado);
+    avisoTenant.textContent = 'Se creó el tenant «' + nombre + '» y quedó como activo.';
+    return;
+  }
+  avisoTenant.textContent = 'Se creó el tenant «' + nombre + '».';
+}
+
+document.getElementById('tenant-nuevo').addEventListener('click', function () {
+  dialogoTenant.abrir();
+});
+
+formularioTenant.addEventListener('submit', function (evento) {
+  evento.preventDefault();
+  crearTenant(false);
+});
+
+document.getElementById('tenant-crear-elegir').addEventListener('click', function () {
+  crearTenant(true);
 });
 
 // ---- CH-30b (DEC-167, screen C-05): Conexiones -------------------------------------------
 
 var avisoConexiones = document.getElementById('conexiones-aviso');
 var cuerpoConexiones = document.getElementById('conexiones-cuerpo');
-var panelConexion = document.getElementById('conexion-panel');
 var formularioConexion = document.getElementById('conexion-alta');
 var resultadoConexion = document.getElementById('cx-resultado');
 
@@ -3344,19 +3607,35 @@ function textoDePrueba(cuerpo) {
   return 'Falló · ' + String(cuerpo.categoria) + (cuerpo.codigo ? ' (' + String(cuerpo.codigo) + ')' : '');
 }
 
-async function probarConexionPorId(id) {
+// The answer of POST /conexiones/:id/prueba: { cuerpo } when the test ran, or { mensaje } saying why it did
+// not ('' when the page has already said so, a tenant-level refusal).
+async function pedirPrueba(id) {
   var respuesta;
   try {
     respuesta = await pedir('/conexiones/' + encodeURIComponent(id) + '/prueba', { method: 'POST' });
   } catch (fallaDeRed) {
-    return 'No se pudo contactar con la aplicación.';
+    return { mensaje: 'No se pudo contactar con la aplicación.' };
   }
-  if (respuesta === null) { return 'Elegí un tenant.'; }
+  if (respuesta === null) { return { mensaje: 'Elegí un tenant.' }; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
-  if (manejarFalloDeTenant(cuerpo)) { return ''; }
-  if (respuesta.status !== 200) { return 'La prueba no se pudo hacer (HTTP ' + respuesta.status + ').'; }
-  return textoDePrueba(cuerpo);
+  if (manejarFalloDeTenant(cuerpo)) { return { mensaje: '' }; }
+  if (respuesta.status !== 200) { return { mensaje: 'La prueba no se pudo hacer (HTTP ' + respuesta.status + ').' }; }
+  return { cuerpo: cuerpo };
+}
+
+async function probarConexionPorId(id) {
+  var prueba = await pedirPrueba(id);
+  return prueba.mensaje !== undefined ? prueba.mensaje : textoDePrueba(prueba.cuerpo);
+}
+
+// The notice a saved connection leaves on the screen: it was saved, and how its test went.
+function avisoDeGuardada(prueba) {
+  if (prueba.mensaje !== undefined) { return prueba.mensaje === '' ? '' : 'Guardada. ' + prueba.mensaje; }
+  var cuerpo = prueba.cuerpo;
+  if (cuerpo === null || typeof cuerpo !== 'object') { return 'Guardada. No se pudo leer el resultado de la prueba.'; }
+  if (cuerpo.resultado === 'ok') { return 'Guardada. Prueba: OK (' + cuerpo.duracionMs + ' ms).'; }
+  return 'Guardada. La prueba falló: ' + String(cuerpo.categoria) + (cuerpo.codigo ? ' (' + String(cuerpo.codigo) + ')' : '') + '.';
 }
 
 function renderizarPantallaConexiones(conexiones) {
@@ -3406,14 +3685,13 @@ async function cargarPantallaConexiones() {
   renderizarPantallaConexiones(cuerpo.conexiones);
 }
 
-document.getElementById('conexion-nueva').addEventListener('click', function () {
-  resultadoConexion.textContent = '';
-  panelConexion.hidden = false;
-  opcionesDeVia();
-});
+// CH-30c: "Cómo llega" offers the tenant's agent only while it is active. Each call moves the token, so
+// a slow answer of an earlier opening cannot add the option a second time.
+var generacionVia = 0;
 
-// CH-30c: "Cómo llega" offers the tenant's agent only while it is active.
 async function opcionesDeVia() {
+  generacionVia += 1;
+  var g = generacionVia;
   var via = document.getElementById('cx-via');
   vaciar(via);
   var directa = document.createElement('option');
@@ -3425,6 +3703,7 @@ async function opcionesDeVia() {
   if (respuesta === null || respuesta.status !== 200) { return; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (g !== generacionVia) { return; }
   var agente = cuerpo !== null && Array.isArray(cuerpo.agentes) ? cuerpo.agentes[0] : undefined;
   if (agente !== undefined && agente.revocadoEn === null) {
     var opcion = document.createElement('option');
@@ -3434,14 +3713,59 @@ async function opcionesDeVia() {
   }
 }
 
-document.getElementById('cx-cerrar').addEventListener('click', function () {
-  panelConexion.hidden = true;
+// CH-32b (DEC-173): «Nueva conexión» is a pop-up. It starts blank (port 5432, reached directly) and is
+// blank again once it closes, so a password typed and then discarded does not stay in the page.
+var entradaPuertoConexion = document.getElementById('cx-puerto');
+var CAMPOS_DE_TEXTO_CONEXION = ['cx-nombre', 'cx-host', 'cx-base', 'cx-usuario', 'cx-clave'].map(function (id) {
+  return document.getElementById(id);
 });
 
+function limpiarFormularioConexion() {
+  CAMPOS_DE_TEXTO_CONEXION.forEach(function (campo) { campo.value = ''; });
+  entradaPuertoConexion.value = '5432';
+  resultadoConexion.textContent = '';
+}
+
+var dialogoConexion = crearDialogo({
+  fondo: document.getElementById('conexion-dialogo'),
+  primerCampo: document.getElementById('cx-nombre'),
+  cancelar: document.getElementById('cx-cancelar'),
+  confirmar: document.getElementById('conexion-confirmar'),
+  descartar: document.getElementById('conexion-descartar'),
+  seguir: document.getElementById('conexion-seguir'),
+  hayCambios: function () {
+    return CAMPOS_DE_TEXTO_CONEXION.some(function (campo) { return campo.value.trim() !== ''; })
+      || entradaPuertoConexion.value !== '5432'
+      || document.getElementById('cx-via').value !== '';
+  },
+  alAbrir: function () {
+    limpiarFormularioConexion();
+    opcionesDeVia();
+    document.getElementById('cx-via').value = '';
+  },
+  alCerrar: limpiarFormularioConexion
+});
+
+// With no tenant there is nothing to register a connection for: the banner (the pop-up stays closed) says so.
+document.getElementById('conexion-nueva').addEventListener('click', function () {
+  if (tenantActivo === null) {
+    mostrarBanner(SIN_TENANT);
+    return;
+  }
+  ocultarBanner();
+  dialogoConexion.abrir();
+});
+
+// True while a registration is on its way, so a second press cannot register the connection twice.
+var guardandoConexion = false;
+
 // "Guardar y probar": the password is read once into the request and the field emptied at
-// once, so it never stays in the page; it is never written back (rule 7).
+// once, so it never stays in the page; it is never written back (rule 7). On a 201 the connection is
+// tested, the pop-up closes and the screen's notice says it was saved and how the test went, also when the
+// test failed (the connection exists). Any refusal is written inside the pop-up, which stays open.
 formularioConexion.addEventListener('submit', async function (evento) {
   evento.preventDefault();
+  if (guardandoConexion) { return; }
   var campoClave = document.getElementById('cx-clave');
   var cuerpoAlta = {
     nombre: document.getElementById('cx-nombre').value.trim(),
@@ -3456,6 +3780,8 @@ formularioConexion.addEventListener('submit', async function (evento) {
   var via = document.getElementById('cx-via').value;
   if (via !== '') { cuerpoAlta.agenteId = via; }
   resultadoConexion.textContent = 'Guardando…';
+  guardandoConexion = true;
+  var tenant = tenantActivo;
   var respuesta;
   try {
     respuesta = await pedir('/conexiones', {
@@ -3464,24 +3790,32 @@ formularioConexion.addEventListener('submit', async function (evento) {
       body: JSON.stringify(cuerpoAlta)
     });
   } catch (fallaDeRed) {
+    guardandoConexion = false;
     resultadoConexion.textContent = 'No se pudo contactar con la aplicación.';
     return;
   }
-  if (respuesta === null) { resultadoConexion.textContent = 'Elegí un tenant.'; return; }
+  if (respuesta === null) { guardandoConexion = false; llevarBannerA(dialogoConexion, resultadoConexion); return; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
-  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (manejarFalloDeTenant(cuerpo)) { guardandoConexion = false; return; }
   if (respuesta.status === 400 && cuerpo !== null && Array.isArray(cuerpo.campos)) {
+    guardandoConexion = false;
     resultadoConexion.textContent = 'Revisá estos campos: ' + cuerpo.campos.join(', ') + '. Volvé a escribir la contraseña.';
     return;
   }
   if (respuesta.status !== 201 || cuerpo === null || cuerpo.conexion === undefined) {
+    guardandoConexion = false;
     resultadoConexion.textContent = 'No se pudo registrar la conexión (HTTP ' + respuesta.status + ').';
     return;
   }
   resultadoConexion.textContent = 'Guardada. Probando…';
-  resultadoConexion.textContent = 'Guardada. Prueba: ' + await probarConexionPorId(String(cuerpo.conexion.id));
+  var prueba = await pedirPrueba(String(cuerpo.conexion.id));
+  guardandoConexion = false;
+  // A tenant switch meanwhile closed the pop-up and cleared the screen: the notice is not for this page now.
+  if (tenant !== tenantActivo) { return; }
+  dialogoConexion.cerrar();
   await cargarPantallaConexiones();
+  avisoConexiones.textContent = avisoDeGuardada(prueba);
 });
 
 // ---- CH-30c: secrets shown once (agent tokens, panel passwords) --------------------------
@@ -3643,11 +3977,23 @@ async function accionUsuario(id, verbo) {
   await cargarPantallaUsuarios();
 }
 
+// «Reponer clave» closes the user's open sessions, so it asks first, in the row, as «Desactivar» does.
+function botonReponerClave(td, usuario) {
+  return botonTenant('Reponer clave', function () {
+    vaciar(td);
+    var aviso = document.createElement('span');
+    aviso.textContent = 'Se cierran sus sesiones abiertas.';
+    td.appendChild(aviso);
+    td.appendChild(botonTenant('Reponer clave de ' + String(usuario.correo), function () { accionUsuario(String(usuario.id), 'clave'); }));
+    td.appendChild(botonTenant('Cancelar', function () { accionesUsuario(td, usuario); }));
+  });
+}
+
 function accionesUsuario(td, usuario) {
   vaciar(td);
   var id = String(usuario.id);
   if (usuario.activo === true) {
-    td.appendChild(botonTenant('Reponer clave', function () { accionUsuario(id, 'clave'); }));
+    td.appendChild(botonReponerClave(td, usuario));
     td.appendChild(botonTenant('Desactivar', function () {
       vaciar(td);
       td.appendChild(botonTenant('Desactivar ' + String(usuario.correo), function () { accionUsuario(id, 'desactivar'); }));
@@ -3655,7 +4001,7 @@ function accionesUsuario(td, usuario) {
     }));
   } else {
     td.appendChild(botonTenant('Reactivar', function () { accionUsuario(id, 'reactivar'); }));
-    td.appendChild(botonTenant('Reponer clave', function () { accionUsuario(id, 'clave'); }));
+    td.appendChild(botonReponerClave(td, usuario));
   }
 }
 
@@ -3694,12 +4040,43 @@ async function cargarPantallaUsuarios() {
   renderizarUsuarios(cuerpo.usuarios);
 }
 
+// CH-32b (DEC-173): «Nuevo usuario» is a pop-up with the email and the optional name.
+var entradaCorreoUsuario = document.getElementById('usuario-correo');
+var entradaNombreUsuario = document.getElementById('usuario-nombre');
+var avisoDialogoUsuario = document.getElementById('usuario-dialogo-aviso');
+
+function limpiarFormularioUsuario() {
+  entradaCorreoUsuario.value = '';
+  entradaNombreUsuario.value = '';
+  avisoDialogoUsuario.textContent = '';
+}
+
+var dialogoUsuario = crearDialogo({
+  fondo: document.getElementById('usuario-dialogo'),
+  primerCampo: entradaCorreoUsuario,
+  cancelar: document.getElementById('usuario-cancelar'),
+  confirmar: document.getElementById('usuario-confirmar'),
+  descartar: document.getElementById('usuario-descartar'),
+  seguir: document.getElementById('usuario-seguir'),
+  hayCambios: function () { return entradaCorreoUsuario.value.trim() !== '' || entradaNombreUsuario.value.trim() !== ''; },
+  alAbrir: limpiarFormularioUsuario,
+  alCerrar: limpiarFormularioUsuario
+});
+
+// With no tenant there is nobody to create a user for: the banner (the pop-up stays closed) says so.
+document.getElementById('usuario-nuevo').addEventListener('click', function () {
+  if (tenantActivo === null) {
+    mostrarBanner(SIN_TENANT);
+    return;
+  }
+  ocultarBanner();
+  dialogoUsuario.abrir();
+});
+
 formularioUsuario.addEventListener('submit', async function (evento) {
   evento.preventDefault();
-  var entradaCorreo = document.getElementById('usuario-correo');
-  var entradaNombre = document.getElementById('usuario-nombre');
-  var cuerpoAlta = { correo: entradaCorreo.value.trim() };
-  if (entradaNombre.value.trim() !== '') { cuerpoAlta.nombre = entradaNombre.value.trim(); }
+  var cuerpoAlta = { correo: entradaCorreoUsuario.value.trim() };
+  if (entradaNombreUsuario.value.trim() !== '') { cuerpoAlta.nombre = entradaNombreUsuario.value.trim(); }
   var respuesta;
   try {
     respuesta = await pedir('/usuarios', {
@@ -3708,24 +4085,23 @@ formularioUsuario.addEventListener('submit', async function (evento) {
       body: JSON.stringify(cuerpoAlta)
     });
   } catch (fallaDeRed) {
-    avisoUsuarios.textContent = 'No se pudo contactar con la aplicación.';
+    avisoDialogoUsuario.textContent = 'No se pudo contactar con la aplicación.';
     return;
   }
-  if (respuesta === null) { return; }
+  if (respuesta === null) { llevarBannerA(dialogoUsuario, avisoDialogoUsuario); return; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (manejarFalloDeTenant(cuerpo)) { return; }
-  if (respuesta.status === 409) { avisoUsuarios.textContent = 'Ese correo ya está en uso.'; return; }
+  if (respuesta.status === 409) { avisoDialogoUsuario.textContent = 'Ese correo ya está en uso.'; return; }
   if (respuesta.status === 400 && cuerpo !== null && Array.isArray(cuerpo.campos)) {
-    avisoUsuarios.textContent = 'Revisá estos campos: ' + cuerpo.campos.join(', ') + '.';
+    avisoDialogoUsuario.textContent = 'Revisá estos campos: ' + cuerpo.campos.join(', ') + '.';
     return;
   }
   if (respuesta.status !== 201 || cuerpo === null || typeof cuerpo.clave !== 'string') {
-    avisoUsuarios.textContent = 'No se pudo crear el usuario (HTTP ' + respuesta.status + ').';
+    avisoDialogoUsuario.textContent = 'No se pudo crear el usuario (HTTP ' + respuesta.status + ').';
     return;
   }
-  entradaCorreo.value = '';
-  entradaNombre.value = '';
+  dialogoUsuario.cerrar();
   avisoUsuarios.textContent = '';
   mostrarSecreto(1, cuerpo.clave);
   await cargarPantallaUsuarios();
