@@ -165,7 +165,6 @@ const IDS = [
   'conexion-nueva',
   'conexiones-aviso',
   'conexiones-cuerpo',
-  'conexion-panel',
   'conexion-alta',
   'cx-nombre',
   'cx-host',
@@ -173,7 +172,6 @@ const IDS = [
   'cx-base',
   'cx-usuario',
   'cx-clave',
-  'cx-cerrar',
   'cx-resultado',
   // CH-30c: the Agentes screen, its secret notice and the panel's agent option.
   'pantalla-agentes',
@@ -321,15 +319,22 @@ const IDS = [
   'usuario-descartar',
   'usuario-seguir',
   'usuario-cancelar',
+  // CH-32b: the «Nueva conexión» pop-up, which replaces the side panel (its title, Cancelar and strip are new).
+  'conexion-dialogo',
+  'conexion-dialogo-titulo',
+  'cx-cancelar',
+  'conexion-confirmar',
+  'conexion-descartar',
+  'conexion-seguir',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
-const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir', 'version-abrir', 'guardado-panel', 'guardado-titulo', 'guardado-cancelar'];
+const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir', 'version-abrir', 'guardado-panel', 'guardado-titulo', 'guardado-cancelar', 'conexion-panel', 'titulo-conexion-nueva', 'cx-cerrar'];
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'usuario-dialogo', 'usuario-confirmar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -3162,7 +3167,7 @@ describe('the console document, served by the real route', () => {
     const marcado = documento.slice(0, documento.indexOf('<script>'));
     assert.ok(marcado.indexOf('id="nav-tenants"') < marcado.indexOf('id="nav-conexiones"'));
     assert.ok(marcado.indexOf('id="nav-conexiones"') < marcado.indexOf('id="nav-consultas"'));
-    assert.match(marcado, /<aside id="conexion-panel" class="zd-drawer"[^>]*hidden/);
+    assert.match(marcado, /<div id="conexion-dialogo" class="zd-dialog-backdrop" hidden>/);
     assert.match(marcado, /<input id="cx-clave"[^>]*type="password"/);
   });
 
@@ -3192,7 +3197,7 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 200, cuerpo: { agentes: [] } });
     nodo(escenario, 'conexion-nueva').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'conexion-panel').hidden, false);
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), true);
     nodo(escenario, 'cx-nombre').value = 'Réplica nueva';
     nodo(escenario, 'cx-host').value = 'db.nueva.test';
     nodo(escenario, 'cx-puerto').value = '6543';
@@ -3215,7 +3220,8 @@ describe('the console document, served by the real route', () => {
     assert.equal(prueba.url, '/conexiones/c-9/prueba');
     assert.equal(lista.url, '/conexiones');
     assert.equal(nodo(escenario, 'cx-clave').value, '');
-    assert.match(nodo(escenario, 'cx-resultado').textContent, /OK/);
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false, 'the pop-up closes once saved and tested');
+    assert.equal(nodo(escenario, 'conexiones-aviso').textContent, 'Guardada. Prueba: OK (12 ms).', 'the result goes to the screen notice');
     assert.ok(!textoDeLaPagina(escenario).includes('clave-secreta-del-cliente'));
   });
 
@@ -3324,6 +3330,7 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     const via = nodo(escenario, 'cx-via');
     assert.deepEqual(via.options.map((o) => o.value), ['', 'a-1']);
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), true);
     via.value = 'a-1';
     for (const [id, valor] of [['cx-nombre', 'Por agente'], ['cx-host', 'db.interna'], ['cx-puerto', '5432'], ['cx-base', 'tienda'], ['cx-usuario', 'lector'], ['cx-clave', 'otra-clave-secreta']]) {
       nodo(escenario, id).value = valor;
@@ -4640,8 +4647,8 @@ describe('the console document, served by the real route', () => {
     seguir: string;
     /** Types something into the pop-up's fields and returns the id of one of them and what it now holds. */
     escribir: (escenario: Escenario) => [string, string];
-    /** What opening it asks of the server, and the answers to queue for it. */
-    alAbrir: { urls: string[]; respuestas: Array<{ status: number; cuerpo: unknown }> };
+    /** The answers to queue for what opening it asks of the server (nothing for a plain form). */
+    respuestasAlAbrir: Array<{ status: number; cuerpo: unknown }>;
   }
 
   const POPUPS: PopUp[] = [
@@ -4649,13 +4656,19 @@ describe('the console document, served by the real route', () => {
       nombre: 'Nuevo tenant', fondo: 'tenant-dialogo', abridor: 'tenant-nuevo', contenido: 'tenant-alta', primerCampo: 'tenant-nombre',
       cancelar: 'tenant-cancelar', confirmar: 'tenant-confirmar', descartar: 'tenant-descartar', seguir: 'tenant-seguir',
       escribir: (e) => { nodo(e, 'tenant-nombre').value = 'Almacén Don Tito'; return ['tenant-nombre', 'Almacén Don Tito']; },
-      alAbrir: { urls: [], respuestas: [] },
+      respuestasAlAbrir: [],
     },
     {
       nombre: 'Nuevo usuario', fondo: 'usuario-dialogo', abridor: 'usuario-nuevo', contenido: 'usuario-alta', primerCampo: 'usuario-correo',
       cancelar: 'usuario-cancelar', confirmar: 'usuario-confirmar', descartar: 'usuario-descartar', seguir: 'usuario-seguir',
       escribir: (e) => { nodo(e, 'usuario-nombre').value = 'Ana'; return ['usuario-nombre', 'Ana']; },
-      alAbrir: { urls: [], respuestas: [] },
+      respuestasAlAbrir: [],
+    },
+    {
+      nombre: 'Nueva conexión', fondo: 'conexion-dialogo', abridor: 'conexion-nueva', contenido: 'conexion-alta', primerCampo: 'cx-nombre',
+      cancelar: 'cx-cancelar', confirmar: 'conexion-confirmar', descartar: 'conexion-descartar', seguir: 'conexion-seguir',
+      escribir: (e) => { nodo(e, 'cx-host').value = 'db.nueva.test'; return ['cx-host', 'db.nueva.test']; },
+      respuestasAlAbrir: [{ status: 200, cuerpo: { agentes: [] } }],
     },
   ];
 
@@ -4668,7 +4681,7 @@ describe('the console document, served by the real route', () => {
 
   /** Opens the pop-up, queueing what opening it asks for, and lets that settle. */
   async function abrirPopUp(escenario: Escenario, popup: PopUp): Promise<void> {
-    escenario.respuestas.push(...popup.alAbrir.respuestas);
+    escenario.respuestas.push(...popup.respuestasAlAbrir);
     abrirDialogo(escenario, popup.abridor);
     await asentarVarias();
   }
@@ -4930,6 +4943,158 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-2/clave'));
     assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
+  });
+
+  // ---- CH-32b: «Nueva conexión» ----------------------------------------------------------------
+
+  /** Tenant t-1 active, Conexiones open with `conexiones` listed, and the pop-up open and typed in. */
+  async function conPopUpDeConexion(conexiones: unknown[] = []): Promise<Escenario> {
+    const escenario = await abrirConexiones(conexiones);
+    escenario.respuestas.push({ status: 200, cuerpo: { agentes: [] } });
+    abrirDialogo(escenario, 'conexion-nueva');
+    await asentarVarias();
+    for (const [id, valor] of [['cx-nombre', 'Réplica nueva'], ['cx-host', 'db.nueva.test'], ['cx-base', 'tienda'], ['cx-usuario', 'lector'], ['cx-clave', 'clave-secreta-del-cliente']]) {
+      nodo(escenario, id).value = valor;
+    }
+    return escenario;
+  }
+
+  const PRUEBA_OK = { status: 200, cuerpo: { resultado: 'ok', categoria: null, codigo: null, host: 'db.nueva.test', puerto: 5432, duracionMs: 12 } };
+  const CX_GUARDADA = { status: 201, cuerpo: { conexion: { ...CONEXION_LISTADA, id: 'c-9', nombre: 'Réplica nueva' } } };
+
+  test('CH-32b «Nueva conexión» is a pop-up with the same fields as the panel had, and the panel and its ids are gone', () => {
+    const m = marcado();
+    const dialogo = m.slice(m.indexOf('<div id="conexion-dialogo"'), m.indexOf('<section id="pantalla-agentes"'));
+    assert.match(dialogo, /<h2 id="conexion-dialogo-titulo" class="zd-dialog__title">Nueva conexión<\/h2>/);
+    const orden = ['cx-nombre', 'cx-host', 'cx-puerto', 'cx-base', 'cx-usuario', 'cx-via', 'cx-clave', 'cx-resultado'].map((id) => dialogo.indexOf('id="' + id + '"'));
+    assert.ok(orden.every((i) => i !== -1) && [...orden].sort((a, b) => a - b).join() === orden.join(), 'fields in the order they had');
+    assert.match(dialogo, /<option value="">Directa<\/option>/);
+    assert.match(dialogo, /<button class="zd-btn zd-btn--primary" type="submit" form="conexion-alta">Guardar y probar<\/button>/);
+    assert.match(dialogo, /<input id="cx-puerto"[^>]*value="5432"/);
+    assert.ok(!m.includes('<aside id="conexion-panel"') && !/zd-drawer"[^>]*aria-labelledby="titulo-conexion-nueva"/.test(m));
+  });
+
+  test('CH-32b «Nueva conexión» opens blank and reached directly, and asks for the tenant\'s agent', async () => {
+    const escenario = await abrirConexiones([]);
+    escenario.respuestas.push({ status: 200, cuerpo: { agentes: [AGENTE_ACTIVO] } });
+    abrirDialogo(escenario, 'conexion-nueva');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/agentes');
+    assert.deepEqual(nodo(escenario, 'cx-via').options.map((o) => o.value), ['', 'a-1']);
+    assert.equal(nodo(escenario, 'cx-via').value, '');
+    assert.equal(nodo(escenario, 'cx-puerto').value, '5432');
+    nodo(escenario, 'cx-via').value = 'a-1';
+    nodo(escenario, 'cx-puerto').value = '6543';
+    nodo(escenario, 'cx-nombre').value = 'resto';
+    nodo(escenario, 'cx-cancelar').disparar('click');
+    nodo(escenario, 'conexion-descartar').disparar('click');
+    escenario.respuestas.push({ status: 200, cuerpo: { agentes: [AGENTE_ACTIVO] } });
+    abrirDialogo(escenario, 'conexion-nueva');
+    await asentarVarias();
+    assert.deepEqual(nodo(escenario, 'cx-via').options.map((o) => o.value), ['', 'a-1'], 'the option is not added twice');
+    assert.equal(nodo(escenario, 'cx-via').value, '');
+    assert.equal(nodo(escenario, 'cx-puerto').value, '5432');
+    assert.equal(nodo(escenario, 'cx-nombre').value, '');
+  });
+
+  test('CH-32b «Nueva conexión» with no tenant says so on the page and does not open', async () => {
+    const escenario = await arrancar();
+    abrirDialogo(escenario, 'conexion-nueva');
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'Elegí un tenant en la barra superior antes de operar. No se envió ninguna solicitud.');
+  });
+
+  test('CH-32b the port, the way it reaches the replica and the password each count as changes', async () => {
+    const cambios: Array<[string, (e: Escenario) => void]> = [
+      ['the port', (e) => { nodo(e, 'cx-puerto').value = '6543'; }],
+      ['the way it reaches the replica', (e) => { nodo(e, 'cx-via').value = 'a-1'; }],
+      ['the password', (e) => { nodo(e, 'cx-clave').value = 'x'; }],
+      ['the database', (e) => { nodo(e, 'cx-base').value = 'tienda'; }],
+    ];
+    for (const [que, cambiar] of cambios) {
+      const escenario = await conTenantDos();
+      escenario.respuestas.push({ status: 200, cuerpo: { agentes: [] } });
+      abrirDialogo(escenario, 'conexion-nueva');
+      await asentarVarias();
+      nodo(escenario, 'cx-cancelar').disparar('click');
+      assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false, 'untouched: closes at once');
+      escenario.respuestas.push({ status: 200, cuerpo: { agentes: [] } });
+      abrirDialogo(escenario, 'conexion-nueva');
+      await asentarVarias();
+      cambiar(escenario);
+      nodo(escenario, 'cx-cancelar').disparar('click');
+      assert.equal(nodo(escenario, 'conexion-confirmar').hidden, false, que);
+    }
+  });
+
+  test('CH-32b discarding a typed password empties the field, so it does not stay in the page', async () => {
+    const escenario = await conPopUpDeConexion();
+    nodo(escenario, 'cx-cancelar').disparar('click');
+    nodo(escenario, 'conexion-descartar').disparar('click');
+    assert.equal(nodo(escenario, 'cx-clave').value, '');
+    assert.ok(!textoDeLaPagina(escenario).includes('clave-secreta-del-cliente'));
+  });
+
+  test('CH-32b a saved connection whose test fails still closes the pop-up and says so in the screen notice', async () => {
+    const escenario = await conPopUpDeConexion();
+    escenario.respuestas.push(
+      CX_GUARDADA,
+      { status: 200, cuerpo: { resultado: 'fallo', categoria: 'red', codigo: 'ECONNREFUSED', host: 'db.nueva.test', puerto: 5432, duracionMs: 30 } },
+      { status: 200, cuerpo: { conexiones: [{ ...CONEXION_LISTADA, id: 'c-9', nombre: 'Réplica nueva' }], truncado: false } },
+    );
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false);
+    assert.equal(nodo(escenario, 'conexiones-aviso').textContent, 'Guardada. La prueba falló: red (ECONNREFUSED).');
+    assert.ok(nodo(escenario, 'conexiones-cuerpo').hijos.some((h) => h.textContent.includes('Réplica nueva')), 'and the list shows it');
+  });
+
+  test('CH-32b a saved connection whose test could not run closes the pop-up and says the test did not run', async () => {
+    const escenario = await conPopUpDeConexion();
+    escenario.respuestas.push(
+      CX_GUARDADA,
+      { status: 500, cuerpo: {} },
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+    );
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false);
+    assert.equal(nodo(escenario, 'conexiones-aviso').textContent, 'Guardada. La prueba no se pudo hacer (HTTP 500).');
+  });
+
+  test('CH-32b a rejected registration keeps the pop-up open with the fields named and the password empty', async () => {
+    const escenario = await conPopUpDeConexion();
+    const avisoAntes = nodo(escenario, 'conexiones-aviso').textContent;
+    escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/host'] } });
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), true);
+    assert.equal(nodo(escenario, 'cx-resultado').textContent, 'Revisá estos campos: /host. Volvé a escribir la contraseña.');
+    assert.equal(nodo(escenario, 'cx-clave').value, '');
+    assert.equal(nodo(escenario, 'cx-host').value, 'db.nueva.test', 'the rest is kept');
+    assert.equal(nodo(escenario, 'conexiones-aviso').textContent, avisoAntes, 'nothing new on the page');
+    assert.ok(!textoDeLaPagina(escenario).includes('clave-secreta-del-cliente'));
+  });
+
+  test('CH-32b any other refusal is told inside the pop-up too, and a second press while saving sends nothing more', async () => {
+    const escenario = await conPopUpDeConexion();
+    escenario.respuestas.push({ status: 500, cuerpo: {} });
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/conexiones' && p.cuerpo !== null).length, 1, 'one registration');
+    assert.equal(nodo(escenario, 'cx-resultado').textContent, 'No se pudo registrar la conexión (HTTP 500).');
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), true);
+  });
+
+  test('CH-32b a tenant switch while the test runs leaves no notice of the old tenant on the page', async () => {
+    const escenario = await conPopUpDeConexion();
+    escenario.respuestas.push(CX_GUARDADA);
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false);
+    assert.ok(!nodo(escenario, 'conexiones-aviso').textContent.startsWith('Guardada'));
   });
 
   // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------

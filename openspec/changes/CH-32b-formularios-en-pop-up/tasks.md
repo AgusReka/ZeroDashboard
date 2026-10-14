@@ -21,9 +21,9 @@ Branch base: `master` (after #178). Tests first, `npx tsx --test src/consola.tes
 - [x] 1.6 Shared pop-up tests (markup, focus, Cancelar/Escape, discard, tenant switch) for tenant and user.
 
 ## PR2 — Connection pop-up
-- [ ] 2.1 RED: connection pop-up tests (design §6); `conexion-panel`, `titulo-conexion-nueva`, `cx-cerrar` to `IDS_RETIRADOS`.
-- [ ] 2.2 GREEN: markup and `crearDialogo` wiring; save closes and reports in `conexiones-aviso`; 400 inside; «Vía» unchanged.
-- [ ] 2.3 Existing connection and agent-route tests adapted to open the pop-up.
+- [x] 2.1 RED: connection pop-up tests (design §6); `conexion-panel`, `titulo-conexion-nueva`, `cx-cerrar` to `IDS_RETIRADOS`.
+- [x] 2.2 GREEN: markup and `crearDialogo` wiring; save closes and reports in `conexiones-aviso`; 400 inside; «Vía» unchanged.
+- [x] 2.3 Existing connection and agent-route tests adapted to open the pop-up.
 
 ## PR3 — Wizard pop-up and automations list
 - [ ] 3.1 RED: `respuestasAutomatizaciones` helper adopted by every scenario that loads the screen; list tests (name, words + cron, custom cron, unknown connection, connections failure).

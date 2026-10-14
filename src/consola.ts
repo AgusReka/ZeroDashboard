@@ -253,8 +253,8 @@ function documentoConsola(nombreOperador: string): string {
 </section>
 
 <!--
-  CH-30b (DEC-167, screen C-05): the active tenant's connections. Registering opens a side
-  panel; "Guardar y probar" registers and tests at once. The password is sent once and never
+  CH-30b (DEC-167, screen C-05): the active tenant's connections. Registering opens a pop-up
+  (CH-32b); "Guardar y probar" registers and tests at once. The password is sent once and never
   written back to the page: the field is emptied right after reading it.
 -->
 <section id="pantalla-conexiones" aria-labelledby="titulo-conexiones" hidden>
@@ -275,24 +275,36 @@ function documentoConsola(nombreOperador: string): string {
     <tbody id="conexiones-cuerpo"></tbody>
   </table>
 </div>
-<aside id="conexion-panel" class="zd-drawer" aria-labelledby="titulo-conexion-nueva" hidden>
-  <div class="zd-drawer__head"><h2 id="titulo-conexion-nueva" class="zd-h2">Nueva conexión</h2></div>
-  <form id="conexion-alta" class="zd-drawer__body">
-    <div><label for="cx-nombre" class="zd-label">Nombre</label><input id="cx-nombre" class="zd-input" type="text" autocomplete="off" required></div>
-    <div><label for="cx-host" class="zd-label">Servidor</label><input id="cx-host" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-    <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required></div>
-    <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-    <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-    <div><label for="cx-via" class="zd-label">Cómo llega</label><select id="cx-via" class="zd-select"><option value="">Directa</option></select></div>
-    <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required></div>
-    <p class="ayuda">La contraseña se guarda cifrada y no se vuelve a mostrar.</p>
+<!--
+  CH-32b (DEC-173): «Nueva conexión» opens here, over the screen. «Guardar y probar» registers and tests at
+  once; the result goes to the notice above the table. A rejected registration is written in #cx-resultado,
+  inside the pop-up, which stays open. The password is read once and the field emptied; it is never shown again.
+-->
+<div id="conexion-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="conexion-dialogo-titulo">
+    <h2 id="conexion-dialogo-titulo" class="zd-dialog__title">Nueva conexión</h2>
+    <form id="conexion-alta" class="zd-form">
+      <div><label for="cx-nombre" class="zd-label">Nombre</label><input id="cx-nombre" class="zd-input" type="text" autocomplete="off" required></div>
+      <div><label for="cx-host" class="zd-label">Servidor</label><input id="cx-host" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+      <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required></div>
+      <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+      <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+      <div><label for="cx-via" class="zd-label">Cómo llega</label><select id="cx-via" class="zd-select"><option value="">Directa</option></select></div>
+      <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required></div>
+      <p class="ayuda">La contraseña se guarda cifrada y no se vuelve a mostrar.</p>
+    </form>
     <p id="cx-resultado" class="ayuda" role="status"></p>
-    <div class="zd-form-actions">
-      <button class="zd-btn zd-btn--primary" type="submit">Guardar y probar</button>
-      <button id="cx-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar</button>
+    <div class="zd-dialog__actions">
+      <span id="conexion-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="conexion-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="conexion-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button class="zd-btn zd-btn--primary" type="submit" form="conexion-alta">Guardar y probar</button>
+      <button id="cx-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
-  </form>
-</aside>
+  </div>
+</div>
 </section>
 
 <!--
@@ -3149,7 +3161,6 @@ function cambiarTenant(id) {
   } else {
     cargarConexionesConsulta();
   }
-  panelConexion.hidden = true;
   olvidarSecretos();
   if (!document.getElementById('pantalla-conexiones').hidden) { cargarPantallaConexiones(); }
   if (!document.getElementById('pantalla-agentes').hidden) { cargarPantallaAgentes(); }
@@ -3462,7 +3473,6 @@ document.getElementById('tenant-crear-elegir').addEventListener('click', functio
 
 var avisoConexiones = document.getElementById('conexiones-aviso');
 var cuerpoConexiones = document.getElementById('conexiones-cuerpo');
-var panelConexion = document.getElementById('conexion-panel');
 var formularioConexion = document.getElementById('conexion-alta');
 var resultadoConexion = document.getElementById('cx-resultado');
 
@@ -3473,19 +3483,35 @@ function textoDePrueba(cuerpo) {
   return 'Falló · ' + String(cuerpo.categoria) + (cuerpo.codigo ? ' (' + String(cuerpo.codigo) + ')' : '');
 }
 
-async function probarConexionPorId(id) {
+// The answer of POST /conexiones/:id/prueba: { cuerpo } when the test ran, or { mensaje } saying why it did
+// not ('' when the page has already said so, a tenant-level refusal).
+async function pedirPrueba(id) {
   var respuesta;
   try {
     respuesta = await pedir('/conexiones/' + encodeURIComponent(id) + '/prueba', { method: 'POST' });
   } catch (fallaDeRed) {
-    return 'No se pudo contactar con la aplicación.';
+    return { mensaje: 'No se pudo contactar con la aplicación.' };
   }
-  if (respuesta === null) { return 'Elegí un tenant.'; }
+  if (respuesta === null) { return { mensaje: 'Elegí un tenant.' }; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
-  if (manejarFalloDeTenant(cuerpo)) { return ''; }
-  if (respuesta.status !== 200) { return 'La prueba no se pudo hacer (HTTP ' + respuesta.status + ').'; }
-  return textoDePrueba(cuerpo);
+  if (manejarFalloDeTenant(cuerpo)) { return { mensaje: '' }; }
+  if (respuesta.status !== 200) { return { mensaje: 'La prueba no se pudo hacer (HTTP ' + respuesta.status + ').' }; }
+  return { cuerpo: cuerpo };
+}
+
+async function probarConexionPorId(id) {
+  var prueba = await pedirPrueba(id);
+  return prueba.mensaje !== undefined ? prueba.mensaje : textoDePrueba(prueba.cuerpo);
+}
+
+// The notice a saved connection leaves on the screen: it was saved, and how its test went.
+function avisoDeGuardada(prueba) {
+  if (prueba.mensaje !== undefined) { return prueba.mensaje === '' ? '' : 'Guardada. ' + prueba.mensaje; }
+  var cuerpo = prueba.cuerpo;
+  if (cuerpo === null || typeof cuerpo !== 'object') { return 'Guardada. No se pudo leer el resultado de la prueba.'; }
+  if (cuerpo.resultado === 'ok') { return 'Guardada. Prueba: OK (' + cuerpo.duracionMs + ' ms).'; }
+  return 'Guardada. La prueba falló: ' + String(cuerpo.categoria) + (cuerpo.codigo ? ' (' + String(cuerpo.codigo) + ')' : '') + '.';
 }
 
 function renderizarPantallaConexiones(conexiones) {
@@ -3535,14 +3561,13 @@ async function cargarPantallaConexiones() {
   renderizarPantallaConexiones(cuerpo.conexiones);
 }
 
-document.getElementById('conexion-nueva').addEventListener('click', function () {
-  resultadoConexion.textContent = '';
-  panelConexion.hidden = false;
-  opcionesDeVia();
-});
+// CH-30c: "Cómo llega" offers the tenant's agent only while it is active. Each call moves the token, so
+// a slow answer of an earlier opening cannot add the option a second time.
+var generacionVia = 0;
 
-// CH-30c: "Cómo llega" offers the tenant's agent only while it is active.
 async function opcionesDeVia() {
+  generacionVia += 1;
+  var g = generacionVia;
   var via = document.getElementById('cx-via');
   vaciar(via);
   var directa = document.createElement('option');
@@ -3554,6 +3579,7 @@ async function opcionesDeVia() {
   if (respuesta === null || respuesta.status !== 200) { return; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (g !== generacionVia) { return; }
   var agente = cuerpo !== null && Array.isArray(cuerpo.agentes) ? cuerpo.agentes[0] : undefined;
   if (agente !== undefined && agente.revocadoEn === null) {
     var opcion = document.createElement('option');
@@ -3563,14 +3589,59 @@ async function opcionesDeVia() {
   }
 }
 
-document.getElementById('cx-cerrar').addEventListener('click', function () {
-  panelConexion.hidden = true;
+// CH-32b (DEC-173): «Nueva conexión» is a pop-up. It starts blank (port 5432, reached directly) and is
+// blank again once it closes, so a password typed and then discarded does not stay in the page.
+var entradaPuertoConexion = document.getElementById('cx-puerto');
+var CAMPOS_DE_TEXTO_CONEXION = ['cx-nombre', 'cx-host', 'cx-base', 'cx-usuario', 'cx-clave'].map(function (id) {
+  return document.getElementById(id);
 });
 
+function limpiarFormularioConexion() {
+  CAMPOS_DE_TEXTO_CONEXION.forEach(function (campo) { campo.value = ''; });
+  entradaPuertoConexion.value = '5432';
+  resultadoConexion.textContent = '';
+}
+
+var dialogoConexion = crearDialogo({
+  fondo: document.getElementById('conexion-dialogo'),
+  primerCampo: document.getElementById('cx-nombre'),
+  cancelar: document.getElementById('cx-cancelar'),
+  confirmar: document.getElementById('conexion-confirmar'),
+  descartar: document.getElementById('conexion-descartar'),
+  seguir: document.getElementById('conexion-seguir'),
+  hayCambios: function () {
+    return CAMPOS_DE_TEXTO_CONEXION.some(function (campo) { return campo.value.trim() !== ''; })
+      || entradaPuertoConexion.value !== '5432'
+      || document.getElementById('cx-via').value !== '';
+  },
+  alAbrir: function () {
+    limpiarFormularioConexion();
+    opcionesDeVia();
+    document.getElementById('cx-via').value = '';
+  },
+  alCerrar: limpiarFormularioConexion
+});
+
+// With no tenant there is nothing to register a connection for: the banner (the pop-up stays closed) says so.
+document.getElementById('conexion-nueva').addEventListener('click', function () {
+  if (tenantActivo === null) {
+    mostrarBanner(SIN_TENANT);
+    return;
+  }
+  ocultarBanner();
+  dialogoConexion.abrir();
+});
+
+// True while a registration is on its way, so a second press cannot register the connection twice.
+var guardandoConexion = false;
+
 // "Guardar y probar": the password is read once into the request and the field emptied at
-// once, so it never stays in the page; it is never written back (rule 7).
+// once, so it never stays in the page; it is never written back (rule 7). On a 201 the connection is
+// tested, the pop-up closes and the screen's notice says it was saved and how the test went, also when the
+// test failed (the connection exists). Any refusal is written inside the pop-up, which stays open.
 formularioConexion.addEventListener('submit', async function (evento) {
   evento.preventDefault();
+  if (guardandoConexion) { return; }
   var campoClave = document.getElementById('cx-clave');
   var cuerpoAlta = {
     nombre: document.getElementById('cx-nombre').value.trim(),
@@ -3585,6 +3656,8 @@ formularioConexion.addEventListener('submit', async function (evento) {
   var via = document.getElementById('cx-via').value;
   if (via !== '') { cuerpoAlta.agenteId = via; }
   resultadoConexion.textContent = 'Guardando…';
+  guardandoConexion = true;
+  var tenant = tenantActivo;
   var respuesta;
   try {
     respuesta = await pedir('/conexiones', {
@@ -3593,24 +3666,32 @@ formularioConexion.addEventListener('submit', async function (evento) {
       body: JSON.stringify(cuerpoAlta)
     });
   } catch (fallaDeRed) {
+    guardandoConexion = false;
     resultadoConexion.textContent = 'No se pudo contactar con la aplicación.';
     return;
   }
-  if (respuesta === null) { resultadoConexion.textContent = 'Elegí un tenant.'; return; }
+  if (respuesta === null) { guardandoConexion = false; llevarBannerA(dialogoConexion, resultadoConexion); return; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
-  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (manejarFalloDeTenant(cuerpo)) { guardandoConexion = false; return; }
   if (respuesta.status === 400 && cuerpo !== null && Array.isArray(cuerpo.campos)) {
+    guardandoConexion = false;
     resultadoConexion.textContent = 'Revisá estos campos: ' + cuerpo.campos.join(', ') + '. Volvé a escribir la contraseña.';
     return;
   }
   if (respuesta.status !== 201 || cuerpo === null || cuerpo.conexion === undefined) {
+    guardandoConexion = false;
     resultadoConexion.textContent = 'No se pudo registrar la conexión (HTTP ' + respuesta.status + ').';
     return;
   }
   resultadoConexion.textContent = 'Guardada. Probando…';
-  resultadoConexion.textContent = 'Guardada. Prueba: ' + await probarConexionPorId(String(cuerpo.conexion.id));
+  var prueba = await pedirPrueba(String(cuerpo.conexion.id));
+  guardandoConexion = false;
+  // A tenant switch meanwhile closed the pop-up and cleared the screen: the notice is not for this page now.
+  if (tenant !== tenantActivo) { return; }
+  dialogoConexion.cerrar();
   await cargarPantallaConexiones();
+  avisoConexiones.textContent = avisoDeGuardada(prueba);
 });
 
 // ---- CH-30c: secrets shown once (agent tokens, panel passwords) --------------------------
