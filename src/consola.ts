@@ -522,6 +522,8 @@ function documentoConsola(nombreOperador: string): string {
       </div>
     </div>
 
+    <!-- CH-32a: why the save control is closed, in words, next to it. Empty once it may save. -->
+    <p id="guardado-ayuda" class="ayuda" role="status" aria-live="polite"></p>
     <div class="zd-dialog__actions">
       <span id="consulta-nueva-confirmar" hidden>
         Hay cambios sin guardar.
@@ -529,8 +531,8 @@ function documentoConsola(nombreOperador: string): string {
         <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
       </span>
       <button id="ejecutar" class="zd-btn zd-btn--secondary" type="submit" form="formulario">Probar</button>
-      <button id="guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar consulta</button>
-      <button id="version-boton" class="zd-btn zd-btn--primary" type="button" disabled hidden>Guardar como versión nueva</button>
+      <button id="guardar" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled>Guardar consulta</button>
+      <button id="version-boton" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled hidden>Guardar como versión nueva</button>
       <button id="consulta-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
   </div>
@@ -1430,6 +1432,7 @@ async function ejecutar(desplazamiento) {
   // closes them, so every answer but an ok one leaves them closed.
   var huella = huellaActual();
   ultimaPruebaOk = null;
+  estadoPrueba = 'probando';
   actualizarGuardado();
 
   // Only the lower bound is checked here. There is no upper one to check any more: the
@@ -1502,6 +1505,7 @@ async function ejecutar(desplazamiento) {
 
   // CH-32a PR2: an ok answer is what opens the save controls, for exactly what was sent.
   ultimaPruebaOk = huella;
+  estadoPrueba = 'ok';
   actualizarGuardado();
   renderizar(cuerpo);
   pagina = {
@@ -2749,9 +2753,19 @@ var consultaCargada = null;
 // The fingerprint of the last run that answered ok, or null: set when a run succeeds, cleared when
 // another one fails or starts, and when the pop-up opens or the tenant changes.
 var ultimaPruebaOk = null;
+var ayudaGuardado = document.getElementById('guardado-ayuda');
 
 // True while a save request is on its way, so a second press cannot send it twice.
 var guardando = false;
+
+// How the last «Probar» went: 'sin-probar', 'probando', 'ok' or 'fallo'. Only the status line next
+// to the save controls reads it; the gate itself is the fingerprint above.
+var estadoPrueba = 'sin-probar';
+
+function marcarPruebaTerminada() {
+  if (estadoPrueba === 'probando') { estadoPrueba = 'fallo'; }
+  actualizarGuardado();
+}
 
 // "Guardar como versión 4" for a loaded query at version 3; without a numeric version, a plain wording.
 function numeroDeVersionNueva() {
@@ -2773,6 +2787,23 @@ function actualizarGuardado() {
   var cerrado = guardando || !guardadoHabilitado();
   botonGuardar.disabled = cerrado;
   botonVersion.disabled = cerrado;
+  ayudaGuardado.textContent = !cerrado ? '' : motivoDeGuardadoCerrado();
+}
+
+// The reason the save control is closed, in the order the operator can act on it.
+function motivoDeGuardadoCerrado() {
+  if (guardando) { return 'Guardando…'; }
+  if (estadoPrueba === 'probando') { return 'Probando la consulta…'; }
+  if (estadoPrueba === 'fallo') {
+    return 'La última prueba falló. Corregí la consulta y probala de nuevo para poder guardarla.';
+  }
+  if (ultimaPruebaOk !== null && ultimaPruebaOk !== huellaActual()) {
+    return 'Cambiaste la consulta después de probarla. Probala de nuevo para poder guardarla.';
+  }
+  if (ultimaPruebaOk !== null && entradaNombre.value.trim() === '') {
+    return 'Escribí un nombre para poder guardarla.';
+  }
+  return 'Probá la consulta para poder guardarla.';
 }
 
 // The pop-up covers the page banner, so while it is open a refusal of a run or a save is written
@@ -2821,6 +2852,7 @@ var botonCancelarNueva = document.getElementById('consulta-nueva-cancelar');
 // Opens the pop-up on whatever the editor holds. It starts untested and with no result of an earlier run.
 function abrirConsulta() {
   ultimaPruebaOk = null;
+  estadoPrueba = 'sin-probar';
   limpiarResultados();
   confirmarConsultaNueva.hidden = true;
   reflejarConsultaCargada();
@@ -2990,6 +3022,7 @@ async function guardarNuevaVersion() {
     avisarEnConsulta('Esa consulta guardada ya no existe. Se actualizó la lista.');
     olvidarConsultaCargada();
     ultimaPruebaOk = null;
+    estadoPrueba = 'sin-probar';
     actualizarGuardado();
     await listarGuardadas();
   } else if (resultado.status === 409 && error === 'sin-cambios') {
@@ -3023,6 +3056,7 @@ function cambiarTenant(id) {
   // CH-32a PR2: the query pop-up belongs to the tenant it was opened for, and so does a passing test.
   cerrarConsulta();
   ultimaPruebaOk = null;
+  estadoPrueba = 'sin-probar';
   olvidarConsultaCargada();
   limpiarParametros();
   limpiarAutomatizaciones();
@@ -3136,7 +3170,7 @@ botonCrearAuto.addEventListener('click', function () {
 
 formulario.addEventListener('submit', function (evento) {
   evento.preventDefault();
-  ejecutar(0);
+  ejecutar(0).then(marcarPruebaTerminada);
 });
 
 // CH-32a: the choice is remembered by id, so a reload of the list can put it back (or drop it
@@ -3159,11 +3193,11 @@ botonAgregarParametro.addEventListener('click', function () {
 });
 
 botonSiguiente.addEventListener('click', function () {
-  ejecutar(pagina.siguiente === null ? pagina.desplazamiento : pagina.siguiente);
+  ejecutar(pagina.siguiente === null ? pagina.desplazamiento : pagina.siguiente).then(marcarPruebaTerminada);
 });
 
 botonAnterior.addEventListener('click', function () {
-  ejecutar(Math.max(0, pagina.desplazamiento - pagina.limite));
+  ejecutar(Math.max(0, pagina.desplazamiento - pagina.limite)).then(marcarPruebaTerminada);
 });
 
 // CH-29 (DEC-154): Salir revokes the session and reloads into the login screen; it reloads

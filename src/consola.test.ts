@@ -300,6 +300,7 @@ const IDS = [
   'consulta-dialogo',
   'consulta-dialogo-titulo',
   'consulta-cancelar',
+  'guardado-ayuda',
   'version-campos',
 ] as const;
 
@@ -4177,6 +4178,36 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'guardar').disabled, true, 'a blank name closes it');
     escribir(escenario, 'nombre', 'Ventas');
     assert.equal(nodo(escenario, 'guardar').disabled, false);
+  });
+
+  test('CH-32a the line next to the save control says why it is closed, and is empty once it may save', async () => {
+    const ayuda = (e: Escenario) => nodo(e, 'guardado-ayuda').textContent;
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    assert.match(documento, /<button id="guardar"[^>]*aria-describedby="guardado-ayuda"/);
+    assert.match(documento, /<button id="version-boton"[^>]*aria-describedby="guardado-ayuda"/);
+    assert.equal(ayuda(escenario), 'Probá la consulta para poder guardarla.', 'before any test');
+
+    escribir(escenario, 'sql', 'SELECT 1 AS id');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    await enviar(escenario, respuestaOk());
+    assert.equal(ayuda(escenario), 'Escribí un nombre para poder guardarla.', 'tested, no name yet');
+
+    escribir(escenario, 'nombre', 'Ventas');
+    assert.equal(nodo(escenario, 'guardar').disabled, false);
+    assert.equal(ayuda(escenario), '', 'nothing to say once it may save');
+
+    escribir(escenario, 'sql', 'SELECT 2 AS id');
+    assert.equal(ayuda(escenario), 'Cambiaste la consulta después de probarla. Probala de nuevo para poder guardarla.');
+
+    await enviar(escenario, { error: 'interno' }, 500);
+    assert.equal(ayuda(escenario), 'La última prueba falló. Corregí la consulta y probala de nuevo para poder guardarla.');
+
+    await enviar(escenario, respuestaOk());
+    assert.equal(ayuda(escenario), '', 'a passing test of the current content clears it');
+
+    abrirNueva(escenario);
+    assert.equal(ayuda(escenario), 'Probá la consulta para poder guardarla.', 'reopening forgets the last test');
   });
 
   test('CH-32a PR2 editing the SQL, the connection or the parameters closes the gate until «Probar» succeeds again', async () => {

@@ -6,7 +6,7 @@ A saved query is created and edited in one pop-up form holding every field (name
 ## MODIFIED Requirements
 
 ### Requirement: Saving the Current Statement From the Console
-The console SHALL save a query only from the query pop-up. With no saved query loaded, its save control «Guardar consulta» SHALL submit the name, description, SQL and parameter declaration to the saved-queries create endpoint. With a saved query loaded, the only save control SHALL be «Guardar como versión N+1», which updates that query (CH-25); no control SHALL create a separate query (DEC-172). Either control SHALL be enabled only while the last «Probar» of exactly the current connection, SQL and parameter declaration succeeded.
+The console SHALL save a query only from the query pop-up. With no saved query loaded, its save control «Guardar consulta» SHALL submit the name, description, SQL and parameter declaration to the saved-queries create endpoint. With a saved query loaded, the only save control SHALL be «Guardar como versión N+1», which updates that query (CH-25); no control SHALL create a separate query (DEC-172). Either control SHALL be enabled only while the last «Probar» of exactly the current connection, SQL and parameter declaration succeeded. While it is disabled, a line next to it SHALL say why in words (not tested yet, the last test failed, the content changed after the test, or no name).
 (Previously: the create control lived on the screen and created a new query even with a saved query loaded, and nothing required a successful run.)
 
 #### Scenario: Saving the statement currently in the editor

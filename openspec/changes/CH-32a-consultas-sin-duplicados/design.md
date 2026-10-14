@@ -113,7 +113,8 @@ PR2 reorganises the screen; the logic of sections 1 to 3 is kept and moved, not 
   - `huellaActual()` is the JSON of `{ conexion, sql, parametros: declaracionActual() }`.
   - `ultimaPruebaOk` is set to the fingerprint when an execution answers `resultado: 'ok'`, and to `null` on any other answer, on opening the pop-up and on a tenant switch.
   - `actualizarGuardado()` enables `#guardar` / `#version-boton` only when `ultimaPruebaOk === huellaActual()` and the name is not empty. It runs on every `input` and `change` of the connection, SQL, parameter rows and name, and after every run.
-  - `guardar()` and `guardarNuevaVersion()` return early when the gate is closed. `guardar()` keeps its guard against a loaded query.
+  - `guardar()` and `guardarNuevaVersion()` return early when the gate is closed.
+  - **Why it is closed:** `p#guardado-ayuda` (`role=status`), named by `aria-describedby` on both save controls, says «Probá la consulta para poder guardarla.», «La última prueba falló. Corregí la consulta y probala de nuevo para poder guardarla.», «Cambiaste la consulta después de probarla. Probala de nuevo para poder guardarla.» or «Escribí un nombre para poder guardarla.», and is empty once saving is possible (added at the user's request after trying the pop-up). `guardar()` keeps its guard against a loaded query.
 - **On success:**
   - a 201 closes the pop-up, confirms and reloads the list;
   - a 200 closes it, confirms «Se guardó la versión N de «nombre»» and reloads the list.
