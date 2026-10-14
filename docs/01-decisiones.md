@@ -3117,6 +3117,24 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-172 — CH-32a: con una consulta cargada, solo se guarda como versión nueva
+
+**Contexto.** En la pantalla de Consultas, «Guardar consulta» siempre crea una consulta nueva (`POST`), aunque haya una cargada en el editor. Al cargar una consulta y apretarlo se crea una copia con el mismo contenido, en la versión 1 (auditoría del 2026-10-13, observación 3). Con la consulta cargada también se ve «Guardar como nueva versión» (CH-25), así que conviven dos botones que hacen cosas distintas sobre el mismo contenido.
+
+**Opciones.** (a) Ocultar «Guardar consulta» mientras haya una consulta cargada, como pide la guía C-08: solo queda «Guardar como nueva versión», y para guardar el contenido como otra consulta primero se usa «Consulta nueva». (b) Mantener los dos, con «Guardar consulta» renombrado a «Guardar como consulta nueva» y una línea que aclare que crea otra.
+
+**Decisión.** (a). «Consulta nueva» vacía el editor, los parámetros, el nombre y la descripción, y olvida la consulta cargada. No cambia ninguna ruta: la API sigue aceptando nombres repetidos y una consulta guardada sigue sin atarse a una conexión (DEC-11).
+
+**Por qué.** Hace imposible el duplicado por accidente sin tocar el backend, y sigue la guía de diseño.
+
+**Se resigna.** Copiar una consulta como otra lleva un paso más: «Consulta nueva» y pegar.
+
+**Decidido por:** el usuario, 2026-10-14. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
