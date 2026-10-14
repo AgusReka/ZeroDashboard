@@ -115,7 +115,7 @@ Orden de ejecución. Los cortes apuntan a unas 300 líneas; los marcados con ⚠
 | 2 | CH-21b | Catálogo inicial: stock físico, stock producible, reporte diario | D3 | ⚠ Verificar en la exploración qué cubren ya `src/plantillas.ts` (CH-12, CH-16d). Si el corte queda casi vacío, se fusiona con CH-21c |
 | 3 | CH-21c | Alta en dos pasos en la consola y formato de correo asociado a la plantilla | D2, N3 | Reutiliza el HTML de correo de CH-14. ⚠ La skill define el horario como frecuencia más hora; la consola usa cron (DEC-76): decidir si el formulario traduce a cron |
 | 4 | CH-22a | Autenticación del panel: usuario del cliente, ingreso y salida, sesión, tenant tomado siempre de la sesión | T3 | ⚠ Registrar antes el mecanismo de autenticación. Prueba automatizada con dos tenants (regla 2) |
-| 5 | CH-22b | Panel: "mis automatizaciones" (activas y disponibles; estado, última y próxima ejecución) | P1h | Rutas de lectura con alcance de tenant, separadas de la consola (DEC-04). Sin SQL ni términos técnicos |
+| 5 | CH-22b | Panel: "mis automatizaciones" (activas y disponibles; estado, última y próxima ejecución). **Archivado** | P1h | Rutas de lectura con alcance de tenant, separadas de la consola (DEC-04). Sin SQL ni términos técnicos |
 | 6 | CH-22c | Panel: estado de error visible y aviso de falla al cliente | P3h | ⚠ Un aviso de falla por correo es una notificación nueva y el motor produce una por ejecución: confirmar que encaja, o limitar el corte al estado visible |
 | 7 | CH-23 | Panel: ajuste de umbrales y horarios (formulario validado; rige desde la próxima ejecución) | P2h | Valida valores contra la plantilla y el cron contra el planificador. Se parte en ruta y formulario si pasa de 400 líneas |
 
