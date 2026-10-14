@@ -50,6 +50,15 @@ services:
       # pause); an out-of-range value makes the container refuse to start.
       CONNECTION_RETRY_ATTEMPTS: ${CONNECTION_RETRY_ATTEMPTS:-}
       CONNECTION_RETRY_PAUSE_MS: ${CONNECTION_RETRY_PAUSE_MS:-}
+      # Optional since CH-31 (DEC-171): the demo seed. Only SEED_DEMO=1 turns it on; unset or
+      # empty, the seed behaves as before and the rest is never read. With it on, a missing
+      # password or a replica that does not answer makes the container refuse to start.
+      # Forwarded, never given a value here.
+      SEED_DEMO: ${SEED_DEMO:-}
+      REPLICA_DEMO_PASSWORD: ${REPLICA_DEMO_PASSWORD:-}
+      DEMO_OPERADOR_CLAVE: ${DEMO_OPERADOR_CLAVE:-}
+      DEMO_PANEL_CORREO: ${DEMO_PANEL_CORREO:-}
+      DEMO_PANEL_CLAVE: ${DEMO_PANEL_CLAVE:-}
     ports:
       - "${APP_PORT}:${APP_PORT}"
 
