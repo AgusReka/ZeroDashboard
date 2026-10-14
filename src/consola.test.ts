@@ -304,6 +304,21 @@ const IDS = [
   // unsaved-changes strip and buttons.
   'tenant-nuevo',
   'tenant-dialogo',
+  'auto-ajuste',
+  'aj-titulo',
+  'aj-resumen',
+  'aj-valores',
+  'aj-frecuencia',
+  'aj-hora',
+  'aj-horario-texto',
+  'aj-cron',
+  'aj-destinatario',
+  'aj-aviso',
+  'aj-confirmar',
+  'aj-descartar',
+  'aj-seguir',
+  'aj-guardar',
+  'aj-cancelar',
   'tenant-baja',
   'tb-titulo',
   'tb-texto',
@@ -349,7 +364,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -1239,8 +1254,8 @@ describe('the console document, served by the real route', () => {
       assert.ok(fila.textContent.includes(texto), texto);
     }
     assert.ok(!fila.textContent.includes('c-1'), 'the connection id is not shown');
-    // DEC-79: the only state change offered is deactivation; no edit, delete or reactivate.
-    assert.deepEqual(botones(fila).map((nodo) => nodo.textContent), ['Ver ejecuciones', 'Desactivar']);
+    // DEC-79, DEC-174: an active automation is adjusted or deactivated; never deleted or reactivated.
+    assert.deepEqual(botones(fila).map((nodo) => nodo.textContent), ['Ver ejecuciones', 'Ajustar', 'Desactivar']);
 
     escenario.respuestas.push(
       { status: 200, cuerpo: { automatizacion: automatizacion({ activo: false }) } },
@@ -1255,6 +1270,196 @@ describe('the console document, served by the real route', () => {
     const [desactivada] = filasDe(escenario, 'auto-lista', 'automatizacion');
     assert.ok(desactivada.textContent.includes('desactivada'));
     assert.deepEqual(botones(desactivada).map((nodo) => nodo.textContent), ['Ver ejecuciones']);
+  });
+
+  // ---- CH-33 (DEC-174): «Ajustar» opens a pop-up prefilled from the stored automation --------------
+
+  const PLANTILLA_AJUSTABLE = {
+    id: 'p-1',
+    nombre: 'Stock diario',
+    parametros: [{ nombre: 'umbral', tipo: 'numero' }, { nombre: 'activo', tipo: 'booleano' }, { nombre: 'desde', tipo: 'fecha' }],
+  };
+
+  const AJUSTABLE = {
+    ...automatizacion({ cron: '0 6 * * 1-5' }),
+    valores: { umbral: 5, activo: true, viejo: 'ya no se declara' },
+    destinatario: 'a@empresa.com',
+  };
+
+  const ajusteAbierto = (escenario: Escenario): boolean => !nodo(escenario, 'auto-ajuste').hidden;
+  const controlesAjuste = (escenario: Escenario): Nodo[] => nodo(escenario, 'aj-valores').porClase('parametro-valor');
+
+  /** Selects the tenant with one active automation listed, then presses its «Ajustar» with both reads answered. */
+  async function abrirAjuste(
+    escenario: Escenario,
+    guardada: Record<string, unknown> = AJUSTABLE,
+    plantilla: Record<string, unknown> = PLANTILLA_AJUSTABLE,
+  ): Promise<void> {
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { automatizacion: guardada } },
+      { status: 200, cuerpo: { plantilla } },
+    );
+    const [fila] = filasDe(escenario, 'auto-lista', 'automatizacion');
+    fila.porClase('ajustar')[0].disparar('click');
+    await asentarVarias();
+  }
+
+  /** Presses «Guardar ajustes» with `respuesta` (and, on a 200, the reloaded list) queued. */
+  async function guardarAjuste(escenario: Escenario, respuesta: { status: number; cuerpo: unknown }): Promise<void> {
+    escenario.respuestas.push(respuesta, { status: 200, cuerpo: { automatizaciones: [automatizacion()], truncado: false } });
+    nodo(escenario, 'aj-guardar').disparar('click');
+    await asentarVarias();
+  }
+
+  const envioDeAjuste = (escenario: Escenario) => escenario.peticiones.find((p) => p.url === '/automatizaciones/a-1/ajustes');
+
+  test('CH-33 «Ajustar» is offered on active rows only', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion(), automatizacion({ id: 'a-2', activo: false })]);
+    const [activa, desactivada] = filasDe(escenario, 'auto-lista', 'automatizacion');
+    assert.equal(activa.porClase('ajustar').length, 1);
+    assert.equal(desactivada.porClase('ajustar').length, 0);
+    assert.equal(ajusteAbierto(escenario), false, 'closed at load');
+  });
+
+  test('CH-33 «Ajustar» reads the automation and its template, and opens prefilled', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+
+    const lecturas = escenario.peticiones.slice(-2);
+    assert.deepEqual(lecturas.map((p) => [p.url, p.tenant]), [['/automatizaciones/a-1', 't-1'], ['/plantillas/p-1', 't-1']]);
+    assert.equal(ajusteAbierto(escenario), true);
+    assert.match(nodo(escenario, 'aj-resumen').textContent, /Stock diario/);
+    assert.match(nodo(escenario, 'aj-resumen').textContent, /food-store/);
+    // One control per parameter the template declares now: the stored key it no longer declares is gone.
+    assert.deepEqual(controlesAjuste(escenario).map((control) => control.value), ['5', 'true', '']);
+    assert.equal(nodo(escenario, 'aj-frecuencia').value, 'lun-vie');
+    assert.equal(nodo(escenario, 'aj-hora').value, '06:00');
+    assert.equal(nodo(escenario, 'aj-cron').value, '0 6 * * 1-5');
+    assert.equal(nodo(escenario, 'aj-cron').readOnly, true);
+    assert.equal(nodo(escenario, 'aj-destinatario').value, 'a@empresa.com');
+    assert.equal(nodo(escenario, 'aj-confirmar').hidden, true);
+  });
+
+  test('CH-33 a custom cron opens on Personalizado, editable, and a recipient-less row opens blank', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario, { ...AJUSTABLE, cron: '*/30 8-18 * * *', destinatario: null });
+    assert.equal(nodo(escenario, 'aj-frecuencia').value, 'personalizado');
+    assert.equal(nodo(escenario, 'aj-cron').value, '*/30 8-18 * * *');
+    assert.equal(nodo(escenario, 'aj-cron').readOnly, false);
+    assert.equal(nodo(escenario, 'aj-destinatario').value, '');
+  });
+
+  test('CH-33 only the schedule is sent when only the hour changed; a 200 closes, says the next run and reloads', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-hora').value = '07:30';
+    nodo(escenario, 'aj-hora').disparar('input');
+    await guardarAjuste(escenario, {
+      status: 200,
+      cuerpo: { automatizacion: { ...AJUSTABLE, cron: '30 7 * * 1-5' }, proximaEjecucion: '2026-10-15T07:30:00.000Z', zonaHoraria: 'UTC' },
+    });
+
+    const envio = envioDeAjuste(escenario);
+    assert.ok(envio, 'the adjust was sent');
+    assert.equal(envio.tenant, 't-1');
+    assert.deepEqual(envio.cuerpo, { cron: '30 7 * * 1-5' });
+    assert.equal(ajusteAbierto(escenario), false);
+    const banner = nodo(escenario, 'banner');
+    assert.equal(banner.className, 'banner exito');
+    assert.equal(banner.textContent, 'Se guardaron los ajustes. Próxima ejecución programada: 15/10/2026 07:30, zona horaria UTC.');
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/automatizaciones', 'the list is reloaded');
+  });
+
+  test('CH-33 a changed value sends the whole map of declared values; an emptied recipient is sent as null', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    controlesAjuste(escenario)[0].value = '7';
+    controlesAjuste(escenario)[0].disparar('input');
+    nodo(escenario, 'aj-destinatario').value = '  ';
+    nodo(escenario, 'aj-destinatario').disparar('input');
+    await guardarAjuste(escenario, { status: 200, cuerpo: { automatizacion: AJUSTABLE } });
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { valores: { umbral: 7, activo: true }, destinatario: null });
+    // A 200 without the next run keeps the first sentence only.
+    assert.equal(nodo(escenario, 'banner').textContent, 'Se guardaron los ajustes.');
+  });
+
+  test('CH-33 with nothing changed «Guardar ajustes» sends nothing and says so inside', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'aj-guardar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(ajusteAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'aj-aviso').textContent, 'No hay cambios para guardar.');
+  });
+
+  test('CH-33 a 400 is told inside the pop-up naming the field, and it stays open with what was typed', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-destinatario').value = 'a@b.com, c@d.com';
+    await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/destinatario'] } });
+    assert.equal(ajusteAbierto(escenario), true);
+    assert.match(nodo(escenario, 'aj-aviso').textContent, /El correo del destinatario no es válido/);
+    assert.equal(nodo(escenario, 'aj-destinatario').value, 'a@b.com, c@d.com');
+  });
+
+  test('CH-33 a 409 for an automation deactivated meanwhile is told inside and the list is reloaded', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-hora').value = '09:00';
+    await guardarAjuste(escenario, { status: 409, cuerpo: { error: 'automatizacion-desactivada' } });
+    assert.equal(ajusteAbierto(escenario), true);
+    assert.match(nodo(escenario, 'aj-aviso').textContent, /ya estaba desactivada/);
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/automatizaciones');
+  });
+
+  test('CH-33 a failed read opens nothing and says why on the page', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    escenario.respuestas.push({ status: 404, cuerpo: { error: 'automatizacion-no-encontrada' } }, { status: 200, cuerpo: { automatizaciones: [], truncado: false } });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ajustar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(ajusteAbierto(escenario), false);
+    assert.match(nodo(escenario, 'banner').textContent, /ya no existe/);
+  });
+
+  for (const [forma, cancelar] of [
+    ['Cancelar', (e: Escenario) => nodo(e, 'aj-cancelar').disparar('click')],
+    ['Escape', (e: Escenario) => nodo(e, 'auto-ajuste').disparar('keydown', { key: 'Escape' })],
+  ] as Array<[string, (e: Escenario) => void]>) {
+    test(`CH-33 ${forma} on the adjust pop-up closes it at once when unchanged, and asks first when changed`, async () => {
+      const escenario = await arrancar();
+      await abrirAjuste(escenario);
+      const antes = escenario.peticiones.length;
+      cancelar(escenario);
+      assert.equal(ajusteAbierto(escenario), false);
+
+      await abrirAjuste(escenario);
+      const despuesDeAbrir = escenario.peticiones.length;
+      nodo(escenario, 'aj-destinatario').value = 'otro@empresa.com';
+      cancelar(escenario);
+      assert.equal(ajusteAbierto(escenario), true);
+      assert.equal(nodo(escenario, 'aj-confirmar').hidden, false, 'asking');
+      nodo(escenario, 'aj-seguir').disparar('click');
+      assert.equal(nodo(escenario, 'aj-destinatario').value, 'otro@empresa.com');
+      cancelar(escenario);
+      nodo(escenario, 'aj-descartar').disparar('click');
+      assert.equal(ajusteAbierto(escenario), false);
+      assert.equal(escenario.peticiones.length, despuesDeAbrir, 'nothing was sent');
+      assert.ok(antes <= despuesDeAbrir);
+    });
+  }
+
+  test('CH-33 a tenant switch closes the adjust pop-up without asking', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-destinatario').value = 'otro@empresa.com';
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(ajusteAbierto(escenario), false);
+    assert.equal(nodo(escenario, 'aj-confirmar').hidden, true);
   });
 
   /**

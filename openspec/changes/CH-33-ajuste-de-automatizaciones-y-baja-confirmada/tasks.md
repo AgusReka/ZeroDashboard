@@ -25,10 +25,10 @@ Branch base: `master` (after #180). Tests first. While working: `npx tsx --test 
 - [x] 2.4 Isolation sweep: `aislamiento.test.ts:455` gains the route.
 
 ## PR3 — Console «Ajustar»
-- [ ] 3.1 Refactor: `actualizarHorarioDe(c)`, `presetDeCron`, `horarioEnPalabras` on it, `construirValores`; wizard tests pass unchanged.
-- [ ] 3.2 RED: «Ajustar» tests of design §6; new ids in `IDS` / `IDS_OCULTOS`.
-- [ ] 3.3 GREEN: markup, `abrirAjuste`, snapshot and dirty check, `guardarAjuste`, `confirmacionDeAjuste`, row button; rewritten copy (`:643`, `:703`).
+- [x] 3.1 Refactor: `actualizarHorarioDe(c)`, `presetDeCron`, `horarioEnPalabras` on it, `construirValores`; wizard tests pass unchanged.
+- [x] 3.2 RED: «Ajustar» tests of design §6; new ids in `IDS` / `IDS_OCULTOS`.
+- [x] 3.3 GREEN: markup, `abrirAjuste`, snapshot and dirty check, `guardarAjuste`, `confirmacionDeAjuste`, row button; rewritten copy (`:643`, `:703`).
 
 ## Close
-- [ ] 4.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
+- [x] 4.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
 - [ ] 4.2 Verify, archive, sync the three specs, mark CH-33 in `docs/02-mapa-de-changes.md`.
