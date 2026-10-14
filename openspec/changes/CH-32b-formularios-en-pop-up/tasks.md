@@ -26,10 +26,10 @@ Branch base: `master` (after #178). Tests first, `npx tsx --test src/consola.tes
 - [x] 2.3 Existing connection and agent-route tests adapted to open the pop-up.
 
 ## PR3 — Wizard pop-up and automations list
-- [ ] 3.1 RED: `respuestasAutomatizaciones` helper adopted by every scenario that loads the screen; list tests (name, words + cron, custom cron, unknown connection, connections failure).
-- [ ] 3.2 GREEN: `cargarNombresConexiones`, `horarioEnPalabras`, Conexión and Horario cells.
-- [ ] 3.3 RED → GREEN: `#auto-alta` as backdrop, `#auto-nueva` in the header, `auto-cancelar-2`, `auto-dialogo-aviso`, Cancelar/Escape with discard; 400 inside.
-- [ ] 3.4 Existing CH-13/CH-21c wizard tests still pass (only the `#auto-nueva` hidden checks and banner-on-400 checks change).
+- [x] 3.1 RED: `respuestasAutomatizaciones` helper adopted by every scenario that loads the screen; list tests (name, words + cron, custom cron, unknown connection, connections failure).
+- [x] 3.2 GREEN: `cargarNombresConexiones`, `horarioEnPalabras`, Conexión and Horario cells.
+- [x] 3.3 RED → GREEN: `#auto-alta` as backdrop, `#auto-nueva` in the header, `auto-cancelar-2`, `auto-dialogo-aviso`, Cancelar/Escape with discard; 400 inside.
+- [x] 3.4 Existing CH-13/CH-21c wizard tests still pass (only the `#auto-nueva` hidden checks and banner-on-400 checks change).
 
 ## Close
 - [ ] 4.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.

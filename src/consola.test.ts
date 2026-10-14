@@ -326,6 +326,13 @@ const IDS = [
   'conexion-confirmar',
   'conexion-descartar',
   'conexion-seguir',
+  // CH-32b: the wizard pop-up (#auto-alta is its backdrop): title, step-2 Cancelar, status line and strip.
+  'auto-dialogo-titulo',
+  'auto-cancelar-2',
+  'auto-dialogo-aviso',
+  'auto-confirmar',
+  'auto-descartar',
+  'auto-seguir',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -334,7 +341,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -356,8 +363,8 @@ interface Escenario {
   nodos: Map<string, Nodo>;
   encabezado: Nodo;
   cuerpoTabla: Nodo;
-  /** Queued responses, consumed in order by the stubbed `fetch`. */
-  respuestas: Array<{ status: number; cuerpo: unknown }>;
+  /** Queued responses, consumed in order by the stubbed `fetch`; `falla` makes that call fail like a network error. */
+  respuestas: Array<{ status: number; cuerpo: unknown; falla?: boolean }>;
   /** `tenant` is the `X-Tenant-Id` header the request carried, `null` when none. */
   peticiones: Array<{ url: string; cuerpo: unknown; tenant: string | null }>;
   /** CH-29: how many times the script reloaded the page (`window.location.reload()`). */
@@ -432,6 +439,9 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
     const siguiente = escenario.respuestas.shift();
     if (siguiente === undefined) {
       throw new Error(`no queued response for ${url}`);
+    }
+    if (siguiente.falla === true) {
+      throw new Error(`network failure for ${url}`);
     }
     return { status: siguiente.status, json: async () => siguiente.cuerpo };
   };
@@ -642,18 +652,23 @@ describe('the console document, served by the real route', () => {
     await new Promise((resolver) => setImmediate(resolver));
   }
 
-  /** What the automations screen loads with, in request order: the template catalog, then the list. */
+  /**
+   * What the automations screen loads with, in request order: the template catalog, the tenant's connections
+   * (CH-32b: their names for the Conexión column) and the list. Every scenario that loads the screen queues it.
+   */
   function respuestasAutomatizaciones(
     plantillas: unknown[],
     automatizaciones: unknown[],
+    conexiones: unknown[] = [],
   ): Array<{ status: number; cuerpo: unknown }> {
     return [
       { status: 200, cuerpo: { plantillas, truncado: false } },
+      { status: 200, cuerpo: { conexiones, truncado: false } },
       { status: 200, cuerpo: { automatizaciones, truncado: false } },
     ];
   }
 
-  /** What a tenant switch asks for, in request order: saved queries, the query picker's connections, then the automations screen. */
+  /** What a tenant switch asks for, in request order: saved queries, the query picker's connections, then the automations screen (which reads the connections again for their names). */
   function respuestasDeTenant(
     guardadas: unknown[] = [],
     conexiones: unknown[] = [],
@@ -663,7 +678,7 @@ describe('the console document, served by the real route', () => {
     return [
       { status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } },
       { status: 200, cuerpo: { conexiones, truncado: false } },
-      ...respuestasAutomatizaciones(plantillas, automatizaciones),
+      ...respuestasAutomatizaciones(plantillas, automatizaciones, conexiones),
     ];
   }
 
@@ -1208,12 +1223,14 @@ describe('the console document, served by the real route', () => {
   /** Spec "Viewing the automations list" and "Deactivating from the console". */
   test('the list shows plantilla, connection, schedule and state; deactivating reloads it', async () => {
     const escenario = await arrancar();
-    await elegirTenant(escenario, [], [automatizacion()]);
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
 
     const [fila] = filasDe(escenario, 'auto-lista', 'automatizacion');
-    for (const texto of ['Stock diario', 'c-1', '0 6 * * *', 'activa']) {
+    // CH-32b: the connection by its name (not its id) and the schedule in words, then the expression.
+    for (const texto of ['Stock diario', 'food-store', 'Todos los días a las 06:00 0 6 * * *', 'activa']) {
       assert.ok(fila.textContent.includes(texto), texto);
     }
+    assert.ok(!fila.textContent.includes('c-1'), 'the connection id is not shown');
     // DEC-79: the only state change offered is deactivation; no edit, delete or reactivate.
     assert.deepEqual(botones(fila).map((nodo) => nodo.textContent), ['Ver ejecuciones', 'Desactivar']);
 
@@ -1343,7 +1360,7 @@ describe('the console document, served by the real route', () => {
   });
 
   /**
-   * Spec "Invalid recipient shown legibly" and "Server 400 shown in the banner".
+   * Spec "Invalid recipient shown legibly" and "Server 400 shown inside the pop-up" (CH-32b).
    * CH-21c RW3: through the wizard, which stays on step 2 with every typed value.
    */
   test('CH-14 6.4 a rejected recipient is one legible sentence naming the field, never a raw error', async () => {
@@ -1362,7 +1379,9 @@ describe('the console document, served by the real route', () => {
       'auto-crear',
       'click',
     );
-    const banner = (escenario.nodos.get('banner') as Nodo).textContent;
+    // CH-32b: the page banner is behind the pop-up, so the sentence is written inside it.
+    const banner = nodo(escenario, 'auto-dialogo-aviso').textContent;
+    assert.equal(nodo(escenario, 'banner').hidden, true);
     assert.match(banner, /destinatario/);
     assert.match(banner, /una sola dirección/);
     assert.ok(!banner.includes('/destinatario'), 'the JSON pointer is translated');
@@ -1401,7 +1420,7 @@ describe('the console document, served by the real route', () => {
     await abrirAlta(escenario);
     assert.equal(escenario.peticiones.length, pedidas + 1, 'opening asks for the connections only');
     assert.equal(nodo(escenario, 'auto-alta').hidden, false);
-    assert.equal(nodo(escenario, 'auto-nueva').hidden, true);
+    assert.equal(nodo(escenario, 'auto-nueva').hidden, false, 'the opener is in the page header and stays');
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
     const siguiente = nodo(escenario, 'auto-siguiente');
     assert.equal(siguiente.disabled, true, 'nothing chosen yet');
@@ -1454,10 +1473,12 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario, [], [], 't-2');
     assert.deepEqual(
       escenario.peticiones.slice(antes).map((peticion) => [peticion.url, peticion.tenant]),
-      // CH-32a: the Consultas connection picker is the one request added to the former three.
-      [['/consultas-guardadas', 't-2'], ['/conexiones', 't-2'], ['/plantillas', 't-2'], ['/automatizaciones', 't-2']],
+      // CH-32a: the Consultas connection picker is one request added to the former three; CH-32b: the list's
+      // connection names are another, between the catalog and the list.
+      [['/consultas-guardadas', 't-2'], ['/conexiones', 't-2'], ['/plantillas', 't-2'], ['/conexiones', 't-2'], ['/automatizaciones', 't-2']],
     );
     assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(nodo(escenario, 'auto-confirmar').hidden, true);
     assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
     for (const id of ['auto-conexion', 'auto-destinatario']) {
       assert.equal(nodo(escenario, id).value, '', id + ' is wiped');
@@ -1485,8 +1506,13 @@ describe('the console document, served by the real route', () => {
 
     const pedidas = escenario.peticiones.length;
     nodo(escenario, 'auto-cancelar').disparar('click');
+    // CH-32b: a connection and a template are chosen, so Cancelar asks before it throws them away.
+    assert.equal(nodo(escenario, 'auto-alta').hidden, false);
+    assert.equal(nodo(escenario, 'auto-confirmar').hidden, false);
+    nodo(escenario, 'auto-descartar').disparar('click');
     assert.equal(escenario.peticiones.length, pedidas, 'Cancelar sends nothing');
     assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(nodo(escenario, 'auto-confirmar').hidden, true);
     assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
 
     await abrirAlta(escenario);
@@ -1609,7 +1635,8 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'auto-siguiente').disabled, true);
 
     nodo(escenario, 'auto-cancelar').disparar('click');
-    assert.equal(nodo(escenario, 'auto-alta').hidden, true, 'Cancelar still closes it');
+    nodo(escenario, 'auto-descartar').disparar('click');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true, 'Cancelar (a template is chosen: after asking) still closes it');
     const antes = escenario.peticiones.length;
     await abrirAlta(escenario);
     assert.deepEqual(escenario.peticiones.slice(antes).map((peticion) => peticion.url), ['/conexiones']);
@@ -1803,7 +1830,8 @@ describe('the console document, served by the real route', () => {
       nodo(escenario, 'auto-crear').disparar('click');
       await asentar();
       assert.equal(escenario.peticiones.length, pedidas, 'no request for ' + JSON.stringify(hora));
-      assert.equal(nodo(escenario, 'banner').textContent, 'La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
+      assert.equal(nodo(escenario, 'auto-dialogo-aviso').textContent, 'La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
+      assert.equal(nodo(escenario, 'banner').hidden, true, 'the page banner is behind the pop-up');
       assert.deepEqual(pasoVisible(escenario), [2, 2]);
       assert.equal(nodo(escenario, 'auto-crear').disabled, false, 'Crear stays usable');
     }
@@ -2026,8 +2054,9 @@ describe('the console document, served by the real route', () => {
     await asentar();
     assert.deepEqual(
       escenario.peticiones.slice(antes).map((peticion) => peticion.url),
-      // CH-32a: the second /conexiones is the Consultas picker, asked on the tenant switch.
-      ['/consultas-guardadas', '/conexiones', '/plantillas', '/automatizaciones', '/conexiones'],
+      // CH-32a: the first /conexiones is the Consultas picker, asked on the tenant switch; CH-32b: the second is
+      // the automations list's names; the last is the wizard's own.
+      ['/consultas-guardadas', '/conexiones', '/plantillas', '/conexiones', '/automatizaciones', '/conexiones'],
       "A's probe asks for no template detail",
     );
     const tarjeta = tarjetas(escenario)[0];
@@ -3771,7 +3800,7 @@ describe('the console document, served by the real route', () => {
 
   /**
    * Selects the tenant with `respuestaConexiones` as the answer to the picker's request (a
-   * pending `Promise` as `cuerpo` keeps it in flight); the other three loads answer empty.
+   * pending `Promise` as `cuerpo` keeps it in flight); the other loads answer empty.
    */
   async function elegirTenantCon(
     escenario: Escenario,
@@ -3783,8 +3812,7 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
       respuestaConexiones,
-      { status: 200, cuerpo: { plantillas: [], truncado: false } },
-      { status: 200, cuerpo: { automatizaciones: [], truncado: false } },
+      ...respuestasAutomatizaciones([], []),
     );
     selector.disparar('change');
     await asentarVarias();
@@ -3820,7 +3848,8 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'conexion-aviso').textContent, '');
     assert.equal(nodo(escenario, 'conexion-reintentar').hidden, true);
     const pedida = escenario.peticiones.filter((p) => p.url === '/conexiones');
-    assert.deepEqual(pedida.map((p) => p.tenant), ['t-1'], 'one request, scoped to the active tenant');
+    // The picker's own request, and the automations list's (CH-32b), both scoped to the active tenant.
+    assert.deepEqual(pedida.map((p) => p.tenant), ['t-1', 't-1']);
   });
 
   test('CH-32a while the list is on its way the picker says so and is disabled', async () => {
@@ -4637,6 +4666,7 @@ describe('the console document, served by the real route', () => {
   interface PopUp {
     nombre: string;
     fondo: string;
+    titulo: string;
     abridor: string;
     /** The id of what the pop-up holds (the form, or the wizard's first step): it must sit inside the backdrop. */
     contenido: string;
@@ -4653,22 +4683,28 @@ describe('the console document, served by the real route', () => {
 
   const POPUPS: PopUp[] = [
     {
-      nombre: 'Nuevo tenant', fondo: 'tenant-dialogo', abridor: 'tenant-nuevo', contenido: 'tenant-alta', primerCampo: 'tenant-nombre',
+      nombre: 'Nuevo tenant', fondo: 'tenant-dialogo', titulo: 'tenant-dialogo-titulo', abridor: 'tenant-nuevo', contenido: 'tenant-alta', primerCampo: 'tenant-nombre',
       cancelar: 'tenant-cancelar', confirmar: 'tenant-confirmar', descartar: 'tenant-descartar', seguir: 'tenant-seguir',
       escribir: (e) => { nodo(e, 'tenant-nombre').value = 'Almacén Don Tito'; return ['tenant-nombre', 'Almacén Don Tito']; },
       respuestasAlAbrir: [],
     },
     {
-      nombre: 'Nuevo usuario', fondo: 'usuario-dialogo', abridor: 'usuario-nuevo', contenido: 'usuario-alta', primerCampo: 'usuario-correo',
+      nombre: 'Nuevo usuario', fondo: 'usuario-dialogo', titulo: 'usuario-dialogo-titulo', abridor: 'usuario-nuevo', contenido: 'usuario-alta', primerCampo: 'usuario-correo',
       cancelar: 'usuario-cancelar', confirmar: 'usuario-confirmar', descartar: 'usuario-descartar', seguir: 'usuario-seguir',
       escribir: (e) => { nodo(e, 'usuario-nombre').value = 'Ana'; return ['usuario-nombre', 'Ana']; },
       respuestasAlAbrir: [],
     },
     {
-      nombre: 'Nueva conexión', fondo: 'conexion-dialogo', abridor: 'conexion-nueva', contenido: 'conexion-alta', primerCampo: 'cx-nombre',
+      nombre: 'Nueva conexión', fondo: 'conexion-dialogo', titulo: 'conexion-dialogo-titulo', abridor: 'conexion-nueva', contenido: 'conexion-alta', primerCampo: 'cx-nombre',
       cancelar: 'cx-cancelar', confirmar: 'conexion-confirmar', descartar: 'conexion-descartar', seguir: 'conexion-seguir',
       escribir: (e) => { nodo(e, 'cx-host').value = 'db.nueva.test'; return ['cx-host', 'db.nueva.test']; },
       respuestasAlAbrir: [{ status: 200, cuerpo: { agentes: [] } }],
+    },
+    {
+      nombre: 'Nueva automatización', fondo: 'auto-alta', titulo: 'auto-dialogo-titulo', abridor: 'auto-nueva', contenido: 'auto-paso-1', primerCampo: 'auto-conexion',
+      cancelar: 'auto-cancelar', confirmar: 'auto-confirmar', descartar: 'auto-descartar', seguir: 'auto-seguir',
+      escribir: (e) => { nodo(e, 'auto-destinatario').value = 'ops@example.com'; return ['auto-destinatario', 'ops@example.com']; },
+      respuestasAlAbrir: [{ status: 200, cuerpo: { conexiones: [], truncado: false } }],
     },
   ];
 
@@ -4687,19 +4723,19 @@ describe('the console document, served by the real route', () => {
   }
 
   for (const popup of POPUPS) {
-    test(`CH-32b ${popup.nombre} is a hidden modal dialog opened from the page header, with its form inside and the actions at the foot`, () => {
+    test(`CH-32b ${popup.nombre} is a hidden modal dialog opened from the page header, with its fields inside and the unsaved-changes strip`, () => {
       const m = marcado();
       assert.match(m, new RegExp(`<div class="zd-pagehead__actions">\\s*<button id="${popup.abridor}" class="zd-btn zd-btn--primary" type="button">`));
       const fondo = m.indexOf(`<div id="${popup.fondo}"`);
       assert.ok(fondo !== -1, 'the backdrop exists');
       assert.match(m.slice(fondo), new RegExp(
-        `^<div id="${popup.fondo}" class="zd-dialog-backdrop" hidden>\\s*<div class="zd-dialog[^"]*" role="dialog" aria-modal="true" aria-labelledby="${popup.fondo}-titulo">\\s*<h2 id="${popup.fondo}-titulo" class="zd-dialog__title">`));
+        `^<div id="${popup.fondo}" class="zd-dialog-backdrop" hidden>\\s*<div class="zd-dialog[^"]*" role="dialog" aria-modal="true" aria-labelledby="${popup.titulo}">\\s*<h2 id="${popup.titulo}" class="zd-dialog__title">`));
       const contenido = m.indexOf(`id="${popup.contenido}"`);
-      const acciones = m.indexOf('<div class="zd-dialog__actions">', fondo);
-      assert.ok(fondo < contenido && contenido < acciones, 'the fields sit between the title and the actions row');
-      assert.match(m.slice(acciones, acciones + 1200), new RegExp(
-        `<span id="${popup.confirmar}" hidden>\\s*Hay cambios sin guardar\\.\\s*<button id="${popup.descartar}"[^>]*type="button">Descartar cambios</button>\\s*<button id="${popup.seguir}"[^>]*type="button">Seguir editando</button>`));
-      assert.match(m.slice(acciones, acciones + 1200), new RegExp(`<button id="${popup.cancelar}" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>`));
+      const franja = m.indexOf(`<span id="${popup.confirmar}" hidden>`, fondo);
+      assert.ok(fondo < contenido && contenido < franja, 'the fields come before the strip');
+      assert.match(m.slice(franja, franja + 600), new RegExp(
+        `^<span id="${popup.confirmar}" hidden>\\s*Hay cambios sin guardar\\.\\s*<button id="${popup.descartar}"[^>]*type="button">Descartar cambios</button>\\s*<button id="${popup.seguir}"[^>]*type="button">Seguir editando</button>`));
+      assert.match(m.slice(fondo, fondo + 20000), new RegExp(`<button id="${popup.cancelar}" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>`));
     });
 
     test(`CH-32b ${popup.nombre} opens with the focus on its first field and a closed question`, async () => {
@@ -5095,6 +5131,222 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario, [], [], 't-2');
     assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false);
     assert.ok(!nodo(escenario, 'conexiones-aviso').textContent.startsWith('Guardada'));
+  });
+
+  // ---- CH-32b: the wizard in a pop-up ------------------------------------------------------------
+
+  test('CH-32b the wizard is a wide pop-up on #auto-alta, opened from the header; the stepper and both steps are inside it', () => {
+    const m = marcado();
+    const dialogo = m.slice(m.indexOf('<div id="auto-alta"'), m.indexOf('<div class="zd-table-wrap zd-table-scroll"><table id="auto-lista"'));
+    assert.match(dialogo, /^<div id="auto-alta" class="zd-dialog-backdrop" hidden>/);
+    assert.match(dialogo, /<div class="zd-dialog zd-form" role="dialog"/);
+    for (const id of ['auto-marca-1', 'auto-marca-2', 'auto-paso-1', 'auto-paso-2', 'auto-dialogo-aviso']) assert.ok(dialogo.includes('id="' + id + '"'), id);
+    assert.ok(!dialogo.includes('id="auto-nueva"'), 'the opener is not inside it');
+    assert.ok(!/<div id="auto-alta"[^>]*zd-card/.test(m), 'it is no longer an inline card');
+    assert.match(documento, /#auto-alta \.zd-dialog \{ width: min\(900px, 100%\)/);
+    assert.ok(!documento.includes('#auto-alta { margin-top'), 'the inline card\'s rule is gone');
+    assert.match(dialogo, /<p id="auto-dialogo-aviso" class="ayuda" role="status"><\/p>/);
+    const paso2 = dialogo.slice(dialogo.indexOf('<div id="auto-paso-2"'));
+    assert.match(paso2, /<button id="auto-volver"[^>]*>Volver<\/button>\s*<button id="auto-crear"[^>]*>Crear automatización<\/button>\s*<button id="auto-cancelar-2" class="zd-btn zd-btn--ghost" type="button">Cancelar<\/button>/);
+  });
+
+  test('CH-32b on step 2, Cancelar and Escape ask the same question, and discarding closes and resets the wizard', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    assert.deepEqual(pasoVisible(escenario), [2, 2]);
+    nodo(escenario, 'auto-cancelar-2').disparar('click');
+    assert.equal(nodo(escenario, 'auto-confirmar').hidden, false);
+    nodo(escenario, 'auto-seguir').disparar('click');
+    assert.deepEqual(pasoVisible(escenario), [2, 2], 'Seguir editando stays on step 2');
+    nodo(escenario, 'auto-alta').disparar('keydown', { key: 'Escape' });
+    assert.equal(nodo(escenario, 'auto-confirmar').hidden, false);
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'auto-descartar').disparar('click');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(escenario.peticiones.length, antes, 'nothing sent');
+    await abrirAlta(escenario);
+    assert.deepEqual(pasoVisible(escenario), [1, 1]);
+    assert.equal(nodo(escenario, 'auto-conexion').value, '');
+  });
+
+  test('CH-32b a connection, a template, a parameter value or a recipient each count as changes; the schedule alone does not', async () => {
+    const cambios: Array<[string, (e: Escenario) => Promise<void>]> = [
+      ['a connection', async (e) => { await elegirConexion(e, 'c-1'); }],
+      ['a template', async (e) => { await elegirPlantillaAlta(e); }],
+      ['a parameter value', async (e) => {
+        await avanzar(e, [{ nombre: 'n', tipo: 'numero' }]);
+        nodo(e, 'auto-valores').porClase('parametro-valor')[0].value = '5';
+        nodo(e, 'auto-conexion').value = '';
+        nodo(e, 'auto-valores').porClase('parametro-valor')[0].value = '5';
+      }],
+      ['a recipient', async (e) => { nodo(e, 'auto-destinatario').value = 'ops@example.com'; }],
+    ];
+    for (const [que, cambiar] of cambios) {
+      const escenario = await arrancar();
+      await elegirTenant(escenario, [], []);
+      await abrirAlta(escenario);
+      await cambiar(escenario);
+      nodo(escenario, 'auto-cancelar').disparar('click');
+      assert.equal(nodo(escenario, 'auto-confirmar').hidden, false, que);
+    }
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    fijarHorario(escenario, 'lun-vie', '09:15');
+    fijarHorario(escenario, 'personalizado', '5 4 * * 1');
+    nodo(escenario, 'auto-cancelar').disparar('click');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true, 'the schedule alone is not worth asking about');
+  });
+
+  test('CH-32b any other refusal of the create is told inside the pop-up too, which stays on step 2 with its values', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    nodo(escenario, 'auto-destinatario').value = 'ops@example.com';
+    await enviar(escenario, { error: 'plantilla-no-encontrada' }, 404, 'auto-crear', 'click');
+    assert.equal(nodo(escenario, 'banner').hidden, true, 'not in the banner behind the pop-up');
+    assert.notEqual(nodo(escenario, 'auto-dialogo-aviso').textContent, '');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, false);
+    assert.deepEqual(pasoVisible(escenario), [2, 2]);
+    assert.equal(nodo(escenario, 'auto-destinatario').value, 'ops@example.com');
+    assert.equal(nodo(escenario, 'auto-crear').disabled, false);
+    // Trying again starts from a clean line.
+    await enviar(escenario, { automatizacion: automatizacion() }, 201, 'auto-crear', 'click');
+  });
+
+  test('CH-32b a created automation closes the pop-up, resets it and leaves the confirmation on the page', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], []);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    nodo(escenario, 'auto-destinatario').value = 'ops@example.com';
+    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion(), proximaEjecucion: '2026-10-15T09:00:00.000Z', zonaHoraria: 'America/Argentina/Buenos_Aires' } });
+    await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+    assert.equal(nodo(escenario, 'auto-alta').hidden, true);
+    assert.equal(nodo(escenario, 'auto-confirmar').hidden, true);
+    assert.equal(nodo(escenario, 'auto-destinatario').value, '', 'reset');
+    assert.equal(nodo(escenario, 'auto-dialogo-aviso').textContent, '');
+    assert.match(nodo(escenario, 'banner').textContent, /^Se creó la automatización y ya aparece en la lista\./);
+    assert.equal(nodo(escenario, 'banner').hidden, false);
+  });
+
+  // ---- CH-32b: the automations list in words ---------------------------------------------------
+
+  /** The cells of the first row of the automations table, as `[Plantilla, Conexión, Horario, ...]` nodes. */
+  const celdasDeFila = (escenario: Escenario): Nodo[] => filasDe(escenario, 'auto-lista', 'automatizacion')[0].hijos;
+
+  test('CH-32b loading the screen asks for the catalog, then the connections, then the list', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    await elegirTenant(escenario, [], [automatizacion()]);
+    assert.deepEqual(
+      escenario.peticiones.slice(antes).map((p) => [p.url, p.tenant]),
+      [['/consultas-guardadas', 't-1'], ['/conexiones', 't-1'], ['/plantillas', 't-1'], ['/conexiones', 't-1'], ['/automatizaciones', 't-1']],
+    );
+  });
+
+  test('CH-32b each preset reads in words followed by its cron in monospace, and the connection by its name', async () => {
+    const casos: Array<[string, string]> = [
+      ['0 6 * * *', 'Todos los días a las 06:00'],
+      ['0 6 * * 1-5', 'De lunes a viernes a las 06:00'],
+      ['30 18 * * 1-6', 'De lunes a sábado a las 18:30'],
+      ['5 9 * * *', 'Todos los días a las 09:05'],
+      ['00 06 * * 1-5', 'De lunes a viernes a las 06:00'],
+    ];
+    for (const [cron, palabras] of casos) {
+      const escenario = await arrancar();
+      await elegirTenant(escenario, [], [automatizacion({ cron })], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+      const [, conexion, horario] = celdasDeFila(escenario);
+      assert.equal(conexion.textContent, 'food-store');
+      assert.equal(horario.textContent, palabras + ' ' + cron, cron);
+      const codigos = buscar(horario, (n) => n.tagName === 'code');
+      assert.equal(codigos.length, 1);
+      assert.equal(codigos[0].textContent, cron);
+      assert.equal(codigos[0].className, '', 'no class of the shared sheet: the console\'s script assigns none');
+    }
+  });
+
+  test('CH-32b a custom or malformed schedule shows the cron alone, in monospace', async () => {
+    const crones = [
+      '*/30 8-18 * * *', '0 6 * * 1-4', '0 6 * * 7', '60 6 * * *', '0 24 * * *', '0 6 1 * *', '0 6 * 1 *', '0 6 * * * ', '0  6 * * *',
+      '+1 6 * * *', '0 006 * * *', 'a 6 * * *', '0 6 * *', '0 6 * * * *', '',
+    ];
+    for (const cron of crones) {
+      const escenario = await arrancar();
+      await elegirTenant(escenario, [], [automatizacion({ cron })]);
+      const [, , horario] = celdasDeFila(escenario);
+      assert.equal(horario.textContent, cron, JSON.stringify(cron));
+      assert.equal(buscar(horario, (n) => n.tagName === 'code').length, 1, JSON.stringify(cron));
+    }
+  });
+
+  test('CH-32b a connection that is not among the tenant\'s shows its first 8 characters and an ellipsis, never the whole id', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion({ conexionId: '0a1b2c3d-4e5f-6789-abcd-ef0123456789' })], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    const [, conexion] = celdasDeFila(escenario);
+    assert.equal(conexion.textContent, '0a1b2c3d…');
+    assert.ok(!textoDeLaPagina(escenario).includes('0a1b2c3d-4e5f'));
+  });
+
+  test('CH-32b a hostile connection name is shown as text', async () => {
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', undefined, [{ id: 'c-1', nombre: hostil }]);
+    const [, conexion] = celdasDeFila(escenario);
+    assert.equal(conexion.textContent, hostil);
+    assert.equal(conexion.hijos.length, 0, 'a text node holder only');
+  });
+
+  test('CH-32b the connections answering badly or not at all leaves the list drawn with short ids and nothing reported', async () => {
+    const fallos: Array<[string, { status: number; cuerpo: unknown; falla?: boolean }]> = [
+      ['a 500', { status: 500, cuerpo: { error: 'interno' } }],
+      ['a 403', { status: 403, cuerpo: { error: 'prohibido' } }],
+      ['a body without the list', { status: 200, cuerpo: { otra: 1 } }],
+      ['a body that is not an object', { status: 200, cuerpo: 'texto' }],
+      ['a network failure', { status: 0, cuerpo: null, falla: true }],
+    ];
+    for (const [que, respuesta] of fallos) {
+      const escenario = await arrancar();
+      nodo(escenario, 'tenant').value = 't-1';
+      escenario.respuestas.push(
+        { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+        { status: 200, cuerpo: { conexiones: [], truncado: false } },
+        { status: 200, cuerpo: { plantillas: [{ id: 'p-1', nombre: 'Stock diario' }], truncado: false } },
+        respuesta,
+        { status: 200, cuerpo: { automatizaciones: [automatizacion()], truncado: false } },
+      );
+      nodo(escenario, 'tenant').disparar('change');
+      await asentarVarias();
+      const filasLista = filasDe(escenario, 'auto-lista', 'automatizacion');
+      assert.equal(filasLista.length, 1, que);
+      assert.equal(filasLista[0].hijos[1].textContent, 'c-1…', que);
+      assert.equal(nodo(escenario, 'banner').hidden, true, que + ': nothing is reported');
+    }
+  });
+
+  test('CH-32b the names of the tenant just left never reach the list of the new one', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    let responder!: (cuerpo: unknown) => void;
+    nodo(escenario, 'tenant').value = 't-1';
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+      { status: 200, cuerpo: { plantillas: [], truncado: false } },
+      { status: 200, cuerpo: new Promise((resolver) => { responder = resolver; }) },
+    );
+    nodo(escenario, 'tenant').disparar('change');
+    await asentarVarias();
+    await elegirTenant(escenario, [], [automatizacion()], 't-2');
+    // The old tenant's chain asks for its list once its names are in; give it an answer so it ends quietly.
+    escenario.respuestas.push({ status: 200, cuerpo: { automatizaciones: [automatizacion()], truncado: false } });
+    responder({ conexiones: [{ id: 'c-1', nombre: 'Nombre del tenant anterior' }], truncado: false });
+    await asentarVarias();
+    const [, conexion] = celdasDeFila(escenario);
+    assert.equal(conexion.textContent, 'c-1…');
+    assert.ok(!textoDeLaPagina(escenario).includes('Nombre del tenant anterior'));
   });
 
   // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------

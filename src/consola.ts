@@ -119,10 +119,11 @@ function documentoConsola(nombreOperador: string): string {
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
     border-bottom: var(--border-width) solid var(--border-1); }
   #guardadas .ayuda { margin: 0; }
-  /* CH-21c wizard. The script moves aria-current only, so step 1 reads as done whenever
+  /* CH-21c wizard, in a wide pop-up since CH-32b (DEC-173). The script moves aria-current only, so step 1 reads as done whenever
      it is not the current step (the shared sheet's done look needs a class the script
      does not assign). */
-  #auto-alta { margin-top: var(--space-5); }
+  #auto-alta .zd-dialog { width: min(900px, 100%); }
+  #auto-confirmar { justify-self: end; }
   #auto-alta .zd-form-actions { margin-top: var(--space-6); }
   #auto-marca-1:not([aria-current]) { color: var(--text-2); }
   #auto-marca-1:not([aria-current]) .zd-step__n { border-color: var(--accent); color: var(--accent-text); }
@@ -627,6 +628,9 @@ function documentoConsola(nombreOperador: string): string {
     <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-automatizaciones" class="zd-h1">Automatizaciones</h1>
   </div>
+  <div class="zd-pagehead__actions">
+    <button id="auto-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
+  </div>
 </header>
 
 <!--
@@ -638,13 +642,16 @@ function documentoConsola(nombreOperador: string): string {
   <h2 class="zd-h2">Automatizaciones</h2>
   <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. No se puede editar ni reactivar una automatización: para corregirla, se desactiva y se crea otra.</p>
 
-  <button id="auto-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
-
   <!--
     CH-21c (DEC-129): creation is a two-step wizard. The stepper and both panels are static
     markup; the script only toggles hidden and aria-current on them, never their classes.
+    CH-32b (DEC-173): it lives in a wide pop-up opened by «Nueva automatización» in the page header.
+    #auto-alta is the backdrop and keeps its id and its hidden: open is not hidden. A refusal of the
+    create is written in #auto-dialogo-aviso, since the page banner is behind the pop-up.
   -->
-  <div id="auto-alta" class="zd-card zd-form" hidden>
+  <div id="auto-alta" class="zd-dialog-backdrop" hidden>
+   <div class="zd-dialog zd-form" role="dialog" aria-modal="true" aria-labelledby="auto-dialogo-titulo">
+    <h2 id="auto-dialogo-titulo" class="zd-dialog__title">Nueva automatización</h2>
     <ol class="zd-steps" aria-label="Pasos del alta">
       <li id="auto-marca-1" class="zd-step" aria-current="step"><span class="zd-step__n">1</span><span>Conexión y plantilla</span></li>
       <li id="auto-marca-2" class="zd-step"><span class="zd-step__n">2</span><span>Parámetros y horario</span></li>
@@ -709,8 +716,17 @@ function documentoConsola(nombreOperador: string): string {
       <div class="zd-form-actions">
         <button id="auto-volver" class="zd-btn zd-btn--secondary" type="button">Volver</button>
         <button id="auto-crear" class="zd-btn zd-btn--primary" type="button">Crear automatización</button>
+        <button id="auto-cancelar-2" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
       </div>
     </div>
+
+    <p id="auto-dialogo-aviso" class="ayuda" role="status"></p>
+    <span id="auto-confirmar" hidden>
+      Hay cambios sin guardar.
+      <button id="auto-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+      <button id="auto-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+    </span>
+   </div>
   </div>
 
   <div class="zd-table-wrap zd-table-scroll"><table id="auto-lista" class="zd-table"></table></div>
@@ -910,7 +926,6 @@ var botonCrearAuto = document.getElementById('auto-crear');
 var tablaAutomatizaciones = document.getElementById('auto-lista');
 var tablaEjecuciones = document.getElementById('auto-ejecuciones');
 var botonNuevaAuto = document.getElementById('auto-nueva');
-var altaAuto = document.getElementById('auto-alta');
 var marcaAlta1 = document.getElementById('auto-marca-1');
 var marcaAlta2 = document.getElementById('auto-marca-2');
 var pasoAlta1 = document.getElementById('auto-paso-1');
@@ -921,6 +936,8 @@ var vistaAsunto = document.getElementById('auto-vista-asunto');
 var vistaPara = document.getElementById('auto-vista-para');
 var vistaTitulo = document.getElementById('auto-vista-titulo');
 var botonCancelarAuto = document.getElementById('auto-cancelar');
+var botonCancelarAuto2 = document.getElementById('auto-cancelar-2');
+var avisoDialogoAlta = document.getElementById('auto-dialogo-aviso');
 var resumenAlta = document.getElementById('auto-resumen');
 var botonVolverAuto = document.getElementById('auto-volver');
 var selectorFrecuencia = document.getElementById('auto-frecuencia');
@@ -931,6 +948,11 @@ var textoHorario = document.getElementById('auto-horario-texto');
 // the value controls of the template chosen in the create form.
 var nombresPlantilla = Object.create(null);
 var filasValoresAuto = [];
+
+// CH-32b: the tenant's connections by id, for the list's Conexión column. Empty when they could not be
+// read, and the column then shows the short id. The token drops an answer that lands after a tenant switch.
+var nombresConexion = Object.create(null);
+var generacionNombres = 0;
 
 // CH-21c: the catalog rows the picker draws its cards from, the chosen card's id ('' when
 // none), and the template details read during this wizard, by id. Every reset empties the
@@ -1027,7 +1049,7 @@ function crearDialogo(opciones) {
   });
   opciones.descartar.addEventListener('click', cerrar);
   opciones.seguir.addEventListener('click', function () { opciones.confirmar.hidden = true; });
-  var dialogo = { abrir: abrir, cerrar: cerrar, abierto: function () { return !opciones.fondo.hidden; } };
+  var dialogo = { abrir: abrir, cerrar: cerrar, pedirCerrar: pedirCerrar, abierto: function () { return !opciones.fondo.hidden; } };
   dialogos.push(dialogo);
   return dialogo;
 }
@@ -1904,6 +1926,8 @@ function limpiarAutomatizaciones() {
   vaciar(tablaEjecuciones);
   catalogoPlantillas = [];
   nombresPlantilla = Object.create(null);
+  generacionNombres += 1;
+  nombresConexion = Object.create(null);
   // The wizard goes too, values and all: nothing typed for one tenant survives the switch.
   cerrarAlta();
   // The freshness table is drawn from the catalog just emptied.
@@ -2031,6 +2055,7 @@ async function cargarConexiones() {
     return;
   }
   var filas = Array.isArray(resultado.cuerpo.conexiones) ? resultado.cuerpo.conexiones : [];
+  guardarNombresDeConexion(filas);
   renderizarConexiones(filas, filas.length === 0 ? 'No hay conexiones registradas' : 'Elegí una conexión');
   if (filas.length === 0) {
     mostrarAviso('Este tenant no tiene conexiones registradas. Registrá una para poder crear una automatización.');
@@ -2074,26 +2099,49 @@ function reiniciarAlta() {
   resumenAlta.textContent = '';
   avisoAlta.textContent = '';
   avisoAlta.hidden = true;
+  avisoDialogoAlta.textContent = '';
   actualizarSiguiente();
 }
+
+// What Cancelar and Escape would throw away: a connection or a template chosen, a parameter value or a
+// recipient typed. The schedule alone is not counted: it always holds a value.
+function hayCambiosEnAlta() {
+  return selectorConexionAuto.value !== '' || plantillaElegida !== '' || entradaDestinatario.value.trim() !== ''
+    || Object.keys(valoresDe(filasValoresAuto)).length > 0;
+}
+
+// CH-32b (DEC-173): opening resets the wizard and asks for the connections; closing, however it happens,
+// resets it again so nothing typed survives.
+var dialogoAlta = crearDialogo({
+  fondo: document.getElementById('auto-alta'),
+  primerCampo: selectorConexionAuto,
+  cancelar: botonCancelarAuto,
+  confirmar: document.getElementById('auto-confirmar'),
+  descartar: document.getElementById('auto-descartar'),
+  seguir: document.getElementById('auto-seguir'),
+  hayCambios: hayCambiosEnAlta,
+  alAbrir: function () {
+    ocultarBanner();
+    reiniciarAlta();
+    irAPaso(1);
+    cargarConexiones();
+  },
+  alCerrar: reiniciarAlta
+});
+
+// Step 2 has its own Cancelar: it asks the same question.
+botonCancelarAuto2.addEventListener('click', dialogoAlta.pedirCerrar);
 
 function abrirAlta() {
   if (tenantActivo === null) {
     mostrarBanner(SIN_TENANT);
     return;
   }
-  ocultarBanner();
-  reiniciarAlta();
-  altaAuto.hidden = false;
-  botonNuevaAuto.hidden = true;
-  irAPaso(1);
-  cargarConexiones();
+  dialogoAlta.abrir();
 }
 
 function cerrarAlta() {
-  altaAuto.hidden = true;
-  reiniciarAlta();
-  botonNuevaAuto.hidden = false;
+  dialogoAlta.cerrar();
 }
 
 // The shared head of every automations call: null when the page has already said why,
@@ -2117,10 +2165,14 @@ async function pedirAutomatizacion(url, opciones) {
   return { status: respuesta.status, cuerpo: cuerpo };
 }
 
-function mostrarRechazo(resultado) {
+function textoDeRechazo(resultado) {
   var error = resultado.cuerpo.error;
-  mostrarBanner(Object.prototype.hasOwnProperty.call(MENSAJES_AUTOMATIZACION, error)
-    ? MENSAJES_AUTOMATIZACION[error] : 'La aplicación respondió HTTP ' + resultado.status + '.');
+  return Object.prototype.hasOwnProperty.call(MENSAJES_AUTOMATIZACION, error)
+    ? MENSAJES_AUTOMATIZACION[error] : 'La aplicación respondió HTTP ' + resultado.status + '.';
+}
+
+function mostrarRechazo(resultado) {
+  mostrarBanner(textoDeRechazo(resultado));
 }
 
 function boton(texto, clase, accion) {
@@ -2304,6 +2356,78 @@ async function sondearConexion() {
   if (incompleto) { mostrarAviso(AVISO_SIN_SONDEO); } else { ocultarAviso(); }
 }
 
+// CH-32b (audit obs. 12): the list reads in words. «De lunes a viernes a las 06:00» for a cron of the three
+// presets (DEC-129), the reverse of cronDeFrecuencia and the same wording as frecuenciaDeCron on the server
+// (src/panel-automatizaciones.ts); null for any other expression. Five fields on single spaces, the day-of-month
+// and month fields a star, the day-of-week one of the preset values, and a minute and an hour of one or two digits
+// in range, checked by characters (no pattern literal in this page).
+function esNumeroDeUnoODosDigitos(texto) {
+  if (texto.length < 1 || texto.length > 2) { return false; }
+  for (var i = 0; i < texto.length; i++) {
+    if (DIGITOS.indexOf(texto.charAt(i)) === -1) { return false; }
+  }
+  return true;
+}
+
+function dosDigitos(numero) {
+  return (numero < 10 ? '0' : '') + numero;
+}
+
+function horarioEnPalabras(cron) {
+  var campos = String(cron).split(' ');
+  if (campos.length !== 5 || campos[2] !== '*' || campos[3] !== '*') { return null; }
+  if (!esNumeroDeUnoODosDigitos(campos[0]) || !esNumeroDeUnoODosDigitos(campos[1])) { return null; }
+  var minuto = Number(campos[0]);
+  var hora = Number(campos[1]);
+  if (minuto > 59 || hora > 23) { return null; }
+  var frecuencia = null;
+  Object.keys(DIAS_FRECUENCIA).forEach(function (clave) {
+    if (DIAS_FRECUENCIA[clave] === campos[4]) { frecuencia = clave; }
+  });
+  if (frecuencia === null) { return null; }
+  return NOMBRES_FRECUENCIA[frecuencia] + ' a las ' + dosDigitos(hora) + ':' + dosDigitos(minuto);
+}
+
+// The Horario cell: the words, then the expression in monospace; the expression alone when it is none of
+// the presets. A code element carries no class of this page's own.
+function celdaDeHorario(cron) {
+  var celda = document.createElement('span');
+  var palabras = horarioEnPalabras(cron);
+  if (palabras !== null) { celda.appendChild(document.createTextNode(palabras + ' ')); }
+  var codigo = document.createElement('code');
+  codigo.textContent = String(cron);
+  celda.appendChild(codigo);
+  return celda;
+}
+
+// The Conexión cell: the connection's name, or the first 8 characters of its id when it is not one of the
+// tenant's connections (or the names could not be read).
+function nombreDeConexion(id) {
+  var texto = String(id);
+  return nombresConexion[texto] !== undefined ? nombresConexion[texto] : texto.slice(0, 8) + '…';
+}
+
+function guardarNombresDeConexion(filas) {
+  var nombres = Object.create(null);
+  filas.forEach(function (fila) { nombres[String(fila.id)] = String(fila.nombre); });
+  nombresConexion = nombres;
+}
+
+// Read alongside the list. Any failure, refusal or network error leaves the names empty and says
+// nothing: the list is the answer, and the column falls back to the short id.
+async function cargarNombresConexiones() {
+  generacionNombres += 1;
+  var g = generacionNombres;
+  nombresConexion = Object.create(null);
+  var respuesta;
+  try { respuesta = await pedir('/conexiones'); } catch (fallaDeRed) { return; }
+  if (respuesta === null || respuesta.status !== 200) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { return; }
+  if (g !== generacionNombres || cuerpo === null || typeof cuerpo !== 'object' || !Array.isArray(cuerpo.conexiones)) { return; }
+  guardarNombresDeConexion(cuerpo.conexiones);
+}
+
 async function listarAutomatizaciones() {
   var resultado = await pedirAutomatizacion('/automatizaciones');
   if (resultado === null) { return; }
@@ -2320,8 +2444,8 @@ async function listarAutomatizaciones() {
         acciones.appendChild(boton('Desactivar', 'desactivar', function () { desactivar(fila.id); }));
       }
       var nombre = nombresPlantilla[fila.plantillaId];
-      return [nombre === undefined ? String(fila.plantillaId) : nombre, String(fila.conexionId),
-        String(fila.cron), fila.activo === true ? 'activa' : 'desactivada', String(fila.creadaEn), acciones];
+      return [nombre === undefined ? String(fila.plantillaId) : nombre, nombreDeConexion(fila.conexionId),
+        celdaDeHorario(fila.cron), fila.activo === true ? 'activa' : 'desactivada', String(fila.creadaEn), acciones];
     }),
     'automatizacion',
     resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' automatizaciones más recientes.' : null
@@ -2330,15 +2454,17 @@ async function listarAutomatizaciones() {
 
 async function cargarAutomatizaciones() {
   await cargarCatalogoPlantillas();
+  await cargarNombresConexiones();
   await listarAutomatizaciones();
 }
 
 async function crearAutomatizacion() {
   ocultarBanner();
+  avisoDialogoAlta.textContent = '';
   // A preset's cron is rebuilt from the hour as it is now; an invalid hour sends nothing.
   actualizarHorario();
   if (selectorFrecuencia.value !== 'personalizado' && cronDeFrecuencia(selectorFrecuencia.value, entradaHora.value) === null) {
-    mostrarBanner('La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
+    avisarEnDialogo(dialogoAlta, avisoDialogoAlta, 'La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.');
     return;
   }
   botonCrearAuto.disabled = true;
@@ -2360,18 +2486,20 @@ async function crearAutomatizacion() {
   });
   botonCrearAuto.disabled = false;
   // Dropped when the wizard was reset meanwhile (a tenant switch): it no longer exists.
-  if (resultado === null || g !== generacionAlta) { return; }
-  // A 400 leaves the wizard on step 2 with every value as typed.
+  if (g !== generacionAlta) { return; }
+  // A helper that answered null wrote its refusal in the banner, behind the pop-up: it is moved inside.
+  if (resultado === null) { llevarBannerA(dialogoAlta, avisoDialogoAlta); return; }
+  // A 400, like any other refusal, is told inside the pop-up and leaves it on step 2 with every value as typed.
   if (resultado.status === 400) {
     var campos = Array.isArray(resultado.cuerpo.campos) ? resultado.cuerpo.campos : [];
-    mostrarBanner(campos.indexOf('/cron') !== -1
+    avisarEnDialogo(dialogoAlta, avisoDialogoAlta, campos.indexOf('/cron') !== -1
       ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
       : campos.indexOf('/destinatario') !== -1
         ? 'El correo del destinatario no es válido. Escriba una sola dirección, por ejemplo operaciones@empresa.com, sin espacios, comas ni punto y coma.'
         : mensajeDeSolicitudInvalida(resultado.cuerpo, []));
     return;
   }
-  if (resultado.status !== 201) { mostrarRechazo(resultado); return; }
+  if (resultado.status !== 201) { avisarEnDialogo(dialogoAlta, avisoDialogoAlta, textoDeRechazo(resultado)); return; }
   cerrarAlta();
   mostrarConfirmacion(confirmacionDeAlta(resultado.cuerpo));
   await listarAutomatizaciones();
@@ -3179,10 +3307,6 @@ selectorConexionAuto.addEventListener('change', function () {
 
 botonNuevaAuto.addEventListener('click', function () {
   abrirAlta();
-});
-
-botonCancelarAuto.addEventListener('click', function () {
-  cerrarAlta();
 });
 
 // CH-21c (DEC-131): the accent and emoji per label, a copy of the closed palette in
