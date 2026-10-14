@@ -3081,6 +3081,42 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-170 — CH-31: los tests usan su propia base y la demo su propia réplica
+
+**Contexto.** Los tests de integración escriben en la misma base que usa la app (`TEST_DB_NAME` toma por defecto `zerodashboard`): cada corrida deja tenants de prueba, y el planificador de la app los procesa y rompe los tests que cuentan ticks. La única réplica que funciona, `food_store`, vive en otro proyecto, así que no viaja con este repositorio ni sobrevive a un `docker compose down -v`.
+
+**Opciones.** (a) Una base `zerodashboard_test` en el mismo Postgres, creada y migrada por `npm run test:db`, y un servicio `replica-demo` en Compose que arranca desde SQL versionado con el esquema y los datos de `food_store`. (b) Seguir con una sola base y limpiar a mano después de cada corrida.
+
+**Decisión.** (a). `food_store` es una base ficticia del dueño del proyecto (trabajo de la facultad), así que se puede versionar. Antes de versionarla, las filas de su tabla `user` se reemplazan por valores neutros. La clave del usuario de solo lectura de la réplica sale del entorno (regla 7). Los tests no dependen de `replica-demo`.
+
+**Por qué.** (b) es justamente lo que falló: la limpieza manual se olvida, y mientras tanto la base de desarrollo no sirve para probar a mano.
+
+**Se resigna.** El dump de `food_store` queda en el repositorio y hay que regenerarlo a mano si cambia el original.
+
+**Decidido por:** el usuario, 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-171 — CH-31: una semilla de demo opcional que deja todo funcionando
+
+**Contexto.** Después de levantar el proyecto desde cero, la consola está vacía salvo el tenant y el catálogo. Para probar el camino completo hace falta una conexión, el mapeo validado, una automatización y usuarios con claves conocidas.
+
+**Opciones.** (a) La semilla carga conexión, mapeo, consulta y usuarios, pero deja el mapeo "Sin validar" y no crea ninguna automatización. (b) Además valida el mapeo con la misma sonda que usa la ruta y crea una automatización activa.
+
+**Decisión.** (b), solo cuando `SEED_DEMO=1`, nunca por defecto. Escribe con un id fijo y solo crea lo que falta (como DEC-125). La sonda se extrae de `POST /conexiones/:id/validacion-mapeo` a una función que comparten la ruta y la semilla, y la ruta no cambia de comportamiento. La validación de la semilla deja una fila de auditoría a nombre del operador de demo, que la semilla crea antes. Las claves del operador y del usuario de panel salen del entorno; si `SEED_DEMO=1` y falta alguna, o la réplica no responde, la semilla falla nombrando la causa y la app no arranca.
+
+**Por qué.** Que todo funcione desde el primer minuto es lo que pidió el dueño. Reusar la sonda evita una segunda forma de validar.
+
+**Se resigna.** La demo no recorre "Validar" ni el asistente desde cero: hay que borrar la automatización o editar el SQL para volver a probarlos. Hay un refactor chico del backend.
+
+**Decidido por:** el usuario, 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

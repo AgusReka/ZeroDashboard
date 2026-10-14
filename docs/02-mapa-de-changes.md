@@ -87,6 +87,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-30c | Pantallas de Agentes y Usuarios del panel, y conexión por el agente. **Archivado** | C1, T3 |
 | CH-30d | Pantallas de Mapeo y validación (un SQL por entidad, DEC-169), Plantillas y Contrato. **Archivado** | M1–M4 |
 | CH-30e | Pantallas de Auditoría y Tiempos de alta | A5, G1 |
+| CH-31 | Datos de desarrollo y prueba: base aparte para los tests, réplica de demo `food_store` en Compose y semilla de demo opcional que deja todo funcionando (DEC-170, DEC-171). **Propuesto** | — |
 
 ### Partición de CH-19
 
