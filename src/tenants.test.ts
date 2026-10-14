@@ -195,7 +195,7 @@ describe(
     test('3.1 a deactivated tenant leaves the default listing and returns with the flag', async () => {
       const tenant = await alta(`CH-06 listado baja ${Date.now()}`);
 
-      const baja = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      const baja = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
       assert.equal(baja.statusCode, 200, baja.body);
 
       const activos = (await listar()).map((t) => t.id);
@@ -210,7 +210,7 @@ describe(
     test('3.1 anything other than the exact string true keeps the active-only default', async () => {
       // Fail-closed: a typo in the query string must not widen the listing.
       const tenant = await alta(`CH-06 listado query ${Date.now()}`);
-      await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
 
       for (const valor of ['1', 'false', 'TRUE', '']) {
         const respuesta = await app.inject({
@@ -249,7 +249,7 @@ describe(
         data: { tenantId: tenant.id, nombre: 'CH-06 guardada', sql: 'SELECT 1' },
       });
 
-      const respuesta = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      const respuesta = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
 
       assert.equal(respuesta.statusCode, 200, respuesta.body);
       const cuerpo = respuesta.json() as { tenant: TenantPayload };
@@ -266,6 +266,7 @@ describe(
       const respuesta = await app.inject({
         method: 'POST',
         url: '/tenants/11111111-2222-3333-4444-555555555555/baja',
+        payload: { nombre: 'Cualquiera' },
       });
 
       assert.equal(respuesta.statusCode, 404, respuesta.body);
@@ -274,15 +275,58 @@ describe(
 
     test('3.1 repeating the baja answers 409 tenant-desactivado, with no second transition', async () => {
       const tenant = await alta(`CH-06 baja repetida ${Date.now()}`);
-      const primera = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      const primera = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
       assert.equal(primera.statusCode, 200, primera.body);
 
-      const segunda = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      const segunda = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
 
       assert.equal(segunda.statusCode, 409, segunda.body);
       assert.deepEqual(segunda.json(), { error: 'tenant-desactivado' });
       // No duplicate and no contradictory state: the row is exactly as the first left it.
       assert.equal((await db.tenant.findUnique({ where: { id: tenant.id } }))?.activo, false);
+    });
+
+    // ---- CH-33 (DEC-175): the baja requires the tenant's exact name ---------------
+
+    test('CH-33 a name that is not exactly the stored one answers 409 and deactivates nothing', async () => {
+      const tenant = await alta(`CH-33 Almacén Don Tito ${Date.now()}`);
+
+      for (const nombre of [tenant.nombre.toLowerCase(), `${tenant.nombre} `, ` ${tenant.nombre}`, '', 'Otro tenant']) {
+        const respuesta = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre } });
+        assert.equal(respuesta.statusCode, 409, `${JSON.stringify(nombre)}: ${respuesta.body}`);
+        assert.deepEqual(respuesta.json(), { error: 'confirmacion-no-coincide' });
+      }
+      assert.equal((await db.tenant.findUnique({ where: { id: tenant.id } }))?.activo, true);
+    });
+
+    test('CH-33 a baja without the name, or with any other key, is a 400 and the tenant stays active', async () => {
+      const tenant = await alta(`CH-33 baja sin nombre ${Date.now()}`);
+
+      const sinCuerpo = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      assert.equal(sinCuerpo.statusCode, 400, sinCuerpo.body);
+      assert.equal((sinCuerpo.json() as { error: string }).error, 'solicitud-invalida');
+
+      for (const payload of [{}, { nombre: tenant.nombre, activo: false }, { nombre: 5 }, { tenantId: tenant.id }]) {
+        const respuesta = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload });
+        assert.equal(respuesta.statusCode, 400, `${JSON.stringify(payload)}: ${respuesta.body}`);
+        assert.equal((respuesta.json() as { error: string }).error, 'solicitud-invalida');
+      }
+      assert.equal((await db.tenant.findUnique({ where: { id: tenant.id } }))?.activo, true);
+    });
+
+    test('CH-33 an unknown id and an already-inactive tenant answer before the name is compared', async () => {
+      const desconocido = await app.inject({
+        method: 'POST',
+        url: '/tenants/11111111-2222-3333-4444-555555555555/baja',
+        payload: { nombre: 'no coincide con nada' },
+      });
+      assert.equal(desconocido.statusCode, 404, desconocido.body);
+
+      const tenant = await alta(`CH-33 baja inactiva ${Date.now()}`);
+      await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
+      const otraVez = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: 'otro' } });
+      assert.equal(otraVez.statusCode, 409, otraVez.body);
+      assert.deepEqual(otraVez.json(), { error: 'tenant-desactivado' });
     });
 
     test('3.1 every operation naming a deactivated tenant is rejected before its query', async () => {
@@ -291,7 +335,7 @@ describe(
         data: { tenantId: tenant.id, nombre: 'CH-06 previa a la baja', sql: 'SELECT 1' },
       });
 
-      const baja = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      const baja = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
       assert.equal(baja.statusCode, 200, baja.body);
 
       // Read and write, both refused by the hook before any handler logic runs.
@@ -321,7 +365,7 @@ describe(
 
     test('3.1 no route reactivates a tenant', async () => {
       const tenant = await alta(`CH-06 sin reactivacion ${Date.now()}`);
-      await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
 
       // The shapes a reactivation would plausibly take. None of them exists, and the
       // absence is asserted rather than assumed — DEC-14 has no reactivation at all.
@@ -358,7 +402,12 @@ describe(
         const propios = await socketsVivos(registro, { id: 'agente-u12', tenantId: tenant.id });
         const ajenos = await socketsVivos(registro, { id: 'agente-ajeno', tenantId: 'otro-tenant' });
 
-        const respuesta = await conRegistro.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+        // CH-33: a wrong name closes nothing.
+        const rechazada = await conRegistro.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: 'otro' } });
+        assert.equal(rechazada.statusCode, 409, rechazada.body);
+        assert.deepEqual([propios.control.cierres, propios.datos.cierres], [[], []]);
+
+        const respuesta = await conRegistro.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
 
         assert.equal(respuesta.statusCode, 200, respuesta.body);
         assert.equal((respuesta.json() as { tenant: TenantPayload }).tenant.activo, false);

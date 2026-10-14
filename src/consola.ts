@@ -245,6 +245,29 @@ function documentoConsola(nombreOperador: string): string {
     </div>
   </div>
 </div>
+<!--
+  CH-33 (DEC-175): a baja cannot be undone, so it is confirmed here by typing the tenant's name, and the route
+  checks the same name. The script writes the sentence and the action's text, and enables the action only while
+  the field holds the exact name. Closing a confirmation never asks: #tb-confirmar stays hidden.
+-->
+<div id="tenant-baja" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="tb-titulo">
+    <h2 id="tb-titulo" class="zd-dialog__title">Dar de baja un tenant</h2>
+    <p id="tb-texto"></p>
+    <div class="zd-form">
+      <div>
+        <label for="tb-nombre" class="zd-label">Escribí el nombre del tenant para confirmar</label>
+        <input id="tb-nombre" class="zd-input" type="text" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <p id="tb-aviso" class="ayuda" role="status"></p>
+    <div class="zd-dialog__actions">
+      <span id="tb-confirmar" hidden></span>
+      <button id="tb-dar-de-baja" class="zd-btn zd-btn--danger" type="button" disabled>Dar de baja</button>
+      <button id="tb-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
 <div class="zd-table-wrap zd-table-scroll">
   <table class="zd-table">
     <thead><tr><th>Nombre</th><th>Id</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr></thead>
@@ -1047,8 +1070,9 @@ function crearDialogo(opciones) {
   opciones.fondo.addEventListener('keydown', function (evento) {
     if (evento.key === 'Escape') { pedirCerrar(); }
   });
-  opciones.descartar.addEventListener('click', cerrar);
-  opciones.seguir.addEventListener('click', function () { opciones.confirmar.hidden = true; });
+  // A confirmation (CH-33, the tenant baja) never has changes to discard and brings neither button.
+  if (opciones.descartar) { opciones.descartar.addEventListener('click', cerrar); }
+  if (opciones.seguir) { opciones.seguir.addEventListener('click', function () { opciones.confirmar.hidden = true; }); }
   var dialogo = { abrir: abrir, cerrar: cerrar, pedirCerrar: pedirCerrar, abierto: function () { return !opciones.fondo.hidden; } };
   dialogos.push(dialogo);
   return dialogo;
@@ -3452,15 +3476,11 @@ function botonTenant(texto, alHacerClic) {
   return b;
 }
 
-// The action cell of an active tenant: Elegir and Dar de baja, or the inline confirmation.
+// The action cell of an active tenant: Elegir and Dar de baja, which opens the confirmation pop-up (CH-33).
 function accionesTenant(td, tenant) {
   vaciar(td);
   td.appendChild(botonTenant('Elegir como activo', function () { cambiarTenant(String(tenant.id)); }));
-  td.appendChild(botonTenant('Dar de baja', function () {
-    vaciar(td);
-    td.appendChild(botonTenant('Dar de baja ' + String(tenant.nombre), function () { darDeBaja(tenant); }));
-    td.appendChild(botonTenant('Cancelar', function () { accionesTenant(td, tenant); }));
-  }));
+  td.appendChild(botonTenant('Dar de baja', function () { abrirBaja(tenant); }));
 }
 
 function renderizarTenants(tenants) {
@@ -3496,19 +3516,69 @@ async function cargarTenantsPantalla() {
   renderizarTenants(cuerpo.tenants);
 }
 
-async function darDeBaja(tenant) {
+// CH-33 (DEC-175): the baja pop-up. The action stays disabled until the field holds the tenant's name exactly
+// (no trimming, no case folding, as the route compares it), and the typed text is what is sent.
+var campoNombreBaja = document.getElementById('tb-nombre');
+var botonBaja = document.getElementById('tb-dar-de-baja');
+var avisoBaja = document.getElementById('tb-aviso');
+var tenantEnBaja = null;
+
+function limpiarBaja() {
+  campoNombreBaja.value = '';
+  botonBaja.disabled = true;
+  avisoBaja.textContent = '';
+}
+
+var dialogoBaja = crearDialogo({
+  fondo: document.getElementById('tenant-baja'),
+  primerCampo: campoNombreBaja,
+  cancelar: document.getElementById('tb-cancelar'),
+  confirmar: document.getElementById('tb-confirmar'),
+  hayCambios: function () { return false; },
+  alAbrir: limpiarBaja,
+  alCerrar: function () { limpiarBaja(); tenantEnBaja = null; }
+});
+
+function abrirBaja(tenant) {
+  tenantEnBaja = { id: String(tenant.id), nombre: String(tenant.nombre) };
+  document.getElementById('tb-texto').textContent = 'Vas a dar de baja «' + tenantEnBaja.nombre + '». No se puede deshacer: ' +
+    'no se va a poder elegir ni operar sobre él, sus agentes se desconectan y sus datos quedan solo como registro.';
+  botonBaja.textContent = 'Dar de baja ' + tenantEnBaja.nombre;
+  dialogoBaja.abrir();
+}
+
+campoNombreBaja.addEventListener('input', function () {
+  botonBaja.disabled = tenantEnBaja === null || campoNombreBaja.value !== tenantEnBaja.nombre;
+});
+
+botonBaja.addEventListener('click', function () {
+  if (tenantEnBaja === null || campoNombreBaja.value !== tenantEnBaja.nombre) { return; }
+  darDeBaja(tenantEnBaja, campoNombreBaja.value);
+});
+
+async function darDeBaja(tenant, nombre) {
   var id = String(tenant.id);
+  avisoBaja.textContent = '';
   var respuesta;
   try {
-    respuesta = await fetch('/tenants/' + encodeURIComponent(id) + '/baja', { method: 'POST' }).then(siNoAutenticado);
+    respuesta = await fetch('/tenants/' + encodeURIComponent(id) + '/baja', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: nombre })
+    }).then(siNoAutenticado);
   } catch (fallaDeRed) {
-    avisoTenant.textContent = 'No se pudo contactar con la aplicación.';
+    avisoBaja.textContent = 'No se pudo contactar con la aplicación.';
     return;
   }
   if (respuesta.status !== 200) {
-    avisoTenant.textContent = 'No se pudo dar de baja el tenant (HTTP ' + respuesta.status + ').';
+    var cuerpo = null;
+    try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+    avisoBaja.textContent = cuerpo !== null && cuerpo.error === 'confirmacion-no-coincide'
+      ? 'El nombre no coincide con el del tenant. No se dio de baja.'
+      : 'No se pudo dar de baja el tenant (HTTP ' + respuesta.status + ').';
     return;
   }
+  dialogoBaja.cerrar();
   if (id === tenantActivo) {
     cambiarTenant(null);
     mostrarBanner('Diste de baja el tenant activo. Elegí otro en la barra superior.');

@@ -526,9 +526,9 @@ describe(
         payload: { nombre: `CH-06 bootstrap ${Date.now()}` },
       });
       assert.equal(creado.statusCode, 201, creado.body);
-      const { tenant } = creado.json() as { tenant: { id: string } };
+      const { tenant } = creado.json() as { tenant: { id: string; nombre: string } };
 
-      const baja = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja` });
+      const baja = await app.inject({ method: 'POST', url: `/tenants/${tenant.id}/baja`, payload: { nombre: tenant.nombre } });
       assert.equal(baja.statusCode, 200, baja.body);
 
       await db.tenant.delete({ where: { id: tenant.id } });

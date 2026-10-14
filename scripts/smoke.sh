@@ -562,7 +562,8 @@ echo "OK: tenant B -> empty list, and 404 on get-by-id, prueba and ejecutar for 
 
 echo "-- a tenant dado de baja admits no operation at all (DEC-14) --"
 code=$(curl -s -o /tmp/smoke-baja.json -w '%{http_code}' \
-  -X POST "http://localhost:3000/tenants/$TENANT_B/baja" --max-time 10)
+  -X POST "http://localhost:3000/tenants/$TENANT_B/baja" -H 'Content-Type: application/json' \
+  -d '{"nombre":"CH-06 smoke b"}' --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 deactivating tenant B, got $code ($(cat /tmp/smoke-baja.json))"
 grep -q '"activo":false' /tmp/smoke-baja.json || fail "the baja did not report activo:false"
 code=$(curl -s -o /tmp/smoke-congelado.json -w '%{http_code}' \

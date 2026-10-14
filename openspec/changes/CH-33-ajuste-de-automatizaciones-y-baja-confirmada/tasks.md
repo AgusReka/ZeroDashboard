@@ -13,10 +13,10 @@ Branch base: `master` (after #180). Tests first. While working: `npx tsx --test 
 - [x] 0.1 Exploration, proposal, specs, design and tasks; DEC-174 (with its CH-33 precision) and DEC-175; the audit's F3 marks; the CH-33 row in `docs/02-mapa-de-changes.md`.
 
 ## PR1 — Baja with the typed name
-- [ ] 1.1 RED: `tenants.test.ts` cases of design §6 (wrong case, trailing space, empty, no body, `{}`, extra key, unknown id, inactive); `bajaDe` helper; existing calls send the name.
-- [ ] 1.2 GREEN: `bajaTenantSchema` and the name check in `src/tenants.ts` (design §2).
-- [ ] 1.3 Callers: `contexto-tenant.test.ts:531`, `scripts/smoke.sh:565`.
-- [ ] 1.4 RED → GREEN: console baja pop-up (design §4); the two CH-30b inline tests rewritten; ids in `IDS` / `IDS_OCULTOS`.
+- [x] 1.1 RED: `tenants.test.ts` cases of design §6 (wrong case, trailing space, empty, no body, `{}`, extra key, unknown id, inactive); `bajaDe` helper; existing calls send the name.
+- [x] 1.2 GREEN: `bajaTenantSchema` and the name check in `src/tenants.ts` (design §2).
+- [x] 1.3 Callers: `contexto-tenant.test.ts:531`, `scripts/smoke.sh:565`.
+- [x] 1.4 RED → GREEN: console baja pop-up (design §4); the two CH-30b inline tests rewritten; ids in `IDS` / `IDS_OCULTOS`.
 
 ## PR2 — Adjust route
 - [ ] 2.1 RED: `resolverAjusteOperador` units and schema refusals (no DB).

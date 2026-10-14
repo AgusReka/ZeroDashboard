@@ -304,6 +304,14 @@ const IDS = [
   // unsaved-changes strip and buttons.
   'tenant-nuevo',
   'tenant-dialogo',
+  'tenant-baja',
+  'tb-titulo',
+  'tb-texto',
+  'tb-nombre',
+  'tb-aviso',
+  'tb-confirmar',
+  'tb-dar-de-baja',
+  'tb-cancelar',
   'tenant-dialogo-titulo',
   'tenant-dialogo-aviso',
   'tenant-confirmar',
@@ -341,7 +349,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -3137,19 +3145,73 @@ describe('the console document, served by the real route', () => {
     assert.match(nodo(escenario, 'tenant-activo').textContent, /Food Store/);
   });
 
-  test('CH-30b Dar de baja asks inline first, and cancelling sends nothing', async () => {
+  // ---- CH-33 (DEC-175): the baja is confirmed in a pop-up by typing the tenant's name ----
+
+  const bajaAbierta = (escenario: Escenario): boolean => !nodo(escenario, 'tenant-baja').hidden;
+
+  /** Presses «Dar de baja» on the row of `nombre`: the pop-up opens synchronously. */
+  function abrirBaja(escenario: Escenario, nombre = 'Food Store'): void {
+    botonesCon(filaTenant(escenario, nombre), 'Dar de baja')[0].disparar('click');
+  }
+
+  function escribirNombreBaja(escenario: Escenario, valor: string): void {
+    nodo(escenario, 'tb-nombre').value = valor;
+    nodo(escenario, 'tb-nombre').disparar('input');
+  }
+
+  test('CH-33 Dar de baja opens a pop-up naming the tenant, with the action disabled and the focus on the field', async () => {
     const escenario = await arrancar();
     await abrirTenants(escenario);
+    const enfocados: string[] = [];
+    nodo(escenario, 'tb-nombre').focus = () => void enfocados.push('tb-nombre');
     const antes = escenario.peticiones.length;
-    const fila = filaTenant(escenario, 'Food Store');
-    botonesCon(fila, 'Dar de baja')[0].disparar('click');
-    assert.equal(botonesCon(fila, 'Dar de baja Food Store').length, 1);
-    botonesCon(fila, 'Cancelar')[0].disparar('click');
-    assert.equal(botonesCon(fila, 'Dar de baja').length, 1);
-    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(bajaAbierta(escenario), false, 'closed at load');
+    abrirBaja(escenario);
+    assert.equal(bajaAbierta(escenario), true);
+    assert.deepEqual(enfocados, ['tb-nombre']);
+    assert.match(nodo(escenario, 'tb-texto').textContent, /«Food Store»/);
+    assert.match(nodo(escenario, 'tb-texto').textContent, /No se puede deshacer/);
+    assert.equal(nodo(escenario, 'tb-dar-de-baja').textContent, 'Dar de baja Food Store');
+    assert.equal(nodo(escenario, 'tb-dar-de-baja').disabled, true);
+    assert.equal(nodo(escenario, 'tb-nombre').value, '');
+    assert.equal(escenario.peticiones.length, antes, 'opening sends nothing');
   });
 
-  test('CH-30b deactivating the active tenant returns the console to no tenant and says so', async () => {
+  test('CH-33 the action is enabled only by the exact name: no case folding, no trimming', async () => {
+    const escenario = await arrancar();
+    await abrirTenants(escenario);
+    abrirBaja(escenario);
+    for (const casi of ['food store', 'Food Store ', ' Food Store', 'Food']) {
+      escribirNombreBaja(escenario, casi);
+      assert.equal(nodo(escenario, 'tb-dar-de-baja').disabled, true, JSON.stringify(casi));
+    }
+    escribirNombreBaja(escenario, 'Food Store');
+    assert.equal(nodo(escenario, 'tb-dar-de-baja').disabled, false);
+    escribirNombreBaja(escenario, 'Food Stor');
+    assert.equal(nodo(escenario, 'tb-dar-de-baja').disabled, true, 'erasing disables it again');
+  });
+
+  for (const [forma, cancelar] of [
+    ['Cancelar', (e: Escenario) => nodo(e, 'tb-cancelar').disparar('click')],
+    ['Escape', (e: Escenario) => nodo(e, 'tenant-baja').disparar('keydown', { key: 'Escape' })],
+  ] as Array<[string, (e: Escenario) => void]>) {
+    test(`CH-33 ${forma} closes the baja pop-up without asking and sends nothing, even with text typed`, async () => {
+      const escenario = await arrancar();
+      await abrirTenants(escenario);
+      const antes = escenario.peticiones.length;
+      abrirBaja(escenario);
+      escribirNombreBaja(escenario, 'Food');
+      cancelar(escenario);
+      assert.equal(bajaAbierta(escenario), false);
+      assert.equal(nodo(escenario, 'tb-confirmar').hidden, true, 'a confirmation never asks «Descartar cambios»');
+      assert.equal(escenario.peticiones.length, antes);
+      abrirBaja(escenario);
+      assert.equal(nodo(escenario, 'tb-nombre').value, '', 'it reopens blank');
+      assert.equal(nodo(escenario, 'tb-dar-de-baja').disabled, true);
+    });
+  }
+
+  test('CH-33 deactivating the active tenant sends the typed name, returns the console to no tenant and says so', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario);
     await abrirTenants(escenario);
@@ -3158,16 +3220,42 @@ describe('the console document, served by the real route', () => {
       { status: 200, cuerpo: { tenants: [{ ...TENANTS_PANTALLA[0], activo: false }, TENANTS_PANTALLA[1]] } },
       { status: 200, cuerpo: { tenants: [] } },
     );
-    const fila = filaTenant(escenario, 'Food Store');
-    botonesCon(fila, 'Dar de baja')[0].disparar('click');
-    botonesCon(fila, 'Dar de baja Food Store')[0].disparar('click');
+    abrirBaja(escenario);
+    escribirNombreBaja(escenario, 'Food Store');
+    nodo(escenario, 'tb-dar-de-baja').disparar('click');
     await asentarVarias();
     const baja = escenario.peticiones.find((p) => p.url === '/tenants/t-1/baja');
     assert.ok(baja, 'the baja was sent');
     assert.equal(baja.tenant, null);
+    assert.deepEqual(baja.cuerpo, { nombre: 'Food Store' });
+    assert.equal(bajaAbierta(escenario), false, 'the pop-up closes on a 200');
     assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Ningún tenant seleccionado');
     assert.match(nodo(escenario, 'banner').textContent, /Diste de baja el tenant activo/);
     assert.match(filaTenant(escenario, 'Food Store').textContent, /Dado de baja/);
+  });
+
+  test('CH-33 a 409 confirmacion-no-coincide is told inside the pop-up, which stays open', async () => {
+    const escenario = await arrancar();
+    await abrirTenants(escenario);
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'confirmacion-no-coincide' } });
+    abrirBaja(escenario);
+    escribirNombreBaja(escenario, 'Food Store');
+    nodo(escenario, 'tb-dar-de-baja').disparar('click');
+    await asentarVarias();
+    assert.equal(bajaAbierta(escenario), true);
+    assert.match(nodo(escenario, 'tb-aviso').textContent, /El nombre no coincide/);
+  });
+
+  test('CH-33 any other refusal is told inside the pop-up too', async () => {
+    const escenario = await arrancar();
+    await abrirTenants(escenario);
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'tenant-desactivado' } });
+    abrirBaja(escenario);
+    escribirNombreBaja(escenario, 'Food Store');
+    nodo(escenario, 'tb-dar-de-baja').disparar('click');
+    await asentarVarias();
+    assert.equal(bajaAbierta(escenario), true);
+    assert.match(nodo(escenario, 'tb-aviso').textContent, /No se pudo dar de baja el tenant \(HTTP 409\)/);
   });
 
   // ---- CH-30b (DEC-167): the Conexiones screen -------------------------------------------
