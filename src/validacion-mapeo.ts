@@ -1,4 +1,5 @@
 import pg from 'pg';
+import type { Prisma } from './generated/prisma/client.js';
 import type { CategoriaEjecucion, SondeoEntidad } from './consulta-ejecucion.js';
 import {
   AUTOMATIZACIONES,
@@ -16,6 +17,10 @@ import {
  * per-automation applicability report from the persisted results. No database, no
  * connection, no clock: `src/validacion-mapeo-rutas.ts` owns every side effect, and
  * this module is proven without either database in `validacion-mapeo.test.ts`.
+ *
+ * The one exception is `registrarVeredictos` (CH-31, DEC-171): the write of the verdicts
+ * moved here so the route and the demo seed share it. It still opens nothing of its own;
+ * the caller hands in the `VistaCanonica` delegate and the instant.
  */
 
 /** A persisted `VistaCanonica.estadoValidacion` (DEC-44). */
@@ -234,6 +239,70 @@ function indicesDe(columnas: readonly { nombre: string }[], nombre: string): num
     }
   });
   return indices;
+}
+
+// ---- persisting the verdicts (CH-10, shared with the CH-31 demo seed) ---------------
+
+/**
+ * The only part of the `VistaCanonica` delegate the verdict write uses. Structural on
+ * purpose: the route passes the tenant-isolated client's delegate and the demo seed the
+ * plain client's, and neither needs to know about the other's type.
+ */
+export interface DelegadoVeredictos {
+  updateMany(args: {
+    where: { id: string; sql: string };
+    data: {
+      estadoValidacion: string;
+      diagnosticoValidacion: Prisma.InputJsonValue;
+      validadaEn: Date;
+      actualizadaEn: Date;
+    };
+  }): Promise<unknown>;
+}
+
+/** One mapped view as read before the probe: the row to write the verdict on. */
+export interface VistaASentenciar {
+  id: string;
+  entidad: string;
+  sql: string;
+  actualizadaEn: Date;
+}
+
+/**
+ * Writes the verdict of each probed entity on its `VistaCanonica` row (DEC-44). `vistas`
+ * is in contract order and `entidades` is the probe's answer for the same list, so the
+ * two are read by index; an entity the contract does not know, or with no answer, is
+ * skipped as the route always did.
+ *
+ * The stale-write guard: the verdict is written only if the row still holds the SQL that
+ * was probed. A `PUT` that replaced it mid-probe has already reset the row to "not
+ * validated" (DEC-41), and this write then matches nothing, so the old statement's
+ * verdict can never land on the new one. `actualizadaEn` is set to the value read:
+ * validating a mapping does not change it.
+ */
+export async function registrarVeredictos(
+  vistaCanonica: DelegadoVeredictos,
+  vistas: readonly VistaASentenciar[],
+  entidades: readonly SondeoEntidad[],
+  validadaEn: Date,
+): Promise<void> {
+  for (const [i, vista] of vistas.entries()) {
+    const contrato = CONTRATO_CANONICO.find((e) => e.nombre === vista.entidad);
+    const resultado = entidades[i];
+    if (contrato === undefined || resultado === undefined) {
+      continue;
+    }
+    const { estado, diagnostico } = diagnosticar(contrato, resultado);
+    await vistaCanonica.updateMany({
+      where: { id: vista.id, sql: vista.sql },
+      data: {
+        estadoValidacion: estado,
+        diagnosticoValidacion: diagnostico as unknown as Prisma.InputJsonValue,
+        validadaEn,
+        actualizadaEn: vista.actualizadaEn,
+      },
+    });
+  }
 }
 
 // ---- the applicability report (M4, DEC-22, DEC-46) --------------------------------

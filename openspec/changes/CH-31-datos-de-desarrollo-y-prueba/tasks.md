@@ -20,11 +20,11 @@ Branch base: `master` (after CH-30d). Tests first where there is code to test, a
 - [x] 1.6 Check: full `npm run test:db` with `app` running; the dev tenant count is the same before and after; `--profile demo` brings `replica-demo` up, its views answer, an `INSERT` by the read-only user is refused.
 
 ## PR2 — Shared probe and demo seed
-- [ ] 2.1 Extract `registrarVeredictos` from the validation route; `validacion-mapeo-rutas.test.ts` passes unchanged.
-- [ ] 2.2 RED: `semilla-demo.test.ts` — missing variable; first run with fixed ids and one audit row; second run idempotent and keeps an edit; probe failure throws and creates no automation.
-- [ ] 2.3 GREEN: `src/semilla-demo.ts` (`sembrarDemo`, `leerEntornoDemo`, `IDS_DEMO`); `prisma/seed.ts` calls it before `sembrarTenant()` when `SEED_DEMO=1`.
-- [ ] 2.4 Check the five views' SQL and the saved query against `replica-demo` (probe "valida" for all five; the query runs with `umbral`).
-- [ ] 2.5 Manual: `docker compose down -v`, then `--profile demo --profile correo up` with `SEED_DEMO=1`; walk the console and the panel per the "Fresh demo" scenario.
+- [x] 2.1 Extract `registrarVeredictos` from the validation route; `validacion-mapeo-rutas.test.ts` passes unchanged.
+- [x] 2.2 RED: `semilla-demo.test.ts` — missing variable; first run with fixed ids and one audit row; second run idempotent and keeps an edit; probe failure throws and creates no automation.
+- [x] 2.3 GREEN: `src/semilla-demo.ts` (`sembrarDemo`, `leerEntornoDemo`, `IDS_DEMO`); `prisma/seed.ts` calls it before `sembrarTenant()` when `SEED_DEMO=1`.
+- [x] 2.4 Check the five views' SQL and the saved query against `replica-demo` (probe "valida" for all five; the query runs with `umbral`).
+- [x] 2.5 Manual: `docker compose down -v`, then `--profile demo --profile correo up` with `SEED_DEMO=1`; walk the console and the panel per the "Fresh demo" scenario.
 
 ## Close
 - [ ] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.

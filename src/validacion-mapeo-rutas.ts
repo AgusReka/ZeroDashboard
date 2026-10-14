@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
 import { registrarEjecucion, veredictoDeSondeo } from './auditoria.js';
-import type { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { camposInvalidos } from './conexiones.js';
 import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
@@ -8,7 +7,7 @@ import { destinoDeConexion } from './conexion-destino.js';
 import { sentenciaDeSondeo, sondearEstructura } from './consulta-ejecucion.js';
 import { CONTRATO_CANONICO } from './contrato.js';
 import { ErrorCredencialIlegible } from './cripto-credencial.js';
-import { diagnosticar, informe, type FilaValidacion } from './validacion-mapeo.js';
+import { informe, registrarVeredictos, type FilaValidacion } from './validacion-mapeo.js';
 
 /**
  * CH-10: explicit, persisted validation of a connection's canonical-view mapping (M3)
@@ -136,28 +135,9 @@ export function registerValidacionMapeoRoutes(
       }
 
       const validadaEn = new Date();
-      for (const [i, vista] of vistas.entries()) {
-        const contrato = CONTRATO_CANONICO[ordenDelContrato(vista.entidad)];
-        const resultado = sondeo.entidades[i];
-        if (contrato === undefined || resultado === undefined) {
-          continue;
-        }
-        const { estado, diagnostico } = diagnosticar(contrato, resultado);
-        // The stale-write guard: the verdict is written only if the row still holds the
-        // SQL that was probed. A `PUT` that replaced it mid-probe has already reset the
-        // row to "not validated" (DEC-41), and this write then matches nothing, so the
-        // old statement's verdict can never land on the new one. `actualizadaEn` is set
-        // to the value read: validating a mapping does not change it.
-        await prisma.vistaCanonica.updateMany({
-          where: { id: vista.id, sql: vista.sql },
-          data: {
-            estadoValidacion: estado,
-            diagnosticoValidacion: diagnostico as unknown as Prisma.InputJsonValue,
-            validadaEn,
-            actualizadaEn: vista.actualizadaEn,
-          },
-        });
-      }
+      // CH-31 (DEC-171): the write, with its stale-write guard, lives in `registrarVeredictos`
+      // so the demo seed persists verdicts exactly as this route does.
+      await registrarVeredictos(prisma.vistaCanonica, vistas, sondeo.entidades, validadaEn);
 
       // Read back rather than assembled from what was just written, so a row the guard
       // skipped reports the state it actually holds.

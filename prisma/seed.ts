@@ -1,6 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { CATALOGO_INICIAL, sembrarCatalogoInicial } from '../dist/catalogo-inicial.js';
 import { PrismaClient } from '../dist/generated/prisma/client.js';
+import { leerEntornoDemo, sembrarDemo } from '../dist/semilla-demo.js';
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -48,7 +49,30 @@ async function sembrarCatalogo(): Promise<void> {
   );
 }
 
+/**
+ * CH-31 (DEC-171): the opt-in demo, only when `SEED_DEMO` is exactly `1`. A missing
+ * variable or a replica that does not answer rejects with the cause and no secret, and
+ * reaches `Seed failed:` below like any other step.
+ */
+async function sembrarDemoOpcional(): Promise<void> {
+  const { creadas } = await sembrarDemo(prisma, leerEntornoDemo());
+  console.log(
+    creadas.length === 0
+      ? 'Seed: demo already present; existing rows left as they are.'
+      : `Seed: demo created ${creadas.length} row(s): ${creadas.join(', ')}.`,
+  );
+}
+
 async function main(): Promise<void> {
+  if (process.env.SEED_DEMO === '1') {
+    // The demo's automation points at a catalog template, so the catalog goes first. The demo
+    // runs before `sembrarTenant()` on purpose: its fixed-id "Food Store" fills the table, so
+    // the generic tenant (created only on an empty table) is not added next to it.
+    await sembrarCatalogo();
+    await sembrarDemoOpcional();
+    await sembrarTenant();
+    return;
+  }
   await sembrarTenant();
   await sembrarCatalogo();
 }
