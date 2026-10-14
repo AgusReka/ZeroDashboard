@@ -108,7 +108,7 @@ PR2 reorganises the screen; the logic of sections 1 to 3 is kept and moved, not 
   - «Nueva consulta» runs `empezarConsultaNueva()` (empties SQL, parameters, name and description, forgets the loaded query), then `abrirConsulta()`.
   - «Abrir» runs `cargarGuardada(id)`, then `abrirConsulta()` on success.
 - **Cancel:** `pedirCerrarConsulta()`, from «Cancelar» and from the Escape key on the pop-up, asks «Descartar cambios» when `hayCambiosSinGuardar()`. Otherwise it closes.
-  - `hayCambiosSinGuardar()` now also compares the name and description with those of the loaded query, or with empty for a new one.
+  - `hayCambiosSinGuardar()` now also compares the name, the description and the parameter declaration with those of the loaded query, or with empty for a new one.
 - **Save gate:**
   - `huellaActual()` is the JSON of `{ conexion, sql, parametros: declaracionActual() }`.
   - `ultimaPruebaOk` is set to the fingerprint when an execution answers `resultado: 'ok'`, and to `null` on any other answer, on opening the pop-up and on a tenant switch.

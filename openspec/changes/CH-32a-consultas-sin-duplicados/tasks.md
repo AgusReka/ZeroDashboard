@@ -21,9 +21,9 @@ Branch base: `master` (after #174). Tests first, against `npm run test:db` for t
 
 ## PR2 — Query pop-up (DEC-173 as corrected: pop-up, not side panel)
 - [x] 2.0 First version (strip + save side panel, commit 6e048aa), replaced at the user's request before merge.
-- [ ] 2.1 RED: the tests of design §7; new ids (`consulta-dialogo`, `consulta-dialogo-titulo`, `consulta-cancelar`, `version-campos`) in `IDS`, hidden ones in `IDS_OCULTOS`; the ids of the first version removed.
-- [ ] 2.2 GREEN: header «Nueva consulta», list «Abrir», the pop-up with every field, «Probar» with the result inside, the save gate, «Cancelar»/Escape with «Descartar cambios», versions in a wide side panel.
-- [ ] 2.3 Existing suites still pass (tests that save run an ok «Probar» first).
+- [x] 2.1 RED: the tests of design §7; new ids (`consulta-dialogo`, `consulta-dialogo-titulo`, `consulta-cancelar`, `version-campos`) in `IDS`, hidden ones in `IDS_OCULTOS`; the ids of the first version removed.
+- [x] 2.2 GREEN: header «Nueva consulta», list «Abrir», the pop-up with every field, «Probar» with the result inside, the save gate, «Cancelar»/Escape with «Descartar cambios», versions in a wide side panel.
+- [x] 2.3 Existing suites still pass (tests that save run an ok «Probar» first).
 
 ## Close
 - [ ] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
