@@ -57,15 +57,23 @@ WHEN a submitted query fails to execute (for any reason, including rejection, a 
 - **AND** the console SHALL NOT display a raw driver error object or a stack trace
 - **AND** the console SHALL NOT remain silent about the failure
 ### Requirement: Saving the Current Statement From the Console
-
-The console SHALL provide a control to save the currently entered SQL statement as a saved query, prompting for at least a `nombre` (and optionally a `descripcion`), and SHALL submit it to the saved-queries create endpoint.
+The console SHALL save a query only from the query pop-up. With no saved query loaded, its save control «Guardar consulta» SHALL submit the name, description, SQL and parameter declaration to the saved-queries create endpoint. With a saved query loaded, the only save control SHALL be «Guardar como versión N+1», which updates that query (CH-25); no control SHALL create a separate query (DEC-172). Either control SHALL be enabled only while the last «Probar» of exactly the current connection, SQL and parameter declaration succeeded. While it is disabled, a line next to it SHALL say why in words (not tested yet, the last test failed, the content changed after the test, or no name).
+(Previously: the create control lived on the screen and created a new query even with a saved query loaded, and nothing required a successful run.)
 
 #### Scenario: Saving the statement currently in the editor
-
-- GIVEN the console page is loaded and a SQL statement is entered in the editor
-- WHEN the save control is used and a `nombre` is supplied
+- GIVEN the query pop-up is open with no saved query loaded, a name, a connection and a SQL statement
+- WHEN the operator presses «Probar» and the run succeeds, then «Guardar consulta»
 - THEN the console SHALL submit a create request with the entered `sql` and `nombre`
-- AND on success the console SHALL confirm the statement was saved
+- AND on success the console SHALL confirm the statement was saved and close the pop-up
+
+#### Scenario: A loaded query cannot be saved as a copy
+- GIVEN a saved query is loaded in the pop-up
+- THEN «Guardar consulta» SHALL NOT be offered and «Guardar como versión N+1» SHALL be
+
+#### Scenario: Saving needs a passing test of the current content
+- GIVEN the last «Probar» succeeded
+- WHEN the operator edits the SQL, the parameters or the connection
+- THEN the save control SHALL be disabled until «Probar» succeeds again
 
 ### Requirement: Console Displays the List of Saved Queries
 
@@ -561,12 +569,13 @@ Each non-current row SHALL offer "Comparar con la actual", which reads that vers
 - **THEN** the panel shows the reason in plain text and keeps the previous rows
 
 ### Requirement: Save as a New Version
-After a saved query is loaded into the editor, the console SHALL offer "Guardar como nueva versión" with an optional note field. It SHALL send `PUT /consultas-guardadas/<id>` with the editor's name, description, statement, declared parameters and the note, exactly as the create sends them, and then refresh the list. A `409 sin-cambios` SHALL read "No hay cambios respecto de la versión vigente" and a `409 conflicto-de-edicion` SHALL ask to reload the query. The section's help text SHALL no longer say that a saved query cannot be edited, and SHALL still say it cannot be deleted.
+With a saved query loaded in the query pop-up, the console SHALL offer «Guardar como versión N+1» (N being the loaded version) with an optional note field, enabled under the same test gate as «Guardar consulta». It SHALL send `PUT /consultas-guardadas/<id>` with the pop-up's name, description, statement, declared parameters and the note, exactly as the create sends them, then close the pop-up and refresh the list. A `409 sin-cambios` SHALL read "No hay cambios respecto de la versión vigente" and a `409 conflicto-de-edicion` SHALL ask to reload the query, both inside the pop-up, which stays open. The saved-queries help text SHALL still say that a saved query cannot be deleted.
+(Previously: «Guardar como nueva versión» below the list, with no test gate.)
 
 #### Scenario: Save a change
-- **GIVEN** a saved query loaded in the editor and its statement modified
+- **GIVEN** a saved query opened in the pop-up, its statement modified and tested
 - **WHEN** the operator saves it as a new version with the note "Agrega filtro"
-- **THEN** one PUT request is sent for that query's id with the editor's content and the note, and the list is refreshed
+- **THEN** one PUT request is sent for that query's id with the pop-up's content and the note, the pop-up closes and the list is refreshed
 
 #### Scenario: Nothing loaded
 - **WHEN** no saved query has been loaded
@@ -574,7 +583,7 @@ After a saved query is loaded into the editor, the console SHALL offer "Guardar 
 
 #### Scenario: Switching tenant forgets the loaded query
 - **WHEN** the operator switches tenant
-- **THEN** the loaded query is forgotten and the action disappears
+- **THEN** the loaded query is forgotten, the pop-up closes and the action disappears
 
 ### Requirement: Console Login Screen
 The login screen SHALL ask for the operator's name and password, send them to `POST /consola/ingresar`, and reload the page on 200. On 401 it SHALL say "Nombre o clave incorrectos." and keep the name typed; on any other failure it SHALL say the console could not be reached. It SHALL follow the project design skill.
@@ -635,11 +644,12 @@ The side navigation SHALL link, in this order, a "Global" group with `#tenants`,
 - **THEN** Consultas is visible
 
 ### Requirement: Result Next to the Execute Button
-Inside the Consultas screen, the status line, the results table and the pager SHALL come right after the query form, before the saved queries.
+Inside the query pop-up, the status line, the results table and the pager SHALL come right after the query form and before the pop-up's actions («Probar» and the save control); the pop-up comes before the saved queries section in the document.
+(Previously: on the Consultas screen, right after the execute button and before the saved queries.)
 
 #### Scenario: Result placement
 - **WHEN** the console document is served
-- **THEN** the results table appears after the execute button and before the saved queries section, and both are inside the Consultas screen
+- **THEN** the results table appears after the query form and before «Probar», inside the query pop-up, and the pop-up appears before the saved queries section, all inside the Consultas screen
 
 ### Requirement: Tenants Screen
 The Tenants screen SHALL list every tenant, active and deactivated, with its name, a short id, its state ("Activo" or "Dado de baja") and its creation date, written as text. "Nuevo tenant" SHALL send the typed name to `POST /tenants` and, on 201, reload the list and the tenant selector. An active tenant SHALL offer "Elegir como activo", which makes it the console's active tenant, and "Dar de baja", which asks for an inline confirmation «Dar de baja {nombre}» before `POST /tenants/:id/baja`. A deactivated tenant SHALL offer no action and SHALL NOT be selectable (DEC-168). When the active tenant is deactivated, the console SHALL return to "ningún tenant" and say so.
@@ -740,3 +750,40 @@ The Mapeo y validación screen SHALL, for the active tenant, let the operator ch
 #### Scenario: An invalid field
 - **GIVEN** the report says `stockDisponible` has verdict `tipo-incorrecto` with the hint `::numeric`
 - **THEN** the entity shows that field, its verdict and the hint
+
+### Requirement: Create and Edit Forms Open in a Pop-up (DEC-173)
+In the console, every form that creates or modifies a record SHALL open in a pop-up over the screen (`.zd-dialog` on `.zd-dialog-backdrop`), holding every field of the record, with a title, the main action (verb + object) and «Cancelar» at its foot. «Cancelar» and the Escape key SHALL close it without sending anything; when there are unsaved changes they SHALL first ask «Descartar cambios». Such a form SHALL NOT be rendered inline above or below a table. Read-only detail (version history, template detail) stays in the side panel; inline confirmations of destructive actions are outside this rule.
+
+#### Scenario: Cancelling a form with no changes
+- GIVEN a create or edit pop-up is open and nothing was changed
+- WHEN the operator presses «Cancelar»
+- THEN the pop-up closes and no request is sent
+
+#### Scenario: Cancelling a form with changes
+- GIVEN the operator changed a field
+- WHEN «Cancelar» is pressed
+- THEN the pop-up asks «Descartar cambios» and stays open until that is confirmed
+
+### Requirement: Query Screen and Query Pop-up (DEC-172, DEC-173)
+The Consultas screen SHALL show a page header with «Nueva consulta» and the saved queries list, each entry with «Abrir» and «Versiones». «Nueva consulta» SHALL open the query pop-up empty, titled «Nueva consulta»; «Abrir» SHALL open it with that query loaded, titled with its name and «versión N». The pop-up SHALL hold, in order: name, description, connection, SQL, parameters (declaration and test values) and, for a loaded query, the version note; and the actions «Probar», the save control and «Cancelar». «Probar» SHALL run the statement against the chosen connection and show the result, paginated, inside the pop-up. The pop-up SHALL close on a successful save and on a tenant switch. The version history SHALL open in a wide side panel.
+
+#### Scenario: Writing and testing a new query
+- WHEN the operator presses «Nueva consulta», chooses a connection, writes a statement and presses «Probar»
+- THEN the result appears inside the pop-up and «Guardar consulta» becomes enabled once a name is typed
+
+#### Scenario: Opening a saved query
+- GIVEN saved query «Stock bajo» at version 3
+- WHEN the operator presses «Abrir» on it
+- THEN the pop-up is titled «Stock bajo · versión 3», holds its name, description, SQL and parameter declaration, keeps the last chosen connection, and offers «Guardar como versión 4»
+
+### Requirement: Connection Picker
+The connection in the query pop-up SHALL be chosen from a list of the active tenant's connections (`GET /conexiones`), each shown by its name and a short id (as in the automation wizard) with the full id as the value. It SHALL be loaded when the active tenant is set and when the Consultas screen is shown, with loading, empty (pointing to Conexiones), truncated and error («Reintentar») states. The connection is used to test and is not saved with the query (DEC-11). The last choice SHALL be kept when another query is opened. «Probar» with no connection chosen SHALL say «Elegí una conexión para ejecutar» and send nothing.
+
+#### Scenario: Picking a connection
+- GIVEN the tenant has connections "food-store" and "replica-b"
+- WHEN the operator opens the query pop-up
+- THEN the picker lists both by name and short id, and «Probar» sends the chosen one's id as `conexionId`
+
+#### Scenario: No connection chosen
+- WHEN the operator presses «Probar» without choosing a connection
+- THEN the console says «Elegí una conexión para ejecutar» and sends no execution request
