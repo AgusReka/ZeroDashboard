@@ -283,12 +283,19 @@ const IDS = [
   'version-cargada',
   'version-nota',
   'version-boton',
+  // CH-32a (DEC-172): the connection picker and the "Consulta nueva" action.
+  'conexion-aviso',
+  'conexion-reintentar',
+  'consulta-nueva',
+  'consulta-nueva-confirmar',
+  'consulta-nueva-descartar',
+  'consulta-nueva-cancelar',
 ] as const;
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
-/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
+/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button and confirmation. */
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-nueva-confirmar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -338,6 +345,12 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
     },
     createElement(tagName: string): Nodo {
       return new Nodo(tagName);
+    },
+    // CH-32a: the empty-list notice is a sentence with a link inside it.
+    createTextNode(texto: string): Nodo {
+      const nodo = new Nodo('#text');
+      nodo.textContent = texto;
+      return nodo;
     },
     // CH-24: the state badge's icon is an SVG; the fake treats it as any other node.
     createElementNS(_espacio: string, tagName: string): Nodo {
@@ -548,8 +561,8 @@ describe('the console document, served by the real route', () => {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
       // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
-      // auto-frecuencia is a select from PR3.
-      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion'].includes(id) ? 'select' : 'div');
+      // auto-frecuencia is a select from PR3; conexion is one from CH-32a (DEC-172).
+      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion', 'conexion'].includes(id) ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -572,8 +585,8 @@ describe('the console document, served by the real route', () => {
   }
 
   /**
-   * Selects the tenant. Switching reloads the saved-query list, the template catalog and
-   * the automations list (CH-13), in that request order.
+   * Selects the tenant. Switching reloads the saved-query list, the connection picker
+   * (CH-32a) and the template catalog and automations list (CH-13), in that request order.
    */
   async function elegirTenant(
     escenario: Escenario,
@@ -581,16 +594,24 @@ describe('the console document, served by the real route', () => {
     automatizaciones: unknown[] = [],
     id = 't-1',
     plantillas: unknown[] = [{ id: 'p-1', nombre: 'Stock diario' }],
+    conexiones: unknown[] = [],
   ): Promise<void> {
     const selector = escenario.nodos.get('tenant') as Nodo;
     selector.value = id;
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } },
+      { status: 200, cuerpo: { conexiones, truncado: false } },
       { status: 200, cuerpo: { plantillas, truncado: false } },
       { status: 200, cuerpo: { automatizaciones, truncado: false } },
     );
     selector.disparar('change');
     await new Promise((resolver) => setImmediate(resolver));
+  }
+
+  /** CH-32a: selects the tenant with one connection listed and chosen, so the form can execute. */
+  async function elegirTenantYConexion(escenario: Escenario): Promise<void> {
+    await elegirTenant(escenario, [], [], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    (escenario.nodos.get('conexion') as Nodo).value = 'c-1';
   }
 
   /** Fires `evento` on `id` with `cuerpo` queued as the response, and lets it settle. */
@@ -607,13 +628,16 @@ describe('the console document, served by the real route', () => {
     await new Promise((resolver) => setImmediate(resolver));
   }
 
-  /** Selects the tenant and submits the form with `cuerpo` queued as the response. */
+  /**
+   * Selects the tenant, chooses a connection (CH-32a: executing with none sends nothing) and
+   * submits the form with `cuerpo` queued as the response.
+   */
   async function ejecutarCon(
     escenario: Escenario,
     cuerpo: unknown,
     status = 200,
   ): Promise<void> {
-    await elegirTenant(escenario);
+    await elegirTenantYConexion(escenario);
     await enviar(escenario, cuerpo, status);
   }
 
@@ -805,7 +829,7 @@ describe('the console document, served by the real route', () => {
   /** Spec "Rendering inputs for a declared parameter"; design "A blank value omits the key". */
   test('a declared parameter renders one control labeled with its nombre, and a blank is omitted', async () => {
     const escenario = await arrancar();
-    await elegirTenant(escenario);
+    await elegirTenantYConexion(escenario);
     const fecha = declarar(escenario, 'desde', 'fecha');
     const booleano = declarar(escenario, 'activo', 'booleano');
 
@@ -830,7 +854,7 @@ describe('the console document, served by the real route', () => {
   /** Spec "Submitting collected parameter values"; design Console value-control table. */
   test('execute sends each value with the JSON type its tipo requires', async () => {
     const escenario = await arrancar();
-    await elegirTenant(escenario);
+    await elegirTenantYConexion(escenario);
     declarar(escenario, 'n', 'numero', ' 10 ');
     declarar(escenario, 'b', 'booleano', 'false');
     declarar(escenario, 'f', 'fecha', '2026-09-01');
@@ -903,7 +927,7 @@ describe('the console document, served by the real route', () => {
   /** Spec "A parameter error is shown legibly": execute. */
   test('each parameter problem is one legible line naming the parameter, never a raw error', async () => {
     const escenario = await arrancar();
-    await elegirTenant(escenario);
+    await elegirTenantYConexion(escenario);
     declarar(escenario, 'desde', 'fecha', '27/09/2026');
     await enviar(
       escenario,
@@ -1341,7 +1365,7 @@ describe('the console document, served by the real route', () => {
   });
 
   /** Spec "Tenant switch wipes the wizard" and "Tenant load keeps three requests". */
-  test('CH-21c W6 a tenant switch hides and wipes the wizard, and the load stays at three requests', async () => {
+  test('CH-21c W6 a tenant switch hides and wipes the wizard, and the load adds only the picker request (CH-32a)', async () => {
     const escenario = await arrancar([
       { id: 't-1', nombre: 'Food Store' },
       { id: 't-2', nombre: 'Otra tienda' },
@@ -1357,7 +1381,8 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario, [], [], 't-2');
     assert.deepEqual(
       escenario.peticiones.slice(antes).map((peticion) => [peticion.url, peticion.tenant]),
-      [['/consultas-guardadas', 't-2'], ['/plantillas', 't-2'], ['/automatizaciones', 't-2']],
+      // CH-32a: the Consultas connection picker is the one request added to the former three.
+      [['/consultas-guardadas', 't-2'], ['/conexiones', 't-2'], ['/plantillas', 't-2'], ['/automatizaciones', 't-2']],
     );
     assert.equal(nodo(escenario, 'auto-alta').hidden, true);
     assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
@@ -1928,7 +1953,8 @@ describe('the console document, served by the real route', () => {
     await asentar();
     assert.deepEqual(
       escenario.peticiones.slice(antes).map((peticion) => peticion.url),
-      ['/consultas-guardadas', '/plantillas', '/automatizaciones', '/conexiones'],
+      // CH-32a: the second /conexiones is the Consultas picker, asked on the tenant switch.
+      ['/consultas-guardadas', '/conexiones', '/plantillas', '/automatizaciones', '/conexiones'],
       "A's probe asks for no template detail",
     );
     const tarjeta = tarjetas(escenario)[0];
@@ -3628,6 +3654,366 @@ describe('the console document, served by the real route', () => {
     assert.ok(!('version' in cuerpo));
   });
 
+  // ---- CH-32a (DEC-172): the connection picker, saving without duplicates, "Consulta nueva" ----
+
+  const CX_TIENDA = { id: 'c-1', nombre: 'food-store' };
+  const CX_REPLICA = { id: 'c-2', nombre: 'replica-b' };
+
+  /** The picker's options as [value, text] pairs. */
+  const opcionesConsulta = (escenario: Escenario): string[][] =>
+    nodo(escenario, 'conexion').options.map((opcion) => [opcion.value, opcion.textContent]);
+
+  /**
+   * Selects the tenant with `respuestaConexiones` as the answer to the picker's request (a
+   * pending `Promise` as `cuerpo` keeps it in flight); the other three loads answer empty.
+   */
+  async function elegirTenantCon(
+    escenario: Escenario,
+    respuestaConexiones: { status: number; cuerpo: unknown },
+    id = 't-1',
+  ): Promise<void> {
+    const selector = nodo(escenario, 'tenant');
+    selector.value = id;
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+      respuestaConexiones,
+      { status: 200, cuerpo: { plantillas: [], truncado: false } },
+      { status: 200, cuerpo: { automatizaciones: [], truncado: false } },
+    );
+    selector.disparar('change');
+    await asentarVarias();
+  }
+
+  /** Boots and selects the tenant with the two connections (and one saved query) listed. */
+  async function conConexiones(conexiones: unknown[] = [CX_TIENDA, CX_REPLICA]): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [FILA_GUARDADA], [], 't-1', undefined, conexiones);
+    return escenario;
+  }
+
+  test('CH-32a the picker is a select labeled Conexión with a status notice and a hidden Reintentar', () => {
+    verificarIds(marcado());
+    assert.match(marcado(), /<label for="conexion" class="zd-label">Conexión<\/label>\s*<select id="conexion" class="zd-select"[^>]*\brequired\b/);
+    assert.ok(!marcado().includes('<input id="conexion"'), 'the free-text input is gone');
+    assert.match(marcado(), /<p id="conexion-aviso" class="ayuda" role="status"><\/p>/);
+    assert.match(marcado(), /<button id="conexion-reintentar"[^>]*type="button"[^>]*\bhidden\b/);
+  });
+
+  test('CH-32a the picker lists each connection by name and short id, with the id as the value, as text', async () => {
+    const hostil = { id: 'c-3', nombre: '<img src=x onerror=alert(1)>' };
+    const escenario = await conConexiones([CX_TIENDA, CX_REPLICA, hostil]);
+    assert.deepEqual(opcionesConsulta(escenario), [
+      ['', 'Elegí una conexión'],
+      ['c-1', 'food-store (c-1…)'],
+      ['c-2', 'replica-b (c-2…)'],
+      ['c-3', '<img src=x onerror=alert(1)> (c-3…)'],
+    ]);
+    assert.ok(nodo(escenario, 'conexion').options.every((opcion) => opcion.hijos.length === 0), 'text only');
+    assert.equal(nodo(escenario, 'conexion').value, '', 'nothing is chosen for the operator');
+    assert.equal(nodo(escenario, 'conexion').disabled, false);
+    assert.equal(nodo(escenario, 'conexion-aviso').textContent, '');
+    assert.equal(nodo(escenario, 'conexion-reintentar').hidden, true);
+    const pedida = escenario.peticiones.filter((p) => p.url === '/conexiones');
+    assert.deepEqual(pedida.map((p) => p.tenant), ['t-1'], 'one request, scoped to the active tenant');
+  });
+
+  test('CH-32a while the list is on its way the picker says so and is disabled', async () => {
+    const escenario = await arrancar();
+    let responder!: (cuerpo: unknown) => void;
+    await elegirTenantCon(escenario, { status: 200, cuerpo: new Promise((resolver) => { responder = resolver; }) });
+    assert.deepEqual(opcionesConsulta(escenario), [['', 'Cargando conexiones…']]);
+    assert.equal(nodo(escenario, 'conexion').disabled, true);
+
+    responder({ conexiones: [CX_TIENDA], truncado: false });
+    await asentarVarias();
+    assert.deepEqual(opcionesConsulta(escenario), [['', 'Elegí una conexión'], ['c-1', 'food-store (c-1…)']]);
+    assert.equal(nodo(escenario, 'conexion').disabled, false);
+  });
+
+  test('CH-32a an empty list says so and points to Conexiones', async () => {
+    const escenario = await conConexiones([]);
+    assert.deepEqual(opcionesConsulta(escenario), [['', 'No hay conexiones registradas']]);
+    const aviso = nodo(escenario, 'conexion-aviso');
+    assert.equal(aviso.textContent, 'Este tenant no tiene conexiones. Registrá una en Conexiones para poder ejecutar.');
+    const enlaces = buscar(aviso, (n) => n.tagName === 'a');
+    assert.equal(enlaces.length, 1);
+    assert.equal(enlaces[0].getAttribute('href'), '#conexiones');
+    assert.equal(enlaces[0].textContent, 'Conexiones');
+    assert.equal(nodo(escenario, 'conexion-reintentar').hidden, true, 'not an error');
+  });
+
+  test('CH-32a a capped list says how many are shown', async () => {
+    const escenario = await arrancar();
+    await elegirTenantCon(escenario, { status: 200, cuerpo: { conexiones: [CX_TIENDA, CX_REPLICA], truncado: true } });
+    assert.equal(nodo(escenario, 'conexion-aviso').textContent, 'Se muestran las primeras 2 conexiones, en orden alfabético.');
+    assert.equal(opcionesConsulta(escenario).length, 3);
+  });
+
+  test('CH-32a a failed list says so, offers Reintentar, and pressing it asks again', async () => {
+    const escenario = await arrancar();
+    await elegirTenantCon(escenario, { status: 500, cuerpo: { error: 'interno' } });
+    assert.equal(nodo(escenario, 'conexion-aviso').textContent, 'No se pudieron cargar las conexiones.');
+    assert.equal(nodo(escenario, 'conexion-reintentar').hidden, false);
+    assert.equal(nodo(escenario, 'conexion').disabled, false);
+    assert.equal(opcionesConsulta(escenario).length, 1, 'only a placeholder, nothing to choose');
+
+    const antes = escenario.peticiones.length;
+    await enviar(escenario, { conexiones: [CX_TIENDA], truncado: false }, 200, 'conexion-reintentar', 'click');
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => [p.url, p.tenant]), [['/conexiones', 't-1']]);
+    assert.deepEqual(opcionesConsulta(escenario), [['', 'Elegí una conexión'], ['c-1', 'food-store (c-1…)']]);
+    assert.equal(nodo(escenario, 'conexion-aviso').textContent, '');
+    assert.equal(nodo(escenario, 'conexion-reintentar').hidden, true);
+  });
+
+  test('CH-32a with no tenant the picker says so and nothing is sent', async () => {
+    const escenario = await arrancar();
+    assert.deepEqual(opcionesConsulta(escenario), [['', 'Elegí un tenant para ver sus conexiones']]);
+    irA(escenario, '#frescura');
+    irA(escenario, '#consultas');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.map((p) => p.url), ['/tenants'], 'only the tenant list was asked for');
+
+    // Going back to no tenant empties the previous tenant's connections and sends nothing.
+    await elegirTenant(escenario, [], [], 't-1', undefined, [CX_TIENDA]);
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'tenant').value = '';
+    nodo(escenario, 'tenant').disparar('change');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.deepEqual(opcionesConsulta(escenario), [['', 'Elegí un tenant para ver sus conexiones']]);
+  });
+
+  test('CH-32a showing Consultas asks for the connections again and keeps the choice while it is listed', async () => {
+    const escenario = await conConexiones();
+    nodo(escenario, 'conexion').value = 'c-2';
+    irA(escenario, '#frescura');
+    const antes = escenario.peticiones.length;
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CX_TIENDA, CX_REPLICA], truncado: false } });
+    irA(escenario, '#consultas');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/conexiones']);
+    assert.equal(nodo(escenario, 'conexion').value, 'c-2', 'the choice survives the reload');
+
+    // A connection that is gone from the list cannot stay chosen.
+    irA(escenario, '#frescura');
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CX_TIENDA], truncado: false } });
+    irA(escenario, '#consultas');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'conexion').value, '');
+  });
+
+  test('CH-32a executing with no connection chosen says so, focuses the picker and sends nothing', async () => {
+    const escenario = await conConexiones();
+    let enfocado = 0;
+    nodo(escenario, 'conexion').focus = (): void => { enfocado += 1; };
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'formulario').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'no execution request');
+    assert.equal(nodo(escenario, 'conexion-aviso').textContent, 'Elegí una conexión para ejecutar.');
+    assert.equal(enfocado, 1);
+    assert.equal(nodo(escenario, 'ejecutar').disabled, false, 'the button is not left disabled');
+
+    // Choosing one and running again sends it and drops the notice.
+    nodo(escenario, 'conexion').value = 'c-1';
+    await enviar(escenario, respuestaOk());
+    assert.equal(ultimaEjecucion(escenario).conexionId, 'c-1');
+    assert.equal(nodo(escenario, 'conexion-aviso').textContent, '');
+  });
+
+  test('CH-32a the chosen id goes as conexionId', async () => {
+    const escenario = await conConexiones();
+    nodo(escenario, 'conexion').value = 'c-2';
+    await enviar(escenario, respuestaOk());
+    assert.equal(ultimaEjecucion(escenario).conexionId, 'c-2');
+  });
+
+  test('CH-32a loading a saved query keeps the chosen connection and asks for nothing else', async () => {
+    const escenario = await conConexiones();
+    nodo(escenario, 'conexion').value = 'c-2';
+    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
+    const antes = escenario.peticiones.length;
+    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/consultas-guardadas/q-1']);
+    assert.equal(nodo(escenario, 'conexion').value, 'c-2');
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT :a');
+  });
+
+  test('CH-32a a list answered after a tenant switch is dropped', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra tienda' }]);
+    let responderA!: (cuerpo: unknown) => void;
+    await elegirTenantCon(escenario, { status: 200, cuerpo: new Promise((resolver) => { responderA = resolver; }) }, 't-1');
+    await elegirTenantCon(escenario, { status: 200, cuerpo: { conexiones: [{ id: 'c-B', nombre: 'replica-B' }], truncado: false } }, 't-2');
+    responderA({ conexiones: [{ id: 'c-A', nombre: 'replica-A' }], truncado: true });
+    await asentarVarias();
+    assert.deepEqual(opcionesConsulta(escenario), [['', 'Elegí una conexión'], ['c-B', 'replica-B (c-B…)']]);
+    assert.equal(nodo(escenario, 'conexion-aviso').textContent, '', "A's capped notice is dropped too");
+  });
+
+  // ---- CH-32a (DEC-172): a loaded query is saved only as a new version ----
+
+  test('CH-32a with no query loaded Guardar consulta is shown and creates the query', async () => {
+    const escenario = await conConsulta();
+    assert.equal(nodo(escenario, 'guardar').hidden, false);
+    nodo(escenario, 'nombre').value = 'Ventas';
+    escenario.respuestas.push({ status: 201, cuerpo: { consultaGuardada: FILA_GUARDADA } });
+    const antes = escenario.peticiones.length;
+    await enviar(escenario, { consultasGuardadas: [FILA_GUARDADA], truncado: false }, 200, 'guardar', 'click');
+    const nuevas = escenario.peticiones.slice(antes);
+    assert.deepEqual(nuevas.map((p) => p.url), ['/consultas-guardadas', '/consultas-guardadas']);
+    assert.equal((nuevas[0].cuerpo as Record<string, unknown>).nombre, 'Ventas');
+  });
+
+  test('CH-32a after loading a query Guardar consulta is hidden and the new-version block is shown', async () => {
+    const escenario = await conConsultaCargada();
+    assert.equal(nodo(escenario, 'guardar').hidden, true);
+    assert.equal(nodo(escenario, 'version-guardar').hidden, false);
+  });
+
+  test('CH-32a the create control is shown again whenever the loaded query is forgotten', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(escenario, [FILA_GUARDADA]);
+    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'guardar').hidden, true);
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'guardar').hidden, false, 'a tenant switch forgets the loaded query');
+
+    const otra = await conConsultaCargada();
+    await guardarVersion(
+      otra,
+      { status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } },
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+    );
+    assert.equal(nodo(otra, 'guardar').hidden, false, 'a query that is gone is forgotten too');
+  });
+
+  test('CH-32a Guardar consulta with a query loaded sends nothing, even if triggered', async () => {
+    const escenario = await conConsultaCargada();
+    nodo(escenario, 'nombre').value = 'Copia';
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'guardar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'no create request');
+    assert.equal(nodo(escenario, 'nombre').value, 'Copia', 'and the editor is left as it was');
+    assert.equal(nodo(escenario, 'banner').hidden, true);
+  });
+
+  test('CH-32a the saved-queries help explains versions and "Consulta nueva", and says they cannot be deleted', () => {
+    const seccion = marcado().slice(marcado().indexOf('<section id="guardado">'), marcado().indexOf('<section id="automatizaciones">'));
+    const ayuda = seccion.match(/<p class="ayuda">([^<]*)<\/p>/)?.[1] ?? '';
+    assert.equal(
+      ayuda,
+      'Con una consulta cargada, los cambios se guardan como una versión nueva de esa consulta. Para guardar el editor como otra consulta, empezá con «Consulta nueva». No se puede borrar.',
+    );
+  });
+
+  // ---- CH-32a (DEC-172): "Consulta nueva" ----
+
+  test('CH-32a "Consulta nueva" sits at the top of the saved queries, before the name, and its buttons do not submit', () => {
+    const seccion = marcado().slice(marcado().indexOf('<section id="guardado">'), marcado().indexOf('<section id="automatizaciones">'));
+    assert.ok(seccion.indexOf('id="consulta-nueva"') !== -1 && seccion.indexOf('id="consulta-nueva"') < seccion.indexOf('id="nombre"'));
+    assert.match(seccion, /<button id="consulta-nueva" class="zd-btn zd-btn--secondary" type="button">Consulta nueva<\/button>/);
+    assert.match(seccion, /<span id="consulta-nueva-confirmar" hidden>/);
+    assert.match(seccion, /Hay cambios sin guardar en el editor\./);
+    assert.match(seccion, /<button id="consulta-nueva-descartar"[^>]*type="button">Descartar cambios<\/button>/);
+    assert.match(seccion, /<button id="consulta-nueva-cancelar"[^>]*type="button">Cancelar<\/button>/);
+  });
+
+  test('CH-32a "Consulta nueva" on an unchanged loaded query empties the editor and sends nothing', async () => {
+    const escenario = await conConsultaCargada();
+    await abrirPanel(escenario, TRES_VERSIONES);
+    assert.equal(nodo(escenario, 'versiones').hidden, false);
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'consulta-nueva').disparar('click');
+    await asentarVarias();
+
+    assert.equal(escenario.peticiones.length, antes, 'no request');
+    assert.equal(nodo(escenario, 'sql').value, '');
+    assert.equal(filas(escenario).length, 0, 'no parameter rows');
+    assert.equal(nodo(escenario, 'nombre').value, '');
+    assert.equal(nodo(escenario, 'descripcion').value, '');
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+    assert.equal(nodo(escenario, 'guardar').hidden, false, 'Guardar consulta is back');
+    assert.equal(nodo(escenario, 'versiones').hidden, true, 'the history of the forgotten query is closed');
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, 'nothing to confirm');
+    // Running now is ad hoc: the forgotten query is no longer named.
+    nodo(escenario, 'conexion').value = 'c-1';
+    nodo(escenario, 'sql').value = 'SELECT :a';
+    await enviar(escenario, respuestaOk());
+    assert.ok(!('consultaGuardadaId' in ultimaEjecucion(escenario)));
+  });
+
+  test('CH-32a "Consulta nueva" on an edited query asks first; Cancelar keeps the edit and Descartar cambios empties', async () => {
+    const escenario = await conConsultaCargada();
+    nodo(escenario, 'sql').value = 'SELECT :a + 1';
+    const antes = escenario.peticiones.length;
+
+    nodo(escenario, 'consulta-nueva').disparar('click');
+    const confirmacion = nodo(escenario, 'consulta-nueva-confirmar');
+    assert.equal(confirmacion.hidden, false);
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT :a + 1', 'the edit stays until it is confirmed');
+    assert.equal(nodo(escenario, 'version-guardar').hidden, false);
+    assert.equal(nodo(escenario, 'guardar').hidden, true);
+
+    nodo(escenario, 'consulta-nueva-cancelar').disparar('click');
+    assert.equal(confirmacion.hidden, true);
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT :a + 1', 'Cancelar keeps the edit');
+    assert.equal(nodo(escenario, 'nombre').value, 'Stock');
+
+    nodo(escenario, 'consulta-nueva').disparar('click');
+    assert.equal(confirmacion.hidden, false);
+    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
+    assert.equal(confirmacion.hidden, true);
+    assert.equal(nodo(escenario, 'sql').value, '');
+    assert.equal(nodo(escenario, 'nombre').value, '');
+    assert.equal(nodo(escenario, 'descripcion').value, '');
+    assert.equal(filas(escenario).length, 0);
+    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+    assert.equal(nodo(escenario, 'guardar').hidden, false);
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'the whole round trip sent nothing');
+  });
+
+  test('CH-32a with no query loaded only a statement worth keeping asks before it is discarded', async () => {
+    const escenario = await conConsulta();
+    const confirmacion = nodo(escenario, 'consulta-nueva-confirmar');
+    // Empty, the initial SELECT 1 and blanks around it are not edits.
+    for (const sql of ['', 'SELECT 1', '  SELECT 1\n  ', '   ']) {
+      nodo(escenario, 'sql').value = sql;
+      nodo(escenario, 'consulta-nueva').disparar('click');
+      assert.equal(confirmacion.hidden, true, JSON.stringify(sql));
+      assert.equal(nodo(escenario, 'sql').value, '', JSON.stringify(sql));
+    }
+    nodo(escenario, 'sql').value = 'SELECT * FROM producto';
+    nodo(escenario, 'nombre').value = 'Borrador';
+    nodo(escenario, 'consulta-nueva').disparar('click');
+    assert.equal(confirmacion.hidden, false);
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT * FROM producto');
+    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
+    assert.equal(nodo(escenario, 'sql').value, '');
+    assert.equal(nodo(escenario, 'nombre').value, '', 'the name goes too');
+  });
+
+  test('CH-32a a pending confirmation closes when a query is loaded or the tenant changes', async () => {
+    const escenario = await conConsulta();
+    nodo(escenario, 'sql').value = 'SELECT * FROM producto';
+    nodo(escenario, 'consulta-nueva').disparar('click');
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false);
+    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, 'loading replaced the editor');
+
+    nodo(escenario, 'sql').value = 'SELECT 2';
+    nodo(escenario, 'consulta-nueva').disparar('click');
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false);
+    await elegirTenant(escenario);
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, 'a tenant switch forgets the loaded query');
+  });
+
   // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------
 
   test('CH-29 a 401 on the tenant list reloads the page instead of showing an error', async () => {
@@ -3638,7 +4024,7 @@ describe('the console document, served by the real route', () => {
 
   test('CH-29 a 401 on a scoped call reloads the page instead of rendering a failure', async () => {
     const escenario = await arrancar();
-    await elegirTenant(escenario);
+    await elegirTenantYConexion(escenario);
     await enviar(escenario, { error: 'sesion-expirada' }, 401);
     assert.equal(escenario.recargas, 1);
     assert.equal(nodo(escenario, 'banner').hidden, true);

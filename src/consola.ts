@@ -420,8 +420,16 @@ function documentoConsola(nombreOperador: string): string {
 </header>
 
 <form id="formulario">
-  <label for="conexion" class="zd-label">Identificador de la conexión registrada</label>
-  <input id="conexion" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0f1c…" required>
+  <!--
+    CH-32a (DEC-172): the connection is chosen from the active tenant's list, not typed. The
+    script fills the options from GET /conexiones (name as text, id as value) and writes the
+    loading, empty, truncated and error notices into #conexion-aviso. required stays for a
+    real browser; the script's own check in ejecutar() does not rely on it.
+  -->
+  <label for="conexion" class="zd-label">Conexión</label>
+  <select id="conexion" class="zd-select" required></select>
+  <p id="conexion-aviso" class="ayuda" role="status"></p>
+  <button id="conexion-reintentar" class="zd-btn zd-btn--secondary" type="button" hidden>Reintentar</button>
 
   <label for="sql" class="zd-label">Sentencia SQL</label>
   <textarea id="sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false" required>SELECT 1</textarea>
@@ -472,7 +480,21 @@ function documentoConsola(nombreOperador: string): string {
 -->
 <section id="guardado">
   <h2 class="zd-h2">Consultas guardadas</h2>
-  <p class="ayuda">Guarda la sentencia que está ahora en el editor. Al cargar una consulta guardada podés editarla y guardar los cambios como una versión nueva: cada cambio queda en su historial. No se puede borrar.</p>
+  <p class="ayuda">Con una consulta cargada, los cambios se guardan como una versión nueva de esa consulta. Para guardar el editor como otra consulta, empezá con «Consulta nueva». No se puede borrar.</p>
+
+  <!--
+    CH-32a (DEC-172): empties the editor, the parameters, the name and the description and
+    forgets the loaded query, so "Guardar consulta" is offered again. With edits not saved it
+    asks inline first (same pattern as "Dar de baja" in Tenants); every button is type="button".
+  -->
+  <div class="controles">
+    <button id="consulta-nueva" class="zd-btn zd-btn--secondary" type="button">Consulta nueva</button>
+    <span id="consulta-nueva-confirmar" hidden>
+      Hay cambios sin guardar en el editor.
+      <button id="consulta-nueva-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+      <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Cancelar</button>
+    </span>
+  </div>
 
   <label for="nombre" class="zd-label">Nombre</label>
   <input id="nombre" class="zd-input" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
@@ -777,6 +799,8 @@ var selectorTenant = document.getElementById('tenant');
 var indicadorTenant = document.getElementById('tenant-activo');
 var formulario = document.getElementById('formulario');
 var entradaConexion = document.getElementById('conexion');
+var avisoConexion = document.getElementById('conexion-aviso');
+var botonReintentarConexion = document.getElementById('conexion-reintentar');
 var entradaSql = document.getElementById('sql');
 var contenedorParametros = document.getElementById('parametros');
 var botonAgregarParametro = document.getElementById('agregar-parametro');
@@ -833,6 +857,12 @@ var detallesPlantilla = Object.create(null);
 // CH-21c: the wizard's stale-response token. Every reset (open, cancel, created, tenant
 // switch) moves it, and a response that started under an older value is dropped.
 var generacionAlta = 0;
+
+// CH-32a: the connection picker's stale-response token, moved by every load of the list, and
+// the id chosen before a reload (the options are rebuilt, so the choice is put back by id).
+var generacionConexiones = 0;
+var conexionPrevia = '';
+var AVISO_ELEGIR_CONEXION = 'Elegí una conexión para ejecutar.';
 
 // CH-21c (DEC-127): the availability probe's own token, moved by every connection change. A
 // probe answer applies only while both tokens still hold. The card parts the probe edits
@@ -1275,8 +1305,85 @@ function cuerpoDeEjecucion(limite, desplazamiento, declaracion) {
   return cuerpo;
 }
 
+// --- Connection picker (CH-32a, DEC-172) ----------------------------------------
+// The options come from GET /conexiones of the active tenant: the text is the name plus a short
+// id, as in the automation wizard (C-08: id + nombre), so two connections with one name differ;
+// the value is the full id. Everything from the API goes in through textContent or value, never as markup.
+
+function ponerOpcionesConexion(filas, textoVacio) {
+  vaciar(entradaConexion);
+  entradaConexion.appendChild(opcionDe('', textoVacio));
+  filas.forEach(function (fila) {
+    var id = String(fila.id);
+    entradaConexion.appendChild(opcionDe(id, String(fila.nombre) + ' (' + id.slice(0, 8) + '…)'));
+  });
+  var sigue = filas.some(function (fila) { return String(fila.id) === conexionPrevia; });
+  entradaConexion.value = sigue ? conexionPrevia : '';
+}
+
+function avisarConexion(texto) {
+  vaciar(avisoConexion);
+  avisoConexion.textContent = texto;
+}
+
+// Asked when the active tenant is set and each time Consultas is shown. A load that finds
+// the picker already waiting for an answer keeps the choice made before it.
+async function cargarConexionesConsulta() {
+  generacionConexiones += 1;
+  var g = generacionConexiones;
+  if (entradaConexion.value !== '') { conexionPrevia = entradaConexion.value; }
+  avisarConexion('');
+  botonReintentarConexion.hidden = true;
+
+  if (tenantActivo === null) {
+    conexionPrevia = '';
+    ponerOpcionesConexion([], 'Elegí un tenant para ver sus conexiones');
+    entradaConexion.disabled = false;
+    return;
+  }
+
+  ponerOpcionesConexion([], 'Cargando conexiones…');
+  entradaConexion.disabled = true;
+  var resultado = await pedirAutomatizacion('/conexiones');
+  // A tenant switch (or a newer load) owns the picker now: this answer is not for it.
+  if (g !== generacionConexiones) { return; }
+  entradaConexion.disabled = false;
+
+  if (resultado === null || resultado.status !== 200 || !Array.isArray(resultado.cuerpo.conexiones)) {
+    ponerOpcionesConexion([], 'Sin conexiones para elegir');
+    avisarConexion('No se pudieron cargar las conexiones.');
+    botonReintentarConexion.hidden = false;
+    return;
+  }
+
+  var filas = resultado.cuerpo.conexiones;
+  ponerOpcionesConexion(filas, filas.length === 0 ? 'No hay conexiones registradas' : 'Elegí una conexión');
+  if (filas.length === 0) {
+    avisoConexion.appendChild(document.createTextNode('Este tenant no tiene conexiones. Registrá una en '));
+    var enlace = document.createElement('a');
+    enlace.setAttribute('href', '#conexiones');
+    enlace.textContent = 'Conexiones';
+    avisoConexion.appendChild(enlace);
+    avisoConexion.appendChild(document.createTextNode(' para poder ejecutar.'));
+  } else if (resultado.cuerpo.truncado === true) {
+    avisarConexion('Se muestran las primeras ' + filas.length + ' conexiones, en orden alfabético.');
+  }
+}
+
+// The execute reminder goes away once a connection is chosen.
+function limpiarAvisoDeEleccion() {
+  if (entradaConexion.value !== '' && avisoConexion.textContent === AVISO_ELEGIR_CONEXION) { avisarConexion(''); }
+}
+
 async function ejecutar(desplazamiento) {
   ocultarBanner();
+  // With no tenant pedir() says so below; with one, a statement needs a connection to run on.
+  if (tenantActivo !== null && entradaConexion.value === '') {
+    avisarConexion(AVISO_ELEGIR_CONEXION);
+    entradaConexion.focus();
+    return;
+  }
+  limpiarAvisoDeEleccion();
   botonEjecutar.disabled = true;
 
   // Only the lower bound is checked here. There is no upper one to check any more: the
@@ -1458,6 +1565,9 @@ async function listarGuardadas() {
 }
 
 async function guardar() {
+  // CH-32a (DEC-172): with a query loaded the only save is "Guardar como nueva versión"; the
+  // button is hidden then, and this is the second guard in case it is reached anyway.
+  if (consultaCargada !== null) { return; }
   ocultarBanner();
   botonGuardar.disabled = true;
 
@@ -2562,9 +2672,21 @@ var botonVersion = document.getElementById('version-boton');
 // CH-20 (DEC-161): version and sql let a run name the query while the editor still holds it.
 var consultaCargada = null;
 
+// CH-32a (DEC-172): "Consulta nueva" and its inline confirmation.
+var botonConsultaNueva = document.getElementById('consulta-nueva');
+var confirmarConsultaNueva = document.getElementById('consulta-nueva-confirmar');
+var botonDescartarNueva = document.getElementById('consulta-nueva-descartar');
+var botonCancelarNueva = document.getElementById('consulta-nueva-cancelar');
+
+// The single switch between the two save controls: while a query is loaded the editor is saved
+// only as a new version of it, so "Guardar consulta" (which would duplicate it) is hidden. Every
+// path that loads or forgets a query goes through these two functions, and so does the
+// confirmation of "Consulta nueva", which is about the editor they just replaced.
 function olvidarConsultaCargada() {
   consultaCargada = null;
   bloqueVersion.hidden = true;
+  botonGuardar.hidden = false;
+  confirmarConsultaNueva.hidden = true;
   textoCargada.textContent = '';
   entradaNotaVersion.value = '';
 }
@@ -2577,10 +2699,51 @@ function recordarConsultaCargada(consulta) {
     sql: String(consulta.sql)
   };
   bloqueVersion.hidden = false;
+  botonGuardar.hidden = true;
+  confirmarConsultaNueva.hidden = true;
   textoCargada.textContent = 'Consulta cargada: «' + consultaCargada.nombre +
     '». Los cambios del editor se guardan como una versión nueva de esta consulta.';
   entradaNotaVersion.value = '';
 }
+
+// Edits not saved: with a query loaded, a statement that differs from the stored one; with
+// none, a statement that is neither empty nor the initial SELECT 1.
+function hayCambiosSinGuardar() {
+  if (consultaCargada !== null) { return entradaSql.value !== consultaCargada.sql; }
+  var sentencia = entradaSql.value.trim();
+  return sentencia !== '' && sentencia !== 'SELECT 1';
+}
+
+function empezarConsultaNueva() {
+  entradaSql.value = '';
+  limpiarParametros();
+  entradaNombre.value = '';
+  entradaDescripcion.value = '';
+  olvidarConsultaCargada();
+  cerrarVersiones();
+  confirmarConsultaNueva.hidden = true;
+  entradaSql.focus();
+}
+
+function consultaNueva() {
+  if (hayCambiosSinGuardar()) {
+    confirmarConsultaNueva.hidden = false;
+    return;
+  }
+  empezarConsultaNueva();
+}
+
+botonConsultaNueva.addEventListener('click', function () {
+  consultaNueva();
+});
+
+botonDescartarNueva.addEventListener('click', function () {
+  empezarConsultaNueva();
+});
+
+botonCancelarNueva.addEventListener('click', function () {
+  confirmarConsultaNueva.hidden = true;
+});
 
 async function guardarNuevaVersion() {
   if (consultaCargada === null) { return; }
@@ -2656,9 +2819,15 @@ function cambiarTenant(id) {
   limpiarParametros();
   limpiarAutomatizaciones();
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
+  // CH-32a: no connection of the tenant just left stays chosen; with no tenant the picker says so.
+  conexionPrevia = '';
+  entradaConexion.value = '';
   if (tenantActivo !== null) {
     listarGuardadas();
+    cargarConexionesConsulta();
     cargarAutomatizaciones();
+  } else {
+    cargarConexionesConsulta();
   }
   panelConexion.hidden = true;
   olvidarSecretos();
@@ -2760,6 +2929,17 @@ botonCrearAuto.addEventListener('click', function () {
 formulario.addEventListener('submit', function (evento) {
   evento.preventDefault();
   ejecutar(0);
+});
+
+// CH-32a: the choice is remembered by id, so a reload of the list can put it back (or drop it
+// when the connection is gone).
+entradaConexion.addEventListener('change', function () {
+  conexionPrevia = entradaConexion.value;
+  limpiarAvisoDeEleccion();
+});
+
+botonReintentarConexion.addEventListener('click', function () {
+  cargarConexionesConsulta();
 });
 
 botonGuardar.addEventListener('click', function () {
@@ -3608,6 +3788,8 @@ function mostrarPantalla() {
   if (activa === 'agentes') { cargarPantallaAgentes(); }
   if (activa === 'mapeo') { cargarPantallaMapeo(); }
   if (activa === 'usuarios') { cargarPantallaUsuarios(); }
+  // CH-32a: the picker reads the tenant's connections each time Consultas is shown.
+  if (activa === 'consultas') { cargarConexionesConsulta(); }
 }
 window.addEventListener('hashchange', mostrarPantalla);
 mostrarPantalla();
@@ -3617,6 +3799,7 @@ mostrarPantalla();
 cargarTenants().then(function () {
   if (tenantActivo !== null) {
     listarGuardadas();
+    cargarConexionesConsulta();
     cargarAutomatizaciones();
   }
 });
