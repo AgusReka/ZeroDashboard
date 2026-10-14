@@ -13,12 +13,12 @@ Branch base: `master` (after #178). Tests first, `npx tsx --test src/consola.tes
 - [x] 0.1 Exploration, proposal, spec, design and tasks; the CH-32b row in `docs/02-mapa-de-changes.md`.
 
 ## PR1 — Pop-up factory, tenant and user
-- [ ] 1.1 RED: test helpers of design §6 (`abrirDialogo`, `dialogoAbierto`, per-pop-up `FORMAS_DE_CANCELAR`); new ids in `IDS`, `IDS_OCULTOS`.
-- [ ] 1.2 GREEN: `crearDialogo`, `dialogos`, `cerrarDialogos`, `avisarEnDialogo`/`llevarBannerA`; Consultas rebuilt on them; CH-32a tests pass unchanged.
-- [ ] 1.3 RED → GREEN: «Nuevo tenant» pop-up, «Crear tenant» / «Crear y elegir», empty name inside.
-- [ ] 1.4 RED → GREEN: «Nuevo usuario» pop-up; 409 inside; secret on the page.
-- [ ] 1.5 RED → GREEN: «Reponer clave» inline confirmation; existing test 3379 adapted.
-- [ ] 1.6 Shared pop-up tests (markup, focus, Cancelar/Escape, discard, tenant switch) for tenant and user.
+- [x] 1.1 RED: test helpers of design §6 (`abrirDialogo`, `dialogoAbierto`, per-pop-up `FORMAS_DE_CANCELAR`); new ids in `IDS`, `IDS_OCULTOS`.
+- [x] 1.2 GREEN: `crearDialogo`, `dialogos`, `cerrarDialogos`, `avisarEnDialogo`/`llevarBannerA`; Consultas rebuilt on them; CH-32a tests pass unchanged.
+- [x] 1.3 RED → GREEN: «Nuevo tenant» pop-up, «Crear tenant» / «Crear y elegir», empty name inside.
+- [x] 1.4 RED → GREEN: «Nuevo usuario» pop-up; 409 inside; secret on the page.
+- [x] 1.5 RED → GREEN: «Reponer clave» inline confirmation; existing test 3379 adapted.
+- [x] 1.6 Shared pop-up tests (markup, focus, Cancelar/Escape, discard, tenant switch) for tenant and user.
 
 ## PR2 — Connection pop-up
 - [ ] 2.1 RED: connection pop-up tests (design §6); `conexion-panel`, `titulo-conexion-nueva`, `cx-cerrar` to `IDS_RETIRADOS`.

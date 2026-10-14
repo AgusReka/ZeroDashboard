@@ -302,6 +302,25 @@ const IDS = [
   'consulta-cancelar',
   'guardado-ayuda',
   'version-campos',
+  // CH-32b (DEC-173): the «Nuevo tenant» and «Nuevo usuario» pop-ups, each with its opener, title, status line,
+  // unsaved-changes strip and buttons.
+  'tenant-nuevo',
+  'tenant-dialogo',
+  'tenant-dialogo-titulo',
+  'tenant-dialogo-aviso',
+  'tenant-confirmar',
+  'tenant-descartar',
+  'tenant-seguir',
+  'tenant-crear-elegir',
+  'tenant-cancelar',
+  'usuario-nuevo',
+  'usuario-dialogo',
+  'usuario-dialogo-titulo',
+  'usuario-dialogo-aviso',
+  'usuario-confirmar',
+  'usuario-descartar',
+  'usuario-seguir',
+  'usuario-cancelar',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -310,7 +329,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'usuario-dialogo', 'usuario-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -613,14 +632,34 @@ describe('the console document, served by the real route', () => {
   ): Promise<void> {
     const selector = escenario.nodos.get('tenant') as Nodo;
     selector.value = id;
-    escenario.respuestas.push(
-      { status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } },
-      { status: 200, cuerpo: { conexiones, truncado: false } },
-      { status: 200, cuerpo: { plantillas, truncado: false } },
-      { status: 200, cuerpo: { automatizaciones, truncado: false } },
-    );
+    escenario.respuestas.push(...respuestasDeTenant(guardadas, conexiones, plantillas, automatizaciones));
     selector.disparar('change');
     await new Promise((resolver) => setImmediate(resolver));
+  }
+
+  /** What the automations screen loads with, in request order: the template catalog, then the list. */
+  function respuestasAutomatizaciones(
+    plantillas: unknown[],
+    automatizaciones: unknown[],
+  ): Array<{ status: number; cuerpo: unknown }> {
+    return [
+      { status: 200, cuerpo: { plantillas, truncado: false } },
+      { status: 200, cuerpo: { automatizaciones, truncado: false } },
+    ];
+  }
+
+  /** What a tenant switch asks for, in request order: saved queries, the query picker's connections, then the automations screen. */
+  function respuestasDeTenant(
+    guardadas: unknown[] = [],
+    conexiones: unknown[] = [],
+    plantillas: unknown[] = [{ id: 'p-1', nombre: 'Stock diario' }],
+    automatizaciones: unknown[] = [],
+  ): Array<{ status: number; cuerpo: unknown }> {
+    return [
+      { status: 200, cuerpo: { consultasGuardadas: guardadas, truncado: false } },
+      { status: 200, cuerpo: { conexiones, truncado: false } },
+      ...respuestasAutomatizaciones(plantillas, automatizaciones),
+    ];
   }
 
   /** CH-32a: selects the tenant with one connection listed and chosen, so the form can execute. */
@@ -3032,6 +3071,7 @@ describe('the console document, served by the real route', () => {
   test('CH-30b creating a tenant posts the name and reloads the list and the selector', async () => {
     const escenario = await arrancar();
     await abrirTenants(escenario);
+    abrirDialogo(escenario, 'tenant-nuevo');
     nodo(escenario, 'tenant-nombre').value = '  Almacén Don Tito  ';
     escenario.respuestas.push(
       { status: 201, cuerpo: { tenant: { id: 't-3', nombre: 'Almacén Don Tito', activo: true } } },
@@ -3044,6 +3084,8 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(urls, ['/tenants', '/tenants?incluirInactivos=true', '/tenants']);
     assert.deepEqual(escenario.peticiones[escenario.peticiones.length - 3].cuerpo, { nombre: 'Almacén Don Tito' });
     assert.equal(nodo(escenario, 'tenant-nombre').value, '');
+    assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), false, 'the pop-up closes on a 201');
+    assert.equal(nodo(escenario, 'tenant-aviso').textContent, 'Se creó el tenant «Almacén Don Tito».');
     assert.ok(filaTenant(escenario, 'Almacén Don Tito'));
   });
 
@@ -3350,6 +3392,7 @@ describe('the console document, served by the real route', () => {
 
   test('CH-30c creating a user sends the email and name and shows the password once', async () => {
     const escenario = await abrirUsuarios([]);
+    abrirDialogo(escenario, 'usuario-nuevo');
     nodo(escenario, 'usuario-correo').value = ' Ana@Negocio.com ';
     nodo(escenario, 'usuario-nombre').value = 'Ana';
     escenario.respuestas.push(
@@ -3363,26 +3406,32 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'usuario-secreto').hidden, false);
     assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
     assert.equal(nodo(escenario, 'usuario-correo').value, '');
+    assert.equal(dialogoAbierto(escenario, 'usuario-dialogo'), false, 'the pop-up closes on a 201');
     assert.ok(filaUsuario(escenario, 'ana@negocio.com'));
   });
 
   test('CH-30c an email in use says so and shows no password', async () => {
     const escenario = await abrirUsuarios([]);
+    abrirDialogo(escenario, 'usuario-nuevo');
     nodo(escenario, 'usuario-correo').value = 'ana@negocio.com';
     escenario.respuestas.push({ status: 409, cuerpo: { error: 'correo-en-uso' } });
     nodo(escenario, 'usuario-alta').disparar('submit');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'usuarios-aviso').textContent, 'Ese correo ya está en uso.');
+    assert.equal(nodo(escenario, 'usuario-dialogo-aviso').textContent, 'Ese correo ya está en uso.', 'inside the pop-up');
+    assert.equal(dialogoAbierto(escenario, 'usuario-dialogo'), true, 'which stays open');
+    assert.equal(nodo(escenario, 'usuario-correo').value, 'ana@negocio.com', 'with what was typed');
     assert.equal(nodo(escenario, 'usuario-secreto').hidden, true);
   });
 
-  test('CH-30c Reponer clave shows the new password once', async () => {
+  test('CH-30c Reponer clave shows the new password once, once confirmed', async () => {
     const escenario = await abrirUsuarios();
     escenario.respuestas.push(
       { status: 200, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
       { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO, USUARIO_INACTIVO], truncado: false } },
     );
-    botonesCon(filaUsuario(escenario, 'ana@negocio.com'), 'Reponer clave')[0].disparar('click');
+    const fila = filaUsuario(escenario, 'ana@negocio.com');
+    botonesCon(fila, 'Reponer clave')[0].disparar('click');
+    botonesCon(fila, 'Reponer clave de ana@negocio.com')[0].disparar('click');
     await asentarVarias();
     assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-1/clave'));
     assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
@@ -3412,6 +3461,7 @@ describe('the console document, served by the real route', () => {
 
   test('CH-30c switching the tenant removes a shown password from every node', async () => {
     const escenario = await abrirUsuarios([]);
+    abrirDialogo(escenario, 'usuario-nuevo');
     nodo(escenario, 'usuario-correo').value = 'ana@negocio.com';
     escenario.respuestas.push(
       { status: 201, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
@@ -3996,14 +4046,19 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, id).disparar(evento);
   }
 
-  const dialogoAbierto = (escenario: Escenario): boolean => !nodo(escenario, 'consulta-dialogo').hidden;
+  /** Whether the pop-up whose backdrop is `idFondo` (the query one by default) is open. */
+  const dialogoAbierto = (escenario: Escenario, idFondo = 'consulta-dialogo'): boolean => !nodo(escenario, idFondo).hidden;
   const tituloDialogo = (escenario: Escenario): string => nodo(escenario, 'consulta-dialogo-titulo').textContent;
 
   /** The two ways to ask the pop-up to close: its «Cancelar» and the Escape key pressed inside it. */
-  const FORMAS_DE_CANCELAR: Array<[string, (escenario: Escenario) => void]> = [
-    ['Cancelar', (escenario) => nodo(escenario, 'consulta-cancelar').disparar('click')],
-    ['Escape', (escenario) => nodo(escenario, 'consulta-dialogo').disparar('keydown', { key: 'Escape' })],
+  const formasDeCancelar = (idCancelar: string, idFondo: string): Array<[string, (escenario: Escenario) => void]> => [
+    ['Cancelar', (escenario) => nodo(escenario, idCancelar).disparar('click')],
+    ['Escape', (escenario) => nodo(escenario, idFondo).disparar('keydown', { key: 'Escape' })],
   ];
+  const FORMAS_DE_CANCELAR = formasDeCancelar('consulta-cancelar', 'consulta-dialogo');
+
+  /** CH-32b: presses the page header's opener `idAbridor` (a pop-up opens synchronously). */
+  const abrirDialogo = (escenario: Escenario, idAbridor: string): void => nodo(escenario, idAbridor).disparar('click');
 
   test('CH-32a PR2 the page header holds the primary «Nueva consulta» and none of the first version\'s ids is left', () => {
     verificarIds(marcado());
@@ -4567,6 +4622,314 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'sql').value = 'SELECT :a';
     await enviar(escenario, respuestaOk());
     assert.ok(!('consultaGuardadaId' in ultimaEjecucion(escenario)), 'the forgotten query is no longer named');
+  });
+
+  // ---- CH-32b (DEC-173): every create form opens in a pop-up ----------------------------------
+
+  /** One of the pop-ups of CH-32b; the tests of the behaviour they share run over each one. */
+  interface PopUp {
+    nombre: string;
+    fondo: string;
+    abridor: string;
+    /** The id of what the pop-up holds (the form, or the wizard's first step): it must sit inside the backdrop. */
+    contenido: string;
+    primerCampo: string;
+    cancelar: string;
+    confirmar: string;
+    descartar: string;
+    seguir: string;
+    /** Types something into the pop-up's fields and returns the id of one of them and what it now holds. */
+    escribir: (escenario: Escenario) => [string, string];
+    /** What opening it asks of the server, and the answers to queue for it. */
+    alAbrir: { urls: string[]; respuestas: Array<{ status: number; cuerpo: unknown }> };
+  }
+
+  const POPUPS: PopUp[] = [
+    {
+      nombre: 'Nuevo tenant', fondo: 'tenant-dialogo', abridor: 'tenant-nuevo', contenido: 'tenant-alta', primerCampo: 'tenant-nombre',
+      cancelar: 'tenant-cancelar', confirmar: 'tenant-confirmar', descartar: 'tenant-descartar', seguir: 'tenant-seguir',
+      escribir: (e) => { nodo(e, 'tenant-nombre').value = 'Almacén Don Tito'; return ['tenant-nombre', 'Almacén Don Tito']; },
+      alAbrir: { urls: [], respuestas: [] },
+    },
+    {
+      nombre: 'Nuevo usuario', fondo: 'usuario-dialogo', abridor: 'usuario-nuevo', contenido: 'usuario-alta', primerCampo: 'usuario-correo',
+      cancelar: 'usuario-cancelar', confirmar: 'usuario-confirmar', descartar: 'usuario-descartar', seguir: 'usuario-seguir',
+      escribir: (e) => { nodo(e, 'usuario-nombre').value = 'Ana'; return ['usuario-nombre', 'Ana']; },
+      alAbrir: { urls: [], respuestas: [] },
+    },
+  ];
+
+  /** A console with tenant t-1 active and t-2 selectable, ready to open any pop-up. */
+  async function conTenantDos(): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(escenario);
+    return escenario;
+  }
+
+  /** Opens the pop-up, queueing what opening it asks for, and lets that settle. */
+  async function abrirPopUp(escenario: Escenario, popup: PopUp): Promise<void> {
+    escenario.respuestas.push(...popup.alAbrir.respuestas);
+    abrirDialogo(escenario, popup.abridor);
+    await asentarVarias();
+  }
+
+  for (const popup of POPUPS) {
+    test(`CH-32b ${popup.nombre} is a hidden modal dialog opened from the page header, with its form inside and the actions at the foot`, () => {
+      const m = marcado();
+      assert.match(m, new RegExp(`<div class="zd-pagehead__actions">\\s*<button id="${popup.abridor}" class="zd-btn zd-btn--primary" type="button">`));
+      const fondo = m.indexOf(`<div id="${popup.fondo}"`);
+      assert.ok(fondo !== -1, 'the backdrop exists');
+      assert.match(m.slice(fondo), new RegExp(
+        `^<div id="${popup.fondo}" class="zd-dialog-backdrop" hidden>\\s*<div class="zd-dialog[^"]*" role="dialog" aria-modal="true" aria-labelledby="${popup.fondo}-titulo">\\s*<h2 id="${popup.fondo}-titulo" class="zd-dialog__title">`));
+      const contenido = m.indexOf(`id="${popup.contenido}"`);
+      const acciones = m.indexOf('<div class="zd-dialog__actions">', fondo);
+      assert.ok(fondo < contenido && contenido < acciones, 'the fields sit between the title and the actions row');
+      assert.match(m.slice(acciones, acciones + 1200), new RegExp(
+        `<span id="${popup.confirmar}" hidden>\\s*Hay cambios sin guardar\\.\\s*<button id="${popup.descartar}"[^>]*type="button">Descartar cambios</button>\\s*<button id="${popup.seguir}"[^>]*type="button">Seguir editando</button>`));
+      assert.match(m.slice(acciones, acciones + 1200), new RegExp(`<button id="${popup.cancelar}" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>`));
+    });
+
+    test(`CH-32b ${popup.nombre} opens with the focus on its first field and a closed question`, async () => {
+      const escenario = await conTenantDos();
+      const enfocados = espiarFoco(escenario, popup.primerCampo);
+      assert.equal(dialogoAbierto(escenario, popup.fondo), false, 'closed at load');
+      await abrirPopUp(escenario, popup);
+      assert.equal(dialogoAbierto(escenario, popup.fondo), true);
+      assert.deepEqual(enfocados, [popup.primerCampo]);
+      assert.equal(nodo(escenario, popup.confirmar).hidden, true);
+    });
+
+    for (const [forma, cancelar] of formasDeCancelar(popup.cancelar, popup.fondo)) {
+      test(`CH-32b ${popup.nombre}: ${forma} with nothing typed closes it and sends nothing`, async () => {
+        const escenario = await conTenantDos();
+        await abrirPopUp(escenario, popup);
+        const antes = escenario.peticiones.length;
+        cancelar(escenario);
+        assert.equal(dialogoAbierto(escenario, popup.fondo), false);
+        assert.equal(escenario.peticiones.length, antes);
+      });
+
+      test(`CH-32b ${popup.nombre}: ${forma} with something typed asks first; Seguir editando keeps it, Descartar cambios closes it`, async () => {
+        const escenario = await conTenantDos();
+        await abrirPopUp(escenario, popup);
+        const [campo, valor] = popup.escribir(escenario);
+        const antes = escenario.peticiones.length;
+        cancelar(escenario);
+        assert.equal(dialogoAbierto(escenario, popup.fondo), true, 'still open');
+        assert.equal(nodo(escenario, popup.confirmar).hidden, false, 'asking');
+        nodo(escenario, popup.seguir).disparar('click');
+        assert.equal(nodo(escenario, popup.confirmar).hidden, true);
+        assert.equal(dialogoAbierto(escenario, popup.fondo), true);
+        assert.equal(nodo(escenario, campo).value, valor, 'what was typed is kept');
+        cancelar(escenario);
+        nodo(escenario, popup.descartar).disparar('click');
+        assert.equal(dialogoAbierto(escenario, popup.fondo), false);
+        assert.equal(nodo(escenario, popup.confirmar).hidden, true);
+        assert.equal(escenario.peticiones.length, antes, 'nothing was sent');
+      });
+    }
+
+    test(`CH-32b ${popup.nombre}: a tenant switch closes it without asking, and it reopens blank`, async () => {
+      const escenario = await conTenantDos();
+      await abrirPopUp(escenario, popup);
+      const [campo] = popup.escribir(escenario);
+      nodo(escenario, popup.cancelar).disparar('click');
+      assert.equal(nodo(escenario, popup.confirmar).hidden, false);
+      await elegirTenant(escenario, [], [], 't-2');
+      assert.equal(dialogoAbierto(escenario, popup.fondo), false);
+      assert.equal(nodo(escenario, popup.confirmar).hidden, true);
+      await abrirPopUp(escenario, popup);
+      assert.equal(nodo(escenario, campo).value, '', 'nothing typed for the tenant just left');
+    });
+  }
+
+  test('CH-32b the script has one pop-up factory, and the query pop-up is built on it', () => {
+    assert.equal(script.match(/function crearDialogo\(/g)?.length, 1);
+    assert.ok(script.includes('dialogoDeConsulta = crearDialogo('));
+    assert.ok(!script.includes('function pedirCerrarConsulta'), 'the query pop-up has no logic of its own');
+  });
+
+  // ---- CH-32b: «Nuevo tenant» ------------------------------------------------------------------
+
+  /** Tenant t-1 active, the Tenants screen open on `TENANTS_PANTALLA`, and the pop-up open. */
+  async function conPopUpDeTenant(): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(escenario);
+    await abrirTenants(escenario);
+    abrirDialogo(escenario, 'tenant-nuevo');
+    return escenario;
+  }
+
+  const TENANT_NUEVO = { id: 't-3', nombre: 'Almacén Don Tito', activo: true, creadoEn: '2026-10-13T12:00:00.000Z' };
+
+  test('CH-32b «Nuevo tenant» holds the name and three buttons: Crear tenant submits, Crear y elegir and Cancelar do not', () => {
+    const m = marcado();
+    const dialogo = m.slice(m.indexOf('<div id="tenant-dialogo"'), m.indexOf('<section id="pantalla-conexiones"'));
+    assert.match(dialogo, /<h2 id="tenant-dialogo-titulo" class="zd-dialog__title">Nuevo tenant<\/h2>/);
+    assert.match(dialogo, /<label for="tenant-nombre" class="zd-label">Nombre<\/label>/);
+    assert.match(dialogo, /<button class="zd-btn zd-btn--primary" type="submit" form="tenant-alta">Crear tenant<\/button>/);
+    assert.match(dialogo, /<button id="tenant-crear-elegir" class="zd-btn zd-btn--secondary" type="button">Crear y elegir<\/button>/);
+    assert.equal((dialogo.match(/type="submit"/g) ?? []).length, 1, 'only one submits');
+    assert.match(dialogo, /<p id="tenant-dialogo-aviso" class="ayuda" role="status"><\/p>/);
+    assert.ok(!/<form id="tenant-alta"[^>]*class="controles"/.test(m), 'no inline form above the list any more');
+  });
+
+  test('CH-32b «Crear tenant» creates it, closes the pop-up, reloads and leaves the active tenant as it was', async () => {
+    const escenario = await conPopUpDeTenant();
+    nodo(escenario, 'tenant-nombre').value = '  Almacén Don Tito  ';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { tenant: TENANT_NUEVO } },
+      { status: 200, cuerpo: { tenants: [...TENANTS_PANTALLA, TENANT_NUEVO] } },
+      { status: 200, cuerpo: { tenants: [{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }, { id: 't-3', nombre: 'Almacén Don Tito' }] } },
+    );
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'tenant-alta').disparar('submit');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/tenants', '/tenants?incluirInactivos=true', '/tenants']);
+    assert.deepEqual(escenario.peticiones[antes].cuerpo, { nombre: 'Almacén Don Tito' });
+    assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), false);
+    assert.equal(nodo(escenario, 'tenant-aviso').textContent, 'Se creó el tenant «Almacén Don Tito».');
+    assert.equal(nodo(escenario, 'tenant').value, 't-1', 'the active tenant did not change');
+    assert.ok(nodo(escenario, 'tenant').options.some((o) => o.value === 't-3'), 'the selector lists it');
+  });
+
+  test('CH-32b «Crear y elegir» creates it and makes it the active tenant, selector and bar', async () => {
+    const escenario = await conPopUpDeTenant();
+    nodo(escenario, 'tenant-nombre').value = 'Almacén Don Tito';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { tenant: TENANT_NUEVO } },
+      { status: 200, cuerpo: { tenants: [...TENANTS_PANTALLA, TENANT_NUEVO] } },
+      { status: 200, cuerpo: { tenants: [{ id: 't-1', nombre: 'Food Store' }, { id: 't-3', nombre: 'Almacén Don Tito' }] } },
+      ...respuestasDeTenant(),
+    );
+    nodo(escenario, 'tenant-crear-elegir').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/tenants' && p.cuerpo !== null).length, 1, 'one creation');
+    assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), false);
+    assert.equal(nodo(escenario, 'tenant').value, 't-3');
+    assert.match(nodo(escenario, 'tenant-activo').textContent, /Almacén Don Tito/);
+    assert.equal(nodo(escenario, 'tenant-aviso').textContent, 'Se creó el tenant «Almacén Don Tito» y quedó como activo.');
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].tenant, 't-3', 'the screens reload for the new tenant');
+  });
+
+  test('CH-32b «Crear y elegir» on a 201 with no id only reports the creation', async () => {
+    const escenario = await conPopUpDeTenant();
+    nodo(escenario, 'tenant-nombre').value = 'Almacén Don Tito';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: {} },
+      { status: 200, cuerpo: { tenants: TENANTS_PANTALLA } },
+      { status: 200, cuerpo: { tenants: [{ id: 't-1', nombre: 'Food Store' }] } },
+    );
+    nodo(escenario, 'tenant-crear-elegir').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'tenant').value, 't-1');
+    assert.equal(nodo(escenario, 'tenant-aviso').textContent, 'Se creó el tenant «Almacén Don Tito».');
+  });
+
+  test('CH-32b an empty name is refused inside the pop-up by both buttons, and nothing is sent', async () => {
+    const escenario = await conPopUpDeTenant();
+    nodo(escenario, 'tenant-nombre').value = '   ';
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'tenant-alta').disparar('submit');
+    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'Escribí el nombre del tenant.');
+    nodo(escenario, 'tenant-dialogo-aviso').textContent = '';
+    nodo(escenario, 'tenant-crear-elegir').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'Escribí el nombre del tenant.');
+    assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), true);
+    assert.equal(escenario.peticiones.length, antes);
+  });
+
+  test('CH-32b a refused or unreachable creation is told inside the pop-up, which stays open with the name', async () => {
+    const escenario = await conPopUpDeTenant();
+    nodo(escenario, 'tenant-nombre').value = 'Almacén Don Tito';
+    escenario.respuestas.push({ status: 500, cuerpo: {} });
+    nodo(escenario, 'tenant-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'No se pudo crear el tenant (HTTP 500).');
+    assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), true);
+    assert.equal(nodo(escenario, 'tenant-nombre').value, 'Almacén Don Tito');
+    nodo(escenario, 'tenant-crear-elegir').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'No se pudo contactar con la aplicación.', 'no answer queued: the network failed');
+    assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), true);
+  });
+
+  // ---- CH-32b: «Nuevo usuario» and «Reponer clave» -----------------------------------------------
+
+  test('CH-32b «Nuevo usuario» with no tenant says so on the page and does not open', async () => {
+    const escenario = await arrancar();
+    abrirDialogo(escenario, 'usuario-nuevo');
+    assert.equal(dialogoAbierto(escenario, 'usuario-dialogo'), false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'Elegí un tenant en la barra superior antes de operar. No se envió ninguna solicitud.');
+  });
+
+  test('CH-32b «Nuevo usuario» holds the email and the optional name, and «Crear usuario» submits', () => {
+    const m = marcado();
+    const dialogo = m.slice(m.indexOf('<div id="usuario-dialogo"'), m.indexOf('<div id="usuario-secreto"'));
+    assert.match(dialogo, /<h2 id="usuario-dialogo-titulo" class="zd-dialog__title">Nuevo usuario<\/h2>/);
+    assert.match(dialogo, /<input id="usuario-correo"[^>]*type="email"[^>]*required>/);
+    assert.match(dialogo, /<label for="usuario-nombre" class="zd-label">Nombre \(opcional\)<\/label>/);
+    assert.match(dialogo, /<button class="zd-btn zd-btn--primary" type="submit" form="usuario-alta">Crear usuario<\/button>/);
+    assert.match(dialogo, /<p id="usuario-dialogo-aviso" class="ayuda" role="status"><\/p>/);
+  });
+
+  test('CH-32b a created user closes the pop-up and the password shows once on the page, not inside the pop-up', async () => {
+    const escenario = await abrirUsuarios([]);
+    abrirDialogo(escenario, 'usuario-nuevo');
+    nodo(escenario, 'usuario-correo').value = 'ana@negocio.com';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO], truncado: false } },
+    );
+    nodo(escenario, 'usuario-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(dialogoAbierto(escenario, 'usuario-dialogo'), false);
+    assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
+    assert.ok(!nodo(escenario, 'usuario-dialogo-aviso').textContent.includes(CLAVE));
+  });
+
+  test('CH-32b a rejected user says which fields inside the pop-up, which stays open', async () => {
+    const escenario = await abrirUsuarios([]);
+    abrirDialogo(escenario, 'usuario-nuevo');
+    nodo(escenario, 'usuario-correo').value = 'no-es-un-correo';
+    escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/correo'] } });
+    nodo(escenario, 'usuario-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'usuario-dialogo-aviso').textContent, 'Revisá estos campos: /correo.');
+    assert.equal(dialogoAbierto(escenario, 'usuario-dialogo'), true);
+  });
+
+  test('CH-32b Reponer clave asks first, in the row, saying the sessions will close; Cancelar restores the actions and sends nothing', async () => {
+    for (const correo of ['ana@negocio.com', 'beto@negocio.com']) {
+      const escenario = await abrirUsuarios();
+      const antes = escenario.peticiones.length;
+      const fila = filaUsuario(escenario, correo);
+      botonesCon(fila, 'Reponer clave')[0].disparar('click');
+      assert.equal(escenario.peticiones.length, antes, 'the first click sends nothing');
+      assert.equal(botonesCon(fila, 'Reponer clave de ' + correo).length, 1);
+      assert.equal(botonesCon(fila, 'Reponer clave').length, 0);
+      assert.ok(fila.textContent.includes('Se cierran sus sesiones abiertas.'), correo);
+      botonesCon(fila, 'Cancelar')[0].disparar('click');
+      assert.equal(botonesCon(fila, 'Reponer clave').length, 1, 'the actions are back');
+      assert.equal(botonesCon(fila, 'Reponer clave de ' + correo).length, 0);
+      assert.ok(!fila.textContent.includes('Se cierran sus sesiones abiertas.'));
+      assert.equal(escenario.peticiones.length, antes);
+    }
+  });
+
+  test('CH-32b confirming «Reponer clave de {correo}» posts to the clave route and shows the password once, for an inactive user too', async () => {
+    const escenario = await abrirUsuarios();
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { usuario: USUARIO_INACTIVO, clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO, USUARIO_INACTIVO], truncado: false } },
+    );
+    const fila = filaUsuario(escenario, 'beto@negocio.com');
+    botonesCon(fila, 'Reponer clave')[0].disparar('click');
+    botonesCon(fila, 'Reponer clave de beto@negocio.com')[0].disparar('click');
+    await asentarVarias();
+    assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-2/clave'));
+    assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
   });
 
   // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------
