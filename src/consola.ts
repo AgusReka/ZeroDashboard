@@ -99,7 +99,7 @@ function documentoConsola(nombreOperador: string): string {
     border-left: var(--space-2) solid var(--error); border-radius: var(--radius-md); background: var(--error-soft);
     color: var(--text-1); white-space: pre-wrap; }
   .banner.exito { border-color: var(--ok-border); border-left-color: var(--ok); background: var(--ok-soft); }
-  .estado { margin: var(--space-6) 0 var(--space-2); font-size: var(--text-sm); color: var(--text-2); }
+  .estado { margin: var(--space-6) 0 var(--space-2); font-size: var(--text-sm); color: var(--text-2); white-space: pre-wrap; }
   /* The row-cap cut, styled so it cannot be mistaken for the pagination line it sits
      next to or for the pager buttons: its own block, its own rule and colour, and
      semibold against the quiet status text. DEC-18 separates the two verdicts in the
@@ -110,6 +110,10 @@ function documentoConsola(nombreOperador: string): string {
   .zd-table-wrap:not(:has(th, td)) { border: 0; }
   .zd-table td { white-space: pre-wrap; vertical-align: top; }
   .zd-table td.nulo { color: var(--text-3); font-style: italic; }
+  /* CH-32a PR2 (DEC-173): the query pop-up holds the whole form and the result, so it is wider than the
+     shared dialog; its unsaved-changes question sits in the actions row, level with the buttons. */
+  #consulta-dialogo .zd-dialog { width: min(1100px, 100%); }
+  #consulta-nueva-confirmar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
   #guardadas { list-style: none; padding: 0; margin: var(--space-5) 0 0; }
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
     border-bottom: var(--border-width) solid var(--border-1); }
@@ -417,122 +421,150 @@ function documentoConsola(nombreOperador: string): string {
     <h1 id="titulo-consultas" class="zd-h1">Consultas</h1>
     <p class="zd-pagehead__desc">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
   </div>
+  <!--
+    CH-32a PR2 (DEC-172, DEC-173): opens the query pop-up empty (the script empties the editor, the
+    parameters, the name and the description and forgets the loaded query first). It asks nothing:
+    the pop-up asks about unsaved changes when it is closed. Every button on this screen is type="button".
+  -->
+  <div class="zd-pagehead__actions">
+    <button id="consulta-nueva" class="zd-btn zd-btn--primary" type="button">Nueva consulta</button>
+  </div>
 </header>
 
-<form id="formulario">
-  <!--
-    CH-32a (DEC-172): the connection is chosen from the active tenant's list, not typed. The
-    script fills the options from GET /conexiones (name as text, id as value) and writes the
-    loading, empty, truncated and error notices into #conexion-aviso. required stays for a
-    real browser; the script's own check in ejecutar() does not rely on it.
-  -->
-  <label for="conexion" class="zd-label">Conexión</label>
-  <select id="conexion" class="zd-select" required></select>
-  <p id="conexion-aviso" class="ayuda" role="status"></p>
-  <button id="conexion-reintentar" class="zd-btn zd-btn--secondary" type="button" hidden>Reintentar</button>
+<!--
+  CH-32a PR2 (DEC-172, DEC-173): the query pop-up. A query is created and edited here and nowhere
+  else, with every field of the record: name, description, connection, statement, parameters and,
+  for a loaded query, the version note. The result of a run is inside it too. The name and the
+  description sit OUTSIDE #formulario on purpose: #conexion and #sql are required, so a name
+  field inside the form would let browser validation block a run until a name was typed.
+  #ejecutar is the form's submit button from the actions row (form="formulario"); every other
+  button is type="button", for the mirror-image reason: a submit would run the query instead.
+  The save controls start disabled: the script opens them only while the last run of exactly
+  this connection, statement and parameter declaration succeeded and a name is typed. The
+  script writes the title, shows one of the two save controls by whether a query is loaded,
+  and writes every text from the API as text. Escape and Cancelar ask before dropping edits.
+-->
+<div id="consulta-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="consulta-dialogo-titulo">
+    <h2 id="consulta-dialogo-titulo" class="zd-dialog__title">Nueva consulta</h2>
 
-  <label for="sql" class="zd-label">Sentencia SQL</label>
-  <textarea id="sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false" required>SELECT 1</textarea>
-
-  <!--
-    CH-11: one row per :nombre the statement uses (DEC-48). The page does no scanning:
-    the server names an undeclared or unused parameter, and this page shows that answer.
-    Every button here is type="button" so none of them submits the form.
-  -->
-  <p class="ayuda">Parámetros: declare cada :nombre que use la sentencia. Un valor vacío no se envía.</p>
-  <div id="parametros"></div>
-  <button id="agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
-
-  <div class="controles">
     <div>
-      <!--
-        No max attribute since CH-07, for the same reason the request schema dropped
-        its maximum: 200. The ceiling is now MAX_FILAS_CONSULTA (DEC-19) and the server
-        applies it and says so; a literal here would clamp the request below the ceiling
-        so the cut could never happen, leaving the operator unable to observe from the
-        only surface they have that a limit exists at all.
-      -->
-      <label for="limite" class="zd-label">Filas por página</label>
-      <input id="limite" class="zd-input" type="number" min="1" value="50">
+      <label for="nombre" class="zd-label">Nombre</label>
+      <input id="nombre" class="zd-input" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
     </div>
-    <button id="ejecutar" class="zd-btn zd-btn--primary" type="submit">Ejecutar</button>
+    <div>
+      <label for="descripcion" class="zd-label">Descripción (opcional)</label>
+      <input id="descripcion" class="zd-input" type="text" autocomplete="off">
+    </div>
+
+    <form id="formulario">
+      <!--
+        CH-32a (DEC-172): the connection is chosen from the active tenant's list, not typed. The
+        script fills the options from GET /conexiones (name as text, id as value) and writes the
+        loading, empty, truncated and error notices into #conexion-aviso. required stays for a
+        real browser; the script's own check in ejecutar() does not rely on it.
+      -->
+      <label for="conexion" class="zd-label">Conexión</label>
+      <select id="conexion" class="zd-select" required></select>
+      <p id="conexion-aviso" class="ayuda" role="status"></p>
+      <button id="conexion-reintentar" class="zd-btn zd-btn--secondary" type="button" hidden>Reintentar</button>
+
+      <label for="sql" class="zd-label">Sentencia SQL</label>
+      <textarea id="sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false" required>SELECT 1</textarea>
+
+      <!--
+        CH-11: one row per :nombre the statement uses (DEC-48). The page does no scanning:
+        the server names an undeclared or unused parameter, and this page shows that answer.
+        Every button here is type="button" so none of them submits the form.
+      -->
+      <p class="ayuda">Parámetros: declare cada :nombre que use la sentencia. Un valor vacío no se envía.</p>
+      <div id="parametros"></div>
+      <button id="agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
+
+      <div class="controles">
+        <div>
+          <!--
+            No max attribute since CH-07, for the same reason the request schema dropped
+            its maximum: 200. The ceiling is now MAX_FILAS_CONSULTA (DEC-19) and the server
+            applies it and says so; a literal here would clamp the request below the ceiling
+            so the cut could never happen, leaving the operator unable to observe from the
+            only surface they have that a limit exists at all.
+          -->
+          <label for="limite" class="zd-label">Filas por página</label>
+          <input id="limite" class="zd-input" type="number" min="1" value="50">
+        </div>
+      </div>
+    </form>
+
+    <!--
+      CH-25 (DEC-148, DEC-150): shown only while a saved query is loaded. The line names the loaded
+      query and its version; the note is optional and goes up with the new version.
+    -->
+    <div id="version-guardar" hidden>
+      <p id="version-cargada" class="ayuda"></p>
+      <div id="version-campos" hidden>
+        <label for="version-nota" class="zd-label">Nota de la versión (opcional)</label>
+        <input id="version-nota" class="zd-input" type="text" maxlength="500" autocomplete="off" placeholder="por ejemplo: Agrega filtro por depósito">
+      </div>
+    </div>
+
+    <!-- CH-30a: the result of a run, inside the pop-up. A refusal of a run or a save is written here too. -->
+    <div>
+      <p id="estado" class="estado" hidden></p>
+
+      <div class="zd-table-wrap zd-table-scroll">
+        <table id="resultados" class="zd-table"><thead></thead><tbody></tbody></table>
+      </div>
+
+      <div class="zd-form-actions paginacion">
+        <button id="anterior" class="zd-btn zd-btn--secondary" type="button" disabled>Página anterior</button>
+        <button id="siguiente" class="zd-btn zd-btn--secondary" type="button" disabled>Página siguiente</button>
+      </div>
+    </div>
+
+    <!-- CH-32a: why the save control is closed, in words, next to it. Empty once it may save. -->
+    <p id="guardado-ayuda" class="ayuda" role="status" aria-live="polite"></p>
+    <div class="zd-dialog__actions">
+      <span id="consulta-nueva-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="consulta-nueva-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button id="ejecutar" class="zd-btn zd-btn--secondary" type="submit" form="formulario">Probar</button>
+      <button id="guardar" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled>Guardar consulta</button>
+      <button id="version-boton" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled hidden>Guardar como versión nueva</button>
+      <button id="consulta-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
   </div>
-</form>
-
-<!-- CH-30a: the result of a run sits right below the execute button, before the saved queries. -->
-<p id="estado" class="estado" hidden></p>
-
-<div class="zd-table-wrap zd-table-scroll">
-  <table id="resultados" class="zd-table"><thead></thead><tbody></tbody></table>
-</div>
-
-<div class="zd-form-actions paginacion">
-  <button id="anterior" class="zd-btn zd-btn--secondary" type="button" disabled>Página anterior</button>
-  <button id="siguiente" class="zd-btn zd-btn--secondary" type="button" disabled>Página siguiente</button>
 </div>
 
 <!--
-  Saved queries live OUTSIDE #formulario on purpose. #conexion and #sql are required,
-  so a name field inside the same form would let browser validation block *execution*
-  until a name was typed. #guardar is type="button" for the mirror-image reason: the
-  default type="submit" would run the form's submit handler and execute the query
-  instead of saving it.
+  Saved queries are only the list and the history: a query is created and edited in the pop-up
+  above (DEC-173; it is position: fixed, so its place in the markup is not its place on screen).
+  Each row opens it with that query loaded.
 -->
 <section id="guardado">
   <h2 class="zd-h2">Consultas guardadas</h2>
-  <p class="ayuda">Con una consulta cargada, los cambios se guardan como una versión nueva de esa consulta. Para guardar el editor como otra consulta, empezá con «Consulta nueva». No se puede borrar.</p>
-
-  <!--
-    CH-32a (DEC-172): empties the editor, the parameters, the name and the description and
-    forgets the loaded query, so "Guardar consulta" is offered again. With edits not saved it
-    asks inline first (same pattern as "Dar de baja" in Tenants); every button is type="button".
-  -->
-  <div class="controles">
-    <button id="consulta-nueva" class="zd-btn zd-btn--secondary" type="button">Consulta nueva</button>
-    <span id="consulta-nueva-confirmar" hidden>
-      Hay cambios sin guardar en el editor.
-      <button id="consulta-nueva-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
-      <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Cancelar</button>
-    </span>
-  </div>
-
-  <label for="nombre" class="zd-label">Nombre</label>
-  <input id="nombre" class="zd-input" type="text" autocomplete="off" placeholder="por ejemplo: Stock producible">
-
-  <label for="descripcion" class="zd-label">Descripción (opcional)</label>
-  <input id="descripcion" class="zd-input" type="text" autocomplete="off">
-
-  <div class="controles">
-    <button id="guardar" class="zd-btn zd-btn--secondary" type="button">Guardar consulta</button>
-  </div>
-
-  <!--
-    CH-25 (DEC-148, DEC-150): shown only while a saved query is loaded in the editor. The
-    note is optional; the button sends the editor's content as a new version of that query.
-  -->
-  <div id="version-guardar" hidden>
-    <p id="version-cargada" class="ayuda"></p>
-    <label for="version-nota" class="zd-label">Nota de la versión (opcional)</label>
-    <input id="version-nota" class="zd-input" type="text" maxlength="500" autocomplete="off" placeholder="por ejemplo: Agrega filtro por depósito">
-    <div class="controles">
-      <button id="version-boton" class="zd-btn zd-btn--secondary" type="button">Guardar como nueva versión</button>
-    </div>
-  </div>
+  <p class="ayuda">Abrí una consulta para probarla o guardar una versión nueva de ella. Para crear otra, usá «Nueva consulta». No se puede borrar.</p>
 
   <ul id="guardadas"></ul>
 
   <!--
     CH-25 (DEC-146 to DEC-150, screen C-05): the history of one saved query. Starts closed;
     the script fills it as text. Every button is type="button". Restoring never deletes: it
-    creates a new version.
+    creates a new version. CH-32a PR2 (DEC-173): a wide side panel, not a block under the list.
   -->
-  <div id="versiones" hidden>
-    <h3 id="versiones-titulo" class="zd-h2"></h3>
-    <p id="versiones-estado" class="ayuda" role="status"></p>
-    <ul id="versiones-lista"></ul>
-    <div id="versiones-comparacion"></div>
-    <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
-  </div>
+  <aside id="versiones" class="zd-drawer zd-drawer--wide" aria-labelledby="versiones-titulo" hidden>
+    <div class="zd-drawer__head"><h2 id="versiones-titulo" class="zd-h2"></h2></div>
+    <div class="zd-drawer__body">
+      <p id="versiones-estado" class="ayuda" role="status"></p>
+      <ul id="versiones-lista"></ul>
+      <div id="versiones-comparacion"></div>
+    </div>
+    <div class="zd-drawer__foot">
+      <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
+    </div>
+  </aside>
 </section>
 </section>
 
@@ -1128,6 +1160,8 @@ function manejarFalloDeTenant(cuerpo) {
   if (!Object.prototype.hasOwnProperty.call(MENSAJES_TENANT, cuerpo.error)) { return false; }
 
   mostrarBanner(MENSAJES_TENANT[cuerpo.error]);
+  // CH-32a PR2: the banner is behind the query pop-up, so a refusal about the tenant closes it.
+  cerrarConsulta();
   if (cuerpo.error === 'tenant-no-encontrado' || cuerpo.error === 'tenant-desactivado') {
     limpiarResultados();
     vaciar(listaGuardadas);
@@ -1200,15 +1234,19 @@ function agregarFilaParametro(nombre, tipo) {
   var rotuloValor = rotular(nombre === '' ? 'Valor' : nombre, fila.valor);
   var leyenda = rotuloValor.firstChild;
   leyenda.className = 'parametro-leyenda';
+  // CH-32a PR2: the declaration (names and tipos) is part of what a passing test covers, so each change
+  // of it re-evaluates the save controls. The values are not: they are never saved.
   fila.nombre.addEventListener('input', function () {
     var escrito = fila.nombre.value.trim();
     leyenda.textContent = escrito === '' ? 'Valor' : escrito;
+    actualizarGuardado();
   });
   // A new tipo brings its own control; a value typed for the old one is dropped.
   fila.tipo.addEventListener('change', function () {
     rotuloValor.removeChild(fila.valor);
     fila.valor = controlDeValor(fila.tipo.value);
     rotuloValor.appendChild(fila.valor);
+    actualizarGuardado();
   });
 
   var quitar = document.createElement('button');
@@ -1217,6 +1255,7 @@ function agregarFilaParametro(nombre, tipo) {
   quitar.addEventListener('click', function () {
     contenedorParametros.removeChild(fila.nodo);
     filasParametros.splice(filasParametros.indexOf(fila), 1);
+    actualizarGuardado();
   });
 
   fila.nodo.appendChild(rotular('Nombre', fila.nombre));
@@ -1225,11 +1264,13 @@ function agregarFilaParametro(nombre, tipo) {
   fila.nodo.appendChild(quitar);
   contenedorParametros.appendChild(fila.nodo);
   filasParametros.push(fila);
+  actualizarGuardado();
 }
 
 function limpiarParametros() {
   vaciar(contenedorParametros);
   filasParametros = [];
+  actualizarGuardado();
 }
 
 function declaracionActual() {
@@ -1319,6 +1360,8 @@ function ponerOpcionesConexion(filas, textoVacio) {
   });
   var sigue = filas.some(function (fila) { return String(fila.id) === conexionPrevia; });
   entradaConexion.value = sigue ? conexionPrevia : '';
+  // CH-32a PR2: the connection is part of what a passing test covers.
+  actualizarGuardado();
 }
 
 function avisarConexion(texto) {
@@ -1385,6 +1428,12 @@ async function ejecutar(desplazamiento) {
   }
   limpiarAvisoDeEleccion();
   botonEjecutar.disabled = true;
+  // CH-32a PR2: the save controls follow the last run only while it answered ok. Starting a run
+  // closes them, so every answer but an ok one leaves them closed.
+  var huella = huellaActual();
+  ultimaPruebaOk = null;
+  estadoPrueba = 'probando';
+  actualizarGuardado();
 
   // Only the lower bound is checked here. There is no upper one to check any more: the
   // ceiling belongs to the deployment (MAX_FILAS_CONSULTA), the server applies it, and
@@ -1404,7 +1453,7 @@ async function ejecutar(desplazamiento) {
   } catch (fallaDeRed) {
     // A rejected fetch must not be silent either: the page says so instead.
     botonEjecutar.disabled = false;
-    mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    avisarEnConsulta('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
     return;
   }
   botonEjecutar.disabled = false;
@@ -1418,14 +1467,16 @@ async function ejecutar(desplazamiento) {
     limpiarResultados();
     return;
   }
+  // From here a refusal is written with avisarEnConsulta: inside the query pop-up while it is open,
+  // in the page banner otherwise.
   if (cuerpo === null) {
     limpiarResultados();
-    mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    avisarEnConsulta('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
     return;
   }
   if (respuesta.status === 404) {
     limpiarResultados();
-    mostrarBanner('No existe una conexión registrada con ese identificador.');
+    avisarEnConsulta('No existe una conexión registrada con ese identificador.');
     return;
   }
   // Row-level refusals, before the generic status ladder: the connection exists but the
@@ -1433,25 +1484,29 @@ async function ejecutar(desplazamiento) {
   // target rejecting one.
   if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) {
     limpiarResultados();
-    mostrarBanner(MENSAJES_ERROR[cuerpo.error]);
+    avisarEnConsulta(MENSAJES_ERROR[cuerpo.error]);
     return;
   }
   if (respuesta.status === 400) {
     limpiarResultados();
-    mostrarBanner(mensajeDeSolicitudInvalida(cuerpo, declaracion));
+    avisarEnConsulta(mensajeDeSolicitudInvalida(cuerpo, declaracion));
     return;
   }
   if (respuesta.status !== 200) {
     limpiarResultados();
-    mostrarBanner('La aplicación respondió HTTP ' + respuesta.status + '.');
+    avisarEnConsulta('La aplicación respondió HTTP ' + respuesta.status + '.');
     return;
   }
   if (cuerpo.resultado !== 'ok') {
     limpiarResultados();
-    mostrarBanner(mensajeDeFallo(cuerpo));
+    avisarEnConsulta(mensajeDeFallo(cuerpo));
     return;
   }
 
+  // CH-32a PR2: an ok answer is what opens the save controls, for exactly what was sent.
+  ultimaPruebaOk = huella;
+  estadoPrueba = 'ok';
+  actualizarGuardado();
   renderizar(cuerpo);
   pagina = {
     desplazamiento: cuerpo.paginacion.desplazamiento,
@@ -1514,10 +1569,10 @@ function renderizarGuardadas(cuerpo) {
 
     var boton = document.createElement('button');
     boton.type = 'button';
-    boton.textContent = 'Cargar';
+    boton.textContent = 'Abrir';
     // The closure captures fila.id, never fila.nombre: the id is the only thing that
     // identifies a row when names can repeat.
-    boton.addEventListener('click', function () { cargarGuardada(fila.id); });
+    boton.addEventListener('click', function () { abrirGuardada(fila.id); });
     item.appendChild(boton);
 
     // CH-25: the history of this query, in the panel below the list.
@@ -1565,10 +1620,14 @@ async function listarGuardadas() {
 }
 
 async function guardar() {
-  // CH-32a (DEC-172): with a query loaded the only save is "Guardar como nueva versión"; the
+  // CH-32a (DEC-172): with a query loaded the only save is "Guardar como versión N+1"; the
   // button is hidden then, and this is the second guard in case it is reached anyway.
   if (consultaCargada !== null) { return; }
+  // CH-32a PR2 (DEC-173): the same gate the button follows, checked again here so a triggered click
+  // cannot save what was not tested.
+  if (guardando || !guardadoHabilitado()) { return; }
   ocultarBanner();
+  guardando = true;
   botonGuardar.disabled = true;
 
   var nombre = entradaNombre.value.trim();
@@ -1590,36 +1649,41 @@ async function guardar() {
       })
     });
   } catch (fallaDeRed) {
-    botonGuardar.disabled = false;
-    mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    guardando = false;
+    actualizarGuardado();
+    avisarEnConsulta('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
     return;
   }
-  botonGuardar.disabled = false;
+  guardando = false;
+  actualizarGuardado();
   if (respuesta === null) { return; }
 
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
 
   if (manejarFalloDeTenant(cuerpo)) { return; }
+  // A refusal stays in the pop-up, written inside it; only a save closes it.
   if (cuerpo === null) {
-    mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    avisarEnConsulta('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
     return;
   }
   if (respuesta.status === 400) {
-    mostrarBanner(mensajeDeSolicitudInvalida(cuerpo, declaracion));
+    avisarEnConsulta(mensajeDeSolicitudInvalida(cuerpo, declaracion));
     return;
   }
   if (respuesta.status !== 201) {
-    mostrarBanner('La aplicación respondió HTTP ' + respuesta.status + '.');
+    avisarEnConsulta('La aplicación respondió HTTP ' + respuesta.status + '.');
     return;
   }
 
   entradaNombre.value = '';
   entradaDescripcion.value = '';
+  cerrarConsulta();
   mostrarConfirmacion('Se guardó la consulta y ya aparece en la lista.');
   await listarGuardadas();
 }
 
+// Resolves true when the query is now in the editor, false when it was not loaded (the page banner says why).
 async function cargarGuardada(id) {
   ocultarBanner();
 
@@ -1628,28 +1692,28 @@ async function cargarGuardada(id) {
     respuesta = await pedir('/consultas-guardadas/' + encodeURIComponent(id));
   } catch (fallaDeRed) {
     mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
-    return;
+    return false;
   }
-  if (respuesta === null) { return; }
+  if (respuesta === null) { return false; }
 
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
 
-  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (manejarFalloDeTenant(cuerpo)) { return false; }
   if (cuerpo === null) {
     mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
-    return;
+    return false;
   }
   if (respuesta.status === 404) {
     // The row is gone from under the list; refresh so the stale entry disappears.
     mostrarBanner('Esa consulta guardada ya no existe. Se actualizó la lista.');
     olvidarConsultaCargada();
     await listarGuardadas();
-    return;
+    return false;
   }
   if (respuesta.status !== 200) {
     mostrarBanner('La aplicación respondió HTTP ' + respuesta.status + '.');
-    return;
+    return false;
   }
 
   // CH-25: the name and description come into their fields too, so an edit sends them as
@@ -1667,9 +1731,17 @@ async function cargarGuardada(id) {
   (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
     agregarFilaParametro(String(parametro.nombre), String(parametro.tipo));
   });
-  entradaSql.focus();
   // #conexion is deliberately left as it is: nothing binds a saved query to a
   // connection, so the operator chooses which target to run it against.
+  return true;
+}
+
+// "Abrir": loads the query and, once it is in the editor, opens the pop-up with it (CH-32a PR2, DEC-173).
+// A tenant switch while the query was on its way means the answer is not for this page any more.
+async function abrirGuardada(id) {
+  var tenant = tenantActivo;
+  var cargada = await cargarGuardada(id);
+  if (cargada && tenant === tenantActivo) { abrirConsulta(); }
 }
 
 // --- Automations (CH-13) -------------------------------------------------------
@@ -2659,61 +2731,210 @@ botonCerrarVersiones.addEventListener('click', function () {
   cerrarVersiones();
 });
 
-// --- Save as a new version (CH-25, DEC-148, DEC-150) ------------------------------
-// Offered only while a saved query is loaded in the editor. The editor's name, description,
-// statement and declaration go up exactly as the create sends them, plus the optional note,
-// as a PUT on that query's id. The server decides what counts as a change (sin-cambios).
+// --- The query pop-up and saving (CH-25, DEC-148, DEC-150; CH-32a, DEC-172, DEC-173) -----------
+// A query is created and edited in one pop-up that holds every field. It opens empty ("Nueva
+// consulta") or with a saved query loaded ("Abrir"). Saving needs a passing "Probar" of exactly
+// what the form holds: the save controls follow a fingerprint of the connection, the statement
+// and the parameter declaration, and open only while it matches the last run that answered ok.
+var dialogoConsulta = document.getElementById('consulta-dialogo');
+var tituloConsulta = document.getElementById('consulta-dialogo-titulo');
+var botonCancelarConsulta = document.getElementById('consulta-cancelar');
 var bloqueVersion = document.getElementById('version-guardar');
 var textoCargada = document.getElementById('version-cargada');
+var camposVersion = document.getElementById('version-campos');
 var entradaNotaVersion = document.getElementById('version-nota');
 var botonVersion = document.getElementById('version-boton');
 
-// The query loaded in the editor ({ id, nombre, version, sql }), or null when none is.
+// The query loaded in the editor ({ id, nombre, descripcion, version, sql }), or null when none is.
 // CH-20 (DEC-161): version and sql let a run name the query while the editor still holds it.
+// CH-32a PR2: nombre and descripcion let the pop-up tell whether they were edited.
 var consultaCargada = null;
 
-// CH-32a (DEC-172): "Consulta nueva" and its inline confirmation.
-var botonConsultaNueva = document.getElementById('consulta-nueva');
+// The fingerprint of the last run that answered ok, or null: set when a run succeeds, cleared when
+// another one fails or starts, and when the pop-up opens or the tenant changes.
+var ultimaPruebaOk = null;
+var ayudaGuardado = document.getElementById('guardado-ayuda');
+
+// True while a save request is on its way, so a second press cannot send it twice.
+var guardando = false;
+
+// How the last «Probar» went: 'sin-probar', 'probando', 'ok' or 'fallo'. Only the status line next
+// to the save controls reads it; the gate itself is the fingerprint above.
+var estadoPrueba = 'sin-probar';
+
+function marcarPruebaTerminada() {
+  if (estadoPrueba === 'probando') { estadoPrueba = 'fallo'; }
+  actualizarGuardado();
+}
+
+// "Guardar como versión 4" for a loaded query at version 3; without a numeric version, a plain wording.
+function numeroDeVersionNueva() {
+  return consultaCargada !== null && typeof consultaCargada.version === 'number' ? consultaCargada.version + 1 : null;
+}
+
+// What the editor holds that a passing test has to cover. The note, the name, the description and
+// the parameter values are not part of it: none of them changes what the statement does.
+function huellaActual() {
+  return JSON.stringify({ conexion: entradaConexion.value, sql: entradaSql.value, parametros: declaracionActual() });
+}
+
+// True when a save may go: the last run answered ok for exactly this content, and there is a name.
+function guardadoHabilitado() {
+  return ultimaPruebaOk !== null && ultimaPruebaOk === huellaActual() && entradaNombre.value.trim() !== '';
+}
+
+function actualizarGuardado() {
+  var cerrado = guardando || !guardadoHabilitado();
+  botonGuardar.disabled = cerrado;
+  botonVersion.disabled = cerrado;
+  ayudaGuardado.textContent = !cerrado ? '' : motivoDeGuardadoCerrado();
+}
+
+// The reason the save control is closed, in the order the operator can act on it.
+function motivoDeGuardadoCerrado() {
+  if (guardando) { return 'Guardando…'; }
+  if (estadoPrueba === 'probando') { return 'Probando la consulta…'; }
+  if (estadoPrueba === 'fallo') {
+    return 'La última prueba falló. Corregí la consulta y probala de nuevo para poder guardarla.';
+  }
+  if (ultimaPruebaOk !== null && ultimaPruebaOk !== huellaActual()) {
+    return 'Cambiaste la consulta después de probarla. Probala de nuevo para poder guardarla.';
+  }
+  if (ultimaPruebaOk !== null && entradaNombre.value.trim() === '') {
+    return 'Escribí un nombre para poder guardarla.';
+  }
+  return 'Probá la consulta para poder guardarla.';
+}
+
+// The pop-up covers the page banner, so while it is open a refusal of a run or a save is written
+// in its status line; closed, it goes to the banner as everywhere else. Text only.
+function avisarEnConsulta(texto) {
+  if (dialogoConsulta.hidden) {
+    mostrarBanner(texto);
+    return;
+  }
+  vaciar(estado);
+  estado.textContent = texto;
+  estado.hidden = false;
+}
+
+// A helper that answers null has already written its refusal in the page banner, which is behind
+// the pop-up: the same sentence is moved inside it.
+function llevarBannerAlDialogo() {
+  if (dialogoConsulta.hidden || banner.hidden) { return; }
+  avisarEnConsulta(banner.textContent);
+  ocultarBanner();
+}
+
+// What the pop-up shows by whether a query is loaded: its title, the loaded-query line and the version
+// fields, and which of the two save controls is offered. A loaded query is never offered "Guardar
+// consulta", which would duplicate it (DEC-172). The text of a saved query is written as text.
+function reflejarConsultaCargada() {
+  var cargada = consultaCargada !== null;
+  var siguiente = numeroDeVersionNueva();
+  tituloConsulta.textContent = !cargada ? 'Nueva consulta'
+    : typeof consultaCargada.version === 'number' ? consultaCargada.nombre + ' · versión ' + consultaCargada.version
+    : consultaCargada.nombre;
+  textoCargada.textContent = !cargada ? '' : '«' + consultaCargada.nombre + '»' +
+    (typeof consultaCargada.version === 'number' ? ' · Versión ' + consultaCargada.version + ' · vigente' : '');
+  botonVersion.textContent = siguiente === null ? 'Guardar como versión nueva' : 'Guardar como versión ' + siguiente;
+  botonGuardar.hidden = cargada;
+  botonVersion.hidden = !cargada;
+  bloqueVersion.hidden = !cargada;
+  camposVersion.hidden = !cargada;
+}
+
+// The unsaved-changes question, inside the pop-up's actions row.
 var confirmarConsultaNueva = document.getElementById('consulta-nueva-confirmar');
 var botonDescartarNueva = document.getElementById('consulta-nueva-descartar');
 var botonCancelarNueva = document.getElementById('consulta-nueva-cancelar');
 
-// The single switch between the two save controls: while a query is loaded the editor is saved
-// only as a new version of it, so "Guardar consulta" (which would duplicate it) is hidden. Every
-// path that loads or forgets a query goes through these two functions, and so does the
-// confirmation of "Consulta nueva", which is about the editor they just replaced.
+// Opens the pop-up on whatever the editor holds. It starts untested and with no result of an earlier run.
+function abrirConsulta() {
+  ultimaPruebaOk = null;
+  estadoPrueba = 'sin-probar';
+  limpiarResultados();
+  confirmarConsultaNueva.hidden = true;
+  reflejarConsultaCargada();
+  actualizarGuardado();
+  dialogoConsulta.hidden = false;
+  entradaNombre.focus();
+}
+
+function cerrarConsulta() {
+  dialogoConsulta.hidden = true;
+  confirmarConsultaNueva.hidden = true;
+}
+
+// The single switch between the two save controls: every path that loads or forgets a query goes
+// through these two functions (load, tenant switch, 404, restore, "Nueva consulta").
 function olvidarConsultaCargada() {
   consultaCargada = null;
-  bloqueVersion.hidden = true;
-  botonGuardar.hidden = false;
   confirmarConsultaNueva.hidden = true;
-  textoCargada.textContent = '';
   entradaNotaVersion.value = '';
+  reflejarConsultaCargada();
 }
 
 function recordarConsultaCargada(consulta) {
   consultaCargada = {
     id: String(consulta.id),
     nombre: String(consulta.nombre),
+    descripcion: consulta.descripcion === null || consulta.descripcion === undefined ? '' : String(consulta.descripcion),
     version: consulta.version,
-    sql: String(consulta.sql)
+    sql: String(consulta.sql),
+    // The declaration, in the shape declaracionActual() gives, so Cancelar can compare it.
+    parametros: JSON.stringify((Array.isArray(consulta.parametros) ? consulta.parametros : []).map(function (parametro) {
+      return { nombre: String(parametro.nombre).trim(), tipo: String(parametro.tipo) };
+    }))
   };
-  bloqueVersion.hidden = false;
-  botonGuardar.hidden = true;
   confirmarConsultaNueva.hidden = true;
-  textoCargada.textContent = 'Consulta cargada: «' + consultaCargada.nombre +
-    '». Los cambios del editor se guardan como una versión nueva de esta consulta.';
   entradaNotaVersion.value = '';
+  reflejarConsultaCargada();
 }
 
-// Edits not saved: with a query loaded, a statement that differs from the stored one; with
-// none, a statement that is neither empty nor the initial SELECT 1.
+// Edits not saved: with a query loaded, a statement, name or description that differs from the stored
+// ones; with none, a statement that is neither empty nor the initial SELECT 1, or a name or description.
 function hayCambiosSinGuardar() {
-  if (consultaCargada !== null) { return entradaSql.value !== consultaCargada.sql; }
+  if (consultaCargada !== null) {
+    return entradaSql.value !== consultaCargada.sql
+      || entradaNombre.value !== consultaCargada.nombre
+      || entradaDescripcion.value !== consultaCargada.descripcion
+      || JSON.stringify(declaracionActual()) !== consultaCargada.parametros;
+  }
   var sentencia = entradaSql.value.trim();
-  return sentencia !== '' && sentencia !== 'SELECT 1';
+  return (sentencia !== '' && sentencia !== 'SELECT 1')
+    || entradaNombre.value.trim() !== ''
+    || entradaDescripcion.value.trim() !== ''
+    || declaracionActual().length > 0;
 }
 
+// Cancelar and Escape: close at once, or ask first when there is something to lose. Sends nothing.
+function pedirCerrarConsulta() {
+  if (hayCambiosSinGuardar()) {
+    confirmarConsultaNueva.hidden = false;
+    return;
+  }
+  cerrarConsulta();
+}
+
+botonCancelarConsulta.addEventListener('click', function () {
+  pedirCerrarConsulta();
+});
+
+dialogoConsulta.addEventListener('keydown', function (evento) {
+  if (evento.key === 'Escape') { pedirCerrarConsulta(); }
+});
+
+botonDescartarNueva.addEventListener('click', function () {
+  cerrarConsulta();
+});
+
+botonCancelarNueva.addEventListener('click', function () {
+  confirmarConsultaNueva.hidden = true;
+});
+
+// CH-32a (DEC-172): empties the editor, the parameters, the name and the description and forgets
+// the loaded query, so "Guardar consulta" is offered again. No request.
 function empezarConsultaNueva() {
   entradaSql.value = '';
   limpiarParametros();
@@ -2721,32 +2942,35 @@ function empezarConsultaNueva() {
   entradaDescripcion.value = '';
   olvidarConsultaCargada();
   cerrarVersiones();
-  confirmarConsultaNueva.hidden = true;
-  entradaSql.focus();
 }
 
-function consultaNueva() {
-  if (hayCambiosSinGuardar()) {
-    confirmarConsultaNueva.hidden = false;
+var botonConsultaNueva = document.getElementById('consulta-nueva');
+
+// "Nueva consulta" asks nothing: an earlier pop-up asked when it was closed. With no tenant there is
+// nothing to write a query for, and the banner (not hidden by the pop-up, which stays closed) says so.
+botonConsultaNueva.addEventListener('click', function () {
+  if (tenantActivo === null) {
+    mostrarBanner(SIN_TENANT);
     return;
   }
+  ocultarBanner();
   empezarConsultaNueva();
-}
-
-botonConsultaNueva.addEventListener('click', function () {
-  consultaNueva();
+  abrirConsulta();
 });
 
-botonDescartarNueva.addEventListener('click', function () {
-  empezarConsultaNueva();
+// The fields of the gate: every edit of the connection, the statement or the name re-evaluates it.
+[entradaConexion, entradaSql, entradaNombre].forEach(function (control) {
+  control.addEventListener('input', function () { actualizarGuardado(); });
+  control.addEventListener('change', function () { actualizarGuardado(); });
 });
 
-botonCancelarNueva.addEventListener('click', function () {
-  confirmarConsultaNueva.hidden = true;
-});
-
+// --- Save as a new version (CH-25, DEC-148, DEC-150) ------------------------------
+// Offered only while a saved query is loaded in the pop-up. The pop-up's name, description,
+// statement and declaration go up exactly as the create sends them, plus the optional note, as a
+// PUT on that query's id. The server decides what counts as a change (sin-cambios).
 async function guardarNuevaVersion() {
   if (consultaCargada === null) { return; }
+  if (guardando || !guardadoHabilitado()) { return; }
   ocultarBanner();
   var consulta = consultaCargada;
   var declaracion = declaracionActual();
@@ -2758,15 +2982,19 @@ async function guardarNuevaVersion() {
     parametros: declaracion
   };
   if (nota !== '') { cuerpo.nota = nota; }
-  botonVersion.disabled = true;
+  guardando = true;
+  actualizarGuardado();
   var resultado = await pedirAutomatizacion('/consultas-guardadas/' + encodeURIComponent(consulta.id), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo)
   });
-  botonVersion.disabled = false;
+  guardando = false;
+  actualizarGuardado();
+  // The helper wrote its own refusal in the banner; with the pop-up open it is told inside it.
+  if (resultado === null) { llevarBannerAlDialogo(); return; }
   // A tenant switch while the request was in flight owns the page now.
-  if (resultado === null || consultaCargada === null || consultaCargada.id !== consulta.id) { return; }
+  if (consultaCargada === null || consultaCargada.id !== consulta.id) { return; }
 
   if (resultado.status === 200) {
     var guardada = resultado.cuerpo.consultaGuardada;
@@ -2774,7 +3002,12 @@ async function guardarNuevaVersion() {
     // CH-20 (DEC-161): the editor now holds the saved version, so a run names it.
     consultaCargada.version = guardada.version;
     consultaCargada.sql = String(guardada.sql);
+    // What was sent is what is stored, so the next time the pop-up compares against it.
+    consultaCargada.descripcion = cuerpo.descripcion;
+    consultaCargada.parametros = JSON.stringify(cuerpo.parametros);
+    reflejarConsultaCargada();
     entradaNotaVersion.value = '';
+    cerrarConsulta();
     mostrarConfirmacion('Se guardó la versión ' + guardada.version + ' de «' + consultaCargada.nombre + '».');
     await listarGuardadas();
     if (consultaAbierta !== null && consultaAbierta.id === consulta.id) {
@@ -2782,21 +3015,26 @@ async function guardarNuevaVersion() {
     }
     return;
   }
+  // A refusal keeps the pop-up open and is written inside it.
   var error = resultado.cuerpo.error;
   if (resultado.status === 404) {
-    mostrarBanner('Esa consulta guardada ya no existe. Se actualizó la lista.');
+    // The query is gone: the pop-up stays open as a new, untested query holding what was typed.
+    avisarEnConsulta('Esa consulta guardada ya no existe. Se actualizó la lista.');
     olvidarConsultaCargada();
+    ultimaPruebaOk = null;
+    estadoPrueba = 'sin-probar';
+    actualizarGuardado();
     await listarGuardadas();
   } else if (resultado.status === 409 && error === 'sin-cambios') {
-    mostrarBanner('No hay cambios respecto de la versión vigente.');
+    avisarEnConsulta('No hay cambios respecto de la versión vigente.');
   } else if (resultado.status === 409 && error === 'conflicto-de-edicion') {
-    mostrarBanner('Otra edición se guardó antes que esta. Volvé a cargar la consulta e intentá de nuevo.');
+    avisarEnConsulta('Otra edición se guardó antes que esta. Volvé a cargar la consulta e intentá de nuevo.');
   } else if (resultado.status === 400 && Array.isArray(resultado.cuerpo.campos) && resultado.cuerpo.campos.indexOf('/nota') !== -1) {
-    mostrarBanner('La nota tiene que ser un texto de hasta 500 caracteres.');
+    avisarEnConsulta('La nota tiene que ser un texto de hasta 500 caracteres.');
   } else if (resultado.status === 400) {
-    mostrarBanner(mensajeDeSolicitudInvalida(resultado.cuerpo, declaracion));
+    avisarEnConsulta(mensajeDeSolicitudInvalida(resultado.cuerpo, declaracion));
   } else {
-    mostrarBanner('La aplicación respondió HTTP ' + resultado.status + '.');
+    avisarEnConsulta('La aplicación respondió HTTP ' + resultado.status + '.');
   }
 }
 
@@ -2815,6 +3053,10 @@ function cambiarTenant(id) {
   limpiarResultados();
   vaciar(listaGuardadas);
   cerrarVersiones();
+  // CH-32a PR2: the query pop-up belongs to the tenant it was opened for, and so does a passing test.
+  cerrarConsulta();
+  ultimaPruebaOk = null;
+  estadoPrueba = 'sin-probar';
   olvidarConsultaCargada();
   limpiarParametros();
   limpiarAutomatizaciones();
@@ -2928,7 +3170,7 @@ botonCrearAuto.addEventListener('click', function () {
 
 formulario.addEventListener('submit', function (evento) {
   evento.preventDefault();
-  ejecutar(0);
+  ejecutar(0).then(marcarPruebaTerminada);
 });
 
 // CH-32a: the choice is remembered by id, so a reload of the list can put it back (or drop it
@@ -2951,11 +3193,11 @@ botonAgregarParametro.addEventListener('click', function () {
 });
 
 botonSiguiente.addEventListener('click', function () {
-  ejecutar(pagina.siguiente === null ? pagina.desplazamiento : pagina.siguiente);
+  ejecutar(pagina.siguiente === null ? pagina.desplazamiento : pagina.siguiente).then(marcarPruebaTerminada);
 });
 
 botonAnterior.addEventListener('click', function () {
-  ejecutar(Math.max(0, pagina.desplazamiento - pagina.limite));
+  ejecutar(Math.max(0, pagina.desplazamiento - pagina.limite)).then(marcarPruebaTerminada);
 });
 
 // CH-29 (DEC-154): Salir revokes the session and reloads into the login screen; it reloads

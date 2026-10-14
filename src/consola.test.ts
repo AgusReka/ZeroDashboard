@@ -25,6 +25,12 @@ import { evaluarVistas } from './plantillas.js';
  * `scripts/smoke.sh` re-checks against the really served bytes.
  */
 
+/** The stub event the fake nodes hand to a listener; CH-32a PR2 adds `key` for the pop-up's Escape. */
+interface EventoFalso {
+  preventDefault: () => void;
+  key?: string;
+}
+
 /** A DOM node, reduced to what the console's script actually touches. */
 class Nodo {
   tagName: string;
@@ -44,7 +50,7 @@ class Nodo {
   private texto = '';
   private valorPropio = '';
   private atributos = new Map<string, string>();
-  private oyentes = new Map<string, Array<(evento: { preventDefault: () => void }) => void>>();
+  private oyentes = new Map<string, Array<(evento: EventoFalso) => void>>();
 
   constructor(tagName: string) {
     this.tagName = tagName;
@@ -114,15 +120,15 @@ class Nodo {
     return hijo;
   }
 
-  addEventListener(tipo: string, fn: (evento: { preventDefault: () => void }) => void): void {
+  addEventListener(tipo: string, fn: (evento: EventoFalso) => void): void {
     const lista = this.oyentes.get(tipo) ?? [];
     lista.push(fn);
     this.oyentes.set(tipo, lista);
   }
 
-  /** Test-side only: fires what `addEventListener` registered, with a stub event. */
-  disparar(tipo: string): void {
-    const eventoFalso = { preventDefault: () => {} };
+  /** Test-side only: fires what `addEventListener` registered, with a stub event (`extra` adds fields such as `key`). */
+  disparar(tipo: string, extra: Partial<EventoFalso> = {}): void {
+    const eventoFalso: EventoFalso = { preventDefault: () => {}, ...extra };
     for (const fn of this.oyentes.get(tipo) ?? []) {
       fn(eventoFalso);
     }
@@ -290,12 +296,21 @@ const IDS = [
   'consulta-nueva-confirmar',
   'consulta-nueva-descartar',
   'consulta-nueva-cancelar',
+  // CH-32a PR2 (DEC-173): the query pop-up, its title, its cancel button and the version-only fields.
+  'consulta-dialogo',
+  'consulta-dialogo-titulo',
+  'consulta-cancelar',
+  'guardado-ayuda',
+  'version-campos',
 ] as const;
+
+/** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
+const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir', 'version-abrir', 'guardado-panel', 'guardado-titulo', 'guardado-cancelar'];
 
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
-/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button and confirmation. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-nueva-confirmar', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
+/** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'conexion-panel', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -641,6 +656,16 @@ describe('the console document, served by the real route', () => {
     await enviar(escenario, cuerpo, status);
   }
 
+  /**
+   * CH-32a PR2 (DEC-173): saving needs a passing «Probar» of exactly what the form holds, so a test that
+   * saves runs one first, after its last edit. The connection stays as chosen, or becomes c-1.
+   */
+  async function probarOk(escenario: Escenario): Promise<void> {
+    const conexion = escenario.nodos.get('conexion') as Nodo;
+    if (conexion.value === '') conexion.value = 'c-1';
+    await enviar(escenario, respuestaOk());
+  }
+
   /** The declaration rows currently on the page. */
   function filas(escenario: Escenario): Nodo[] {
     return (escenario.nodos.get('parametros') as Nodo).porClase('parametro');
@@ -878,6 +903,8 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario, [guardada]);
     declarar(escenario, 'desde', 'fecha', '2026-01-01');
     (escenario.nodos.get('nombre') as Nodo).value = 'Ventas';
+    // CH-32a PR2: saving needs an ok «Probar» of this very declaration first.
+    await probarOk(escenario);
 
     // The 201 is followed by the list refresh the save triggers.
     escenario.respuestas.push({ status: 201, cuerpo: { consultaGuardada: guardada } });
@@ -964,6 +991,8 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario);
     declarar(escenario, 'desde', 'fecha');
     (escenario.nodos.get('nombre') as Nodo).value = 'Ventas';
+    // CH-32a PR2: the gate opens on an ok «Probar» of this declaration; the refusal is the save's own.
+    await probarOk(escenario);
     await enviar(
       escenario,
       {
@@ -2456,17 +2485,20 @@ describe('the console document, served by the real route', () => {
 
   test('CH-25 the panel markup starts closed, keeps its ids once and every button is type="button"', () => {
     verificarIds(marcado());
-    assert.match(marcado(), /<div id="versiones" hidden>/);
+    // CH-32a PR2 (DEC-173): the history is a wide side panel now, closed at load.
+    assert.match(marcado(), /<aside id="versiones" class="zd-drawer zd-drawer--wide"[^>]*\bhidden\b/);
+    // CH-32a PR2: Guardar consulta moved into the query pop-up, which is checked on its own; what is
+    // left in the saved queries section is the history's Cerrar versiones.
     const seccion = marcado().slice(marcado().indexOf('id="guardado"'), marcado().indexOf('id="automatizaciones"'));
     const botones = seccion.match(/<button[^>]*>/g) ?? [];
-    assert.ok(botones.length >= 2, 'Guardar consulta and Cerrar versiones');
+    assert.ok(botones.length >= 1, 'Cerrar versiones');
     assert.ok(botones.every((etiqueta) => etiqueta.includes('type="button"')), 'no button submits');
   });
 
-  test('CH-25 each saved query offers a Versiones action next to Cargar', async () => {
+  test('CH-25 each saved query offers a Versiones action next to Abrir', async () => {
     const escenario = await conConsulta();
     const lista = nodo(escenario, 'guardadas');
-    assert.equal(botonesCon(lista, 'Cargar').length, 1);
+    assert.equal(botonesCon(lista, 'Abrir').length, 1);
     assert.equal(botonesCon(lista, 'Versiones').length, 1);
   });
 
@@ -2676,12 +2708,13 @@ describe('the console document, served by the real route', () => {
   async function conConsultaCargada(extra: Record<string, unknown> = {}): Promise<Escenario> {
     const escenario = await conConsulta();
     escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, ...extra } } });
-    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    // CH-32a PR2: «Abrir» loads the query and opens the pop-up with it.
+    botonesCon(nodo(escenario, 'guardadas'), 'Abrir')[0].disparar('click');
     await asentarVarias();
     return escenario;
   }
 
-  /** Presses "Guardar como nueva versión" with `respuestas` queued, and lets it settle. */
+  /** Presses «Guardar como versión N+1» with `respuestas` queued, and lets it settle (after an ok `probarOk`). */
   async function guardarVersion(escenario: Escenario, ...respuestas: Array<{ status: number; cuerpo: unknown }>): Promise<void> {
     escenario.respuestas.push(...respuestas);
     nodo(escenario, 'version-boton').disparar('click');
@@ -2689,10 +2722,13 @@ describe('the console document, served by the real route', () => {
   }
 
   test('CH-25 the save-as-version block starts hidden, takes a note of at most 500 characters and its button does not submit', () => {
-    const bloque = marcado().match(/<div id="version-guardar"[^>]*>[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
-    assert.match(bloque, /<div id="version-guardar" hidden>/);
+    // CH-32a PR2 (DEC-173): the block lives in the query pop-up: the loaded-query line and the note
+    // field in the block, the button that sends it among the pop-up's actions.
+    const dialogo = marcado().match(/<div id="consulta-dialogo"[\s\S]*?<\/section>/)?.[0] ?? '';
+    const bloque = dialogo.match(/<div id="version-guardar"[^>]*>[\s\S]*?<input id="version-nota"[^>]*>/)?.[0] ?? '';
+    assert.match(bloque, /^<div id="version-guardar" hidden>\s*<p id="version-cargada" class="ayuda"><\/p>/);
     assert.match(bloque, /<input id="version-nota"[^>]*maxlength="500"/);
-    assert.match(bloque, /<button id="version-boton"[^>]*type="button"/);
+    assert.match(dialogo, /<button id="version-boton"[^>]*type="button"/);
   });
 
   test('CH-25 the help text no longer says a saved query cannot be edited, and still says it cannot be deleted', () => {
@@ -2711,10 +2747,8 @@ describe('the console document, served by the real route', () => {
   test('CH-25 loading a saved query offers the action and brings its name, description and statement to the editor', async () => {
     const escenario = await conConsultaCargada();
     assert.equal(nodo(escenario, 'version-guardar').hidden, false);
-    assert.equal(
-      nodo(escenario, 'version-cargada').textContent,
-      'Consulta cargada: «Stock». Los cambios del editor se guardan como una versión nueva de esta consulta.',
-    );
+    // CH-32a PR2 (DEC-173): the strip states the loaded query and its version, as the spec asks.
+    assert.equal(nodo(escenario, 'version-cargada').textContent, '«Stock» · Versión 3 · vigente');
     assert.equal(nodo(escenario, 'nombre').value, 'Stock');
     assert.equal(nodo(escenario, 'descripcion').value, 'Productos');
     assert.equal(nodo(escenario, 'sql').value, 'SELECT :a');
@@ -2731,6 +2765,7 @@ describe('the console document, served by the real route', () => {
     const escenario = await conConsultaCargada();
     nodo(escenario, 'sql').value = 'SELECT :a + 1';
     nodo(escenario, 'version-nota').value = '  Agrega filtro  ';
+    await probarOk(escenario);
     const antes = escenario.peticiones.length;
     await guardarVersion(
       escenario,
@@ -2755,6 +2790,7 @@ describe('the console document, served by the real route', () => {
     const escenario = await conConsultaCargada();
     nodo(escenario, 'sql').value = 'SELECT 2';
     nodo(escenario, 'version-nota').value = '   ';
+    await probarOk(escenario);
     await guardarVersion(
       escenario,
       { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
@@ -2768,6 +2804,7 @@ describe('the console document, served by the real route', () => {
     const escenario = await conConsultaCargada();
     await abrirPanel(escenario, TRES_VERSIONES);
     nodo(escenario, 'sql').value = 'SELECT 9';
+    await probarOk(escenario);
     const antes = escenario.peticiones.length;
     await guardarVersion(
       escenario,
@@ -2794,8 +2831,12 @@ describe('the console document, served by the real route', () => {
     for (const [estado, cuerpo, esperado] of casos) {
       const escenario = await conConsultaCargada();
       nodo(escenario, 'sql').value = 'SELECT 7';
+      await probarOk(escenario);
       await guardarVersion(escenario, { status: estado, cuerpo });
-      assert.match(nodo(escenario, 'banner').textContent, esperado, String(estado) + JSON.stringify(cuerpo));
+      // CH-32a PR2: the pop-up is open (Abrir), so the refusal is written inside it, not in the page banner.
+      assert.match(nodo(escenario, 'estado').textContent, esperado, String(estado) + JSON.stringify(cuerpo));
+      assert.equal(nodo(escenario, 'banner').hidden, true, 'the page banner is behind the pop-up');
+      assert.equal(nodo(escenario, 'consulta-dialogo').hidden, false, 'and the pop-up stays open');
       assert.equal(nodo(escenario, 'sql').value, 'SELECT 7', 'the operator keeps what was typed');
       assert.equal(nodo(escenario, 'version-guardar').hidden, false, 'and can try again');
       assert.equal(nodo(escenario, 'version-boton').disabled, false);
@@ -2804,20 +2845,25 @@ describe('the console document, served by the real route', () => {
 
   test('CH-25 when the query is gone the notice disappears and the list is refreshed', async () => {
     const escenario = await conConsultaCargada();
+    await probarOk(escenario);
     await guardarVersion(
       escenario,
       { status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } },
       { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
     );
-    assert.equal(nodo(escenario, 'banner').textContent, 'Esa consulta guardada ya no existe. Se actualizó la lista.');
+    // CH-32a PR2: told inside the pop-up, which stays open as a new, untested query.
+    assert.equal(nodo(escenario, 'estado').textContent, 'Esa consulta guardada ya no existe. Se actualizó la lista.');
+    assert.equal(nodo(escenario, 'consulta-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'consulta-dialogo-titulo').textContent, 'Nueva consulta');
     assert.equal(nodo(escenario, 'version-guardar').hidden, true);
+    assert.equal(nodo(escenario, 'guardar').disabled, true, 'a new query has to be tested again');
   });
 
   test('CH-25 switching tenant forgets the loaded query and hides the action', async () => {
     const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
     await elegirTenant(escenario, [FILA_GUARDADA]);
     escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
-    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    botonesCon(nodo(escenario, 'guardadas'), 'Abrir')[0].disparar('click');
     await asentarVarias();
     assert.equal(nodo(escenario, 'version-guardar').hidden, false);
 
@@ -2914,7 +2960,8 @@ describe('the console document, served by the real route', () => {
     assert.match(marcado, /<section id="pantalla-frescura"[^>]*hidden/);
   });
 
-  test('CH-30a the result sits right below the execute button, before the saved queries, inside Consultas', () => {
+  // CH-32a PR2 (DEC-173): the result moved into the query pop-up, above its actions row, where «Probar» now is.
+  test('CH-30a the result sits inside the query pop-up, above its actions, before the saved queries, inside Consultas', () => {
     const marcado = documento.slice(0, documento.indexOf('<script>'));
     const en = (texto: string): number => {
       const i = marcado.indexOf(texto);
@@ -2927,7 +2974,8 @@ describe('the console document, served by the real route', () => {
     const anterior = en('id="anterior"');
     const guardado = en('id="guardado"');
     const automatizaciones = en('id="pantalla-automatizaciones"');
-    assert.ok(consultas < ejecutar && ejecutar < resultados && resultados < anterior && anterior < guardado);
+    const dialogo = en('id="consulta-dialogo"');
+    assert.ok(consultas < dialogo && dialogo < resultados && resultados < anterior && anterior < ejecutar && ejecutar < guardado);
     assert.ok(guardado < automatizaciones, 'the saved queries stay inside Consultas');
   });
 
@@ -3622,6 +3670,7 @@ describe('the console document, served by the real route', () => {
     const escenario = await conConsultaCargada({ sql: 'SELECT 1', parametros: [] });
     nodo(escenario, 'conexion').value = 'c-1';
     nodo(escenario, 'sql').value = 'SELECT 2';
+    await probarOk(escenario);
     await guardarVersion(
       escenario,
       { status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, sql: 'SELECT 2', parametros: [], version: 4 } } },
@@ -3833,7 +3882,7 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'conexion').value = 'c-2';
     escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
     const antes = escenario.peticiones.length;
-    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    botonesCon(nodo(escenario, 'guardadas'), 'Abrir')[0].disparar('click');
     await asentarVarias();
     assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/consultas-guardadas/q-1']);
     assert.equal(nodo(escenario, 'conexion').value, 'c-2');
@@ -3857,6 +3906,7 @@ describe('the console document, served by the real route', () => {
     const escenario = await conConsulta();
     assert.equal(nodo(escenario, 'guardar').hidden, false);
     nodo(escenario, 'nombre').value = 'Ventas';
+    await probarOk(escenario);
     escenario.respuestas.push({ status: 201, cuerpo: { consultaGuardada: FILA_GUARDADA } });
     const antes = escenario.peticiones.length;
     await enviar(escenario, { consultasGuardadas: [FILA_GUARDADA], truncado: false }, 200, 'guardar', 'click');
@@ -3875,13 +3925,14 @@ describe('the console document, served by the real route', () => {
     const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
     await elegirTenant(escenario, [FILA_GUARDADA]);
     escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
-    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
+    botonesCon(nodo(escenario, 'guardadas'), 'Abrir')[0].disparar('click');
     await asentarVarias();
     assert.equal(nodo(escenario, 'guardar').hidden, true);
     await elegirTenant(escenario, [], [], 't-2');
     assert.equal(nodo(escenario, 'guardar').hidden, false, 'a tenant switch forgets the loaded query');
 
     const otra = await conConsultaCargada();
+    await probarOk(otra);
     await guardarVersion(
       otra,
       { status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } },
@@ -3893,6 +3944,8 @@ describe('the console document, served by the real route', () => {
   test('CH-32a Guardar consulta with a query loaded sends nothing, even if triggered', async () => {
     const escenario = await conConsultaCargada();
     nodo(escenario, 'nombre').value = 'Copia';
+    // Even with the gate open (an ok «Probar» and a name), the create control does nothing here.
+    await probarOk(escenario);
     const antes = escenario.peticiones.length;
     nodo(escenario, 'guardar').disparar('click');
     await asentarVarias();
@@ -3901,117 +3954,619 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'banner').hidden, true);
   });
 
-  test('CH-32a the saved-queries help explains versions and "Consulta nueva", and says they cannot be deleted', () => {
+  test('CH-32a the saved-queries help explains versions and «Nueva consulta», and says they cannot be deleted', () => {
     const seccion = marcado().slice(marcado().indexOf('<section id="guardado">'), marcado().indexOf('<section id="automatizaciones">'));
     const ayuda = seccion.match(/<p class="ayuda">([^<]*)<\/p>/)?.[1] ?? '';
     assert.equal(
       ayuda,
-      'Con una consulta cargada, los cambios se guardan como una versión nueva de esa consulta. Para guardar el editor como otra consulta, empezá con «Consulta nueva». No se puede borrar.',
+      'Abrí una consulta para probarla o guardar una versión nueva de ella. Para crear otra, usá «Nueva consulta». No se puede borrar.',
     );
   });
 
-  // ---- CH-32a (DEC-172): "Consulta nueva" ----
+  // ---- CH-32a PR2 (DEC-172, DEC-173): the query pop-up ----
 
-  test('CH-32a "Consulta nueva" sits at the top of the saved queries, before the name, and its buttons do not submit', () => {
-    const seccion = marcado().slice(marcado().indexOf('<section id="guardado">'), marcado().indexOf('<section id="automatizaciones">'));
-    assert.ok(seccion.indexOf('id="consulta-nueva"') !== -1 && seccion.indexOf('id="consulta-nueva"') < seccion.indexOf('id="nombre"'));
-    assert.match(seccion, /<button id="consulta-nueva" class="zd-btn zd-btn--secondary" type="button">Consulta nueva<\/button>/);
-    assert.match(seccion, /<span id="consulta-nueva-confirmar" hidden>/);
-    assert.match(seccion, /Hay cambios sin guardar en el editor\./);
-    assert.match(seccion, /<button id="consulta-nueva-descartar"[^>]*type="button">Descartar cambios<\/button>/);
-    assert.match(seccion, /<button id="consulta-nueva-cancelar"[^>]*type="button">Cancelar<\/button>/);
+  /** The screen's markup from its header to the start of the next screen. */
+  const pantallaConsultas = (): string =>
+    marcado().slice(marcado().indexOf('<section id="pantalla-consultas"'), marcado().indexOf('<section id="pantalla-automatizaciones"'));
+
+  /** The pop-up's markup, from its backdrop to the saved queries that follow it (it keeps the result above them, CH-30a). */
+  const markupDialogo = (): string =>
+    marcado().slice(marcado().indexOf('<div id="consulta-dialogo"'), marcado().indexOf('<section id="guardado">'));
+
+  /** Replaces the node's `focus` with a spy and returns the list of ids that took the focus. */
+  function espiarFoco(escenario: Escenario, ...ids: string[]): string[] {
+    const enfocados: string[] = [];
+    for (const id of ids) nodo(escenario, id).focus = () => void enfocados.push(id);
+    return enfocados;
+  }
+
+  /** Presses the header's «Nueva consulta». */
+  const abrirNueva = (escenario: Escenario): void => nodo(escenario, 'consulta-nueva').disparar('click');
+
+  /** Presses «Abrir» on the one saved query, answering with `COMPLETA` plus `extra`, and lets it settle. */
+  async function abrirGuardada(escenario: Escenario, extra: Record<string, unknown> = {}): Promise<void> {
+    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, ...extra } } });
+    botonesCon(nodo(escenario, 'guardadas'), 'Abrir')[0].disparar('click');
+    await asentarVarias();
+  }
+
+  /** Types `valor` into a field and fires the event a browser fires for it. */
+  function escribir(escenario: Escenario, id: string, valor: string, evento = 'input'): void {
+    nodo(escenario, id).value = valor;
+    nodo(escenario, id).disparar(evento);
+  }
+
+  const dialogoAbierto = (escenario: Escenario): boolean => !nodo(escenario, 'consulta-dialogo').hidden;
+  const tituloDialogo = (escenario: Escenario): string => nodo(escenario, 'consulta-dialogo-titulo').textContent;
+
+  /** The two ways to ask the pop-up to close: its «Cancelar» and the Escape key pressed inside it. */
+  const FORMAS_DE_CANCELAR: Array<[string, (escenario: Escenario) => void]> = [
+    ['Cancelar', (escenario) => nodo(escenario, 'consulta-cancelar').disparar('click')],
+    ['Escape', (escenario) => nodo(escenario, 'consulta-dialogo').disparar('keydown', { key: 'Escape' })],
+  ];
+
+  test('CH-32a PR2 the page header holds the primary «Nueva consulta» and none of the first version\'s ids is left', () => {
+    verificarIds(marcado());
+    const pantalla = pantallaConsultas();
+    const cabecera = pantalla.slice(0, pantalla.indexOf('</header>'));
+    assert.match(cabecera, /<div class="zd-pagehead__actions">\s*<button id="consulta-nueva" class="zd-btn zd-btn--primary" type="button">Nueva consulta<\/button>\s*<\/div>/);
+    for (const id of IDS_RETIRADOS) {
+      assert.ok(!documento.includes(id), id + ' was never merged and must not come back, in the markup or the script');
+    }
   });
 
-  test('CH-32a "Consulta nueva" on an unchanged loaded query empties the editor and sends nothing', async () => {
+  test('CH-32a PR2 the pop-up is a hidden modal dialog: title, fields in order, the result inside and the actions at the foot', () => {
+    const d = markupDialogo();
+    assert.match(d, /^<div id="consulta-dialogo" class="zd-dialog-backdrop" hidden>\s*<div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="consulta-dialogo-titulo">\s*<h2 id="consulta-dialogo-titulo" class="zd-dialog__title">Nueva consulta<\/h2>/);
+    assert.ok(pantallaConsultas().includes(d.slice(0, 40)), 'inside the Consultas screen, so it goes with it');
+
+    const orden = [
+      'nombre', 'descripcion', 'formulario', 'conexion', 'conexion-aviso', 'conexion-reintentar', 'sql', 'parametros',
+      'agregar-parametro', 'limite', 'version-campos', 'version-nota', 'estado', 'resultados', 'anterior', 'siguiente',
+      'ejecutar', 'guardar', 'version-boton', 'consulta-cancelar',
+    ].map((id) => d.indexOf('id="' + id + '"'));
+    assert.ok(orden.every((posicion) => posicion !== -1), 'every piece is inside the pop-up');
+    assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'in that order, top to bottom');
+    // The name and description sit outside #formulario, so browser validation never blocks «Probar» for want of a name.
+    const formulario = d.match(/<form id="formulario">[\s\S]*?<\/form>/)?.[0] ?? '';
+    for (const id of ['conexion', 'sql', 'parametros', 'agregar-parametro', 'limite']) assert.ok(formulario.includes('id="' + id + '"'), id + ' is in the form');
+    for (const id of ['nombre', 'descripcion', 'version-campos', 'ejecutar', 'guardar']) assert.ok(!formulario.includes('id="' + id + '"'), id + ' is not');
+
+    const acciones = d.slice(d.indexOf('<div class="zd-dialog__actions">'));
+    assert.match(acciones, /<button id="ejecutar"[^>]*type="submit"[^>]*form="formulario"[^>]*>Probar<\/button>/);
+    assert.match(acciones, /<button id="guardar"[^>]*zd-btn--primary[^>]*type="button"[^>]*\bdisabled\b[^>]*>Guardar consulta<\/button>/);
+    assert.match(acciones, /<button id="version-boton"[^>]*type="button"[^>]*\bhidden\b[^>]*>Guardar como versión nueva<\/button>/);
+    assert.match(acciones, /<button id="consulta-cancelar"[^>]*zd-btn--ghost[^>]*type="button">Cancelar<\/button>/);
+    assert.match(acciones, /<span id="consulta-nueva-confirmar" hidden>[\s\S]*Hay cambios sin guardar\.[\s\S]*<button id="consulta-nueva-descartar"[^>]*type="button">Descartar cambios<\/button>[\s\S]*<button id="consulta-nueva-cancelar"[^>]*type="button">Seguir editando<\/button>/);
+    const botonesDialogo = d.match(/<button[^>]*>/g) ?? [];
+    assert.ok(botonesDialogo.every((etiqueta) => etiqueta.includes('type="button"') || etiqueta.includes('id="ejecutar"')), 'only «Probar» submits');
+    assert.match(d, /<div id="version-guardar" hidden>\s*<p id="version-cargada" class="ayuda"><\/p>\s*<div id="version-campos" hidden>/);
+  });
+
+  test('CH-32a PR2 the pop-up is made wide by one rule of the console\'s own style, with no new shared class', () => {
+    assert.match(documento, /#consulta-dialogo \.zd-dialog \{ width: min\(1100px, 100%\)/);
+    assert.equal(documento.split('<style').length - 1, 1, 'still one style element');
+    assert.ok(!/zd-dialog--/.test(documento), 'no invented modifier of the shared dialog');
+  });
+
+  test('CH-32a PR2 the saved queries keep only their list and the history; the fields moved into the pop-up', () => {
+    const pantalla = pantallaConsultas();
+    const inicio = pantalla.indexOf('<section id="guardado">');
+    const guardado = pantalla.slice(inicio, pantalla.indexOf('</section>', inicio));
+    for (const id of ['nombre', 'descripcion', 'version-nota', 'guardar', 'version-boton', 'conexion', 'sql']) {
+      assert.ok(!guardado.includes('id="' + id + '"'), id + ' is no longer there');
+    }
+    assert.match(guardado, /<h2 class="zd-h2">Consultas guardadas<\/h2>/);
+    assert.ok(guardado.includes('id="guardadas"'));
+    // The history is a wide side panel that keeps its ids and its Cerrar versiones button.
+    const panel = guardado.match(/<aside id="versiones"[\s\S]*?<\/aside>/)?.[0] ?? '';
+    assert.match(panel, /^<aside id="versiones" class="zd-drawer zd-drawer--wide" aria-labelledby="versiones-titulo" hidden>/);
+    assert.match(panel, /<div class="zd-drawer__head"><h2 id="versiones-titulo" class="zd-h2"><\/h2><\/div>/);
+    for (const id of ['versiones-estado', 'versiones-lista', 'versiones-comparacion']) assert.ok(panel.includes('id="' + id + '"'), id);
+    assert.match(panel, /<div class="zd-drawer__foot">\s*<button id="versiones-cerrar"[^>]*type="button">Cerrar versiones<\/button>/);
+  });
+
+  test('CH-32a PR2 «Nueva consulta» opens the pop-up empty and titled, with only Guardar consulta, the name focused and nothing sent', async () => {
+    const escenario = await conConsulta();
+    nodo(escenario, 'sql').value = 'SELECT algo';
+    nodo(escenario, 'nombre').value = 'resto';
+    nodo(escenario, 'descripcion').value = 'resto';
+    declarar(escenario, 'x', 'texto');
+    const enfocados = espiarFoco(escenario, 'nombre');
+    const antes = escenario.peticiones.length;
+    assert.equal(dialogoAbierto(escenario), false, 'closed at load');
+
+    abrirNueva(escenario);
+    assert.equal(dialogoAbierto(escenario), true);
+    assert.equal(tituloDialogo(escenario), 'Nueva consulta');
+    for (const id of ['nombre', 'descripcion', 'sql']) assert.equal(nodo(escenario, id).value, '', id);
+    assert.equal(filas(escenario).length, 0);
+    assert.equal(nodo(escenario, 'guardar').hidden, false);
+    assert.equal(nodo(escenario, 'guardar').disabled, true, 'nothing tested yet');
+    for (const id of ['version-boton', 'version-campos', 'version-guardar', 'consulta-nueva-confirmar']) assert.equal(nodo(escenario, id).hidden, true, id);
+    assert.deepEqual(enfocados, ['nombre']);
+    assert.equal(escenario.peticiones.length, antes, 'opening sends nothing');
+  });
+
+  test('CH-32a PR2 «Nueva consulta» with no tenant says so on the page and does not open', async () => {
+    const escenario = await arrancar();
+    abrirNueva(escenario);
+    await asentarVarias();
+    assert.equal(dialogoAbierto(escenario), false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'Elegí un tenant en la barra superior antes de operar. No se envió ninguna solicitud.');
+    assert.deepEqual(escenario.peticiones.map((p) => p.url), ['/tenants']);
+  });
+
+  test('CH-32a PR2 «Abrir» loads the query and opens the pop-up titled with its name and version, keeping the chosen connection', async () => {
+    const escenario = await conConexiones();
+    nodo(escenario, 'conexion').value = 'c-2';
+    const enfocados = espiarFoco(escenario, 'nombre');
+    const antes = escenario.peticiones.length;
+    await abrirGuardada(escenario);
+
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/consultas-guardadas/q-1'], 'one request, the load');
+    assert.equal(dialogoAbierto(escenario), true);
+    assert.equal(tituloDialogo(escenario), 'Stock · versión 3');
+    assert.equal(nodo(escenario, 'nombre').value, 'Stock');
+    assert.equal(nodo(escenario, 'descripcion').value, 'Productos');
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT :a');
+    assert.equal(filas(escenario).length, 1);
+    assert.equal(nodo(escenario, 'conexion').value, 'c-2', 'the last connection is kept (DEC-11)');
+    assert.equal(nodo(escenario, 'guardar').hidden, true, 'a loaded query cannot be saved as a copy');
+    assert.equal(nodo(escenario, 'version-boton').hidden, false);
+    assert.equal(nodo(escenario, 'version-boton').textContent, 'Guardar como versión 4');
+    assert.equal(nodo(escenario, 'version-boton').disabled, true, 'nothing tested yet');
+    assert.equal(nodo(escenario, 'version-campos').hidden, false);
+    assert.equal(nodo(escenario, 'version-guardar').hidden, false);
+    assert.equal(nodo(escenario, 'version-cargada').textContent, '«Stock» · Versión 3 · vigente');
+    assert.deepEqual(enfocados, ['nombre']);
+  });
+
+  test('CH-32a PR2 «Abrir» on a query that is gone does not open the pop-up and says so on the page', async () => {
+    const escenario = await conConsulta();
+    escenario.respuestas.push(
+      { status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } },
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+    );
+    botonesCon(nodo(escenario, 'guardadas'), 'Abrir')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(dialogoAbierto(escenario), false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'Esa consulta guardada ya no existe. Se actualizó la lista.');
+  });
+
+  test('CH-32a PR2 a hostile name is shown as text in the title, the notice and the fields', async () => {
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await conConsulta();
+    await abrirGuardada(escenario, { nombre: hostil, descripcion: hostil });
+    assert.equal(tituloDialogo(escenario), hostil + ' · versión 3');
+    assert.equal(nodo(escenario, 'consulta-dialogo-titulo').hijos.length, 0, 'a text node holder only');
+    assert.equal(nodo(escenario, 'nombre').value, hostil);
+    assert.equal(nodo(escenario, 'descripcion').value, hostil);
+    assert.equal(nodo(escenario, 'version-cargada').hijos.length, 0);
+    assert.ok(!/zd-(dialog|drawer|btn|badge)/.test(script), 'the script assigns none of the shared overlay or button classes');
+  });
+
+  test('CH-32a PR2 «Probar» runs the statement and shows the result, paginated, inside the open pop-up', async () => {
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'SELECT id FROM producto');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    await enviar(escenario, respuestaOk());
+    const cuerpo = ultimaEjecucion(escenario);
+    assert.equal(cuerpo.conexionId, 'c-1');
+    assert.equal(cuerpo.sql, 'SELECT id FROM producto');
+    assert.equal(dialogoAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'estado').hidden, false);
+    assert.match(nodo(escenario, 'estado').textContent, /Filas 1 a 2\./);
+    assert.equal(escenario.encabezado.hijos[0].hijos.length, 1, 'one column');
+    assert.equal(escenario.cuerpoTabla.hijos.length, 2, 'two rows');
+    assert.equal(nodo(escenario, 'siguiente').disabled, false, 'the pager works inside the pop-up');
+  });
+
+  test('CH-32a PR2 the save control opens only after an ok «Probar» and a name', async () => {
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'SELECT 1 AS id');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    escribir(escenario, 'nombre', 'Ventas');
+    assert.equal(nodo(escenario, 'guardar').disabled, true, 'disabled before a test');
+
+    await enviar(escenario, respuestaOk());
+    assert.equal(nodo(escenario, 'guardar').disabled, false, 'enabled after an ok test with a name');
+
+    escribir(escenario, 'nombre', '   ');
+    assert.equal(nodo(escenario, 'guardar').disabled, true, 'a blank name closes it');
+    escribir(escenario, 'nombre', 'Ventas');
+    assert.equal(nodo(escenario, 'guardar').disabled, false);
+  });
+
+  test('CH-32a the line next to the save control says why it is closed, and is empty once it may save', async () => {
+    const ayuda = (e: Escenario) => nodo(e, 'guardado-ayuda').textContent;
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    assert.match(documento, /<button id="guardar"[^>]*aria-describedby="guardado-ayuda"/);
+    assert.match(documento, /<button id="version-boton"[^>]*aria-describedby="guardado-ayuda"/);
+    assert.equal(ayuda(escenario), 'Probá la consulta para poder guardarla.', 'before any test');
+
+    escribir(escenario, 'sql', 'SELECT 1 AS id');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    await enviar(escenario, respuestaOk());
+    assert.equal(ayuda(escenario), 'Escribí un nombre para poder guardarla.', 'tested, no name yet');
+
+    escribir(escenario, 'nombre', 'Ventas');
+    assert.equal(nodo(escenario, 'guardar').disabled, false);
+    assert.equal(ayuda(escenario), '', 'nothing to say once it may save');
+
+    escribir(escenario, 'sql', 'SELECT 2 AS id');
+    assert.equal(ayuda(escenario), 'Cambiaste la consulta después de probarla. Probala de nuevo para poder guardarla.');
+
+    await enviar(escenario, { error: 'interno' }, 500);
+    assert.equal(ayuda(escenario), 'La última prueba falló. Corregí la consulta y probala de nuevo para poder guardarla.');
+
+    await enviar(escenario, respuestaOk());
+    assert.equal(ayuda(escenario), '', 'a passing test of the current content clears it');
+
+    abrirNueva(escenario);
+    assert.equal(ayuda(escenario), 'Probá la consulta para poder guardarla.', 'reopening forgets the last test');
+  });
+
+  test('CH-32a PR2 editing the SQL, the connection or the parameters closes the gate until «Probar» succeeds again', async () => {
+    const ediciones: Array<[string, (escenario: Escenario) => void]> = [
+      ['the SQL', (e) => escribir(e, 'sql', 'SELECT 2 AS id')],
+      ['the connection', (e) => escribir(e, 'conexion', 'c-2', 'change')],
+      ['a new parameter', (e) => void declarar(e, 'otro', 'texto')],
+      ['a parameter name', (e) => { en(filas(e)[0], 'parametro-nombre').value = 'renombrado'; en(filas(e)[0], 'parametro-nombre').disparar('input'); }],
+      ['a parameter type', (e) => { en(filas(e)[0], 'parametro-tipo').value = 'numero'; en(filas(e)[0], 'parametro-tipo').disparar('change'); }],
+      ['removing a parameter', (e) => botonesCon(filas(e)[0], 'Quitar')[0].disparar('click')],
+    ];
+    for (const [que, editar] of ediciones) {
+      const escenario = await conConexiones();
+      abrirNueva(escenario);
+      escribir(escenario, 'sql', 'SELECT 1 AS id');
+      escribir(escenario, 'conexion', 'c-1', 'change');
+      escribir(escenario, 'nombre', 'Ventas');
+      declarar(escenario, 'n', 'texto');
+      await enviar(escenario, respuestaOk());
+      assert.equal(nodo(escenario, 'guardar').disabled, false, que + ': open after the test');
+
+      editar(escenario);
+      assert.equal(nodo(escenario, 'guardar').disabled, true, que + ': closed after editing');
+      const antes = escenario.peticiones.length;
+      nodo(escenario, 'guardar').disparar('click');
+      await asentarVarias();
+      assert.equal(escenario.peticiones.length, antes, que + ': and triggering it sends nothing');
+
+      await enviar(escenario, respuestaOk());
+      assert.equal(nodo(escenario, 'guardar').disabled, false, que + ': open again after a new ok test');
+    }
+  });
+
+  test('CH-32a PR2 putting back exactly what was tested opens the gate again, and a parameter value never closes it', async () => {
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'SELECT :n');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    escribir(escenario, 'nombre', 'Ventas');
+    const fila = declarar(escenario, 'n', 'numero', '1');
+    await enviar(escenario, respuestaOk());
+    escribir(escenario, 'sql', 'SELECT :n + 1');
+    assert.equal(nodo(escenario, 'guardar').disabled, true);
+    escribir(escenario, 'sql', 'SELECT :n');
+    assert.equal(nodo(escenario, 'guardar').disabled, false, 'the same content as the last passing test');
+
+    en(fila, 'parametro-valor').value = '99';
+    en(fila, 'parametro-valor').disparar('input');
+    assert.equal(nodo(escenario, 'guardar').disabled, false, 'values are never saved, so they are not part of what was tested');
+  });
+
+  test('CH-32a PR2 a failed «Probar», of any kind, closes the gate and tells it inside the pop-up', async () => {
+    const fallos: Array<[number, unknown, RegExp]> = [
+      [200, { resultado: 'fallo', fase: 'ejecucion', categoria: 'otra' }, /./],
+      [400, { error: 'solicitud-invalida', campos: ['/sql'] }, /La solicitud es inválida\. Revise estos campos: \/sql\./],
+      [404, { error: 'no-encontrada' }, /No existe una conexión registrada con ese identificador\./],
+      [500, { error: 'interno' }, /La aplicación respondió HTTP 500\./],
+    ];
+    for (const [status, cuerpo, esperado] of fallos) {
+      const escenario = await conConexiones();
+      abrirNueva(escenario);
+      escribir(escenario, 'sql', 'SELECT 1 AS id');
+      escribir(escenario, 'conexion', 'c-1', 'change');
+      escribir(escenario, 'nombre', 'Ventas');
+      await enviar(escenario, respuestaOk());
+      assert.equal(nodo(escenario, 'guardar').disabled, false);
+
+      await enviar(escenario, cuerpo, status);
+      assert.equal(nodo(escenario, 'guardar').disabled, true, String(status));
+      assert.match(nodo(escenario, 'estado').textContent, esperado, String(status));
+      assert.equal(nodo(escenario, 'estado').hidden, false);
+      assert.equal(nodo(escenario, 'banner').hidden, true, 'the page banner is behind the pop-up');
+      assert.equal(dialogoAbierto(escenario), true);
+    }
+
+    // The network failing is a failed test too.
+    const sinRed = await conConexiones();
+    abrirNueva(sinRed);
+    escribir(sinRed, 'conexion', 'c-1', 'change');
+    escribir(sinRed, 'nombre', 'Ventas');
+    await enviar(sinRed, respuestaOk());
+    assert.equal(nodo(sinRed, 'guardar').disabled, false);
+    nodo(sinRed, 'formulario').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(sinRed, 'guardar').disabled, true);
+    assert.match(nodo(sinRed, 'estado').textContent, /No se pudo contactar con la aplicación/);
+  });
+
+  test('CH-32a PR2 saving sends nothing while the gate is closed, even if the control is triggered', async () => {
+    const nueva = await conConexiones();
+    abrirNueva(nueva);
+    escribir(nueva, 'sql', 'SELECT 1 AS id');
+    escribir(nueva, 'conexion', 'c-1', 'change');
+    escribir(nueva, 'nombre', 'Ventas');
+    const antesNueva = nueva.peticiones.length;
+    nodo(nueva, 'guardar').disparar('click');
+    await asentarVarias();
+    assert.equal(nueva.peticiones.length, antesNueva, 'no test yet');
+
+    await enviar(nueva, respuestaOk());
+    escribir(nueva, 'nombre', '');
+    const tras = nueva.peticiones.length;
+    nodo(nueva, 'guardar').disparar('click');
+    await asentarVarias();
+    assert.equal(nueva.peticiones.length, tras, 'no name');
+
+    const cargada = await conConexiones();
+    await abrirGuardada(cargada);
+    const antesCargada = cargada.peticiones.length;
+    nodo(cargada, 'version-boton').disparar('click');
+    await asentarVarias();
+    assert.equal(cargada.peticiones.length, antesCargada, 'a loaded query is not saved untested either');
+  });
+
+  test('CH-32a PR2 a 201 saves the new query with every field, closes the pop-up and confirms on the page', async () => {
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    escribir(escenario, 'nombre', '  Ventas ');
+    escribir(escenario, 'descripcion', 'Ventas del mes');
+    escribir(escenario, 'sql', 'SELECT :d');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    declarar(escenario, 'd', 'fecha', '2026-01-01');
+    await enviar(escenario, respuestaOk());
+
+    escenario.respuestas.push({ status: 201, cuerpo: { consultaGuardada: FILA_GUARDADA } });
+    const antes = escenario.peticiones.length;
+    await enviar(escenario, { consultasGuardadas: [FILA_GUARDADA], truncado: false }, 200, 'guardar', 'click');
+    const nuevas = escenario.peticiones.slice(antes);
+    assert.deepEqual(nuevas.map((p) => p.url), ['/consultas-guardadas', '/consultas-guardadas']);
+    assert.deepEqual(nuevas[0].cuerpo, {
+      nombre: 'Ventas',
+      descripcion: 'Ventas del mes',
+      sql: 'SELECT :d',
+      parametros: [{ nombre: 'd', tipo: 'fecha' }],
+    });
+    assert.equal(dialogoAbierto(escenario), false, 'closed on success');
+    assert.equal(nodo(escenario, 'banner').hidden, false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'Se guardó la consulta y ya aparece en la lista.');
+  });
+
+  test('CH-32a PR2 a 200 saves the version, closes the pop-up and confirms on the page', async () => {
+    const escenario = await conConexiones();
+    await abrirGuardada(escenario);
+    escribir(escenario, 'descripcion', 'Descripción nueva');
+    escribir(escenario, 'sql', 'SELECT :a + 1');
+    escribir(escenario, 'version-nota', 'Cambio');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    await enviar(escenario, respuestaOk());
+    assert.equal(nodo(escenario, 'version-boton').disabled, false);
+
+    const antes = escenario.peticiones.length;
+    await guardarVersion(
+      escenario,
+      { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+    );
+    const nuevas = escenario.peticiones.slice(antes);
+    assert.deepEqual(nuevas.map((p) => p.url), ['/consultas-guardadas/q-1', '/consultas-guardadas']);
+    assert.deepEqual(nuevas[0].cuerpo, {
+      nombre: 'Stock',
+      descripcion: 'Descripción nueva',
+      sql: 'SELECT :a + 1',
+      parametros: [{ nombre: 'a', tipo: 'numero' }],
+      nota: 'Cambio',
+    });
+    assert.equal(dialogoAbierto(escenario), false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'Se guardó la versión 4 de «Stock».');
+  });
+
+  test('CH-32a PR2 a refused save keeps the pop-up open with the message inside and what was typed', async () => {
+    const nueva = await conConexiones();
+    abrirNueva(nueva);
+    escribir(nueva, 'nombre', 'Ventas');
+    escribir(nueva, 'sql', 'SELECT 1 AS id');
+    escribir(nueva, 'conexion', 'c-1', 'change');
+    await enviar(nueva, respuestaOk());
+    await enviar(nueva, { error: 'solicitud-invalida', campos: ['/nombre'] }, 400, 'guardar', 'click');
+    assert.equal(dialogoAbierto(nueva), true);
+    assert.match(nodo(nueva, 'estado').textContent, /La solicitud es inválida\. Revise estos campos: \/nombre\./);
+    assert.equal(nodo(nueva, 'banner').hidden, true);
+    assert.equal(nodo(nueva, 'nombre').value, 'Ventas');
+    await enviar(nueva, { error: 'interno' }, 500, 'guardar', 'click');
+    assert.match(nodo(nueva, 'estado').textContent, /^La aplicación respondió HTTP 500\.$/);
+    assert.equal(nodo(nueva, 'guardar').disabled, false, 'and it can try again');
+
+    const cargada = await conConexiones();
+    await abrirGuardada(cargada);
+    escribir(cargada, 'version-nota', 'Cambio');
+    await probarOk(cargada);
+    await guardarVersion(cargada, { status: 409, cuerpo: { error: 'sin-cambios' } });
+    assert.equal(dialogoAbierto(cargada), true);
+    assert.equal(nodo(cargada, 'estado').textContent, 'No hay cambios respecto de la versión vigente.');
+    assert.equal(nodo(cargada, 'banner').hidden, true);
+    assert.equal(nodo(cargada, 'version-nota').value, 'Cambio');
+  });
+
+  test('CH-32a PR2 Cancelar and Escape close the pop-up at once when nothing changed, and send nothing', async () => {
+    for (const [forma, cancelar] of FORMAS_DE_CANCELAR) {
+      const nueva = await conConsulta();
+      abrirNueva(nueva);
+      // The initial SELECT 1, blanks and an empty editor are not edits worth asking about.
+      for (const sql of ['', 'SELECT 1', '  SELECT 1\n  ', '   ']) {
+        abrirNueva(nueva);
+        nodo(nueva, 'sql').value = sql;
+        const antes = nueva.peticiones.length;
+        cancelar(nueva);
+        assert.equal(dialogoAbierto(nueva), false, forma + ' ' + JSON.stringify(sql));
+        assert.equal(nodo(nueva, 'consulta-nueva-confirmar').hidden, true);
+        assert.equal(nueva.peticiones.length, antes);
+      }
+
+      const cargada = await conConsultaCargada();
+      const antesCargada = cargada.peticiones.length;
+      cancelar(cargada);
+      assert.equal(dialogoAbierto(cargada), false, forma + ' on an unchanged loaded query');
+      assert.equal(cargada.peticiones.length, antesCargada);
+      assert.equal(nodo(cargada, 'version-guardar').hidden, false, 'the query stays loaded');
+    }
+  });
+
+  test('CH-32a PR2 with changes, Cancelar and Escape ask «Descartar cambios»; Seguir editando keeps them and Descartar cambios closes', async () => {
+    const edicionesNueva: Array<[string, (escenario: Escenario) => void]> = [
+      ['the SQL', (e) => { nodo(e, 'sql').value = 'SELECT * FROM producto'; }],
+      ['the name', (e) => { nodo(e, 'nombre').value = 'Borrador'; }],
+      ['the description', (e) => { nodo(e, 'descripcion').value = 'Pendiente'; }],
+      // The parameters are a field of the form too (DEC-173): a new row is a change.
+      ['a parameter', (e) => { nodo(e, 'agregar-parametro').disparar('click'); }],
+    ];
+    const edicionesCargada: Array<[string, (escenario: Escenario) => void]> = [
+      ['the SQL', (e) => { nodo(e, 'sql').value = 'SELECT :a + 1'; }],
+      ['the name', (e) => { nodo(e, 'nombre').value = 'Stock bajo'; }],
+      ['the description', (e) => { nodo(e, 'descripcion').value = ''; }],
+      ['a parameter', (e) => { nodo(e, 'agregar-parametro').disparar('click'); }],
+    ];
+    for (const [forma, cancelar] of FORMAS_DE_CANCELAR) {
+      for (const [cargada, ediciones] of [[false, edicionesNueva], [true, edicionesCargada]] as const) {
+        for (const [que, editar] of ediciones) {
+          const etiqueta = `${forma}, ${cargada ? 'loaded' : 'new'}, ${que}`;
+          const escenario = await conConsulta();
+          if (cargada) await abrirGuardada(escenario); else abrirNueva(escenario);
+          editar(escenario);
+          const sql = nodo(escenario, 'sql').value;
+          const nombre = nodo(escenario, 'nombre').value;
+          const descripcion = nodo(escenario, 'descripcion').value;
+          const antes = escenario.peticiones.length;
+
+          cancelar(escenario);
+          assert.equal(dialogoAbierto(escenario), true, etiqueta + ': stays open until confirmed');
+          assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false, etiqueta + ': asks');
+
+          nodo(escenario, 'consulta-nueva-cancelar').disparar('click');
+          assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, etiqueta);
+          assert.equal(dialogoAbierto(escenario), true, etiqueta + ': Seguir editando keeps it open');
+          assert.deepEqual([nodo(escenario, 'sql').value, nodo(escenario, 'nombre').value, nodo(escenario, 'descripcion').value], [sql, nombre, descripcion], etiqueta + ': and the edits');
+
+          cancelar(escenario);
+          assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false, etiqueta);
+          nodo(escenario, 'consulta-nueva-descartar').disparar('click');
+          assert.equal(dialogoAbierto(escenario), false, etiqueta + ': Descartar cambios closes');
+          assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, etiqueta);
+          await asentarVarias();
+          assert.equal(escenario.peticiones.length, antes, etiqueta + ': the whole round trip sent nothing');
+        }
+      }
+    }
+  });
+
+  test('CH-32a PR2 a key other than Escape does nothing, and «Nueva consulta» never asks: it starts from empty', async () => {
     const escenario = await conConsultaCargada();
+    nodo(escenario, 'sql').value = 'SELECT :a + 1';
+    nodo(escenario, 'consulta-dialogo').disparar('keydown', { key: 'Enter' });
+    nodo(escenario, 'consulta-dialogo').disparar('keydown');
+    assert.equal(dialogoAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true);
+
+    // Discarding closes the pop-up but leaves the fields; the next «Nueva consulta» empties them without asking.
+    nodo(escenario, 'consulta-cancelar').disparar('click');
+    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
+    assert.equal(dialogoAbierto(escenario), false);
+    abrirNueva(escenario);
+    assert.equal(dialogoAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true);
+    assert.equal(nodo(escenario, 'sql').value, '');
+    assert.equal(tituloDialogo(escenario), 'Nueva consulta');
+  });
+
+  test('CH-32a PR2 opening the pop-up again starts untested and clears the previous result', async () => {
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'SELECT 1 AS id');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    escribir(escenario, 'nombre', 'Ventas');
+    await enviar(escenario, respuestaOk());
+    assert.equal(nodo(escenario, 'guardar').disabled, false);
+    assert.equal(escenario.cuerpoTabla.hijos.length, 2);
+
+    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'SELECT 1 AS id');
+    escribir(escenario, 'nombre', 'Ventas');
+    assert.equal(nodo(escenario, 'guardar').disabled, true, 'the old test does not carry over');
+    assert.equal(escenario.cuerpoTabla.hijos.length, 0, 'nor the old rows');
+    assert.equal(nodo(escenario, 'estado').hidden, true);
+
+    // The same holds when another saved query is opened.
+    await enviar(escenario, respuestaOk());
+    assert.equal(nodo(escenario, 'guardar').disabled, false);
+    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
+    await abrirGuardada(escenario);
+    assert.equal(nodo(escenario, 'version-boton').disabled, true);
+    assert.equal(escenario.cuerpoTabla.hijos.length, 0);
+  });
+
+  test('CH-32a PR2 a tenant switch closes the pop-up and its confirmation, new or loaded', async () => {
+    const nueva = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(nueva, [FILA_GUARDADA]);
+    abrirNueva(nueva);
+    nodo(nueva, 'sql').value = 'SELECT * FROM producto';
+    nodo(nueva, 'consulta-cancelar').disparar('click');
+    assert.equal(nodo(nueva, 'consulta-nueva-confirmar').hidden, false);
+    await elegirTenant(nueva, [], [], 't-2');
+    assert.equal(dialogoAbierto(nueva), false);
+    assert.equal(nodo(nueva, 'consulta-nueva-confirmar').hidden, true);
+
+    const cargada = await conConsultaCargada();
+    assert.equal(dialogoAbierto(cargada), true);
+    await elegirTenant(cargada);
+    assert.equal(dialogoAbierto(cargada), false);
+    assert.equal(nodo(cargada, 'version-guardar').hidden, true, 'and the loaded query is forgotten');
+    assert.equal(nodo(cargada, 'guardar').hidden, false);
+  });
+
+  test('CH-32a PR2 a tenant-level refusal closes the pop-up so the message on the page can be seen', async () => {
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    await enviar(escenario, { error: 'tenant-no-indicado' }, 400);
+    assert.equal(dialogoAbierto(escenario), false);
+    assert.equal(nodo(escenario, 'banner').hidden, false);
+    assert.equal(nodo(escenario, 'banner').textContent, 'La consola no envió un tenant activo. Elegí uno en la barra superior.');
+  });
+
+  test('CH-32a PR2 «Nueva consulta» on a query still loaded forgets it, closes its history and runs ad hoc', async () => {
+    const escenario = await conConsultaCargada();
+    nodo(escenario, 'consulta-cancelar').disparar('click');
     await abrirPanel(escenario, TRES_VERSIONES);
     assert.equal(nodo(escenario, 'versiones').hidden, false);
     const antes = escenario.peticiones.length;
-    nodo(escenario, 'consulta-nueva').disparar('click');
-    await asentarVarias();
 
+    abrirNueva(escenario);
+    await asentarVarias();
     assert.equal(escenario.peticiones.length, antes, 'no request');
-    assert.equal(nodo(escenario, 'sql').value, '');
-    assert.equal(filas(escenario).length, 0, 'no parameter rows');
-    assert.equal(nodo(escenario, 'nombre').value, '');
-    assert.equal(nodo(escenario, 'descripcion').value, '');
+    assert.equal(nodo(escenario, 'versiones').hidden, true, 'the history of the forgotten query is closed');
     assert.equal(nodo(escenario, 'version-guardar').hidden, true);
     assert.equal(nodo(escenario, 'guardar').hidden, false, 'Guardar consulta is back');
-    assert.equal(nodo(escenario, 'versiones').hidden, true, 'the history of the forgotten query is closed');
-    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, 'nothing to confirm');
-    // Running now is ad hoc: the forgotten query is no longer named.
     nodo(escenario, 'conexion').value = 'c-1';
     nodo(escenario, 'sql').value = 'SELECT :a';
     await enviar(escenario, respuestaOk());
-    assert.ok(!('consultaGuardadaId' in ultimaEjecucion(escenario)));
-  });
-
-  test('CH-32a "Consulta nueva" on an edited query asks first; Cancelar keeps the edit and Descartar cambios empties', async () => {
-    const escenario = await conConsultaCargada();
-    nodo(escenario, 'sql').value = 'SELECT :a + 1';
-    const antes = escenario.peticiones.length;
-
-    nodo(escenario, 'consulta-nueva').disparar('click');
-    const confirmacion = nodo(escenario, 'consulta-nueva-confirmar');
-    assert.equal(confirmacion.hidden, false);
-    assert.equal(nodo(escenario, 'sql').value, 'SELECT :a + 1', 'the edit stays until it is confirmed');
-    assert.equal(nodo(escenario, 'version-guardar').hidden, false);
-    assert.equal(nodo(escenario, 'guardar').hidden, true);
-
-    nodo(escenario, 'consulta-nueva-cancelar').disparar('click');
-    assert.equal(confirmacion.hidden, true);
-    assert.equal(nodo(escenario, 'sql').value, 'SELECT :a + 1', 'Cancelar keeps the edit');
-    assert.equal(nodo(escenario, 'nombre').value, 'Stock');
-
-    nodo(escenario, 'consulta-nueva').disparar('click');
-    assert.equal(confirmacion.hidden, false);
-    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
-    assert.equal(confirmacion.hidden, true);
-    assert.equal(nodo(escenario, 'sql').value, '');
-    assert.equal(nodo(escenario, 'nombre').value, '');
-    assert.equal(nodo(escenario, 'descripcion').value, '');
-    assert.equal(filas(escenario).length, 0);
-    assert.equal(nodo(escenario, 'version-guardar').hidden, true);
-    assert.equal(nodo(escenario, 'guardar').hidden, false);
-    await asentarVarias();
-    assert.equal(escenario.peticiones.length, antes, 'the whole round trip sent nothing');
-  });
-
-  test('CH-32a with no query loaded only a statement worth keeping asks before it is discarded', async () => {
-    const escenario = await conConsulta();
-    const confirmacion = nodo(escenario, 'consulta-nueva-confirmar');
-    // Empty, the initial SELECT 1 and blanks around it are not edits.
-    for (const sql of ['', 'SELECT 1', '  SELECT 1\n  ', '   ']) {
-      nodo(escenario, 'sql').value = sql;
-      nodo(escenario, 'consulta-nueva').disparar('click');
-      assert.equal(confirmacion.hidden, true, JSON.stringify(sql));
-      assert.equal(nodo(escenario, 'sql').value, '', JSON.stringify(sql));
-    }
-    nodo(escenario, 'sql').value = 'SELECT * FROM producto';
-    nodo(escenario, 'nombre').value = 'Borrador';
-    nodo(escenario, 'consulta-nueva').disparar('click');
-    assert.equal(confirmacion.hidden, false);
-    assert.equal(nodo(escenario, 'sql').value, 'SELECT * FROM producto');
-    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
-    assert.equal(nodo(escenario, 'sql').value, '');
-    assert.equal(nodo(escenario, 'nombre').value, '', 'the name goes too');
-  });
-
-  test('CH-32a a pending confirmation closes when a query is loaded or the tenant changes', async () => {
-    const escenario = await conConsulta();
-    nodo(escenario, 'sql').value = 'SELECT * FROM producto';
-    nodo(escenario, 'consulta-nueva').disparar('click');
-    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false);
-    escenario.respuestas.push({ status: 200, cuerpo: { consultaGuardada: COMPLETA } });
-    botonesCon(nodo(escenario, 'guardadas'), 'Cargar')[0].disparar('click');
-    await asentarVarias();
-    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, 'loading replaced the editor');
-
-    nodo(escenario, 'sql').value = 'SELECT 2';
-    nodo(escenario, 'consulta-nueva').disparar('click');
-    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false);
-    await elegirTenant(escenario);
-    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, true, 'a tenant switch forgets the loaded query');
+    assert.ok(!('consultaGuardadaId' in ultimaEjecucion(escenario)), 'the forgotten query is no longer named');
   });
 
   // ---- CH-29 (DEC-154): a lost session sends the page back to the login screen ---------

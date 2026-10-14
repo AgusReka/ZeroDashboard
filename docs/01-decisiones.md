@@ -3135,6 +3135,34 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-173 — Los formularios de alta y modificación van en un pop-up, nunca sobre la tabla
+
+**Contexto.** En la consola conviven tres formas de dar de alta o modificar algo: el panel lateral («Nueva conexión», CH-30b), formularios en línea arriba de una tabla («Nuevo tenant», «Nuevo usuario», el asistente de automatizaciones) y, en Consultas, el editor, el resultado, el nombre y «Guardar consulta» repartidos por la pantalla. El usuario pidió un único patrón para todo el sistema: el formulario en una ventana superpuesta, o reemplazando la vista con «Volver» o «Cancelar».
+
+**Opciones.** (a) Pop-up centrado (`.zd-dialog` sobre `.zd-dialog-backdrop`), ancho cuando el formulario lo necesita. (b) Panel lateral (`.zd-drawer`). (c) Vista dedicada que reemplaza la pantalla, con sub-rutas `#pantalla/alta`.
+
+**Decisión.** (a), para todo alta o modificación de un registro.
+- Todos los campos del registro van en el mismo pop-up. En Consultas eso incluye la conexión, el SQL y los parámetros, junto al nombre y la descripción.
+- El pop-up tiene un título con la acción o el registro, el formulario y, al pie, la acción principal (verbo más objeto) y «Cancelar».
+- «Cancelar» y la tecla Escape lo cierran sin enviar nada. Si hay cambios sin guardar, antes piden «Descartar cambios».
+- Al abrirse, el foco va al primer campo.
+- Lo que es solo para mirar (el historial de versiones, el detalle de una plantilla) sigue en el panel lateral.
+- Quedan afuera de la regla las confirmaciones en línea de acciones destructivas.
+
+**Por qué.** Es la preferencia explícita del usuario («prefiero pop-up y no drawer para este tipo de formularios»). El pop-up concentra en un solo lugar todo lo que define el registro, y sus estilos ya están en la hoja compartida.
+
+**Se resigna.** El pop-up tapa la lista mientras está abierto. El de Consultas necesita un ancho mayor que el de `.zd-dialog`, que se resuelve con una regla de la propia consola.
+
+**Historia.** El 2026-10-14 el agente eligió primero el panel lateral, por delegación del usuario. El mismo día el usuario lo corrigió al pop-up, antes de que se mergeara nada.
+
+**Aplicación.** Consultas en CH-32a; «Nueva conexión», Tenants, Usuarios del panel y el asistente de automatizaciones en CH-32b. Toda pantalla nueva lo sigue.
+
+**Decidido por:** el usuario, 2026-10-14.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
