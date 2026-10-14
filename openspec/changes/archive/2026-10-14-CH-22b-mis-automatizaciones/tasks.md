@@ -38,11 +38,11 @@ master <- PR0 (docs) <- PR1 (pure layer) <- PR2 (route + wiring) <- PR3 (page)
 
 Branch `ch22b/exploracion` (current). Base `master`. No dependency. Out of scope: any code.
 
-- [ ] 0.1 `exploration.md`, `proposal.md`, delta specs under `specs/` (`client-panel-automations`, `client-panel-auth`, `tenant-isolation`) and `design.md` committed (design sections 1-10).
-- [ ] 0.2 DEC-137 (contract of the "mis automatizaciones" read) and the resolution of the six open questions recorded in `docs/01-decisiones.md` (design "Open questions").
-- [ ] 0.3 `tasks.md` committed (this file).
-- [ ] 0.4 Verification: structural readback only (docs). Confirm no change under `src/` (`git diff --stat master`).
-- [ ] 0.5 Open PR0 against `master`.
+- [x] 0.1 `exploration.md`, `proposal.md`, delta specs under `specs/` (`client-panel-automations`, `client-panel-auth`, `tenant-isolation`) and `design.md` committed (design sections 1-10).
+- [x] 0.2 DEC-137 (contract of the "mis automatizaciones" read) and the resolution of the six open questions recorded in `docs/01-decisiones.md` (design "Open questions").
+- [x] 0.3 `tasks.md` committed (this file).
+- [x] 0.4 Verification: structural readback only (docs). Confirm no change under `src/` (`git diff --stat master`).
+- [x] 0.5 Open PR0 against `master`.
 
 Commits (conventional, docs only; `.atl/` registry files and the unrelated `docs/verificacion-tesis-2026-10-01.md` are NOT part of this unit):
 
@@ -134,7 +134,7 @@ Branch `ch22b/pantalla-automatizaciones`. Base `master` (stacked-to-main), branc
   - `TEST_DB_PORT=5434 npm test`
   - `npm run build`
   - `git diff --stat master...HEAD` to confirm ~190 changed lines.
-- [ ] 3.10 Manual visual review (human only, CH-22a stack HTTPS local): loading skeleton, empty state, error state, populated cards and "available" section, session-expired reload; 360 px and 1280 px; light and dark themes. Not an automated task.
+- [x] 3.10 Manual visual review (human only, CH-22a stack HTTPS local): loading skeleton, empty state, error state, populated cards and "available" section, session-expired reload; 360 px and 1280 px; light and dark themes. Not an automated task.
 
 Commits (work units, tests included in each):
 
@@ -145,8 +145,8 @@ Rollback: revert PR3; the shell returns to the previous partial section. The rou
 
 ## Closure
 
-- [ ] 4.1 Verify per PR (`sdd-verify`): check every scenario in the traceability table below against the merged tests and requirements.
-- [ ] 4.2 Archive (`sdd-archive`) after PR3 merges: sync delta specs to `openspec/specs/` and move the folder to `openspec/changes/archive/<fecha>-CH-22b-mis-automatizaciones/`.
+- [x] 4.1 Verify per PR (`sdd-verify`): check every scenario in the traceability table below against the merged tests and requirements.
+- [x] 4.2 Archive (`sdd-archive`) after PR3 merges: sync delta specs to `openspec/specs/` and move the folder to `openspec/changes/archive/<fecha>-CH-22b-mis-automatizaciones/`.
 
 ## Spec Scenario to Task Traceability
 
