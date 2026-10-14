@@ -7,6 +7,7 @@ Branch base: `master` (after #174). Tests first, against `npm run test:db` for t
 - 400-line budget risk: Medium
 - Chained PRs recommended: No
 - Decision needed before apply: No
+- **Actual after apply (2026-10-14): ~605 changed lines** (consola.test.ts 416, consola.ts 189), over the 400-line budget. A split was possible (picker / saving and "Consulta nueva") but both touch the same two files interleaved. **Decided by the user: one PR with `size:exception`.**
 
 ## PR0 — Planning
 - [x] 0.1 DEC-172, exploration, proposal, spec, design and tasks (`ch32a/exploracion`); the change map row.
