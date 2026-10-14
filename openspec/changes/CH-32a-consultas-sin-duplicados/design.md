@@ -76,34 +76,63 @@ Tests come first (RED, then GREEN):
 ## 6. Size forecast
 `consola.ts` ~140, `consola.test.ts` ~180, spec ~40: ~360 lines, one PR.
 
-## 7. Screen path and save panel (PR2, DEC-173)
+## 7. Query pop-up (PR2, DEC-173 as corrected)
 
-Order of `#pantalla-consultas`, top to bottom (no field changes; every existing id kept):
-1. **Page header:** title and description as today; in its actions `#consulta-nueva` («Consulta nueva») with its inline confirmation `#consulta-nueva-confirmar` beside it (moved from `#guardado`).
-2. **Strip** `#consulta-franja` above `#formulario`:
-   - With no query loaded: `#franja-sin-guardar`, the text «Consulta sin guardar» and `#guardar-abrir` («Guardar consulta»).
-   - With one loaded: the existing `#version-guardar` block, now the loaded state of the strip, holding `#version-cargada` (name + «Versión N · vigente») and `#version-abrir` («Guardar como nueva versión»).
-   - `recordarConsultaCargada` / `olvidarConsultaCargada` switch between the two, as they already switch `#version-guardar`.
-3. **Editor and result:** `#formulario`, `#estado`, the table and the pager, unchanged.
-4. **Saved queries:** `#guardado` keeps its title, its help text and `#guardadas`. The name, description, note and save buttons leave it for the panel.
-5. **Save panel** `aside#guardado-panel.zd-drawer` (hidden):
-   - **Head:** `h2#guardado-titulo`.
-   - **Body:** `#nombre` and `#descripcion` (moved, same ids), and `#version-campos` with `#version-nota` (shown only for a version).
-   - **Foot:** `#guardar` («Guardar consulta», new-query mode only), `#version-boton` («Guardar versión N+1», version mode only) and `#guardado-cancelar` («Cancelar»).
-   - **Modes:**
-     - `abrirGuardado('nueva')` empties name and description; title «Guardar consulta».
-     - `abrirGuardado('version')` fills them from the loaded query (its `descripcion` is now remembered by `recordarConsultaCargada`) and empties the note; title «Guardar como versión N+1».
-     - Both focus `#nombre`.
-   - **Closing:** `cerrarGuardado()` on «Cancelar», on a 201/200, on a tenant switch, on loading or forgetting a query, and on «Consulta nueva». `guardar()` keeps its guard (no request with a query loaded). Errors still go to the banner, as today.
-6. **Versions:** `#versiones` becomes `aside#versiones.zd-drawer.zd-drawer--wide`. Its title, list, comparison and `#versiones-cerrar` keep their ids, and its `hidden` toggling is unchanged.
+PR2 reorganises the screen; the logic of sections 1 to 3 is kept and moved, not rewritten. Every existing id is kept; elements move.
 
-Tests (prefix `CH-32a`, design order):
-- markup order (header action, strip before `#formulario`, panel and versions are `aside.zd-drawer` hidden by default);
-- the strip's two states;
-- opening, in each mode, shows the right title, fields and button, and focuses the name;
-- «Cancelar» closes and sends nothing;
-- a 201 and a 200 close the panel;
+**Screen** (`#pantalla-consultas`):
+- **Page header:** `.zd-pagehead__actions` holds `#consulta-nueva`, relabelled «Nueva consulta» and made the primary button. It opens the pop-up empty, with no confirmation of its own.
+- **Saved queries:** `#guardado` keeps its title, a shorter help text and `#guardadas`. Each row's «Cargar» becomes «Abrir»: it loads the query (the existing `cargarGuardada`) and opens the pop-up. «Versiones» stays.
+- **Versions:** `#versiones` becomes `aside.zd-drawer.zd-drawer--wide` with head, body and foot. Its child ids and the `hidden` toggling stay the same.
+
+**Pop-up** `div#consulta-dialogo.zd-dialog-backdrop` (hidden) > `div.zd-dialog[role=dialog][aria-modal=true][aria-labelledby=consulta-dialogo-titulo]`:
+- **Width:** one console bridge-style rule makes it wide, `#consulta-dialogo .zd-dialog { width: min(1100px, 100%) }`. No new shared class.
+- **Title:** `h2#consulta-dialogo-titulo.zd-dialog__title`. It reads «Nueva consulta», or «{nombre} · versión N» with a query loaded.
+- **Body, in order:**
+  - `#nombre`, `#descripcion`;
+  - inside `#formulario`: `#conexion` with `#conexion-aviso` and `#conexion-reintentar`, `#sql`, the parameter rows and «Agregar parámetro», `#limite`;
+  - `#version-campos` with `#version-nota`, shown only with a query loaded.
+- **Result:** `#estado`, the result table and the pager, inside the pop-up.
+- **Actions** (`.zd-dialog__actions`):
+  - `#ejecutar`, relabelled «Probar» (`type=submit` of `#formulario`);
+  - `#guardar` («Guardar consulta»), shown only for a new query;
+  - `#version-boton` («Guardar como versión N+1»), shown only with a query loaded;
+  - `#consulta-cancelar` («Cancelar»).
+- **Unsaved changes:** `#consulta-nueva-confirmar` with `#consulta-nueva-descartar` («Descartar cambios») and `#consulta-nueva-cancelar` («Seguir editando») sits in the actions row and is shown when «Cancelar» or Escape finds changes.
+- **Removed:** the PR2 strip and save drawer (`#consulta-franja`, `#franja-sin-guardar`, `#guardar-abrir`, `#version-abrir`, `#guardado-panel`, `#guardado-titulo`, `#guardado-cancelar`). They were never merged.
+
+**Script:**
+- **Opening and closing:**
+  - `abrirConsulta()` shows the pop-up, writes the title, toggles `#guardar`, `#version-boton` and `#version-campos` by `consultaCargada`, and focuses `#nombre`.
+  - `cerrarConsulta()` hides it and the confirmation.
+  - «Nueva consulta» runs `empezarConsultaNueva()` (empties SQL, parameters, name and description, forgets the loaded query), then `abrirConsulta()`.
+  - «Abrir» runs `cargarGuardada(id)`, then `abrirConsulta()` on success.
+- **Cancel:** `pedirCerrarConsulta()`, from «Cancelar» and from the Escape key on the pop-up, asks «Descartar cambios» when `hayCambiosSinGuardar()`. Otherwise it closes.
+  - `hayCambiosSinGuardar()` now also compares the name and description with those of the loaded query, or with empty for a new one.
+- **Save gate:**
+  - `huellaActual()` is the JSON of `{ conexion, sql, parametros: declaracionActual() }`.
+  - `ultimaPruebaOk` is set to the fingerprint when an execution answers `resultado: 'ok'`, and to `null` on any other answer, on opening the pop-up and on a tenant switch.
+  - `actualizarGuardado()` enables `#guardar` / `#version-boton` only when `ultimaPruebaOk === huellaActual()` and the name is not empty. It runs on every `input` and `change` of the connection, SQL, parameter rows and name, and after every run.
+  - `guardar()` and `guardarNuevaVersion()` return early when the gate is closed. `guardar()` keeps its guard against a loaded query.
+- **On success:**
+  - a 201 closes the pop-up, confirms and reloads the list;
+  - a 200 closes it, confirms «Se guardó la versión N de «nombre»» and reloads the list.
+  - The confirmations go to the page banner, which is outside the pop-up and visible once it closes.
+  - Errors keep the pop-up open. They are written inside it, in `#estado`, so the operator sees them without closing.
+- **Tenant switch:** closes the pop-up and the confirmation (`cambiarTenant`).
+
+**Tests** (prefix `CH-32a`):
+- markup: the header button, the pop-up hidden with `role=dialog` and `aria-modal`, the field order, the actions, and versions as a wide aside;
+- «Nueva consulta» opens it empty and titled; «Abrir» opens it loaded and titled, with «Guardar como versión N+1»;
+- «Probar» renders the result inside the pop-up;
+- the save gate:
+  - disabled before a test;
+  - enabled after an ok test with a name;
+  - disabled again after editing the SQL, a parameter or the connection;
+  - disabled after a failed test;
+- a 201 and a 200 close the pop-up; a 400/409 keeps it open with the message inside;
+- «Cancelar» and Escape: no changes close it; changes ask, «Seguir editando» keeps them, «Descartar cambios» closes;
 - a tenant switch closes it;
-- with a query loaded the panel never shows `#guardar`.
+- every PR1 behaviour still holds (picker states, no duplicate on save, connection kept on opening another query).
 
-Existing tests that click `#guardar` or `#version-boton` directly keep working: the handlers are unchanged.
+Existing tests that click `#ejecutar`, `#guardar` or `#version-boton` directly now need an ok run first where they save. Each such edit is listed in the writer's report.

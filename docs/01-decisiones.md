@@ -3135,24 +3135,29 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
-### DEC-173 — Los formularios de alta y modificación van en el panel lateral, nunca sobre la tabla
+### DEC-173 — Los formularios de alta y modificación van en un pop-up, nunca sobre la tabla
 
-**Contexto.** En la consola conviven tres formas de dar de alta o modificar algo: el panel lateral («Nueva conexión», CH-30b), formularios en línea arriba de una tabla («Nuevo tenant», «Nuevo usuario», el asistente de automatizaciones) y, en Consultas, el nombre, la descripción y «Guardar consulta» debajo del editor y del resultado, mezclados con la lista. El usuario pidió un único patrón para todo el sistema: el formulario en una ventana superpuesta, o en la página reemplazando todo lo demás con «Volver» o «Cancelar», y dejó la elección al agente («decidí cómo es más fácil»).
+**Contexto.** En la consola conviven tres formas de dar de alta o modificar algo: el panel lateral («Nueva conexión», CH-30b), formularios en línea arriba de una tabla («Nuevo tenant», «Nuevo usuario», el asistente de automatizaciones) y, en Consultas, el editor, el resultado, el nombre y «Guardar consulta» repartidos por la pantalla. El usuario pidió un único patrón para todo el sistema: el formulario en una ventana superpuesta, o reemplazando la vista con «Volver» o «Cancelar».
 
-**Opciones.** (a) Panel lateral (`.zd-drawer`, y `.zd-drawer--wide` para formularios largos) que se abre sobre la pantalla, con «Cancelar». (b) Vista dedicada que reemplaza la pantalla, con «Volver», lo que exige sub-rutas `#pantalla/alta`. (c) Diálogo centrado (`.zd-dialog`).
+**Opciones.** (a) Pop-up centrado (`.zd-dialog` sobre `.zd-dialog-backdrop`), ancho cuando el formulario lo necesita. (b) Panel lateral (`.zd-drawer`). (c) Vista dedicada que reemplaza la pantalla, con sub-rutas `#pantalla/alta`.
 
 **Decisión.** (a), para todo alta o modificación de un registro.
-- El panel tiene un encabezado con el título de la acción («Nueva conexión», «Guardar consulta»), el formulario en el cuerpo y, al pie, la acción principal (verbo más objeto) junto a «Cancelar».
-- «Cancelar» lo cierra sin enviar nada y descarta lo escrito. Al abrirse, el foco va al primer campo.
-- Quedan afuera de la regla los editores que son el contenido principal de una pantalla (el SQL de Consultas, el SQL por entidad de Mapeo) y las confirmaciones de acciones destructivas, que siguen en línea.
+- Todos los campos del registro van en el mismo pop-up. En Consultas eso incluye la conexión, el SQL y los parámetros, junto al nombre y la descripción.
+- El pop-up tiene un título con la acción o el registro, el formulario y, al pie, la acción principal (verbo más objeto) y «Cancelar».
+- «Cancelar» y la tecla Escape lo cierran sin enviar nada. Si hay cambios sin guardar, antes piden «Descartar cambios».
+- Al abrirse, el foco va al primer campo.
+- Lo que es solo para mirar (el historial de versiones, el detalle de una plantilla) sigue en el panel lateral.
+- Quedan afuera de la regla las confirmaciones en línea de acciones destructivas.
 
-**Por qué.** El componente ya existe en la hoja compartida y en la guía de diseño («crear y detallar en `.zd-drawer`»), y ya lo usa una pantalla. No necesita rutas nuevas, mantiene a la vista la lista de la que se parte y se aplica pantalla por pantalla sin tocar el backend.
+**Por qué.** Es la preferencia explícita del usuario («prefiero pop-up y no drawer para este tipo de formularios»). El pop-up concentra en un solo lugar todo lo que define el registro, y sus estilos ya están en la hoja compartida.
 
-**Se resigna.** Un panel lateral en un teléfono ocupa todo el ancho, lo que equivale a reemplazar la vista, y el asistente de automatizaciones, de dos pasos, va a necesitar el panel ancho.
+**Se resigna.** El pop-up tapa la lista mientras está abierto. El de Consultas necesita un ancho mayor que el de `.zd-dialog`, que se resuelve con una regla de la propia consola.
 
-**Aplicación.** Consultas en CH-32a; Tenants, Usuarios del panel y el asistente de automatizaciones en CH-32b. Toda pantalla nueva lo sigue.
+**Historia.** El 2026-10-14 el agente eligió primero el panel lateral, por delegación del usuario. El mismo día el usuario lo corrigió al pop-up, antes de que se mergeara nada.
 
-**Decidido por:** el agente, por delegación explícita del usuario el 2026-10-14 («decidí cómo es más fácil»), que fijó la regla de fondo: nada de formularios de alta o modificación arriba de una tabla.
+**Aplicación.** Consultas en CH-32a; «Nueva conexión», Tenants, Usuarios del panel y el asistente de automatizaciones en CH-32b. Toda pantalla nueva lo sigue.
+
+**Decidido por:** el usuario, 2026-10-14.
 
 **Estado:** firme.
 
