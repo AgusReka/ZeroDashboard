@@ -26,5 +26,5 @@ Branch base: `master` (after #174). Tests first, against `npm run test:db` for t
 - [x] 2.3 Existing suites still pass (tests that save run an ok «Probar» first).
 
 ## Close
-- [ ] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
-- [ ] 3.2 Verify, archive, sync `query-console` (replace "Saving the Current Statement From the Console" keeping its scenario; append "Create and Edit Forms Open in a Pop-up", "Query Screen and Query Pop-up" and "Connection Picker"), mark CH-32a in `docs/02-mapa-de-changes.md`.
+- [x] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
+- [x] 3.2 Verify, archive, sync `query-console` (replace "Saving the Current Statement From the Console" keeping its scenario; append "Create and Edit Forms Open in a Pop-up", "Query Screen and Query Pop-up" and "Connection Picker"), mark CH-32a in `docs/02-mapa-de-changes.md`.

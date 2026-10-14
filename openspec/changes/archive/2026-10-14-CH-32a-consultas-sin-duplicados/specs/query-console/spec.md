@@ -24,6 +24,32 @@ The console SHALL save a query only from the query pop-up. With no saved query l
 - WHEN the operator edits the SQL, the parameters or the connection
 - THEN the save control SHALL be disabled until «Probar» succeeds again
 
+### Requirement: Result Next to the Execute Button
+Inside the query pop-up, the status line, the results table and the pager SHALL come right after the query form and before the pop-up's actions («Probar» and the save control); the pop-up comes before the saved queries section in the document.
+(Previously: on the Consultas screen, right after the execute button and before the saved queries.)
+
+#### Scenario: Result placement
+- **WHEN** the console document is served
+- **THEN** the results table appears after the query form and before «Probar», inside the query pop-up, and the pop-up appears before the saved queries section, all inside the Consultas screen
+
+### Requirement: Save as a New Version
+With a saved query loaded in the query pop-up, the console SHALL offer «Guardar como versión N+1» (N being the loaded version) with an optional note field, enabled under the same test gate as «Guardar consulta». It SHALL send `PUT /consultas-guardadas/<id>` with the pop-up's name, description, statement, declared parameters and the note, exactly as the create sends them, then close the pop-up and refresh the list. A `409 sin-cambios` SHALL read "No hay cambios respecto de la versión vigente" and a `409 conflicto-de-edicion` SHALL ask to reload the query, both inside the pop-up, which stays open. The saved-queries help text SHALL still say that a saved query cannot be deleted.
+(Previously: «Guardar como nueva versión» below the list, with no test gate.)
+
+#### Scenario: Save a change
+- **GIVEN** a saved query opened in the pop-up, its statement modified and tested
+- **WHEN** the operator saves it as a new version with the note "Agrega filtro"
+- **THEN** one PUT request is sent for that query's id with the pop-up's content and the note, the pop-up closes and the list is refreshed
+
+#### Scenario: Nothing loaded
+- **WHEN** no saved query has been loaded
+- **THEN** the save-as-version action is not offered
+
+#### Scenario: Switching tenant forgets the loaded query
+- **WHEN** the operator switches tenant
+- **THEN** the loaded query is forgotten, the pop-up closes and the action disappears
+
+
 ## ADDED Requirements
 
 ### Requirement: Create and Edit Forms Open in a Pop-up (DEC-173)
