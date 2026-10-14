@@ -33,4 +33,4 @@ Branch base: `master` (after #178). Tests first, `npx tsx --test src/consola.tes
 
 ## Close
 - [x] 4.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
-- [ ] 4.2 Verify, archive, sync `query-console`, mark CH-32b in `docs/02-mapa-de-changes.md`; note C-05 of the design guide as superseded by DEC-173.
+- [x] 4.2 Verify, archive, sync `query-console`, mark CH-32b in `docs/02-mapa-de-changes.md`; note C-05 of the design guide as superseded by DEC-173.

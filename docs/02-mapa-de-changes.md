@@ -89,7 +89,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-30e | Pantallas de Auditoría y Tiempos de alta | A5, G1 |
 | CH-31 | Datos de desarrollo y prueba: base aparte para los tests, réplica de demo `food_store` en Compose y semilla de demo opcional que deja todo funcionando (DEC-170, DEC-171). **Archivado** | — |
 | CH-32a | Consola: consultas guardadas sin duplicados al guardar, «Consulta nueva» y selector de conexión y formularios de alta y modificación en pop-up para todo el sistema (auditoría del 2026-10-13, F1; DEC-172, DEC-173). **Archivado** | B1, B2, B4 |
-| CH-32b | Consola: «Nueva conexión», «Nuevo tenant», «Nuevo usuario» y el asistente de automatizaciones en pop-up (DEC-173), «Crear y elegir» un tenant, confirmación de «Reponer clave» y la tabla de automatizaciones con el nombre de la conexión y el horario en palabras (auditoría del 2026-10-13, F2) | — |
+| CH-32b | Consola: «Nueva conexión», «Nuevo tenant», «Nuevo usuario» y el asistente de automatizaciones en pop-up (DEC-173), «Crear y elegir» un tenant, confirmación de «Reponer clave» y la tabla de automatizaciones con el nombre de la conexión y el horario en palabras (auditoría del 2026-10-13, F2). **Archivado** | — |
 
 ### Partición de CH-19
 
