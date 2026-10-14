@@ -122,8 +122,8 @@ Las fases van por dependencia y prioridad. Ninguna empieza sin aprobación.
 
 **F3. Decisiones de producto, antes de cualquier código:**
 - Plantilla → consulta (§3.2).
-- Edición de automatizaciones en la consola (§4.5).
-- Confirmación escrita de la baja de un tenant.
+- Edición de automatizaciones en la consola (§4.5). **Decidido el 2026-10-14 (DEC-174):** la consola ajusta en el lugar valores, horario y destinatario, igual que el panel.
+- Confirmación escrita de la baja de un tenant. **Decidido el 2026-10-14 (DEC-175):** el operador escribe el nombre en la consola, y la ruta también lo exige.
 - Pantallas de CH-30e: Auditoría tiene ruta; Tiempos de alta no tiene ruta, solo `scripts/marcas-alta.sql`.
 
 **F4. Documentación (§7).** Va después de F1 y F2, para documentar lo que ya existe.
