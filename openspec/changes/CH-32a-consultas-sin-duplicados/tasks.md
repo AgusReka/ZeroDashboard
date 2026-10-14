@@ -19,6 +19,11 @@ Branch base: `master` (after #174). Tests first, against `npm run test:db` for t
 - [x] 1.4 GREEN: `select#conexion` with `cargarConexionesConsulta()` (loading, empty, truncated, error with «Reintentar», generation token); `ejecutar()` with no connection.
 - [x] 1.5 Existing `consola.test.ts` scenarios still pass; add the `GET /conexiones` answer where a scenario needs the select populated.
 
+## PR2 — Screen path and save panel (DEC-173)
+- [ ] 2.1 RED: the tests of design §7; new ids (`consulta-franja`, `franja-sin-guardar`, `guardar-abrir`, `version-abrir`, `guardado-panel`, `guardado-titulo`, `version-campos`, `guardado-cancelar`) in `IDS`, hidden ones in `IDS_OCULTOS`.
+- [ ] 2.2 GREEN: header action, strip, save panel with its two modes, versions in a wide side panel.
+- [ ] 2.3 Existing suites still pass.
+
 ## Close
-- [ ] 2.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
-- [ ] 2.2 Verify, archive, sync `query-console` (replace "Saving the Current Statement From the Console" keeping its scenario; append "New Query Action" and "Connection Picker"), mark CH-32a in `docs/02-mapa-de-changes.md`.
+- [ ] 3.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
+- [ ] 3.2 Verify, archive, sync `query-console` (replace "Saving the Current Statement From the Console" keeping its scenario; append "New Query Action", "Connection Picker", "Create and Edit Forms Open in a Side Panel" and "Query Screen Path and Save Panel"), mark CH-32a in `docs/02-mapa-de-changes.md`.

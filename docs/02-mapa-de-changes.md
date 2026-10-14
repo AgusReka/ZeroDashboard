@@ -88,7 +88,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-30d | Pantallas de Mapeo y validación (un SQL por entidad, DEC-169), Plantillas y Contrato. **Archivado** | M1–M4 |
 | CH-30e | Pantallas de Auditoría y Tiempos de alta | A5, G1 |
 | CH-31 | Datos de desarrollo y prueba: base aparte para los tests, réplica de demo `food_store` en Compose y semilla de demo opcional que deja todo funcionando (DEC-170, DEC-171). **Archivado** | — |
-| CH-32a | Consola: consultas guardadas sin duplicados al guardar, «Consulta nueva» y selector de conexión (auditoría del 2026-10-13, F1; DEC-172). **Propuesto** | B1, B2, B4 |
+| CH-32a | Consola: consultas guardadas sin duplicados al guardar, «Consulta nueva» y selector de conexión y formularios de alta y modificación en panel lateral para todo el sistema (auditoría del 2026-10-13, F1; DEC-172, DEC-173). **Propuesto** | B1, B2, B4 |
 
 ### Partición de CH-19
 

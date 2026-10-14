@@ -15,10 +15,12 @@
 - **Connection picker:** `#conexion` becomes a `select` filled from `GET /conexiones` (option text: the connection's name and a short id, as in the automation wizard; value: its id), loaded when the tenant is set, like the saved queries. No connection: the select says so. "Ejecutar" with no connection chosen says «Elegí una conexión para ejecutar» and sends nothing.
 - Help text of the saved-queries section updated to the new behaviour.
 
+- **Screen path (DEC-173, PR2):** the Consultas screen reads top to bottom as header («Consulta nueva») → a strip with the editor's state and its save action → editor → result → saved queries. Saving opens a side panel («Guardar consulta», or «Guardar como versión N+1» with a query loaded) with «Cancelar»; the version history opens in a wide side panel. No field changes.
+
 ### Out of Scope
 - Binding a saved query to a connection (DEC-11 stands).
 - Creating a query from a template (audit §3.2, a pending product decision).
-- The two-column layout and the strip above the editor of C-08 (a visual redesign of the screen, not needed to fix the duplicate).
+- The two-column layout of C-08 (it needs a new shared layout class; the single column keeps the order the operator works in).
 - Any change to routes or to the API.
 
 ## Capabilities

@@ -75,3 +75,35 @@ Tests come first (RED, then GREEN):
 
 ## 6. Size forecast
 `consola.ts` ~140, `consola.test.ts` ~180, spec ~40: ~360 lines, one PR.
+
+## 7. Screen path and save panel (PR2, DEC-173)
+
+Order of `#pantalla-consultas`, top to bottom (no field changes; every existing id kept):
+1. **Page header:** title and description as today; in its actions `#consulta-nueva` («Consulta nueva») with its inline confirmation `#consulta-nueva-confirmar` beside it (moved from `#guardado`).
+2. **Strip** `#consulta-franja` above `#formulario`:
+   - With no query loaded: `#franja-sin-guardar`, the text «Consulta sin guardar» and `#guardar-abrir` («Guardar consulta»).
+   - With one loaded: the existing `#version-guardar` block, now the loaded state of the strip, holding `#version-cargada` (name + «Versión N · vigente») and `#version-abrir` («Guardar como nueva versión»).
+   - `recordarConsultaCargada` / `olvidarConsultaCargada` switch between the two, as they already switch `#version-guardar`.
+3. **Editor and result:** `#formulario`, `#estado`, the table and the pager, unchanged.
+4. **Saved queries:** `#guardado` keeps its title, its help text and `#guardadas`. The name, description, note and save buttons leave it for the panel.
+5. **Save panel** `aside#guardado-panel.zd-drawer` (hidden):
+   - **Head:** `h2#guardado-titulo`.
+   - **Body:** `#nombre` and `#descripcion` (moved, same ids), and `#version-campos` with `#version-nota` (shown only for a version).
+   - **Foot:** `#guardar` («Guardar consulta», new-query mode only), `#version-boton` («Guardar versión N+1», version mode only) and `#guardado-cancelar` («Cancelar»).
+   - **Modes:**
+     - `abrirGuardado('nueva')` empties name and description; title «Guardar consulta».
+     - `abrirGuardado('version')` fills them from the loaded query (its `descripcion` is now remembered by `recordarConsultaCargada`) and empties the note; title «Guardar como versión N+1».
+     - Both focus `#nombre`.
+   - **Closing:** `cerrarGuardado()` on «Cancelar», on a 201/200, on a tenant switch, on loading or forgetting a query, and on «Consulta nueva». `guardar()` keeps its guard (no request with a query loaded). Errors still go to the banner, as today.
+6. **Versions:** `#versiones` becomes `aside#versiones.zd-drawer.zd-drawer--wide`. Its title, list, comparison and `#versiones-cerrar` keep their ids, and its `hidden` toggling is unchanged.
+
+Tests (prefix `CH-32a`, design order):
+- markup order (header action, strip before `#formulario`, panel and versions are `aside.zd-drawer` hidden by default);
+- the strip's two states;
+- opening, in each mode, shows the right title, fields and button, and focuses the name;
+- «Cancelar» closes and sends nothing;
+- a 201 and a 200 close the panel;
+- a tenant switch closes it;
+- with a query loaded the panel never shows `#guardar`.
+
+Existing tests that click `#guardar` or `#version-boton` directly keep working: the handlers are unchanged.

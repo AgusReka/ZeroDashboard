@@ -3135,6 +3135,29 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-173 — Los formularios de alta y modificación van en el panel lateral, nunca sobre la tabla
+
+**Contexto.** En la consola conviven tres formas de dar de alta o modificar algo: el panel lateral («Nueva conexión», CH-30b), formularios en línea arriba de una tabla («Nuevo tenant», «Nuevo usuario», el asistente de automatizaciones) y, en Consultas, el nombre, la descripción y «Guardar consulta» debajo del editor y del resultado, mezclados con la lista. El usuario pidió un único patrón para todo el sistema: el formulario en una ventana superpuesta, o en la página reemplazando todo lo demás con «Volver» o «Cancelar», y dejó la elección al agente («decidí cómo es más fácil»).
+
+**Opciones.** (a) Panel lateral (`.zd-drawer`, y `.zd-drawer--wide` para formularios largos) que se abre sobre la pantalla, con «Cancelar». (b) Vista dedicada que reemplaza la pantalla, con «Volver», lo que exige sub-rutas `#pantalla/alta`. (c) Diálogo centrado (`.zd-dialog`).
+
+**Decisión.** (a), para todo alta o modificación de un registro.
+- El panel tiene un encabezado con el título de la acción («Nueva conexión», «Guardar consulta»), el formulario en el cuerpo y, al pie, la acción principal (verbo más objeto) junto a «Cancelar».
+- «Cancelar» lo cierra sin enviar nada y descarta lo escrito. Al abrirse, el foco va al primer campo.
+- Quedan afuera de la regla los editores que son el contenido principal de una pantalla (el SQL de Consultas, el SQL por entidad de Mapeo) y las confirmaciones de acciones destructivas, que siguen en línea.
+
+**Por qué.** El componente ya existe en la hoja compartida y en la guía de diseño («crear y detallar en `.zd-drawer`»), y ya lo usa una pantalla. No necesita rutas nuevas, mantiene a la vista la lista de la que se parte y se aplica pantalla por pantalla sin tocar el backend.
+
+**Se resigna.** Un panel lateral en un teléfono ocupa todo el ancho, lo que equivale a reemplazar la vista, y el asistente de automatizaciones, de dos pasos, va a necesitar el panel ancho.
+
+**Aplicación.** Consultas en CH-32a; Tenants, Usuarios del panel y el asistente de automatizaciones en CH-32b. Toda pantalla nueva lo sigue.
+
+**Decidido por:** el agente, por delegación explícita del usuario el 2026-10-14 («decidí cómo es más fácil»), que fijó la regla de fondo: nada de formularios de alta o modificación arriba de una tabla.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

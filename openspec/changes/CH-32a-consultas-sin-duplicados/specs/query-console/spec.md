@@ -51,3 +51,24 @@ The connection to run a statement against SHALL be chosen from a list of the act
 - GIVEN "replica-b" is chosen
 - WHEN a saved query is loaded
 - THEN "replica-b" is still chosen
+
+### Requirement: Create and Edit Forms Open in a Side Panel (DEC-173)
+In the console, every form that creates or modifies a record SHALL open in a side panel over the screen (`.zd-drawer`; `.zd-drawer--wide` for long ones), with a header naming the action, the main action (verb + object) and «Cancelar» at its foot. «Cancelar» SHALL close it without sending anything. Such a form SHALL NOT be rendered inline above or below a table. Editors that are the screen's main content (the Consultas SQL, the Mapeo SQL per entity) and inline confirmations of destructive actions are outside this rule.
+
+#### Scenario: Cancelling a form
+- GIVEN a create or edit side panel is open with values typed
+- WHEN the operator presses «Cancelar»
+- THEN the panel closes and no request is sent
+
+### Requirement: Query Screen Path and Save Panel (DEC-172, DEC-173)
+The Consultas screen SHALL present, in this order: the page header with «Consulta nueva»; a strip stating the editor's state — «Consulta sin guardar» with «Guardar consulta», or the loaded query's name and «Versión N · vigente» with «Guardar como nueva versión»; the editor (connection, SQL, parameters, «Ejecutar»); the result; and the saved queries list. «Guardar consulta» SHALL open the save side panel titled «Guardar consulta» with the name and description; «Guardar como nueva versión» SHALL open it titled «Guardar como versión N+1» with the name and description of the loaded query and the version note. The panel SHALL close on success and on «Cancelar». The version history SHALL open in a wide side panel.
+
+#### Scenario: Saving a new query from the strip
+- GIVEN no saved query is loaded
+- WHEN the operator presses «Guardar consulta» in the strip, types a name and confirms in the panel
+- THEN the create request is sent and the panel closes
+
+#### Scenario: Saving a version from the strip
+- GIVEN saved query «Stock bajo» at version 3 is loaded
+- WHEN the operator presses «Guardar como nueva versión»
+- THEN the panel is titled «Guardar como versión 4», holds «Stock bajo» in the name field, and offers no way to create a separate query
