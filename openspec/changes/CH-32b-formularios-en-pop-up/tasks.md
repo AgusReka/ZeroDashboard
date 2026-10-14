@@ -32,5 +32,5 @@ Branch base: `master` (after #178). Tests first, `npx tsx --test src/consola.tes
 - [x] 3.4 Existing CH-13/CH-21c wizard tests still pass (only the `#auto-nueva` hidden checks and banner-on-400 checks change).
 
 ## Close
-- [ ] 4.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
+- [x] 4.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
 - [ ] 4.2 Verify, archive, sync `query-console`, mark CH-32b in `docs/02-mapa-de-changes.md`; note C-05 of the design guide as superseded by DEC-173.
