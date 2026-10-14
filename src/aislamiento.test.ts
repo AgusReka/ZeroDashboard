@@ -452,17 +452,23 @@ describe(
           }),
         exitoso: 201,
       },
-      ...(['', '/ejecuciones', '/desactivar'] as const).map((sufijo) => ({
-        nombre: `${sufijo === '/desactivar' ? 'POST' : 'GET'} /automatizaciones/:id${sufijo}`,
-        errorEsperado: 'automatizacion-no-encontrada',
-        pedir: (llamante: Fixture, duenio: Fixture) =>
-          app.inject({
-            method: sufijo === '/desactivar' ? 'POST' : 'GET',
-            url: `/automatizaciones/${duenio.automatizacionId}${sufijo}`,
-            headers: cabeceras(llamante),
-          }),
-        exitoso: 200,
-      })),
+      // CH-33 (DEC-174): the adjust comes before `desactivar`, whose owner control leaves the
+      // fixture's automation deactivated, which the adjust would answer with 409.
+      ...(['', '/ejecuciones', '/ajustes', '/desactivar'] as const).map((sufijo) => {
+        const metodo = sufijo === '/desactivar' ? 'POST' : sufijo === '/ajustes' ? 'PUT' : 'GET';
+        return {
+          nombre: `${metodo} /automatizaciones/:id${sufijo}`,
+          errorEsperado: 'automatizacion-no-encontrada',
+          pedir: (llamante: Fixture, duenio: Fixture) =>
+            app.inject({
+              method: metodo,
+              url: `/automatizaciones/${duenio.automatizacionId}${sufijo}`,
+              headers: cabeceras(llamante),
+              ...(metodo === 'PUT' ? { payload: { cron: '0 9 * * *' } } : {}),
+            }),
+          exitoso: 200,
+        };
+      }),
     ];
 
     for (const ruta of rutas) {

@@ -19,10 +19,10 @@ Branch base: `master` (after #180). Tests first. While working: `npx tsx --test 
 - [x] 1.4 RED → GREEN: console baja pop-up (design §4); the two CH-30b inline tests rewritten; ids in `IDS` / `IDS_OCULTOS`.
 
 ## PR2 — Adjust route
-- [ ] 2.1 RED: `resolverAjusteOperador` units and schema refusals (no DB).
-- [ ] 2.2 GREEN: resolver, schema and `PUT /automatizaciones/:id/ajustes` (design §1); module header comment.
-- [ ] 2.3 RED → GREEN: DB cases (id and runs kept, only sent columns, `proximaEjecucion`, 404, 409).
-- [ ] 2.4 Isolation sweep: `aislamiento.test.ts:455` gains the route.
+- [x] 2.1 RED: `resolverAjusteOperador` units and schema refusals (no DB).
+- [x] 2.2 GREEN: resolver, schema and `PUT /automatizaciones/:id/ajustes` (design §1); module header comment.
+- [x] 2.3 RED → GREEN: DB cases (id and runs kept, only sent columns, `proximaEjecucion`, 404, 409).
+- [x] 2.4 Isolation sweep: `aislamiento.test.ts:455` gains the route.
 
 ## PR3 — Console «Ajustar»
 - [ ] 3.1 Refactor: `actualizarHorarioDe(c)`, `presetDeCron`, `horarioEnPalabras` on it, `construirValores`; wizard tests pass unchanged.

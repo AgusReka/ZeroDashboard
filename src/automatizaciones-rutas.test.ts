@@ -6,7 +6,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
 import { registrarContextoTenant } from './contexto-tenant.js';
-import { destinatarioDe, registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
+import { destinatarioDe, registerAutomatizacionRoutes, resolverAjusteOperador } from './automatizaciones-rutas.js';
 import { proximaEjecucion } from './automatizaciones.js';
 
 /**
@@ -37,6 +37,58 @@ test('CH-14 destinatarioDe trims spaces and tabs only; CR/LF is kept for the gat
   assert.equal(destinatarioDe('ops@example.com'), 'ops@example.com');
 });
 
+// ---- CH-33 (DEC-174): the operator's adjust, pure half ---------------------------------
+
+const PLANTILLA_AJUSTE = {
+  sql: 'SELECT * FROM v_producto WHERE stock < :umbral AND nombre = :nombre',
+  parametros: [{ nombre: 'umbral', tipo: 'numero' }, { nombre: 'nombre', tipo: 'texto' }],
+};
+
+test('CH-33 resolverAjusteOperador returns only the columns the body sent', () => {
+  assert.deepEqual(resolverAjusteOperador({ cron: '30 6 * * 1-5' }, PLANTILLA_AJUSTE, 'UTC'), {
+    ok: true,
+    datos: { cron: '30 6 * * 1-5' },
+  });
+  assert.deepEqual(resolverAjusteOperador({ destinatario: ' \tops@example.com ' }, PLANTILLA_AJUSTE, 'UTC'), {
+    ok: true,
+    datos: { destinatario: 'ops@example.com' },
+  });
+  assert.deepEqual(resolverAjusteOperador({ destinatario: null }, PLANTILLA_AJUSTE, 'UTC'), {
+    ok: true,
+    datos: { destinatario: null },
+  });
+  // The map is replaced as a whole, never merged with what was stored.
+  assert.deepEqual(resolverAjusteOperador({ valores: { umbral: 10, nombre: 'x' } }, PLANTILLA_AJUSTE, 'UTC'), {
+    ok: true,
+    datos: { valores: { umbral: 10, nombre: 'x' } },
+  });
+});
+
+test('CH-33 resolverAjusteOperador names every offender together, as the alta does', () => {
+  const resolucion = resolverAjusteOperador(
+    { cron: '@daily', destinatario: 'ops@example.com\r\nBcc: otro@example.com', valores: { umbral: 'diez', nombre: 'x' } },
+    PLANTILLA_AJUSTE,
+    'UTC',
+  );
+  assert.equal(resolucion.ok, false);
+  if (resolucion.ok) return;
+  assert.ok(resolucion.campos.includes('/cron'), JSON.stringify(resolucion.campos));
+  assert.ok(resolucion.campos.includes('/destinatario'), JSON.stringify(resolucion.campos));
+  assert.ok(resolucion.campos.some((campo) => campo.startsWith('/valores')), JSON.stringify(resolucion.campos));
+  assert.ok((resolucion.problemas ?? []).some((problema) => problema.parametro === 'umbral'));
+});
+
+test('CH-33 resolverAjusteOperador refuses an undeclared or a missing value and a bad recipient', () => {
+  for (const valores of [{ umbral: 1, nombre: 'x', otro: 1 }, { umbral: 1 }]) {
+    const resolucion = resolverAjusteOperador({ valores }, PLANTILLA_AJUSTE, 'UTC');
+    assert.equal(resolucion.ok, false, JSON.stringify(valores));
+  }
+  for (const destinatario of ['', '   ', 'a@b.com, c@d.com']) {
+    const resolucion = resolverAjusteOperador({ destinatario }, PLANTILLA_AJUSTE, 'UTC');
+    assert.deepEqual(resolucion, { ok: false, campos: ['/destinatario'] }, JSON.stringify(destinatario));
+  }
+});
+
 describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3.3)', () => {
   let sinLecturas!: FastifyInstance;
 
@@ -53,16 +105,18 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
   });
 
   test('3.1 every automation route exists and, with no x-tenant-id, answers 400 tenant-no-indicado', async () => {
-    const rutas: ['GET' | 'POST', string, string][] = [
+    const rutas: ['GET' | 'POST' | 'PUT', string, string][] = [
       ['POST', '/automatizaciones', '/automatizaciones'],
       ['GET', '/automatizaciones', '/automatizaciones'],
       ['GET', '/automatizaciones/:id', '/automatizaciones/cualquiera'],
       ['POST', '/automatizaciones/:id/desactivar', '/automatizaciones/cualquiera/desactivar'],
       ['GET', '/automatizaciones/:id/ejecuciones', '/automatizaciones/cualquiera/ejecuciones'],
+      // CH-33 (DEC-174): the adjust is scoped like every other automation route.
+      ['PUT', '/automatizaciones/:id/ajustes', '/automatizaciones/cualquiera/ajustes'],
     ];
     for (const [method, patron, url] of rutas) {
       assert.equal(sinLecturas.hasRoute({ method, url: patron }), true, `${method} ${patron}`);
-      const respuesta = await sinLecturas.inject({ method, url, payload: method === 'POST' ? {} : undefined });
+      const respuesta = await sinLecturas.inject({ method, url, payload: method === 'GET' ? undefined : {} });
       assert.equal(respuesta.statusCode, 400, `${method} ${url}: ${respuesta.body}`);
       assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
     }
@@ -99,6 +153,29 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
       });
       assert.equal(respuesta.statusCode, 400, `${JSON.stringify(payload)}: ${respuesta.body}`);
       assert.deepEqual(respuesta.json().campos.sort(), [...campos].sort());
+    }
+  });
+
+  test('CH-33 an adjust body that is empty or names anything but valores, cron and destinatario is a 400 before any read', async () => {
+    const casos: [Record<string, unknown>, string][] = [
+      [{}, ''],
+      [{ plantillaId: 'p' }, '/plantillaId'],
+      [{ conexionId: 'c' }, '/conexionId'],
+      [{ activo: true }, '/activo'],
+      [{ tenantId: 'otro' }, '/tenantId'],
+      [{ cron: '0 8 * * *', id: 'otra' }, '/id'],
+      [{ valores: [] }, '/valores'],
+    ];
+    for (const [payload, campo] of casos) {
+      const respuesta = await sinLecturas.inject({
+        method: 'PUT',
+        url: '/automatizaciones/cualquiera/ajustes',
+        headers: { 'x-tenant-id': 't-activo' },
+        payload,
+      });
+      assert.equal(respuesta.statusCode, 400, `${JSON.stringify(payload)}: ${respuesta.body}`);
+      assert.equal(respuesta.json().error, 'solicitud-invalida');
+      if (campo !== '') assert.ok(respuesta.json().campos.includes(campo), `${JSON.stringify(payload)}: ${respuesta.body}`);
     }
   });
 });
@@ -389,5 +466,102 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
       assert.equal(ajena.statusCode, 404, `${url}: ${ajena.body}`);
       assert.deepEqual(ajena.json(), { error: 'automatizacion-no-encontrada' });
     }
+  });
+
+  // ---- CH-33 (DEC-174): adjusting in place ------------------------------------------
+
+  function ajustar(id: string, payload: Record<string, unknown>, tenantId = tenantA) {
+    return app.inject({ method: 'PUT', url: `/automatizaciones/${id}/ajustes`, headers: { 'x-tenant-id': tenantId }, payload });
+  }
+
+  async function nueva(): Promise<string> {
+    const respuesta = await crear({ ...cuerpo(), destinatario: 'a@example.com' });
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    return respuesta.json().automatizacion.id as string;
+  }
+
+  test('CH-33 an adjust changes only the sent columns, keeps the id and the runs, and reports the next run', async () => {
+    const id = await nueva();
+    await prisma.ejecucion.create({
+      data: {
+        tenantId: tenantA,
+        automatizacionId: id,
+        estado: 'ok',
+        iniciadaEn: new Date(),
+        finalizadaEn: new Date(),
+        duracionMs: 1,
+        filas: 0,
+        fase: 'ejecucion',
+      },
+    });
+
+    const respuesta = await ajustar(id, { cron: '30 6 * * 1-5', destinatario: 'b@example.com' });
+
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const cuerpo200 = respuesta.json();
+    assert.deepEqual(Object.keys(cuerpo200).sort(), ['automatizacion', 'proximaEjecucion', 'zonaHoraria']);
+    assert.equal(cuerpo200.automatizacion.id, id);
+    assert.equal(cuerpo200.automatizacion.cron, '30 6 * * 1-5');
+    assert.equal(cuerpo200.automatizacion.destinatario, 'b@example.com');
+    assert.deepEqual(cuerpo200.automatizacion.valores, { nombre: 'x' }, 'valores were not sent and did not change');
+    assert.equal(cuerpo200.zonaHoraria, 'UTC');
+    const proxima = new Date(cuerpo200.proximaEjecucion);
+    assert.equal(proxima.getUTCHours(), 6);
+    assert.equal(proxima.getUTCMinutes(), 30);
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
+    assert.equal(fila.plantillaId, plantillaId);
+    assert.equal(fila.conexionId, conexionA);
+    assert.equal(fila.activo, true);
+    const ejecuciones = await pedir('GET', `/automatizaciones/${id}/ejecuciones`);
+    assert.equal(ejecuciones.json().ejecuciones.length, 1, 'the run history stays under the same id');
+  });
+
+  test('CH-33 valores are checked against the stored template and replace the map; a null recipient clears it', async () => {
+    const id = await nueva();
+
+    const mal = await ajustar(id, { valores: { otro: 'y' } });
+    assert.equal(mal.statusCode, 400, mal.body);
+    assert.ok(mal.json().campos.some((campo: string) => campo.startsWith('/valores')), mal.body);
+    assert.deepEqual((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).valores, { nombre: 'x' });
+
+    const bien = await ajustar(id, { valores: { nombre: 'nuevo' }, destinatario: null });
+    assert.equal(bien.statusCode, 200, bien.body);
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
+    assert.deepEqual(fila.valores, { nombre: 'nuevo' });
+    assert.equal(fila.destinatario, null);
+  });
+
+  test('CH-33 an invalid cron or recipient is a 400 naming it, and nothing is written', async () => {
+    const id = await nueva();
+    const casos: [Record<string, unknown>, string][] = [
+      [{ cron: 'cada día' }, '/cron'],
+      [{ destinatario: 'a@b.com, c@d.com' }, '/destinatario'],
+    ];
+    for (const [payload, campo] of casos) {
+      const respuesta = await ajustar(id, payload);
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json().campos, [campo]);
+    }
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
+    assert.equal(fila.cron, '0 8 * * 1-5');
+    assert.equal(fila.destinatario, 'a@example.com');
+  });
+
+  test('CH-33 a deactivated automation answers 409, an unknown or foreign one 404, and neither is written', async () => {
+    const id = await nueva();
+    assert.equal((await pedir('POST', `/automatizaciones/${id}/desactivar`)).statusCode, 200);
+    const desactivada = await ajustar(id, { cron: '0 9 * * *' });
+    assert.equal(desactivada.statusCode, 409, desactivada.body);
+    assert.deepEqual(desactivada.json(), { error: 'automatizacion-desactivada' });
+
+    const activa = await nueva();
+    const casos: [string, string][] = [[activa, tenantB], ['no-existe', tenantA]];
+    for (const [objetivoId, tenantId] of casos) {
+      const respuesta = await ajustar(objetivoId, { cron: '0 9 * * *' }, tenantId);
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'automatizacion-no-encontrada' });
+    }
+    assert.equal((await prisma.automatizacion.findUniqueOrThrow({ where: { id: activa } })).cron, '0 8 * * 1-5');
+    assert.equal((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).cron, '0 8 * * 1-5');
   });
 });
