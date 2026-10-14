@@ -18,7 +18,6 @@ Branch base: `master` (after #174). Tests first, against `npm run test:db` for t
 - [x] 1.3 GREEN: "Consulta nueva" with the inline «Descartar cambios» confirmation.
 - [x] 1.4 GREEN: `select#conexion` with `cargarConexionesConsulta()` (loading, empty, truncated, error with «Reintentar», generation token); `ejecutar()` with no connection.
 - [x] 1.5 Existing `consola.test.ts` scenarios still pass; add the `GET /conexiones` answer where a scenario needs the select populated.
-- [ ] 1.6 Manual visual pass of Consultas at 360 px and 1280 px, light and dark (human).
 
 ## Close
 - [ ] 2.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
