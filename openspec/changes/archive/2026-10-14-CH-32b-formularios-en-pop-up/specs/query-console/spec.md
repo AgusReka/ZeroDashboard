@@ -197,3 +197,32 @@ In the list, the connection SHALL be shown by its name, from `GET /conexiones` l
 - **GIVEN** `GET /conexiones` fails
 - **WHEN** the wizard opens
 - **THEN** a legible notice SHALL be shown and the rest of the console SHALL keep working
+### Requirement: Automation Views Respect the Active-Tenant Indicator (T4, DEC-15)
+
+The automations and runs views SHALL forward the currently selected active tenant explicitly on every call, per the existing active-tenant indicator and forwarding requirements. The wizard's calls (`GET /conexiones`, template detail, validation-mapping reads, create) MUST carry the tenant header. WHEN the active tenant changes, the console SHALL discard all wizard state (step, connection, chosen template, parameter values, schedule, recipient, validation results, preview), close the wizard pop-up, and SHALL ignore any response that started before the switch, including the connection names of the automations list. The tenant load SHALL issue, in order: the saved queries, the query pop-up's connections (CH-32a), the templates, the automations list's connection names and the automations.
+(Previously: the tenant load issued exactly three requests and none to `GET /conexiones`; CH-32a added the query pop-up's connections and CH-32b the list's connection names.)
+
+#### Scenario: Switching tenant updates the automations view
+
+- **GIVEN** the automations view is showing tenant A's automations
+- **WHEN** the tenant selector switches to tenant B
+- **THEN** the view SHALL refresh to show only B's automations
+
+#### Scenario: Tenant switch wipes the wizard
+
+- **GIVEN** the wizard is on step 2 for tenant A with a template, a connection, values and a recipient
+- **WHEN** the tenant selector switches to tenant B
+- **THEN** the wizard pop-up SHALL be closed and every wizard field SHALL be empty
+- **AND** no connection or template of A SHALL remain selectable
+
+#### Scenario: Late response after a tenant switch is ignored
+
+- **GIVEN** a `GET /conexiones`, template-detail or validation request was issued for tenant A
+- **WHEN** its response arrives after the switch to tenant B
+- **THEN** the console SHALL NOT use it to change the wizard, the dropdown or the automations list
+
+#### Scenario: Tenant load requests
+
+- **GIVEN** a tenant is selected
+- **WHEN** the tenant load runs
+- **THEN** it SHALL request, in order, `/consultas-guardadas`, `/conexiones`, `/plantillas`, `/conexiones` and `/automatizaciones`, each with that tenant

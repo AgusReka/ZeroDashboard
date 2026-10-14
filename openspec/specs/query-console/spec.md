@@ -208,14 +208,27 @@ WHEN an execution or save request fails because of a parameter validation error 
 - AND the console SHALL NOT display a raw driver error object or a stack trace
 ### Requirement: Console Displays Automations and Supports Creating One (DEC-78)
 
-The console SHALL display the active tenant's list of `Automatizacion` rows and SHALL provide a way to create one, submitting to the tenant-scoped create route. Creation SHALL be a two-step wizard revealed by a "Nueva automatización" control, with a stepper showing the current step. Step 1 SHALL present a connection dropdown, filled from `GET /conexiones` when the wizard opens, above a template picker of cards. Step 2 SHALL present the template's parameters, the schedule presets, one optional recipient email input submitted as `destinatario`, a read-only email preview, a Volver control and a "Crear automatización" control. The create request body MUST keep its existing keys (`plantillaId`, `conexionId`, `valores`, `cron`, optional `destinatario`). On a 201 the console SHALL show a success banner stating the first scheduled run and the time zone from the response, and reload the list. A rejected value SHALL be shown as a legible error naming that field in the banner, without a raw error object or stack trace.
-(Previously: one flat form with a template select, a free-text connection UUID, a raw cron field and an optional recipient; the banner only confirmed creation.)
+The console SHALL display the active tenant's list of `Automatizacion` rows and SHALL provide a way to create one, submitting to the tenant-scoped create route. Creation SHALL be a two-step wizard in a wide pop-up (DEC-173) opened by «Nueva automatización» in the screen's page header, with a stepper showing the current step. Step 1 SHALL present a connection dropdown, filled from `GET /conexiones` when the wizard opens, above a template picker of cards. Step 2 SHALL present the template's parameters, the schedule presets, one optional recipient email input submitted as `destinatario`, a read-only email preview, a Volver control and a "Crear automatización" control. «Cancelar» and Escape SHALL behave as in every create pop-up. The create request body MUST keep its existing keys (`plantillaId`, `conexionId`, `valores`, `cron`, optional `destinatario`). On a 201 the console SHALL close the pop-up, show a success banner stating the first scheduled run and the time zone from the response, and reload the list. A rejected value SHALL be shown inside the pop-up as a legible error naming that field, without a raw error object or stack trace, and the pop-up SHALL stay open.
+In the list, the connection SHALL be shown by its name, from `GET /conexiones` loaded with the list, or by its short id when it is not among the tenant's connections. The schedule SHALL be shown in words followed by the cron expression in monospace when it matches one of the DEC-129 presets (for example «Todos los días a las 06:00» and `0 6 * * *`), and as the cron expression alone otherwise.
+(Previously: the wizard was revealed inline in the screen's body, and the list showed the raw `conexionId` and the raw cron. Before that: one flat form with a template select, a free-text connection UUID, a raw cron field and an optional recipient; the banner only confirmed creation.)
 
 #### Scenario: Viewing the automations list
 
 - **GIVEN** at least one automation exists for the active tenant
 - **WHEN** the console's automations view is loaded
 - **THEN** each automation SHALL be shown with at least its plantilla, connection, schedule, and `activo` state
+
+#### Scenario: Connection and schedule in words
+
+- **GIVEN** an automation on connection "food-store" with cron `0 6 * * 1-5`
+- **WHEN** the list is shown
+- **THEN** its row SHALL show "food-store" and «De lunes a viernes a las 06:00» followed by `0 6 * * 1-5`, and SHALL NOT show the connection's id
+
+#### Scenario: Custom schedule and unknown connection
+
+- **GIVEN** an automation with cron `*/30 8-18 * * *` whose connection is not among the tenant's connections
+- **WHEN** the list is shown
+- **THEN** its row SHALL show the connection's short id and the cron expression alone
 
 #### Scenario: Creating an automation from the console
 
@@ -234,14 +247,14 @@ The console SHALL display the active tenant's list of `Automatizacion` rows and 
 
 - **GIVEN** the create form is submitted with an invalid recipient
 - **WHEN** the `400` response is received
-- **THEN** the console SHALL display a legible message naming the recipient field in the banner
+- **THEN** the console SHALL display a legible message naming the recipient field inside the pop-up
 - **AND** SHALL NOT display a raw error object or stack trace
 
 #### Scenario: Wizard opens on step 1
 
-- **GIVEN** the automations view is loaded and the wizard is hidden
-- **WHEN** "Nueva automatización" is used
-- **THEN** the wizard SHALL show step 1 with the stepper marking step 1 as current
+- **GIVEN** the automations view is loaded and the wizard is closed
+- **WHEN** «Nueva automatización» is used
+- **THEN** the wizard pop-up SHALL open on step 1 with the stepper marking step 1 as current
 - **AND** one `GET /conexiones` request SHALL be issued with the active tenant
 
 #### Scenario: Step navigation
@@ -270,12 +283,12 @@ The console SHALL display the active tenant's list of `Automatizacion` rows and 
 - **THEN** the banner SHALL state the first scheduled run and the zone
 - **AND** its wording SHALL frame the run as scheduled, not guaranteed
 
-#### Scenario: Server 400 shown in the banner
+#### Scenario: Server 400 shown inside the pop-up
 
 - **GIVEN** the create request returns `400` for an invalid schedule or a parameter problem
 - **WHEN** the response is received
-- **THEN** the banner SHALL show a legible message naming the offending field
-- **AND** the wizard SHALL remain on step 2 with its values kept
+- **THEN** the pop-up SHALL show a legible message naming the offending field
+- **AND** the pop-up SHALL stay open on step 2 with its values kept
 
 #### Scenario: Tenant has no connections
 
@@ -332,8 +345,8 @@ The console SHALL provide a way to view a selected automation's `Ejecucion` rows
 - THEN the first SHALL show 3 and the second SHALL show a placeholder, not the text `null`
 ### Requirement: Automation Views Respect the Active-Tenant Indicator (T4, DEC-15)
 
-The automations and runs views SHALL forward the currently selected active tenant explicitly on every call, per the existing active-tenant indicator and forwarding requirements. The wizard's calls (`GET /conexiones`, template detail, validation-mapping reads, create) MUST carry the tenant header. WHEN the active tenant changes, the console SHALL discard all wizard state (step, connection, chosen template, parameter values, schedule, recipient, validation results, preview) and SHALL ignore any response that started before the switch. The tenant load SHALL still issue exactly three requests (saved queries, templates, automations).
-(Previously: only required forwarding the tenant and refreshing the automations view; no wizard state existed.)
+The automations and runs views SHALL forward the currently selected active tenant explicitly on every call, per the existing active-tenant indicator and forwarding requirements. The wizard's calls (`GET /conexiones`, template detail, validation-mapping reads, create) MUST carry the tenant header. WHEN the active tenant changes, the console SHALL discard all wizard state (step, connection, chosen template, parameter values, schedule, recipient, validation results, preview), close the wizard pop-up, and SHALL ignore any response that started before the switch, including the connection names of the automations list. The tenant load SHALL issue, in order: the saved queries, the query pop-up's connections (CH-32a), the templates, the automations list's connection names and the automations.
+(Previously: the tenant load issued exactly three requests and none to `GET /conexiones`; CH-32a added the query pop-up's connections and CH-32b the list's connection names.)
 
 #### Scenario: Switching tenant updates the automations view
 
@@ -345,20 +358,20 @@ The automations and runs views SHALL forward the currently selected active tenan
 
 - **GIVEN** the wizard is on step 2 for tenant A with a template, a connection, values and a recipient
 - **WHEN** the tenant selector switches to tenant B
-- **THEN** the wizard SHALL be hidden and every wizard field SHALL be empty
+- **THEN** the wizard pop-up SHALL be closed and every wizard field SHALL be empty
 - **AND** no connection or template of A SHALL remain selectable
 
 #### Scenario: Late response after a tenant switch is ignored
 
 - **GIVEN** a `GET /conexiones`, template-detail or validation request was issued for tenant A
 - **WHEN** its response arrives after the switch to tenant B
-- **THEN** the console SHALL NOT use it to change the wizard or the dropdown
+- **THEN** the console SHALL NOT use it to change the wizard, the dropdown or the automations list
 
-#### Scenario: Tenant load keeps three requests
+#### Scenario: Tenant load requests
 
 - **GIVEN** a tenant is selected
 - **WHEN** the tenant load runs
-- **THEN** exactly three requests SHALL be issued and none to `GET /conexiones`
+- **THEN** it SHALL request, in order, `/consultas-guardadas`, `/conexiones`, `/plantillas`, `/conexiones` and `/automatizaciones`, each with that tenant
 ### Requirement: Runs View Shows Readable Messages for solapamiento and interrumpida (DEC-96, DEC-99)
 
 In the runs view, a run with `error='solapamiento'` SHALL show a legible message stating that the run was skipped because the previous run was still in progress, and a run with `error='interrumpida'` SHALL show a legible message stating that the run was interrupted by a service restart. An `omitida` status SHALL render with a legible label. A `notificacion` of `enviando` SHALL render a legible "sending" label and `incierta` SHALL render a legible label stating it is unknown whether the email was sent. A run with `fase='notificacion'` and `error='tiempo-agotado'` SHALL show copy stating the email may have been delivered ("puede haberse entregado"), and MUST NOT state that the email was not sent; other send failures keep their existing copy. The raw values MUST NOT be the only text shown, and `null` MUST NOT be rendered as text. New label and copy strings MUST NOT contain a backtick, because the page script is embedded in a template literal.
@@ -652,11 +665,17 @@ Inside the query pop-up, the status line, the results table and the pager SHALL 
 - **THEN** the results table appears after the query form and before «Probar», inside the query pop-up, and the pop-up appears before the saved queries section, all inside the Consultas screen
 
 ### Requirement: Tenants Screen
-The Tenants screen SHALL list every tenant, active and deactivated, with its name, a short id, its state ("Activo" or "Dado de baja") and its creation date, written as text. "Nuevo tenant" SHALL send the typed name to `POST /tenants` and, on 201, reload the list and the tenant selector. An active tenant SHALL offer "Elegir como activo", which makes it the console's active tenant, and "Dar de baja", which asks for an inline confirmation «Dar de baja {nombre}» before `POST /tenants/:id/baja`. A deactivated tenant SHALL offer no action and SHALL NOT be selectable (DEC-168). When the active tenant is deactivated, the console SHALL return to "ningún tenant" and say so.
+The Tenants screen SHALL list every tenant, active and deactivated, with its name, a short id, its state ("Activo" or "Dado de baja") and its creation date, written as text. «Nuevo tenant» SHALL open a pop-up with the name and two actions, «Crear tenant» and «Crear y elegir», plus «Cancelar». Both SHALL send the typed name to `POST /tenants` and, on 201, close the pop-up and reload the list and the tenant selector; «Crear y elegir» SHALL then make the new tenant the console's active tenant, exactly as "Elegir como activo" does. An empty name SHALL be refused inside the pop-up with nothing sent. An active tenant SHALL offer "Elegir como activo", which makes it the console's active tenant, and "Dar de baja", which asks for an inline confirmation «Dar de baja {nombre}» before `POST /tenants/:id/baja`. A deactivated tenant SHALL offer no action and SHALL NOT be selectable (DEC-168). When the active tenant is deactivated, the console SHALL return to "ningún tenant" and say so.
+(Previously: "Nuevo tenant" was an inline form above the list and never chose the tenant it created.)
 
 #### Scenario: Create a tenant
-- **WHEN** the operator creates "Almacén Don Tito"
-- **THEN** the list and the selector show it
+- **WHEN** the operator creates "Almacén Don Tito" with «Crear tenant»
+- **THEN** the list and the selector show it, and the active tenant does not change
+
+#### Scenario: Create and choose a tenant
+- **GIVEN** tenant A is active
+- **WHEN** the operator creates "Almacén Don Tito" with «Crear y elegir»
+- **THEN** the list and the selector show it, and it becomes the active tenant
 
 #### Scenario: Deactivate the active tenant
 - **GIVEN** tenant A is active
@@ -668,11 +687,20 @@ The Tenants screen SHALL list every tenant, active and deactivated, with its nam
 - **THEN** no request is sent
 
 ### Requirement: Connections Screen
-The Conexiones screen SHALL list the active tenant's connections with name, engine, host and port, database and user, written as text; with no tenant it SHALL say to choose one. "Nueva conexión" SHALL open a side panel with name, host, port, database, user and password; "Guardar y probar" SHALL send `POST /conexiones` with engine `postgres`, then, on 201, `POST /conexiones/:id/prueba`, show the test result in the panel and reload the list. The password field SHALL be emptied after sending, and no password SHALL ever be written to the page. Each listed connection SHALL offer "Probar", whose result appears next to it: "OK" with the duration, or the failure's category and code.
+The Conexiones screen SHALL list the active tenant's connections with name, engine, host and port, database and user, written as text; with no tenant it SHALL say to choose one. «Nueva conexión» SHALL open a pop-up with name, host, port, database, user, the way it reaches the replica and password; «Guardar y probar» SHALL send `POST /conexiones` with engine `postgres`, then, on 201, `POST /conexiones/:id/prueba`, close the pop-up, report «Guardada.» with the test result in the screen's notice (also when the test fails, since the connection is saved) and reload the list. A rejected registration SHALL keep the pop-up open with the message inside it. The password field SHALL be emptied after sending, and no password SHALL ever be written to the page. Each listed connection SHALL offer "Probar", whose result appears next to it: "OK" with the duration, or the failure's category and code.
+(Previously: "Nueva conexión" opened a side panel that stayed open showing the test result.)
 
 #### Scenario: Register and test
-- **WHEN** the operator fills the panel and presses "Guardar y probar"
-- **THEN** the connection is created, tested, the result is shown in the panel, the password field is empty and the list shows the new connection
+- **WHEN** the operator fills the pop-up and presses «Guardar y probar»
+- **THEN** the connection is created and tested, the pop-up closes, the notice shows the test result, no password appears in the page and the list shows the new connection
+
+#### Scenario: Saved but the test fails
+- **WHEN** the registration answers 201 and the test answers `fallo` with category `red`
+- **THEN** the pop-up closes and the notice says the connection was saved and the test failed with that category
+
+#### Scenario: Rejected registration
+- **WHEN** the registration answers 400 naming `host`
+- **THEN** the pop-up stays open, names the field and the password field is empty
 
 #### Scenario: A failed test
 - **WHEN** "Probar" answers `fallo` with category `credenciales-invalidas`
@@ -704,7 +732,8 @@ The Agentes screen SHALL show the active tenant's agent, if any, with its state 
 - **THEN** the agent is listed as revoked and offers "Emitir un token nuevo"
 
 ### Requirement: Connection Through the Agent
-The new-connection panel SHALL offer how the connection reaches the replica: direct, or through the tenant's agent when it has an active one. Choosing the agent SHALL send its `agenteId` with the registration.
+The new-connection pop-up SHALL offer how the connection reaches the replica: direct, or through the tenant's agent when it has an active one. Choosing the agent SHALL send its `agenteId` with the registration.
+(Previously: the new-connection panel.)
 
 #### Scenario: Register through the agent
 - **GIVEN** the tenant has an active agent
@@ -712,15 +741,25 @@ The new-connection panel SHALL offer how the connection reaches the replica: dir
 - **THEN** the registration carries that `agenteId`
 
 ### Requirement: Panel Users Screen
-The Usuarios del panel screen SHALL list the active tenant's panel users with email, name, state ("Activo" or "Desactivado") and creation date; with no tenant it SHALL say to choose one. "Nuevo usuario" SHALL send the email and the optional name to `POST /usuarios` and show the generated password once. Each active user SHALL offer "Reponer clave" (the new password shown once) and "Desactivar" (inline confirmation); each deactivated user, "Reactivar" and "Reponer clave". A `409 correo-en-uso` SHALL say the email is already in use.
+The Usuarios del panel screen SHALL list the active tenant's panel users with email, name, state ("Activo" or "Desactivado") and creation date; with no tenant it SHALL say to choose one. «Nuevo usuario» SHALL open a pop-up with the email and the optional name; «Crear usuario» SHALL send them to `POST /usuarios` and, on 201, close the pop-up and show the generated password once in the screen's notice. Each active user SHALL offer «Reponer clave» and "Desactivar"; each deactivated user, "Reactivar" and «Reponer clave». «Reponer clave» SHALL ask for an inline confirmation «Reponer clave de {correo}», saying that the user's open sessions will be closed, before `POST /usuarios/:id/clave`; the new password is then shown once. "Desactivar" SHALL ask for an inline confirmation. A `409 correo-en-uso` SHALL say, inside the pop-up, that the email is already in use.
+(Previously: "Nuevo usuario" was an inline form and «Reponer clave» was sent on the first click.)
 
 #### Scenario: Create a user
 - **WHEN** the operator creates "ana@negocio.com"
-- **THEN** the generated password is shown once and the user is listed as active
+- **THEN** the pop-up closes, the generated password is shown once and the user is listed as active
 
 #### Scenario: Email in use
 - **WHEN** the creation answers `409 correo-en-uso`
-- **THEN** the screen says the email is already in use and shows no password
+- **THEN** the pop-up stays open, says the email is already in use and shows no password
+
+#### Scenario: Reset a password after confirming
+- **WHEN** the operator presses «Reponer clave» on "ana@negocio.com"
+- **THEN** nothing is sent and the row asks «Reponer clave de ana@negocio.com», saying that the user's sessions will be closed
+- **AND** confirming sends `POST /usuarios/:id/clave` and shows the new password once
+
+#### Scenario: Cancel the reset
+- **WHEN** the operator presses «Reponer clave» and then «Cancelar»
+- **THEN** no request is sent
 
 ### Requirement: Templates Screen
 The Plantillas screen SHALL list the template catalog (`GET /plantillas`) with name, automation, format and freshness tolerance, written as text, and say when the list was cut. "Ver" SHALL load the template (`GET /plantillas/:id`) and show, in a side panel, the entities it needs, its declared parameters and its statement as text. The screen SHALL offer no way to create or change a template.
@@ -752,17 +791,28 @@ The Mapeo y validación screen SHALL, for the active tenant, let the operator ch
 - **THEN** the entity shows that field, its verdict and the hint
 
 ### Requirement: Create and Edit Forms Open in a Pop-up (DEC-173)
-In the console, every form that creates or modifies a record SHALL open in a pop-up over the screen (`.zd-dialog` on `.zd-dialog-backdrop`), holding every field of the record, with a title, the main action (verb + object) and «Cancelar» at its foot. «Cancelar» and the Escape key SHALL close it without sending anything; when there are unsaved changes they SHALL first ask «Descartar cambios». Such a form SHALL NOT be rendered inline above or below a table. Read-only detail (version history, template detail) stays in the side panel; inline confirmations of destructive actions are outside this rule.
+In the console, every form that creates or modifies a record SHALL open in a pop-up over the screen (`.zd-dialog` on `.zd-dialog-backdrop`), holding every field of the record, with a title, the main action (verb + object) and «Cancelar» at its foot. This covers the query pop-up, «Nuevo tenant», «Nueva conexión», «Nuevo usuario» and the automation wizard. Each pop-up SHALL be opened from its screen's page header, and on opening the focus SHALL go to its first field. «Cancelar» and the Escape key SHALL close it without sending anything; when there are unsaved changes they SHALL first ask «Descartar cambios», offering «Descartar cambios» and «Seguir editando». A switch of the active tenant SHALL close any open pop-up without asking. Such a form SHALL NOT be rendered inline above or below a table, nor in a side panel. Read-only detail (version history, template detail) stays in the side panel; inline confirmations of destructive actions are outside this rule.
+(Previously: applied to the query pop-up only; «Nuevo tenant» and «Nuevo usuario» were inline forms, «Nueva conexión» a side panel and the automation wizard an inline card.)
 
 #### Scenario: Cancelling a form with no changes
 - GIVEN a create or edit pop-up is open and nothing was changed
-- WHEN the operator presses «Cancelar»
+- WHEN the operator presses «Cancelar» or Escape
 - THEN the pop-up closes and no request is sent
 
 #### Scenario: Cancelling a form with changes
 - GIVEN the operator changed a field
-- WHEN «Cancelar» is pressed
+- WHEN «Cancelar» or Escape is pressed
 - THEN the pop-up asks «Descartar cambios» and stays open until that is confirmed
+- AND «Seguir editando» keeps the pop-up open with the typed values
+
+#### Scenario: Opening puts the focus on the first field
+- WHEN the operator presses «Nuevo usuario»
+- THEN the pop-up opens and the focus is on the email field
+
+#### Scenario: A tenant switch closes an open pop-up
+- GIVEN the «Nueva conexión» pop-up is open with a host typed
+- WHEN the operator switches the active tenant
+- THEN the pop-up closes without asking and nothing is sent
 
 ### Requirement: Query Screen and Query Pop-up (DEC-172, DEC-173)
 The Consultas screen SHALL show a page header with «Nueva consulta» and the saved queries list, each entry with «Abrir» and «Versiones». «Nueva consulta» SHALL open the query pop-up empty, titled «Nueva consulta»; «Abrir» SHALL open it with that query loaded, titled with its name and «versión N». The pop-up SHALL hold, in order: name, description, connection, SQL, parameters (declaration and test values) and, for a loaded query, the version note; and the actions «Probar», the save control and «Cancelar». «Probar» SHALL run the statement against the chosen connection and show the result, paginated, inside the pop-up. The pop-up SHALL close on a successful save and on a tenant switch. The version history SHALL open in a wide side panel.
