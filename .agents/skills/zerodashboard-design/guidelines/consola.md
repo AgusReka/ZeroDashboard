@@ -165,7 +165,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-24 | C-11 Frescura · C-03 tolerancias | EXISTE |
 | CH-25 | C-08 Consultas: versiones | EXISTE (verificación visual pendiente) |
 | — | C-02 Tenants | API, sin change de UI |
-| — | C-12 Auditoría | PENDIENTE, sin change |
+| CH-30e1 | C-12 Auditoría | EXISTE |
 
 ---
 

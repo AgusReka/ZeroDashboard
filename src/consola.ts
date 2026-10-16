@@ -221,6 +221,7 @@ function documentoConsola(nombreOperador: string): string {
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
     <a id="nav-automatizaciones" class="zd-sidenav__item" href="#automatizaciones"><span>Automatizaciones</span></a>
     <a id="nav-frescura" class="zd-sidenav__item" href="#frescura"><span>Frescura de datos</span></a>
+    <a id="nav-auditoria" class="zd-sidenav__item" href="#auditoria"><span>Auditoría</span></a>
   </div>
 </nav>
 <main class="zd-page">
@@ -883,6 +884,35 @@ function documentoConsola(nombreOperador: string): string {
 
   <div class="zd-table-wrap zd-table-scroll"><table id="fresc-plantillas" class="zd-table"></table></div>
 </section>
+</section>
+
+<!--
+  CH-30e1 (DEC-163, DEC-162, screen C-12): what was executed against the active tenant's replica, when
+  and by whom. Read only: the audit table cannot be changed, so nothing here edits or deletes a row.
+  Rows are built by the script as text; the statement sits in a details element, cut in its summary.
+-->
+<section id="pantalla-auditoria" aria-labelledby="titulo-auditoria" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-auditoria" class="zd-h1">Auditoría</h1>
+    <p class="zd-pagehead__desc">Qué se ejecutó contra la réplica del tenant, cuándo y por quién. Es un registro: no se modifica ni se borra.</p>
+  </div>
+</header>
+<div class="controles">
+  <div><label for="aud-desde" class="zd-label">Desde</label><input id="aud-desde" class="zd-input" type="date"></div>
+  <div><label for="aud-hasta" class="zd-label">Hasta</label><input id="aud-hasta" class="zd-input" type="date"></div>
+  <div><label for="aud-resultado" class="zd-label">Resultado</label>
+    <select id="aud-resultado" class="zd-select"><option value="">Todos</option><option value="ok">OK</option><option value="fallo">Falló</option></select></div>
+  <button id="aud-filtrar" class="zd-btn zd-btn--secondary" type="button">Filtrar</button>
+</div>
+<p id="auditoria-aviso" class="ayuda" role="status"></p>
+<div class="zd-table-wrap zd-table-scroll">
+  <table class="zd-table">
+    <thead><tr><th>Fecha y hora</th><th>Operador</th><th>Origen</th><th>Conexión</th><th>Consulta</th><th>SQL</th><th>Filas</th><th>Duración</th><th>Resultado</th></tr></thead>
+    <tbody id="auditoria-cuerpo"></tbody>
+  </table>
+</div>
 </section>
 </main>
 </div>
@@ -3629,6 +3659,7 @@ function cambiarTenant(id) {
   if (!document.getElementById('pantalla-agentes').hidden) { cargarPantallaAgentes(); }
   if (!document.getElementById('pantalla-mapeo').hidden) { cargarPantallaMapeo(); }
   if (!document.getElementById('pantalla-usuarios').hidden) { cargarPantallaUsuarios(); }
+  if (!document.getElementById('pantalla-auditoria').hidden) { cargarPantallaAuditoria(); }
 }
 
 selectorTenant.addEventListener('change', function () {
@@ -4926,10 +4957,139 @@ document.getElementById('mapeo-validar').addEventListener('click', async functio
   renderizarInforme(leido.cuerpo.validacionMapeo || {});
 });
 
+// ---- CH-30e1 (DEC-163, screen C-12): Auditoría ------------------------------------------------
+
+var ORIGENES_AUDITORIA = {
+  'consulta': 'Consulta',
+  'plantilla-prueba': 'Prueba de plantilla',
+  'validacion-mapeo': 'Validación de mapeo',
+  'conexion-prueba': 'Prueba de conexión'
+};
+var cuerpoAuditoria = document.getElementById('auditoria-cuerpo');
+var avisoAuditoria = document.getElementById('auditoria-aviso');
+var generacionAuditoria = 0;
+
+// The query string of the listing from the three filters, or the message that says why it cannot be sent.
+// A date input holds YYYY-MM-DD in the operator's local day: the bounds are that day's first and last instant.
+function filtrosAuditoria() {
+  var desde = document.getElementById('aud-desde').value;
+  var hasta = document.getElementById('aud-hasta').value;
+  var resultado = document.getElementById('aud-resultado').value;
+  var partes = [];
+  var inicio = null;
+  var fin = null;
+  if (desde !== '') {
+    var d = desde.split('-').map(Number);
+    inicio = new Date(d[0], d[1] - 1, d[2]);
+    partes.push('desde=' + encodeURIComponent(inicio.toISOString()));
+  }
+  if (hasta !== '') {
+    var h = hasta.split('-').map(Number);
+    fin = new Date(h[0], h[1] - 1, h[2], 23, 59, 59, 999);
+    partes.push('hasta=' + encodeURIComponent(fin.toISOString()));
+  }
+  if (inicio !== null && fin !== null && inicio.getTime() > fin.getTime()) {
+    return { ok: false, mensaje: 'La fecha «Desde» es posterior a «Hasta».' };
+  }
+  if (resultado !== '') { partes.push('resultado=' + encodeURIComponent(resultado)); }
+  return { ok: true, query: partes.length === 0 ? '' : '?' + partes.join('&') };
+}
+
+function duracionAuditoria(ms) {
+  if (ms === null || ms === undefined) { return ''; }
+  if (ms < 1000) { return ms + ' ms'; }
+  return (Math.round(ms / 100) / 10).toFixed(1).replace('.', ',') + ' s';
+}
+
+function filaAuditoria(registro, nombres) {
+  var fila = document.createElement('tr');
+  var fecha = new Date(String(registro.creadoEn));
+  var dos = function (n) { return (n < 10 ? '0' : '') + n; };
+  celdaTenant(fila, isNaN(fecha.getTime()) ? '' :
+    fechaTenant(registro.creadoEn) + ' ' + dos(fecha.getHours()) + ':' + dos(fecha.getMinutes()) + ':' + dos(fecha.getSeconds()));
+  celdaTenant(fila, String(registro.operadorNombre));
+  celdaTenant(fila, Object.prototype.hasOwnProperty.call(ORIGENES_AUDITORIA, registro.origen)
+    ? ORIGENES_AUDITORIA[registro.origen] : String(registro.origen));
+  var idConexion = String(registro.conexionId);
+  celdaTenant(fila, Object.prototype.hasOwnProperty.call(nombres, idConexion) ? nombres[idConexion] : idConexion.slice(0, 8));
+  celdaTenant(fila, registro.consultaNombre
+    ? String(registro.consultaNombre) + ' v' + String(registro.consultaVersion)
+    : (registro.plantillaId ? 'Plantilla ' + String(registro.plantillaId) : 'Ad hoc'));
+  var sql = String(registro.sql);
+  var detalle = document.createElement('details');
+  var resumen = document.createElement('summary');
+  resumen.textContent = sql.length > 80 ? sql.slice(0, 80) + '…' : sql;
+  var completo = document.createElement('code');
+  completo.textContent = sql;
+  detalle.appendChild(resumen);
+  detalle.appendChild(completo);
+  celdaTenant(fila, '').appendChild(detalle);
+  celdaTenant(fila, registro.filas === null || registro.filas === undefined ? '' : String(registro.filas));
+  celdaTenant(fila, duracionAuditoria(registro.duracionMs));
+  celdaTenant(fila, registro.resultado === 'ok'
+    ? 'OK'
+    : 'Falló: ' + mensajeDeFallo({ fase: registro.fase, categoria: registro.categoria, codigo: registro.codigo }));
+  return fila;
+}
+
+async function cargarPantallaAuditoria() {
+  generacionAuditoria += 1;
+  var g = generacionAuditoria;
+  if (tenantActivo === null) {
+    vaciar(cuerpoAuditoria);
+    avisoAuditoria.textContent = 'Elegí un tenant para ver su auditoría.';
+    return;
+  }
+  var filtros = filtrosAuditoria();
+  if (!filtros.ok) {
+    avisoAuditoria.textContent = filtros.mensaje;
+    return;
+  }
+  // The connection names are a courtesy: when they cannot be read, a row shows the connection's short id.
+  var nombres = {};
+  try {
+    var porNombre = await pedir('/conexiones');
+    if (porNombre !== null && porNombre.status === 200) {
+      var lista = await porNombre.json();
+      if (lista !== null && Array.isArray(lista.conexiones)) {
+        lista.conexiones.forEach(function (cx) { nombres[String(cx.id)] = String(cx.nombre); });
+      }
+    }
+  } catch (sinNombres) { nombres = {}; }
+  if (g !== generacionAuditoria) { return; }
+  var respuesta;
+  try {
+    respuesta = await pedir('/auditoria' + filtros.query);
+  } catch (fallaDeRed) {
+    if (g === generacionAuditoria) { avisoAuditoria.textContent = 'No se pudo contactar con la aplicación.'; }
+    return;
+  }
+  if (respuesta === null) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (g !== generacionAuditoria) { return; }
+  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (respuesta.status === 400) {
+    avisoAuditoria.textContent = 'Revisá las fechas del filtro.';
+    return;
+  }
+  if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.registros)) {
+    avisoAuditoria.textContent = 'No se pudo leer la auditoría (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  vaciar(cuerpoAuditoria);
+  cuerpo.registros.forEach(function (registro) { cuerpoAuditoria.appendChild(filaAuditoria(registro, nombres)); });
+  avisoAuditoria.textContent = cuerpo.registros.length === 0
+    ? 'No hay ejecuciones registradas con estos filtros.'
+    : (cuerpo.truncado === true ? 'Se muestran las 200 ejecuciones más recientes. Acotá las fechas para ver las anteriores.' : '');
+}
+
+document.getElementById('aud-filtrar').addEventListener('click', function () { cargarPantallaAuditoria(); });
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura'];
+var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -4947,6 +5107,7 @@ function mostrarPantalla() {
   if (activa === 'agentes') { cargarPantallaAgentes(); }
   if (activa === 'mapeo') { cargarPantallaMapeo(); }
   if (activa === 'usuarios') { cargarPantallaUsuarios(); }
+  if (activa === 'auditoria') { cargarPantallaAuditoria(); }
   // CH-32a: the picker reads the tenant's connections each time Consultas is shown.
   if (activa === 'consultas') { cargarConexionesConsulta(); }
 }
