@@ -31,4 +31,4 @@ Branch base: `master` (after #180). Tests first. While working: `npx tsx --test 
 
 ## Close
 - [x] 4.1 `npm run test:db`, `tsc --noEmit`, `npm run build`.
-- [ ] 4.2 Verify, archive, sync the three specs, mark CH-33 in `docs/02-mapa-de-changes.md`.
+- [x] 4.2 Verify, archive, sync the three specs, mark CH-33 in `docs/02-mapa-de-changes.md`.
