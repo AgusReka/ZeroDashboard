@@ -1905,8 +1905,8 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'auto-plantilla').hijos.length, catalogo.length, 'nothing but the cards');
     assert.deepEqual(
       cartas.map((tarjeta) => [tarjeta.tagName, ...tarjeta.hijos.map((hijo) => hijo.tagName + '.' + hijo.className)]),
-      catalogo.map(() => ['label', 'input.', 'span.zd-template__name', 'span.zd-template__desc', 'span.motivo-plantilla']),
-      'name and description only (no icon, tolerance or check mark), plus the reason slot of PR4',
+      catalogo.map(() => ['label', 'input.', 'span.zd-template__name', 'span.zd-template__desc', 'span.motivo-plantilla', 'span.aviso-frescura']),
+      'name and description only (no icon, tolerance or check mark), plus the reason slot of PR4 and the CH-26 freshness slot',
     );
     assert.deepEqual(
       cartas.map((tarjeta) => [tarjeta.hijos[1].textContent, tarjeta.hijos[2].textContent]),
@@ -2623,6 +2623,61 @@ describe('the console document, served by the real route', () => {
     [180, 120, 'Desactualizada'],
     [30, 120, 'Al día'],
   ];
+
+  // ---- CH-26 (DEC-180): the freshness warning on the wizard's template cards -------------
+
+  /** The visible freshness warning of each card, '' when hidden, in catalog order. */
+  function avisosFrescura(escenario: Escenario): string[] {
+    return tarjetas(escenario).map((tarjeta) => {
+      const aviso = tarjeta.porClase('aviso-frescura')[0];
+      return aviso.hidden ? '' : aviso.textContent;
+    });
+  }
+
+  const COLA_FRESCURA = '. Se puede crear igual: sus avisos pueden salir con datos más viejos de lo que necesita.';
+
+  test('CH-26 a window above the tolerance warns on the card, naming both values, and the card stays selectable', async () => {
+    const escenario = await conFrescura({ ventanaDesactualizacionMinutos: 180 }, [60, 120]);
+    await abrirAlta(escenario);
+    assert.deepEqual(avisosFrescura(escenario), [
+      'La réplica de este tenant se actualiza cada 3 h y esta plantilla tolera 1 h' + COLA_FRESCURA,
+      'La réplica de este tenant se actualiza cada 3 h y esta plantilla tolera 2 h' + COLA_FRESCURA,
+    ]);
+    assert.deepEqual(tarjetas(escenario).map((tarjeta) => radioDe(tarjeta).disabled), [false, false]);
+  });
+
+  test('CH-26 only the templates the window exceeds warn; equal, undeclared or missing tolerance say nothing', async () => {
+    const noventa = await conFrescura({ ventanaDesactualizacionMinutos: 90 }, [60, 120, 90]);
+    await abrirAlta(noventa);
+    assert.deepEqual(avisosFrescura(noventa), [
+      'La réplica de este tenant se actualiza cada 90 min y esta plantilla tolera 1 h' + COLA_FRESCURA, '', '',
+    ]);
+    const sinDeclarar = await conFrescura({ ventanaDesactualizacionMinutos: null }, [60]);
+    await abrirAlta(sinDeclarar);
+    assert.deepEqual(avisosFrescura(sinDeclarar), ['']);
+    const sinTolerancia = await arrancar([{ id: 't-1', nombre: 'Food Store', ventanaDesactualizacionMinutos: 600 }] as never);
+    await elegirTenant(sinTolerancia);
+    await abrirAlta(sinTolerancia);
+    assert.deepEqual(avisosFrescura(sinTolerancia), ['']);
+  });
+
+  test('CH-26 creating a warned template repeats the warning in the notice and sends the usual body', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store', ventanaDesactualizacionMinutos: 120 }] as never);
+    await elegirTenant(escenario, [], [], 't-1', [{ id: 'p-1', nombre: 'Stock diario', toleranciaFrescuraMinutos: 60 }]);
+    await abrirAlta(escenario);
+    await avanzar(escenario, [], 'c-2');
+    fijarHorario(escenario, 'personalizado', '30 7 * * 1');
+    const nueva = automatizacion({ id: 'a-2', conexionId: 'c-2', cron: '30 7 * * 1' });
+    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: nueva } });
+    await enviar(escenario, { automatizaciones: [nueva], truncado: false }, 200, 'auto-crear', 'click');
+    const alta = escenario.peticiones[escenario.peticiones.length - 2];
+    assert.deepEqual(alta.cuerpo, { plantillaId: 'p-1', conexionId: 'c-2', valores: {}, cron: '30 7 * * 1' });
+    assert.ok(
+      nodo(escenario, 'banner').textContent.endsWith(
+        ' La réplica de este tenant se actualiza cada 2 h y esta plantilla tolera 1 h' + COLA_FRESCURA),
+      nodo(escenario, 'banner').textContent,
+    );
+  });
 
   test('CH-24 the section markup keeps its ids once, starts disabled and every button is type="button"', () => {
     verificarIds(marcado());

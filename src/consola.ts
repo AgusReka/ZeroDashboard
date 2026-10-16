@@ -154,6 +154,8 @@ function documentoConsola(nombreOperador: string): string {
   /* DEC-131: the preview's title bar; its accent is set by the script, as the email does. */
   .vista-correo__titulo { padding: var(--space-3) var(--space-4); color: var(--text-on-accent); font-weight: 600; }
   .motivo-plantilla { font-size: var(--text-help); color: var(--warn-text); }
+  /* CH-26 (DEC-180): the freshness warning of a card; the sentence carries the meaning. */
+  .aviso-frescura { font-size: var(--text-help); color: var(--warn-text); }
   /* CH-24 (C-22): a freshness state is an icon and a word, never a color alone. */
   .estado-frescura { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 600; }
   .estado-frescura--al-dia { color: var(--ok-text); }
@@ -2202,11 +2204,13 @@ function formatearInstante(iso, zona) {
 
 // DEC-129 (P1): the first run and the zone are the server's, from the 201; a body without
 // them (a server before CH-21c) keeps the former sentence. DEC-95: a schedule, not a promise.
-function confirmacionDeAlta(cuerpo) {
+// CH-26 (DEC-180): aviso is the chosen template's freshness warning, '' when there is none.
+function confirmacionDeAlta(cuerpo, aviso) {
   var creada = 'Se creó la automatización y ya aparece en la lista.';
-  if (typeof cuerpo.proximaEjecucion !== 'string' || typeof cuerpo.zonaHoraria !== 'string') { return creada; }
+  var cola = aviso ? ' ' + aviso : '';
+  if (typeof cuerpo.proximaEjecucion !== 'string' || typeof cuerpo.zonaHoraria !== 'string') { return creada + cola; }
   return creada + ' Primera ejecución programada: ' + formatearInstante(cuerpo.proximaEjecucion, cuerpo.zonaHoraria) +
-    ', zona horaria ' + cuerpo.zonaHoraria + '. Es un horario, no una garantía: si el servicio no está en marcha a esa hora, esa ejecución no se recupera.';
+    ', zona horaria ' + cuerpo.zonaHoraria + '. Es un horario, no una garantía: si el servicio no está en marcha a esa hora, esa ejecución no se recupera.' + cola;
 }
 
 function opcionDe(valor, texto) {
@@ -2324,6 +2328,7 @@ function abrirAlta() {
     mostrarBanner(SIN_TENANT);
     return;
   }
+  actualizarAvisosFrescura();
   dialogoAlta.abrir();
 }
 
@@ -2402,12 +2407,47 @@ function tarjetaPlantilla(fila) {
   var motivo = document.createElement('span');
   motivo.className = 'motivo-plantilla';
   motivo.hidden = true;
-  partesTarjeta[fila.id] = { radio: radio, motivo: motivo };
+  // CH-26 (DEC-180): empty and hidden unless the tenant's window exceeds this template's tolerance.
+  var frescura = document.createElement('span');
+  frescura.className = 'aviso-frescura';
+  frescura.hidden = true;
+  partesTarjeta[fila.id] = { radio: radio, motivo: motivo, frescura: frescura };
   tarjeta.appendChild(radio);
   tarjeta.appendChild(nombre);
   tarjeta.appendChild(descripcion);
   tarjeta.appendChild(motivo);
+  tarjeta.appendChild(frescura);
   return tarjeta;
+}
+
+// CH-26 (DEC-180): F3's warning, where an automation is activated today. The comparison is the
+// Frescura screen's (estadoFrescura): an undeclared window or one within the tolerance says nothing.
+// Advisory like DEC-127: the card stays selectable and nothing of this is sent.
+function avisoFrescuraPlantilla(tolerancia) {
+  var fila = tenantActivo === null ? null : filaDeTenant(tenantActivo);
+  var ventana = fila === null ? null : ventanaDe(fila);
+  if (typeof tolerancia !== 'number' || estadoFrescura(ventana, tolerancia) !== 'desactualizada') { return ''; }
+  return 'La réplica de este tenant se actualiza cada ' + toleranciaTexto(ventana) + ' y esta plantilla tolera ' +
+    toleranciaTexto(tolerancia) + '. Se puede crear igual: sus avisos pueden salir con datos más viejos de lo que necesita.';
+}
+
+function toleranciaDePlantilla(id) {
+  for (var i = 0; i < catalogoPlantillas.length; i++) {
+    if (catalogoPlantillas[i].id === id) { return catalogoPlantillas[i].tolerancia; }
+  }
+  return null;
+}
+
+// Refreshed when the catalog renders and each time the wizard opens: the window may have changed on
+// the Frescura screen, or the tenant with it.
+function actualizarAvisosFrescura() {
+  catalogoPlantillas.forEach(function (fila) {
+    var partes = partesTarjeta[fila.id];
+    if (partes === undefined) { return; }
+    var aviso = avisoFrescuraPlantilla(fila.tolerancia);
+    partes.frescura.textContent = aviso;
+    partes.frescura.hidden = aviso === '';
+  });
 }
 
 function renderizarPicker() {
@@ -2416,6 +2456,7 @@ function renderizarPicker() {
   catalogoPlantillas.forEach(function (fila) {
     contenedorPlantillas.appendChild(tarjetaPlantilla(fila));
   });
+  actualizarAvisosFrescura();
 }
 
 async function cargarCatalogoPlantillas() {
@@ -2425,7 +2466,7 @@ async function cargarCatalogoPlantillas() {
   nombresPlantilla = Object.create(null);
   catalogoPlantillas = (Array.isArray(resultado.cuerpo.plantillas) ? resultado.cuerpo.plantillas : []).map(function (fila) {
     nombresPlantilla[fila.id] = String(fila.nombre);
-    // CH-24: the tolerance rides along for the freshness table; the picker ignores it.
+    // CH-24: the tolerance rides along for the freshness table; CH-26 warns with it on the cards.
     return { id: String(fila.id), nombre: String(fila.nombre), automatizacion: fila.automatizacion, tolerancia: fila.toleranciaFrescuraMinutos };
   });
   renderizarPicker();
@@ -2680,6 +2721,7 @@ async function crearAutomatizacion() {
   // CH-14: the recipient is optional; a blank one is not sent at all.
   var destinatario = entradaDestinatario.value.trim();
   if (destinatario !== '') { alta.destinatario = destinatario; }
+  var avisoFrescura = avisoFrescuraPlantilla(toleranciaDePlantilla(plantillaElegida));
   var resultado = await pedirAutomatizacion('/automatizaciones', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2697,7 +2739,7 @@ async function crearAutomatizacion() {
   }
   if (resultado.status !== 201) { avisarEnDialogo(dialogoAlta, avisoDialogoAlta, textoDeRechazo(resultado)); return; }
   cerrarAlta();
-  mostrarConfirmacion(confirmacionDeAlta(resultado.cuerpo));
+  mostrarConfirmacion(confirmacionDeAlta(resultado.cuerpo, avisoFrescura));
   await listarAutomatizaciones();
 }
 
