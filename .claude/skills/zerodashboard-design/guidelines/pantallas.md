@@ -55,6 +55,7 @@ Superficie densa, escritorio primero. Toda pantalla vive bajo la **barra de tena
 ### C-08 Mapeo de esquema por tenant — M2 · CH-09 · PARCIAL
 - **Datos**: `campo_canonico` · `columna_origen` (texto o vacío, stock.cantidad) · `tipo_origen` · `estado` (mapeado / falta / inaplicable).
 - **Acciones**: elegir columna (select con columnas del tenant), Guardar.
+- **Guía y ejemplo (CH-34, DEC-176)**: arriba de las entidades, una guía «Cómo mapear» plegable; en cada entidad, un ejemplo plegado sobre la réplica de demo y «Usar de punto de partida», que copia solo a un editor vacío y no envía nada.
 
 ### C-09 Validación de mapeo e inaplicables — M3, M4 · CH-10 · PARCIAL
 - **Datos**: `campo` · `resultado` (ok / falta / tipo incompatible / inaplicable) · `motivo` (texto, "La tienda no fabrica productos propios") · `plantillas_afectadas` (lista).
