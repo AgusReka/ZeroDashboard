@@ -59,9 +59,9 @@ No estaban en el plan original de R1. Se agregaron después de CH-16, como exper
 
 | ID | Experimento | Fecha | Evidencia |
 |---|---|---|---|
-| CH-16b | Vistas canónicas sobre Food Store y Medusa (bases reales) y WooCommerce (*fixture*); equivalencia de `stock-producible` con la consulta original | 2026-09-21 y 2026-09-23 (`fc54f19`, `c6ef5a0`) | `docs/bitacora/bitacora_CH-16b_tres_esquemas.md`, `openspec/changes/CH-16b-vistas-canonicas/sql/`. Origen de DEC-28 y DEC-29 |
-| CH-16c | Saleor como caso negativo ejecutado | 2026-09-24 (`ab93586`) | `docs/bitacora/bitacora_CH-16c_saleor.md`, `openspec/changes/CH-16c-saleor-caso-negativo/`. Origen de DEC-37 y DEC-38 |
-| CH-16d | Segunda automatización (stock físico) y composición con `WITH` | 2026-09-25 (`a6e605a`), posterior al congelamiento de la tesis | `docs/bitacora/bitacora_CH-16d.md`, `openspec/changes/CH-16d-segunda-automatizacion-y-with/` |
+| CH-16b | Vistas canónicas sobre Food Store y Medusa (bases reales) y WooCommerce (*fixture*); equivalencia de `stock-producible` con la consulta original | 2026-09-21 y 2026-09-23 (`fc54f19`, `c6ef5a0`) | `docs/bitacora/bitacora_CH-16b_tres_esquemas.md`, `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/`. Origen de DEC-28 y DEC-29 |
+| CH-16c | Saleor como caso negativo ejecutado | 2026-09-24 (`ab93586`) | `docs/bitacora/bitacora_CH-16c_saleor.md`, `openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/`. Origen de DEC-37 y DEC-38 |
+| CH-16d | Segunda automatización (stock físico) y composición con `WITH` | 2026-09-25 (`a6e605a`), posterior al congelamiento de la tesis | `docs/bitacora/bitacora_CH-16d.md`, `openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/` |
 
 ---
 
@@ -73,7 +73,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 |---|---|---|
 | CH-17 | Motor: solapamientos, reintentos, ejecuciones interrumpidas. Partido en CH-17a (X7, X4) y CH-17b (X5), ver DEC-101 | X4, X5, X7 |
 | CH-18 | Motor: control de notificaciones duplicadas y aislamiento de fallos entre tenants | X6, X8 |
-| CH-19 | Conectividad definitiva según D-2. Partido en seis cortes, ver abajo y DEC-112 a DEC-120 | C1, C2, C3 |
+| CH-19 | Conectividad definitiva según D-2. Partido en seis cortes, ver abajo y DEC-112 a DEC-120. **Cerrado**: CH-19a a CH-19c2 archivados; CH-19d1, CH-19d2 y CH-19e son trabajo a futuro (DEC-179) | C1, C2, C3 |
 | CH-20 | Auditoría de ejecución de consultas. **Archivado** (pantalla C-12 en CH-30) | A5 |
 | CH-21 | Catálogo: instanciación de plantillas y casos iniciales. Partido en CH-21a, CH-21b y CH-21c, ver abajo | D2, D3, N3 |
 | CH-22 | Panel del cliente: autenticación y vista de automatizaciones. Partido en CH-22a, CH-22b y CH-22c, ver abajo | T3, P1h, P3h |
@@ -105,9 +105,9 @@ Cada corte apunta a unas 300 líneas estimadas. Las estimaciones de tests se mul
 | CH-19b | Migración `Agente` y `Conexion.agenteId`, alta, listado y revocación de token con hash, aislamiento, prueba con dos tenants (DEC-121). Un change, tres PR encadenados (el diseño subió la unidad 1 de ~360 a ~524 líneas): 1a (esquema, migración, modelo aislado, lookup, módulo de token, ~210), 1b (tres rutas `/agentes` y su prueba con dos tenants, ~314) y 2 (`agenteId` en `POST /conexiones` con chequeo de tenant, ~114) | C1 | Archivado |
 | CH-19c1 | Lado motor (DEC-122). Un change, seis PR encadenados (el diseño subió el PR 3 a ~434 líneas y se partió en 3a y 3b; los tests ampliados de `CanalAgente` salieron a su propio PR): 1) dependencia `ws`, tipos del catálogo, `CanalAgente` y pruebas de contrato (331); 1b) tests ampliados de `CanalAgente` (152); 2) registro de sesiones (340); 3a) listener de upgrade, autenticación, rechazos, alta en el registro y cierre en `preClose` (~317); 3b) ping de 20 s y cierre 4002 al revocar o dar de baja (~110); 4) `destinoDeConexion` devuelve un canal y prueba de punta a punta (~216). El duplex falso no se extrae salvo que aparezca un segundo consumidor | C1 | Archivado |
 | CH-19c2 | Proceso del agente (DEC-123): reconexión con espera creciente, lista de destinos, puente, imagen Docker y Compose aparte, prueba de punta a punta. Un change, cinco PR encadenados: 1) configuración, política TLS, lista de destinos y límites (~320); 2) logger y puente (~340); 3) reconexión, bucle de control, clasificación de cierres y vigilancia de ping (~355); 4) `main`, apagado, códigos de salida, test de frontera, tsconfig, etapa de Docker, Compose y ejemplo (~300); 5) matriz de punta a punta (~300) | C1 | Archivado |
-| CH-19d1 | C2, parte 1: latido y sondeo TCP, columnas de estado, persistencia de transiciones | C2 | Pendiente |
-| CH-19d2 | C2, parte 2: categorías `agente-desconectado`, enmienda a DEC-97, endpoint de estado, indicador en consola, vista de automatizaciones en riesgo | C2 | Pendiente |
-| CH-19e | C3: `scripts/conectividad-alta.sql`, plantilla de bitácora, marca de DEC-88, runbook de alta. Cierre: reevaluar el modo directo (DEC-115) | C3 | Pendiente |
+| CH-19d1 | C2, parte 1: latido y sondeo TCP, columnas de estado, persistencia de transiciones | C2 | Trabajo a futuro (DEC-179) |
+| CH-19d2 | C2, parte 2: categorías `agente-desconectado`, enmienda a DEC-97, endpoint de estado, indicador en consola, vista de automatizaciones en riesgo | C2 | Trabajo a futuro (DEC-179) |
+| CH-19e | C3: `scripts/conectividad-alta.sql`, plantilla de bitácora, marca de DEC-88, runbook de alta. Cierre: reevaluar el modo directo (DEC-115) | C3 | Trabajo a futuro (DEC-179) |
 
 ### Camino a la demo grabable (CH-21 a CH-23)
 
@@ -125,7 +125,7 @@ Orden de ejecución. Los cortes apuntan a unas 300 líneas; los marcados con ⚠
 | 6 | CH-22c | Panel: estado de error visible y aviso de falla al cliente | P3h | ⚠ Un aviso de falla por correo es una notificación nueva y el motor produce una por ejecución: confirmar que encaja, o limitar el corte al estado visible |
 | 7 | CH-23 | Panel: ajuste de umbrales y horarios (formulario validado; rige desde la próxima ejecución) | P2h | Valida valores contra la plantilla y el cron contra el planificador. Se parte en ruta y formulario si pasa de 400 líneas |
 
-Opcionales para la demo, que suman al argumento de "sin puertos entrantes": CH-19d1 y CH-19d2.
+Opcionales para la demo, que suman al argumento de "sin puertos entrantes": CH-19d1 y CH-19d2, hoy trabajo a futuro (DEC-179).
 
 Fuera del camino de la demo: CH-19e, CH-20, CH-24, CH-25, CH-26.
 

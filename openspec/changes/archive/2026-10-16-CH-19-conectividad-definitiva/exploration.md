@@ -1,6 +1,6 @@
 # Exploration: CH-19 Conectividad definitiva (C1, C2, C3)
 
-Date: 2026-10-02. Decisions registered: DEC-112 to DEC-120 in `docs/01-decisiones.md`.
+Date: 2026-10-02. Decisions registered: DEC-112 to DEC-120 in `docs/01-decisiones.md`. **Closed** 2026-10-16 (DEC-179): CH-19a to CH-19c2 are archived; CH-19d1, CH-19d2 and CH-19e are future work, to be opened as new changes if taken up.
 
 ## Current state
 

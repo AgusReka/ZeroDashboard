@@ -54,7 +54,7 @@ No son changes de código. Se listan aparte porque producen evidencia para la te
 | ID | Objetivo | Estado |
 |---|---|---|
 | CH-16 | Mapeo del segundo esquema (Medusa): experimento de genericidad | Bitácora `docs/bitacora/CH-16-mapeo-del-segundo-esquema.md`, que registra el cierre del experimento el 2026-09-19. Se escribieron cinco vistas canónicas contra una Medusa real. **El paso 4 (correr las consultas del catálogo) quedó omitido** porque esas consultas todavía no existían. No tiene carpeta en `openspec/changes/`. En el mapa de changes figura como el último de R1: se ejecutó antes que CH-09 a CH-15, de los que depende. |
-| CH-16b | Vistas canónicas sobre tres esquemas (Food Store, Medusa y WooCommerce) y equivalencia de `stock-producible` | **No figura en `docs/02-mapa-de-changes.md`.** Solo existen archivos SQL (`openspec/changes/CH-16b-vistas-canonicas/sql/`) y la bitácora `bitacora_CH-16b_tres_esquemas.md`. No tiene propuesta, spec ni tareas. Commits `fc54f19` (2026-09-21) y `c6ef5a0` (2026-09-23). Food Store y Medusa corrieron contra bases reales. WooCommerce corrió **solo contra un fixture**, con datos inventados. |
+| CH-16b | Vistas canónicas sobre tres esquemas (Food Store, Medusa y WooCommerce) y equivalencia de `stock-producible` | **No figura en `docs/02-mapa-de-changes.md`.** Solo existen archivos SQL (`openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/`) y la bitácora `bitacora_CH-16b_tres_esquemas.md`. No tiene propuesta, spec ni tareas. Commits `fc54f19` (2026-09-21) y `c6ef5a0` (2026-09-23). Food Store y Medusa corrieron contra bases reales. WooCommerce corrió **solo contra un fixture**, con datos inventados. |
 
 ### 1.4 No iniciados
 
@@ -123,7 +123,7 @@ La cobertura se asigna según la columna "Historias" del mapa de changes. Solo c
 
 **Cómo se ejecuta cada automatización hoy, fuera del prototipo:**
 
-- **`stock-producible`** tiene una implementación SQL independiente: `openspec/changes/CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql`. Se corrió **a mano con `psql`**, siguiendo `README_correr.md`:
+- **`stock-producible`** tiene una implementación SQL independiente: `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql`. Se corrió **a mano con `psql`**, siguiendo `README_correr.md`:
   - Las vistas canónicas (`03_vistas_foodstore.sql`, `06_vistas_medusa.sql`) se crearon directamente en las bases de origen con un superusuario (`postgres`), porque el usuario de lectura del proyecto no tiene permiso `CREATE`.
   - Sobre Food Store real se probó que es equivalente a la consulta original de WF-01c: 6 filas en común, 0 en cada diferencia.
   - Sobre Medusa real devolvió 20 filas.

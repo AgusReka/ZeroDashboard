@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 BACKEND = Path(r"C:\Users\messi\OneDrive\Documentos\Proyectos\FoodStore-Backend-FastAPI")
-SQL_DIR = Path(__file__).resolve().parents[2] / "openspec" / "changes" / "CH-16b-vistas-canonicas" / "sql"
+SQL_DIR = Path(__file__).resolve().parents[2] / "openspec" / "changes" / "archive" / "2026-09-23-CH-16b-vistas-canonicas" / "sql"
 
 os.chdir(BACKEND)  # para que pydantic-settings lea el .env del backend
 sys.path.insert(0, str(BACKEND))

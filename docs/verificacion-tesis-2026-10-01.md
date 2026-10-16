@@ -100,7 +100,7 @@ Texto sugerido: "Sin fusionar en `master` al 01/10/2026; último commit `<hash>`
 > "Diferencia simétrica entre `02_query_original.sql` y `04_consulta_canonica.sql` (sin modificar), comparando por `id::text`" → "`solo en ORIGINAL: 0` / `solo en CANÓNICA: 0` / `intersección: 6`"
 
 - **La clave fue el identificador de producto (`id::text`).** Confirmado.
-- **Las columnas exactas de la diferencia simétrica no están registradas.** El README (`README_correr.md`, paso 4) remite a "el bloque de V-3 de la bitácora", y ese bloque no está en la bitácora. Tampoco hay ningún script con `EXCEPT` ni `FULL JOIN` en `openspec/changes/CH-16b-vistas-canonicas/sql/`.
+- **Las columnas exactas de la diferencia simétrica no están registradas.** El README (`README_correr.md`, paso 4) remite a "el bloque de V-3 de la bitácora", y ese bloque no está en la bitácora. Tampoco hay ningún script con `EXCEPT` ni `FULL JOIN` en `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/`.
 - **La definición de H1 no está en el repositorio:** ninguna búsqueda de `H1` en `docs/` la encuentra. No se puede verificar contra el repo qué tupla define H1.
 
 ### Problema con el texto actual

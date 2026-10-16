@@ -1,6 +1,6 @@
 # Proposal: CH-19a — Connection Channel Seam and Protocol Types (C1, slice 1)
 
-**Status**: ready for spec and design. Inputs: `CH-19-conectividad-definitiva/exploration.md`, DEC-112..DEC-120 (firm, 2026-10-02). DEC-115 pending point (direct mode in production) does not affect this slice.
+**Status**: ready for spec and design. Inputs: `../2026-10-16-CH-19-conectividad-definitiva/exploration.md`, DEC-112..DEC-120 (firm, 2026-10-02). DEC-115 pending point (direct mode in production) does not affect this slice.
 
 ## Intent
 

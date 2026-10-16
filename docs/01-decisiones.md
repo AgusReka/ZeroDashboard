@@ -658,7 +658,7 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ### DEC-36 — `producto.activo` pasa a obligatorio; `stock-producible` deja de figurar en `producto.stockDisponible`
 
-**Contexto.** La consulta canónica de `stock-producible` (`openspec/changes/CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql`) filtra `WHERE pr.activo = true`, pero `src/contrato.ts` declaraba `producto.activo` como `opcional`. Si una plataforma no puede poblarlo, la vista lo deja en `NULL`, el filtro descarta todas las filas y la automatización devuelve cero filas sin error. Además, el contrato declaraba que `stock-producible` usa `producto.stockDisponible`, pero esa consulta no lo lee: solo lee `insumo."stockDisponible"`. Por el criterio de DEC-29, `activo` debería ser obligatorio y la etiqueta de `producto.stockDisponible` no correspondía.
+**Contexto.** La consulta canónica de `stock-producible` (`openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql`) filtra `WHERE pr.activo = true`, pero `src/contrato.ts` declaraba `producto.activo` como `opcional`. Si una plataforma no puede poblarlo, la vista lo deja en `NULL`, el filtro descarta todas las filas y la automatización devuelve cero filas sin error. Además, el contrato declaraba que `stock-producible` usa `producto.stockDisponible`, pero esa consulta no lo lee: solo lee `insumo."stockDisponible"`. Por el criterio de DEC-29, `activo` debería ser obligatorio y la etiqueta de `producto.stockDisponible` no correspondía.
 
 **Opciones.** (a) `producto.activo` pasa a `obligatorio`, y se quita `STOCK_PRODUCIBLE` de las automatizaciones de `producto.stockDisponible`. (b) Cambiar la consulta a `COALESCE(pr.activo, true)`, para que un `activo` ausente cuente como activo y el campo pueda seguir siendo opcional.
 
@@ -676,7 +676,7 @@ Los campos obligatorios de `pedido` e `item_pedido` (atados a `reporte-diario`) 
 
 ### DEC-37 — En Saleor, `v_producto."stockDisponible"` suma sobre todos los depósitos lo no asignado
 
-**Contexto.** CH-16c escribe `v_producto` sobre una instancia real de Saleor (`openspec/changes/CH-16c-saleor-caso-negativo/sql/10_vistas_saleor.sql`). Saleor registra la existencia en `warehouse_stock` por variante **y** por depósito, con `quantity` y `quantity_allocated` (lo ya asignado a pedidos). El contrato espera un único `stockDisponible` por producto, así que hay que decidir cómo agregar. La granularidad por variante sigue a DEC-27.
+**Contexto.** CH-16c escribe `v_producto` sobre una instancia real de Saleor (`openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/sql/10_vistas_saleor.sql`). Saleor registra la existencia en `warehouse_stock` por variante **y** por depósito, con `quantity` y `quantity_allocated` (lo ya asignado a pedidos). El contrato espera un único `stockDisponible` por producto, así que hay que decidir cómo agregar. La granularidad por variante sigue a DEC-27.
 
 **Opciones.** (a) Sumar sobre todos los depósitos `quantity - quantity_allocated`. (b) Sumar `quantity` sin restar lo asignado. (c) Tomar un solo depósito. (d) Filtrar por canal.
 
@@ -3292,6 +3292,30 @@ Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_s
 **Se resigna.** Las marcas tienen dos implementaciones, SQL y aplicación. Valen los mismos límites del artefacto que el script: la marca de conexión es el registro (DEC-88), la de validación es mutable y las marcas miden tiempo transcurrido, no esfuerzo.
 
 **Decidido por:** el usuario, 2026-10-16, durante la exploración de CH-30e, eligiendo la opción recomendada. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-179 — CH-19d1, CH-19d2 y CH-19e pasan a trabajo a futuro; se cierra el paraguas CH-19
+
+**Contexto.** CH-19 se partió en seis cortes (DEC-112 a DEC-120). CH-19a, CH-19b, CH-19c1 y CH-19c2 están archivados: la conexión por agente funciona de punta a punta. Quedan sin construir CH-19d1 (latido y sondeo TCP, estado persistido), CH-19d2 (categoría `agente-desconectado`, estado visible en la consola y automatizaciones en riesgo) y CH-19e (script de costo de conectividad, plantilla de bitácora y runbook de alta). Mientras la carpeta del paraguas siga en `openspec/changes/`, cualquier agente la toma como trabajo en curso.
+
+**Opciones.**
+- (a) Dejar el paraguas abierto con los tres cortes pendientes.
+- (b) Pasar los tres cortes a trabajo a futuro: no se descartan, quedan fuera del alcance actual, y el paraguas se archiva.
+- (c) Descartarlos.
+
+**Decisión.** (b).
+- CH-19d1, CH-19d2 y CH-19e figuran en el mapa como **Trabajo a futuro**, con su diseño de DEC-112 a DEC-120 intacto para retomarlos.
+- La exploración de CH-19 se archiva. Si se retoma un corte, se abre como change nuevo con su propia carpeta.
+- Lo que las decisiones anteriores dejaban «hasta CH-19d2» o «hasta CH-19e» queda como está: la falla sin canal de control sigue con su categoría provisoria (DEC-122), el modo directo sigue habilitado sin bandera (DEC-115) y la conectividad de los agentes no se muestra en la consola (DEC-165).
+
+**Por qué.** El usuario quiere que el estado del repositorio diga la verdad: el trabajo de conectividad que existe está terminado, y lo que falta no está en curso.
+
+**Se resigna.** C2 (detectar un tenant inalcanzable antes de que falle una ejecución) y C3 (bitácora del costo de conectividad por alta) siguen sin cumplirse. El latido del agente no hace nada, y la reevaluación del modo directo prevista al cerrar CH-19e queda postergada con el corte.
+
+**Decidido por:** el usuario, 2026-10-16. No inferido por el agente.
 
 **Estado:** firme.
 

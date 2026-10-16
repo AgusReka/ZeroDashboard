@@ -10,7 +10,7 @@
 
 ## Problema
 
-- `openspec/changes/CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql` (la implementación de `stock-producible`) filtra `WHERE pr.activo = true`, pero el contrato declaraba `producto.activo` como `opcional`. Si una plataforma no lo puebla, la vista lo deja en `NULL` y la consulta devuelve cero filas sin error.
+- `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql` (la implementación de `stock-producible`) filtra `WHERE pr.activo = true`, pero el contrato declaraba `producto.activo` como `opcional`. Si una plataforma no lo puebla, la vista lo deja en `NULL` y la consulta devuelve cero filas sin error.
 - El contrato declaraba que `stock-producible` usa `producto.stockDisponible`, pero la consulta no lo lee: solo lee `insumo."stockDisponible"`.
 
 ## Cambios
@@ -264,7 +264,7 @@ Se revisó todo el repositorio (`src/`, `openspec/`, `docs/`, `scripts/`, `prism
 
 **Resultado: la única consulta del catálogo que lee atributos del contrato es `04_consulta_canonica.sql` (`stock-producible`).** `stock-fisico` y `reporte-diario` no tienen implementación en el repositorio (ya registrado en DEC-29). En `src/` ningún código consulta las vistas canónicas: la composición con `WITH` llega en CH-12 (DEC-31).
 
-### `openspec/changes/CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql` — `stock-producible`
+### `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/04_consulta_canonica.sql` — `stock-producible`
 
 Contraste contra el contrato vigente después de DEC-36:
 
