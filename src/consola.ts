@@ -178,6 +178,14 @@ function documentoConsola(nombreOperador: string): string {
   #mapeo-guia ol { margin: var(--space-3) 0; padding-inline-start: var(--space-6); }
   #mapeo-entidades details { margin: var(--space-3) 0; }
   #mapeo-entidades pre { margin: var(--space-3) 0; overflow-x: auto; font-family: var(--font-mono); font-size: var(--text-sm); }
+  /* CH-30e2 (C-07): one stage list per connection, the KeyValueList grid; an unreached stage carries
+     the neutral badge look. Built by the script, so local selectors instead of zd-* classes (G3'). */
+  #tiempos-lista { display: grid; gap: var(--space-6); }
+  #tiempos-lista h2 { margin: 0 0 var(--space-4); font-size: var(--text-md); }
+  #tiempos-lista dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-3) var(--space-6); margin: 0; font-size: var(--text-sm); }
+  #tiempos-lista dt { color: var(--text-3); }
+  #tiempos-lista dd { margin: 0; }
+  .etapa-pendiente { display: inline-flex; align-items: center; height: 22px; margin-inline-start: var(--space-3); padding: 0 var(--space-4); border-radius: var(--radius-pill); border: 1px solid var(--neutral-border); background: var(--neutral-soft); color: var(--neutral-text); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
 </style>
 </head>
 <body class="zd-root">
@@ -217,6 +225,7 @@ function documentoConsola(nombreOperador: string): string {
     <a id="nav-agentes" class="zd-sidenav__item" href="#agentes"><span>Agentes</span></a>
     <a id="nav-mapeo" class="zd-sidenav__item" href="#mapeo"><span>Mapeo y validación</span></a>
     <a id="nav-usuarios" class="zd-sidenav__item" href="#usuarios"><span>Usuarios del panel</span></a>
+    <a id="nav-tiempos" class="zd-sidenav__item" href="#tiempos"><span>Tiempos de alta</span></a>
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
     <a id="nav-automatizaciones" class="zd-sidenav__item" href="#automatizaciones"><span>Automatizaciones</span></a>
@@ -432,6 +441,22 @@ function documentoConsola(nombreOperador: string): string {
     <tbody id="usuarios-cuerpo"></tbody>
   </table>
 </div>
+</section>
+
+<!--
+  CH-30e2 (DEC-178, screen C-07): which stage each connection of the active tenant has reached and when,
+  over GET /tiempos-alta. Read only. The blocks are built by the script as text, one per connection.
+-->
+<section id="pantalla-tiempos" aria-labelledby="titulo-tiempos" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-tiempos" class="zd-h1">Tiempos de alta</h1>
+    <p class="zd-pagehead__desc">En qué etapa está cada conexión del tenant y cuándo llegó. Las marcas miden tiempo transcurrido, no esfuerzo: la conexión cuenta desde que se registró y la validación muestra solo la última.</p>
+  </div>
+</header>
+<p id="tiempos-aviso" class="ayuda" role="status"></p>
+<div id="tiempos-lista"></div>
 </section>
 
 <!--
@@ -3660,6 +3685,7 @@ function cambiarTenant(id) {
   if (!document.getElementById('pantalla-mapeo').hidden) { cargarPantallaMapeo(); }
   if (!document.getElementById('pantalla-usuarios').hidden) { cargarPantallaUsuarios(); }
   if (!document.getElementById('pantalla-auditoria').hidden) { cargarPantallaAuditoria(); }
+  if (!document.getElementById('pantalla-tiempos').hidden) { cargarPantallaTiempos(); }
 }
 
 selectorTenant.addEventListener('change', function () {
@@ -5086,10 +5112,121 @@ async function cargarPantallaAuditoria() {
 
 document.getElementById('aud-filtrar').addEventListener('click', function () { cargarPantallaAuditoria(); });
 
+// ---- CH-30e2 (DEC-178, screen C-07): Tiempos de alta -------------------------------------------
+
+var ETAPAS_ALTA = [
+  ['altaInicio', 'Alta del tenant'],
+  ['conexionRegistrada', 'Conexión registrada'],
+  ['mapeoInicio', 'Inicio del mapeo'],
+  ['mapeoFin', 'Última edición del mapeo'],
+  ['validacionUltima', 'Última validación'],
+  ['automatizacionCreada', 'Primera automatización'],
+  ['primeraEjecucion', 'Primera ejecución'],
+  ['primeraEjecucionOk', 'Primera ejecución OK']
+];
+var ESTADOS_VALIDACION = { 'valida': 'Válida', 'invalida': 'Inválida' };
+var FASES_EJECUCION = { 'preparacion': 'preparación', 'ejecucion': 'ejecución', 'notificacion': 'notificación', 'conexion': 'conexión' };
+var listaTiempos = document.getElementById('tiempos-lista');
+var avisoTiempos = document.getElementById('tiempos-aviso');
+var generacionTiempos = 0;
+
+function transcurrido(ms) {
+  var minutos = Math.floor(ms / 60000);
+  if (minutos < 1) { return '+menos de 1 min'; }
+  if (minutos < 60) { return '+' + minutos + ' min'; }
+  if (minutos < 1440) { return '+' + Math.floor(minutos / 60) + ' h ' + (minutos % 60) + ' min'; }
+  return '+' + Math.floor(minutos / 1440) + ' d ' + Math.floor((minutos % 1440) / 60) + ' h';
+}
+
+function detalleEtapa(conexion, campo) {
+  var propio = Object.prototype.hasOwnProperty;
+  if (campo === 'validacionUltima') {
+    var estado = String(conexion.validacionEstado);
+    return propio.call(ESTADOS_VALIDACION, estado) ? ESTADOS_VALIDACION[estado] : estado;
+  }
+  if (campo === 'primeraEjecucion') {
+    if (conexion.primeraEjecucionEstado === 'ok') { return 'OK'; }
+    var fase = conexion.primeraEjecucionFase;
+    if (fase === null || fase === undefined) { return 'Falló'; }
+    return 'Falló en ' + (propio.call(FASES_EJECUCION, fase) ? FASES_EJECUCION[fase] : String(fase));
+  }
+  return '';
+}
+
+// One block per connection. The elapsed time is from the nearest earlier reached stage, shown only
+// when that stage is not later: the marks mix the database's and the application's clocks.
+function bloqueTiempos(conexion) {
+  var bloque = document.createElement('section');
+  var titulo = document.createElement('h2');
+  titulo.textContent = String(conexion.conexionNombre);
+  bloque.appendChild(titulo);
+  var lista = document.createElement('dl');
+  var anterior = null;
+  var dos = function (n) { return (n < 10 ? '0' : '') + n; };
+  ETAPAS_ALTA.forEach(function (etapa) {
+    var dt = document.createElement('dt');
+    dt.textContent = etapa[1];
+    var dd = document.createElement('dd');
+    var valor = conexion[etapa[0]];
+    var marca = valor === null || valor === undefined ? null : new Date(String(valor));
+    if (marca === null || isNaN(marca.getTime())) {
+      var raya = document.createElement('span');
+      raya.textContent = '—';
+      dd.appendChild(raya);
+      var pendiente = document.createElement('span');
+      pendiente.className = 'etapa-pendiente';
+      pendiente.textContent = 'Pendiente';
+      dd.appendChild(pendiente);
+    } else {
+      var partes = [fechaTenant(valor) + ' ' + dos(marca.getHours()) + ':' + dos(marca.getMinutes())];
+      var detalle = detalleEtapa(conexion, etapa[0]);
+      if (detalle !== '') { partes.push(detalle); }
+      if (anterior !== null && marca.getTime() >= anterior) { partes.push(transcurrido(marca.getTime() - anterior)); }
+      dd.textContent = partes.join(' · ');
+      anterior = marca.getTime();
+    }
+    lista.appendChild(dt);
+    lista.appendChild(dd);
+  });
+  bloque.appendChild(lista);
+  return bloque;
+}
+
+async function cargarPantallaTiempos() {
+  generacionTiempos += 1;
+  var g = generacionTiempos;
+  if (tenantActivo === null) {
+    vaciar(listaTiempos);
+    avisoTiempos.textContent = 'Elegí un tenant para ver sus tiempos de alta.';
+    return;
+  }
+  var respuesta;
+  try {
+    respuesta = await pedir('/tiempos-alta');
+  } catch (fallaDeRed) {
+    if (g === generacionTiempos) { avisoTiempos.textContent = 'No se pudo contactar con la aplicación.'; }
+    return;
+  }
+  if (respuesta === null) { return; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (g !== generacionTiempos) { return; }
+  if (manejarFalloDeTenant(cuerpo)) { return; }
+  if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.conexiones)) {
+    avisoTiempos.textContent = 'No se pudo leer los tiempos de alta (HTTP ' + respuesta.status + ').';
+    return;
+  }
+  vaciar(listaTiempos);
+  cuerpo.conexiones.forEach(function (conexion) { listaTiempos.appendChild(bloqueTiempos(conexion)); });
+  avisoTiempos.textContent = cuerpo.conexiones.length === 0
+    ? 'Este tenant todavía no tiene conexiones.'
+    : (cuerpo.truncado === true ? 'Se muestran las primeras 200 conexiones.' : '');
+}
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
+var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -5108,6 +5245,7 @@ function mostrarPantalla() {
   if (activa === 'mapeo') { cargarPantallaMapeo(); }
   if (activa === 'usuarios') { cargarPantallaUsuarios(); }
   if (activa === 'auditoria') { cargarPantallaAuditoria(); }
+  if (activa === 'tiempos') { cargarPantallaTiempos(); }
   // CH-32a: the picker reads the tenant's connections each time Consultas is shown.
   if (activa === 'consultas') { cargarConexionesConsulta(); }
 }
