@@ -3221,6 +3221,33 @@ La validación es la del alta (`prepararSentencia`, `cronValido` y `direccionVal
 
 ---
 
+### DEC-176 — CH-34: la pantalla de Mapeo muestra un paso a paso y un ejemplo fijo por entidad; acota DEC-30
+
+**Contexto.** DEC-30 resignó toda asistencia para escribir las vistas canónicas, y DEC-169 llevó ese modelo a la consola: un editor vacío por entidad, sin ayuda más allá de la descripción de la pantalla. CH-34 (propuesto el 2026-10-15) agrega un paso a paso y un SQL de ejemplo por entidad, que es justamente asistencia.
+
+**Opciones.**
+- (a) Acotar la renuncia de DEC-30: la pantalla muestra un paso a paso estático y un ejemplo por entidad, sin tocar el modelo de vistas registradas.
+- (b) No acotarla y descartar CH-34.
+
+Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_store` reescritas como `SELECT`; (2) un esqueleto armado desde el contrato, con columnas de relleno; (3) los dos. Sobre su uso: (i) solo lectura; (ii) un botón que lo copia al editor solo si está vacío.
+
+**Decisión.** (a), con el ejemplo fijo de `food_store` (1) y el botón que lo copia a un editor vacío (ii).
+- El modelo de DEC-30 y DEC-169 no cambia: la operadora escribe y guarda cada `SELECT`, no hay generador ni selector de columnas, y nada lee la réplica del cliente para armar SQL.
+- El ejemplo es texto fijo de la consola. El botón no guarda nada; lo guardado sigue siendo lo que la operadora edita.
+- La renuncia de DEC-30 pasa de "sin asistencia" a "sin asistencia generada".
+
+**Por qué.** El costo de escribir las vistas ya quedó medido en el experimento de CH-16. Un ejemplo real, con casteos, un `CASE` y joins que corren contra la demo, enseña más que un esqueleto que no corre.
+
+**Se resigna.**
+- La consola lleva el esquema de `food_store`, ajeno a cada tenant. Un test lo mantiene alineado con el contrato: cada ejemplo nombra todos los campos de su entidad.
+- Los tiempos de alta de CH-15 solo se comparan entre altas hechas con la misma ayuda.
+
+**Decidido por:** el usuario, 2026-10-16. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
