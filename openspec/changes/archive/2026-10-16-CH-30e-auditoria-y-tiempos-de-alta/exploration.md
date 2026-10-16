@@ -1,6 +1,6 @@
 # Exploration: CH-30e — Audit and onboarding-times screens (2026-10-16)
 
-Status: **decided** (2026-10-16): option 1, registered as DEC-178, cut into CH-30e1 (Auditoría) and CH-30e2 (Tiempos de alta). Store: openspec. Stories: A5, G1. Umbrella: `openspec/changes/CH-30-rediseno-de-la-consola/`.
+Status: **decided** (2026-10-16): option 1, registered as DEC-178, cut into CH-30e1 (Auditoría) and CH-30e2 (Tiempos de alta). Store: openspec. Stories: A5, G1. Umbrella: `openspec/changes/archive/2026-10-16-CH-30-rediseno-de-la-consola/`. **Closed** 2026-10-16: both cuts archived.
 
 ## Why
 

@@ -81,13 +81,13 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-24 | Frescura de datos por tenant y por plantilla | F1, F2 |
 | CH-28 | Consola: alta, baja y clave de los usuarios del panel. **Archivado** (pantalla en CH-30) | T3 |
 | CH-29 | Consola: identidad del operador (ingreso de P1), para la parte «por quién» de A5. **Archivado** (revisión visual pendiente) | A5 |
-| CH-30 | Consola: rediseño, navegación y pantallas que hoy solo existen como API. Partido en cinco changes (DEC-164 a DEC-166) | T1, A1, A2, C1, M1–M4, G1 |
+| CH-30 | Consola: rediseño, navegación y pantallas que hoy solo existen como API. Partido en cinco changes (DEC-164 a DEC-166). **Cerrado** con CH-30e2 | T1, A1, A2, C1, M1–M4, G1 |
 | CH-30a | Esqueleto, navegación por `#` y resultado junto a Ejecutar, sobre las pantallas existentes. **Archivado** (el estado "dado de baja" de la barra pasa a CH-30b) | — |
 | CH-30b | Pantallas de Tenants y Conexiones (un tenant dado de baja se ve en Tenants y no se elige, DEC-168). **Archivado** | T1, A1 |
 | CH-30c | Pantallas de Agentes y Usuarios del panel, y conexión por el agente. **Archivado** | C1, T3 |
 | CH-30d | Pantallas de Mapeo y validación (un SQL por entidad, DEC-169), Plantillas y Contrato. **Archivado** | M1–M4 |
 | CH-30e1 | Pantalla de Auditoría sobre `GET /auditoria` (DEC-178). **Archivado** | A5 |
-| CH-30e2 | `GET /tiempos-alta` del tenant activo y pantalla de Tiempos de alta; enmienda DEC-87 (DEC-178) | G1 |
+| CH-30e2 | `GET /tiempos-alta` del tenant activo y pantalla de Tiempos de alta; enmienda DEC-87 (DEC-178). **Archivado** | G1 |
 | CH-31 | Datos de desarrollo y prueba: base aparte para los tests, réplica de demo `food_store` en Compose y semilla de demo opcional que deja todo funcionando (DEC-170, DEC-171). **Archivado** | — |
 | CH-32a | Consola: consultas guardadas sin duplicados al guardar, «Consulta nueva» y selector de conexión y formularios de alta y modificación en pop-up para todo el sistema (auditoría del 2026-10-13, F1; DEC-172, DEC-173). **Archivado** | B1, B2, B4 |
 | CH-32b | Consola: «Nueva conexión», «Nuevo tenant», «Nuevo usuario» y el asistente de automatizaciones en pop-up (DEC-173), «Crear y elegir» un tenant, confirmación de «Reponer clave» y la tabla de automatizaciones con el nombre de la conexión y el horario en palabras (auditoría del 2026-10-13, F2). **Archivado** | — |
@@ -137,7 +137,7 @@ Surgieron al revisar la consola con el sistema ya funcionando. Ninguno estaba en
 |---|---|---|---|
 | CH-29 | **Archivado.** Que la consola sepa quién opera. Sin eso, la historia A5 («por quién») de CH-20 no se puede cumplir | — | ⚠ Cruza todas las rutas de la consola: registrar antes el mecanismo (DEC) |
 | CH-28 | **Archivado.** Crear, desactivar y reponer la clave de los usuarios del panel desde la consola | CH-29 | Sin CH-29, cualquiera que llegue a `/consola` podría emitir un ingreso de cliente |
-| CH-30 | Navegación, resultado junto al editor y las pantallas que faltan (tenants, conexiones, agentes, mapeo y validación) | Salida de Claude Design (`docs/design/prompt-claude-design-consola.md`); CH-29 para lo que emite credenciales | ⚠ Decidir antes cómo se sirven las pantallas (hoy, un string de TypeScript de ~2.500 líneas). Se parte en cortes al explorarlo |
+| CH-30 | **Cerrado** (CH-30a a CH-30e2). Navegación, resultado junto al editor y las pantallas que faltan (tenants, conexiones, agentes, mapeo y validación) | Salida de Claude Design (`docs/design/prompt-claude-design-consola.md`); CH-29 para lo que emite credenciales | ⚠ Decidir antes cómo se sirven las pantallas (hoy, un string de TypeScript de ~2.500 líneas). Se parte en cortes al explorarlo |
 
 Orden sugerido: CH-29, CH-28 y CH-30; CH-20 después de CH-29.
 

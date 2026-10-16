@@ -1,6 +1,6 @@
 # Proposal: CH-30e2 — Onboarding times route and screen
 
-**Status**: ready for apply. Inputs: `../CH-30e-auditoria-y-tiempos-de-alta/exploration.md`, DEC-178, DEC-87 to DEC-90, DEC-165, screen C-07 of the design guide.
+**Status**: ready for apply. Inputs: `../2026-10-16-CH-30e-auditoria-y-tiempos-de-alta/exploration.md`, DEC-178, DEC-87 to DEC-90, DEC-165, screen C-07 of the design guide.
 
 ## Intent
 While onboarding a tenant, the operator sees which stage each of its connections has reached and when (G1), from the console. Today the marks only come out of `scripts/marcas-alta.sql`, run by hand across every tenant.
