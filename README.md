@@ -4,7 +4,7 @@ Plataforma que ofrece automatizaciones operativas a e-commerce pequeños sin mod
 
 ## Estado actual
 
-La consola, el motor de automatizaciones con aviso por correo, el panel del cliente y la conexión por agente están implementados (CH-01 a CH-35). Queda como **trabajo a futuro** CH-19d1, CH-19d2 y CH-19e (latido del agente, estado de conectividad y runbook de alta; DEC-179). CH-26 sigue pendiente y CH-27 está fuera de alcance mientras los resultados no se persistan (DEC-93). Detalle por change: [`docs/02-mapa-de-changes.md`](docs/02-mapa-de-changes.md).
+La consola, el motor de automatizaciones con aviso por correo, el panel del cliente y la conexión por agente están implementados (CH-01 a CH-35, más la advertencia de frescura de CH-26). Queda como **trabajo a futuro** CH-19d1, CH-19d2 y CH-19e (latido del agente, estado de conectividad y runbook de alta; DEC-179), y CH-27 está fuera de alcance mientras los resultados no se persistan (DEC-93). Detalle por change: [`docs/02-mapa-de-changes.md`](docs/02-mapa-de-changes.md). Es la **versión 1.0** (tag `v1.0.0`); qué deja afuera, en la sección «Versión 1.0» de ese mapa.
 
 **Cómo se usa:** [`docs/guia/`](docs/guia/README.md) (arquitectura, alta de tenant, mapeo, consultas, plantillas, automatizaciones, usuarios y diagnóstico).
 
