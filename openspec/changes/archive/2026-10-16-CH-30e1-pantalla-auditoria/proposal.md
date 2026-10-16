@@ -1,6 +1,6 @@
 # Proposal: CH-30e1 — Audit screen in the console
 
-**Status**: ready for apply. Inputs: `../CH-30e-auditoria-y-tiempos-de-alta/exploration.md`, DEC-178, DEC-163, DEC-162, DEC-165, screen C-12 of the design guide.
+**Status**: ready for apply. Inputs: `../2026-10-16-CH-30e-auditoria-y-tiempos-de-alta/exploration.md`, DEC-178, DEC-163, DEC-162, DEC-165, screen C-12 of the design guide.
 
 ## Intent
 The operator sees what was executed against the active tenant's replica, when, by whom and with what result (A5), from the console, instead of calling `GET /auditoria` by hand.

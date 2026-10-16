@@ -1,6 +1,6 @@
 # Exploration: CH-30 — Console redesign and missing admin screens (proposed 2026-10-09)
 
-Status: **decided** (2026-10-11). Store: openspec. Registered as DEC-164 to DEC-166: (1) one document with `#` navigation, ids moved and never renamed; (2) the design guide's navigation plus "Usuarios del panel"; (3) resolved by CH-29 (merged): credential screens may proceed; (4) five changes, CH-30a to CH-30e. The design output exists: `.claude/skills/zerodashboard-design/guidelines/consola.md`. This folder stays as the umbrella exploration; each cut gets its own change folder.
+Status: **decided** (2026-10-11). Store: openspec. Registered as DEC-164 to DEC-166: (1) one document with `#` navigation, ids moved and never renamed; (2) the design guide's navigation plus "Usuarios del panel"; (3) resolved by CH-29 (merged): credential screens may proceed; (4) five changes, CH-30a to CH-30e. The design output exists: `.claude/skills/zerodashboard-design/guidelines/consola.md`. This folder stays as the umbrella exploration; each cut gets its own change folder. **Closed** 2026-10-16: CH-30a to CH-30e2 are archived.
 
 ## Why
 
