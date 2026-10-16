@@ -103,8 +103,9 @@ Pestañas **Conexiones | Agentes** (dos maneras de llegar a la réplica del mism
 - **Acciones**: elegir columna (select con las columnas de la conexión), Marcar entidad como inaplicable (con motivo obligatorio), Validar mapeo, Guardar.
 - **Estados**: todo válido (Banner ok) · faltantes (Banner warn con conteo y plantillas bloqueadas) · inaplicable siempre con su motivo a la vista.
 
-### C-07 Tiempos de alta — G1 · CH-15 · API
-- **Datos**: por etapa `etapa` (alta, conexión probada, mapeo validado, primera automatización, primera ejecución OK) · `marca` (fecha-hora o vacío) · `desde_anterior` (duración).
+### C-07 Tiempos de alta — G1 · CH-15, CH-30e2 · EXISTE
+- **Fuente**: `GET /tiempos-alta` del tenant activo (DEC-178), una entrada por conexión con las marcas de DEC-89. El script `scripts/marcas-alta.sql` sigue siendo la herramienta de P4 para todos los tenants.
+- **Datos**: por conexión, un bloque con las etapas alta del tenant, conexión registrada (el registro, no una prueba exitosa: DEC-88), inicio y última edición del mapeo, última validación con su estado, primera automatización, primera ejecución con su resultado y primera ejecución OK · `marca` (fecha-hora o vacío) · `desde_anterior` (duración, solo si la etapa anterior alcanzada no es posterior: las marcas mezclan relojes).
 - Lista vertical de etapas con KeyValueList; etapa no alcanzada = "—" y badge neutro "Pendiente".
 
 ### C-08 Consultas — B1, B2, B3, B4 · CH-04, CH-05, CH-11, CH-25 · EXISTE — **con mockup**
@@ -166,6 +167,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-25 | C-08 Consultas: versiones | EXISTE (verificación visual pendiente) |
 | — | C-02 Tenants | API, sin change de UI |
 | CH-30e1 | C-12 Auditoría | EXISTE |
+| CH-30e2 | C-07 Tiempos de alta | EXISTE |
 
 ---
 

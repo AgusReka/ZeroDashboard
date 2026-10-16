@@ -244,6 +244,11 @@ const IDS = [
   'aud-filtrar',
   'auditoria-aviso',
   'auditoria-cuerpo',
+  // CH-30e2 (DEC-178): the Tiempos de alta screen, its notice and its blocks.
+  'pantalla-tiempos',
+  'nav-tiempos',
+  'tiempos-aviso',
+  'tiempos-lista',
   'formulario',
   'conexion',
   'sql',
@@ -384,7 +389,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -3208,7 +3213,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura', 'auditoria'] as const;
+  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -4272,6 +4277,138 @@ describe('the console document, served by the real route', () => {
     assert.equal(pedidos.length, 2);
     assert.equal(pedidos[1].tenant, 't-2');
     assert.equal(celdasAuditoria(escenario)[1], 'Beto');
+  });
+
+  // ---- CH-30e2 (DEC-178, screen C-07): the Tiempos de alta screen ---------------------------------
+
+  /** A connection registered and mapped, never validated: four stages reached, four pending. Local instants. */
+  const CONEXION_TIEMPOS = {
+    conexionId: 'c-1',
+    conexionNombre: 'food-store',
+    altaInicio: new Date(2026, 9, 1, 9, 0).toISOString(),
+    conexionRegistrada: new Date(2026, 9, 1, 11, 5).toISOString(),
+    mapeoInicio: new Date(2026, 9, 2, 10, 0).toISOString(),
+    mapeoFin: new Date(2026, 9, 4, 13, 30).toISOString(),
+    validacionUltima: null,
+    validacionEstado: null,
+    automatizacionCreada: null,
+    primeraEjecucion: null,
+    primeraEjecucionEstado: null,
+    primeraEjecucionFase: null,
+    primeraEjecucionOk: null,
+  };
+
+  /** Selects the tenant, then opens Tiempos de alta with `conexiones` queued as its answer. */
+  async function abrirTiempos(conexiones: unknown[] = [CONEXION_TIEMPOS], extra: Record<string, unknown> = {}): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones, truncado: false, ...extra } });
+    irA(escenario, '#tiempos');
+    await asentarVarias();
+    return escenario;
+  }
+
+  /** Each stage of a block as [label, value] text pairs. */
+  function etapasTiempos(escenario: Escenario, bloque = 0): string[][] {
+    const lista = nodo(escenario, 'tiempos-lista').hijos[bloque].hijos[1];
+    const pares: string[][] = [];
+    for (let i = 0; i < lista.hijos.length; i += 2) {
+      pares.push([lista.hijos[i].textContent, lista.hijos[i + 1].textContent]);
+    }
+    return pares;
+  }
+
+  test('CH-30e2 Tiempos de alta closes the onboarding group, after Usuarios del panel, and starts hidden', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="nav-usuarios"') < marcado.indexOf('id="nav-tiempos"'));
+    assert.ok(marcado.indexOf('id="nav-tiempos"') < marcado.indexOf('Trabajo diario</span>'));
+    assert.match(marcado, /<section id="pantalla-tiempos"[^>]*hidden/);
+  });
+
+  test('CH-30e2 the hash shows only Tiempos de alta and marks its link current', async () => {
+    soloVisible(await arrancar(undefined, undefined, '#tiempos'), 'tiempos');
+  });
+
+  test('CH-30e2 with no tenant, Tiempos de alta asks for one and sends nothing', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    irA(escenario, '#tiempos');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'tiempos-aviso').textContent, 'Elegí un tenant para ver sus tiempos de alta.');
+    assert.equal(nodo(escenario, 'tiempos-lista').hijos.length, 0);
+  });
+
+  test('CH-30e2 showing the screen reads the marks with the tenant header; reached stages show a date, the rest Pendiente', async () => {
+    const escenario = await abrirTiempos();
+    const ultimo = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.deepEqual([ultimo.url, ultimo.tenant], ['/tiempos-alta', 't-1']);
+    const bloque = nodo(escenario, 'tiempos-lista').hijos[0];
+    assert.equal(bloque.hijos[0].textContent, 'food-store');
+    assert.deepEqual(etapasTiempos(escenario), [
+      ['Alta del tenant', '01/10/2026 09:00'],
+      ['Conexión registrada', '01/10/2026 11:05 · +2 h 5 min'],
+      ['Inicio del mapeo', '02/10/2026 10:00 · +22 h 55 min'],
+      ['Última edición del mapeo', '04/10/2026 13:30 · +2 d 3 h'],
+      ['Última validación', '—Pendiente'],
+      ['Primera automatización', '—Pendiente'],
+      ['Primera ejecución', '—Pendiente'],
+      ['Primera ejecución OK', '—Pendiente'],
+    ]);
+    assert.equal(bloque.porClase('etapa-pendiente').length, 4);
+    assert.equal(nodo(escenario, 'tiempos-aviso').textContent, '');
+  });
+
+  test('CH-30e2 validation state, a failed first run with its phase, and no elapsed time before an earlier mark', async () => {
+    const escenario = await abrirTiempos([{
+      ...CONEXION_TIEMPOS,
+      validacionUltima: new Date(2026, 9, 3, 12, 0).toISOString(),
+      validacionEstado: 'invalida',
+      automatizacionCreada: new Date(2026, 9, 5, 9, 0).toISOString(),
+      primeraEjecucion: new Date(2026, 9, 5, 9, 0, 30).toISOString(),
+      primeraEjecucionEstado: 'fallo',
+      primeraEjecucionFase: 'preparacion',
+      primeraEjecucionOk: new Date(2026, 9, 5, 10, 0).toISOString(),
+    }]);
+    const etapas = etapasTiempos(escenario);
+    // The validation is earlier than the mapping's last edit (clock mix): no elapsed time.
+    assert.equal(etapas[4][1], '03/10/2026 12:00 · Inválida');
+    assert.equal(etapas[6][1], '05/10/2026 09:00 · Falló en preparación · +menos de 1 min');
+    assert.equal(etapas[7][1], '05/10/2026 10:00 · +59 min');
+  });
+
+  test('CH-30e2 no connections, a cut list and an HTTP failure are each legible', async () => {
+    const vacio = await abrirTiempos([]);
+    assert.equal(nodo(vacio, 'tiempos-aviso').textContent, 'Este tenant todavía no tiene conexiones.');
+    const cortado = await abrirTiempos([CONEXION_TIEMPOS], { truncado: true });
+    assert.equal(nodo(cortado, 'tiempos-aviso').textContent, 'Se muestran las primeras 200 conexiones.');
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 500, cuerpo: { error: 'interno' } });
+    irA(escenario, '#tiempos');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'tiempos-aviso').textContent, 'No se pudo leer los tiempos de alta (HTTP 500).');
+  });
+
+  test('CH-30e2 a connection name with markup shows as text', async () => {
+    const escenario = await abrirTiempos([{ ...CONEXION_TIEMPOS, conexionNombre: '<b>food</b>' }]);
+    const titulo = nodo(escenario, 'tiempos-lista').hijos[0].hijos[0];
+    assert.equal(titulo.textContent, '<b>food</b>');
+    assert.equal(titulo.hijos.length, 0);
+    assert.ok(!script.slice(script.indexOf('CH-30e2 (DEC-178')).includes('inner' + 'HTML'));
+  });
+
+  test('CH-30e2 switching the tenant while Tiempos de alta is shown reloads it for the new tenant', async () => {
+    const escenario = await abrirTiempos();
+    const cambio = respuestasDeTenant();
+    escenario.respuestas.push(...cambio.slice(0, 3), { status: 200, cuerpo: { conexiones: [{ ...CONEXION_TIEMPOS, conexionNombre: 'otra' }], truncado: false } }, ...cambio.slice(3));
+    nodo(escenario, 'tenant').value = 't-2';
+    nodo(escenario, 'tenant').disparar('change');
+    await asentarVarias();
+    const pedidos = escenario.peticiones.filter((p) => p.url === '/tiempos-alta');
+    assert.equal(pedidos.length, 2);
+    assert.equal(pedidos[1].tenant, 't-2');
+    assert.equal(nodo(escenario, 'tiempos-lista').hijos[0].hijos[0].textContent, 'otra');
   });
 
   test('CH-30d Contrato shows each entity with its fields, type, obligatoriness and automations', async () => {
