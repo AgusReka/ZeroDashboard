@@ -826,7 +826,12 @@ The Contrato screen SHALL show the canonical contract (`GET /contrato`): one blo
 - **THEN** the five entities appear in contract order, each with its fields
 
 ### Requirement: Mapping and Validation Screen
-The Mapeo y validación screen SHALL, for the active tenant, let the operator choose one of its connections and then show, for each of the five contract entities in contract order: its obligatoriness, its state ("Sin mapear", "Sin validar", "Válida" or "Inválida"), its SQL in an editor, and its last diagnostics per field (verdict, column, observed type and cast hint). "Guardar" SHALL send the entity's SQL to `PUT /conexiones/:id/vistas-canonicas/:entidad` and then show the entity as "Sin validar". "Validar" SHALL send `POST /conexiones/:id/validacion-mapeo` and show the new report; when the answer is a session failure (`resultado: "fallo"`), it SHALL show the phase, category and code apart and keep showing the last stored report. The three automations SHALL appear with their state and every reason. With no tenant, or no connection chosen, the screen SHALL say what to choose and send nothing. Every SQL statement and diagnostic SHALL be written as text.
+The Mapeo y validación screen SHALL, for the active tenant, let the operator choose one of its connections and then show, for each of the five contract entities in contract order: its obligatoriness, its state ("Sin mapear", "Sin validar", "Válida" or "Inválida"), its SQL in an editor, an example, and its last diagnostics per field (verdict, column, observed type and cast hint). "Guardar" SHALL send the entity's SQL to `PUT /conexiones/:id/vistas-canonicas/:entidad` and then show the entity as "Sin validar". "Validar" SHALL send `POST /conexiones/:id/validacion-mapeo` and show the new report; when the answer is a session failure (`resultado: "fallo"`), it SHALL show the phase, category and code apart and keep showing the last stored report. The three automations SHALL appear with their state and every reason. With no tenant, or no connection chosen, the screen SHALL say what to choose and send nothing. Every SQL statement, example and diagnostic SHALL be written as text.
+
+Above the entities, the screen SHALL show a collapsible step-by-step guide, «Cómo mapear», in the static markup, stating in order: choose the connection; per entity, write one SELECT over the client's replica whose columns are named exactly like the contract fields, camelCase names in double quotes, with the contract's types; «Guardar» each entity; «Validar mapeo» and read each field's verdict and cast hint; the automations table says which automations the mapping enables. It SHALL say that optional entities can stay unmapped.
+
+Each entity block SHALL show, collapsed, that entity's fixed example over the food_store demo replica (DEC-176), labelled as an example over the demo schema, and a «Usar de punto de partida» action. The action SHALL copy the example into that entity's editor only when the editor is empty or holds only whitespace. Otherwise it SHALL leave the editor unchanged and say that the editor already has SQL. The action SHALL NOT send any request nor change the entity's state. Each example SHALL name every field of its entity in the contract as a column alias, quoted when camelCase, and no other alias.
+(Previously: no guide and no example; editors started empty with no help beyond the page description.)
 
 #### Scenario: Saving an entity
 - **WHEN** the operator edits the SQL of `producto` and presses "Guardar"
@@ -839,6 +844,26 @@ The Mapeo y validación screen SHALL, for the active tenant, let the operator ch
 #### Scenario: An invalid field
 - **GIVEN** the report says `stockDisponible` has verdict `tipo-incorrecto` with the hint `::numeric`
 - **THEN** the entity shows that field, its verdict and the hint
+
+#### Scenario: The guide is part of the screen
+- **WHEN** the operator opens Mapeo y validación
+- **THEN** the «Cómo mapear» guide is present above the entities, in the static markup
+
+#### Scenario: Copying the example into an empty editor
+- **GIVEN** the editor of `insumo` is empty
+- **WHEN** the operator presses «Usar de punto de partida» in the `insumo` block
+- **THEN** the editor holds the `insumo` example
+- **AND** no request is sent and the entity keeps its state
+
+#### Scenario: The example never overwrites SQL
+- **GIVEN** the editor of `producto` holds the stored SQL
+- **WHEN** the operator presses «Usar de punto de partida» in the `producto` block
+- **THEN** the editor is unchanged and the screen says the editor already has SQL
+- **AND** no request is sent
+
+#### Scenario: Each example matches the contract
+- **WHEN** the aliases of each example are compared with its entity's fields in `CONTRATO_CANONICO`
+- **THEN** they are the same set, camelCase names quoted
 
 ### Requirement: Create and Edit Forms Open in a Pop-up (DEC-173)
 In the console, every form that creates or modifies a record SHALL open in a pop-up over the screen (`.zd-dialog` on `.zd-dialog-backdrop`), holding every field of the record, with a title, the main action (verb + object) and «Cancelar» at its foot. This covers the query pop-up, «Nuevo tenant», «Nueva conexión», «Nuevo usuario», the automation wizard and the automation adjust. A create pop-up SHALL be opened from its screen's page header; an edit pop-up from its record's row. On opening, the focus SHALL go to its first field. «Cancelar» and the Escape key SHALL close it without sending anything; when there are unsaved changes they SHALL first ask «Descartar cambios», offering «Descartar cambios» and «Seguir editando». A switch of the active tenant SHALL close any open pop-up without asking. Such a form SHALL NOT be rendered inline above or below a table, nor in a side panel. Read-only detail (version history, template detail) stays in the side panel. Inline confirmations of destructive actions are outside this rule, except a tenant's baja, which is confirmed in its own pop-up by typing the name (DEC-175).
