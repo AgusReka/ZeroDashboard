@@ -3321,6 +3321,31 @@ Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_s
 
 ---
 
+### DEC-180 — CH-26: la advertencia de frescura va en el asistente de la consola, al crear la automatización
+
+**Contexto.** F3 pide advertir a P2 cuando activa algo que su réplica no sostiene, y DEC-142 dejó esa advertencia para CH-26. Pero P2 no activa nada: DEC-137 omitió «Activar» en el panel y las automatizaciones solo las crea P1 en el asistente de la consola. La historia, tal como está escrita, no tiene dónde dispararse.
+
+**Opciones.**
+- (a) Avisar a P1 en el asistente «Nueva automatización», en la tarjeta de cada plantilla que tolera menos que la ventana del tenant, sin impedir elegirla.
+- (b) Avisar a P2 en «Mis automatizaciones» del panel (cambia el contrato de DEC-137).
+- (c) Construir «Activar» en el panel con la advertencia.
+- (d) Cerrar F3 como límite del artefacto.
+
+**Decisión.** (a).
+- La tarjeta dice cada cuánto se actualiza la réplica del tenant y cuánto tolera la plantilla, y aclara que se puede crear igual. El aviso de alta lo repite si la plantilla elegida estaba en esa situación.
+- La comparación es la de CH-24 (`estadoFrescura`): avisa solo con «Desactualizada». Con la ventana sin declarar no avisa.
+- Es solo informativo, como DEC-127 y DEC-142: no bloquea, no se envía al servidor y el motor no cambia.
+
+**Por qué.** Pone el aviso donde hoy ocurre la activación, con datos que el asistente ya tiene, sin tocar el motor ni el contrato del panel. Se cumple la intención de F3 («decide informado»), con el actor real: P1 activa en nombre del cliente.
+
+**Se resigna.** P2 sigue sin ver la advertencia; (b) queda disponible si el cliente lo necesita. Las tolerancias son provisorias (DEC-128), así que el aviso puede aparecer de más hasta que existan valores reales.
+
+**Decidido por:** el usuario, 2026-10-16, durante la exploración de CH-26, eligiendo la opción recomendada. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
