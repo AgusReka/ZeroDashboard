@@ -3248,6 +3248,30 @@ Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_s
 
 ---
 
+### DEC-177 — Plantilla → consulta: la consola prueba la plantilla contra una conexión, sin convertirla en consulta
+
+**Contexto.** La auditoría del 2026-10-13 (§3.2, F3) dejó abierto cómo pasar de una plantilla a una consulta. Copiar su SQL al editor no sirve: está escrito contra las vistas `v_<entidad>`, que no existen en la réplica, y solo corre compuesto con las vistas de una conexión (`componerSentencia`). La ruta `POST /plantillas/:id/prueba` (DEC-62) ya hace esa composición contra una conexión del tenant, pero la consola no la usa: el panel de la plantilla es de solo lectura.
+
+**Opciones.**
+- (a) «Probar» en el panel de la plantilla: elegir una conexión del tenant activo y ver el resultado, por la ruta existente.
+- (b) «Usar como consulta»: abrir el pop-up de consulta con la sentencia ya compuesta, editable y guardable.
+- (c) Un tercer tipo de consulta, «sobre vistas canónicas», que se compone al ejecutarse.
+- (d) Dejarlo como trabajo futuro.
+
+**Decisión.** (a).
+- No cambia el modelo ni las rutas: la consola llama a `POST /plantillas/:id/prueba` con el tenant activo.
+- La plantilla sigue sin modificarse desde la consola, y no se crea ninguna consulta guardada.
+
+**Por qué.** Cubre la necesidad real, que es ver qué devuelve una plantilla sobre el mapeo de un tenant antes de crear una automatización, con el cambio más chico. (b) deja guardado un SQL largo atado al mapeo del momento, contra el espíritu de DEC-11. (c) es un cambio de modelo que nada pide todavía.
+
+**Se resigna.** No hay forma de partir de una plantilla para escribir una consulta propia. Si hace falta, se decide aparte entre (b) y (c).
+
+**Decidido por:** el usuario, 2026-10-16, en la fase F3 de la auditoría del 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
