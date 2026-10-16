@@ -207,6 +207,14 @@ const IDS = [
   'plantilla-parametros',
   'plantilla-sql',
   'plantilla-cerrar',
+  // CH-35 (DEC-177): the «Probar en el tenant activo» block of the template panel.
+  'plantilla-prueba',
+  'plantilla-prueba-titulo',
+  'plantilla-prueba-conexion',
+  'plantilla-prueba-valores',
+  'plantilla-probar',
+  'plantilla-prueba-aviso',
+  'plantilla-prueba-tabla',
   'pantalla-contrato',
   'nav-contrato',
   'contrato-aviso',
@@ -637,7 +645,7 @@ describe('the console document, served by the real route', () => {
     for (const id of IDS) {
       // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
       // auto-frecuencia is a select from PR3; conexion is one from CH-32a (DEC-172).
-      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion', 'conexion'].includes(id) ? 'select' : 'div');
+      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion', 'conexion', 'plantilla-prueba-conexion'].includes(id) ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -3857,6 +3865,200 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'plantilla-sql').textContent, 'SELECT <b>x</b> FROM v_producto');
     nodo(escenario, 'plantilla-cerrar').disparar('click');
     assert.equal(nodo(escenario, 'plantilla-panel').hidden, true);
+  });
+
+  // ---- CH-35 (DEC-177): «Probar en el tenant activo» in the template panel ----------------
+
+  const LISTA_CH35 = [PLANTILLA_LISTADA, { ...PLANTILLA_LISTADA, id: 'p-10', nombre: 'Otra plantilla' }];
+  const CONEXIONES_CH35 = [{ id: 'c-1', nombre: 'food-store' }];
+
+  /**
+   * Opens the template at `fila` of the Plantillas list. `conexiones` null means no tenant is
+   * selected, so the panel makes no connection request. The list loads on the first open only.
+   */
+  async function abrirParaProbar(
+    escenario: Escenario,
+    fila: number,
+    parametros: unknown[],
+    conexiones: unknown[] | null,
+  ): Promise<void> {
+    if (fila === 0) {
+      escenario.respuestas.push({ status: 200, cuerpo: { plantillas: LISTA_CH35, truncado: false } });
+      irA(escenario, '#plantillas');
+      await asentarVarias();
+    }
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: { plantilla: { ...LISTA_CH35[fila], sql: 'SELECT 1', parametros, entidades: ['producto', 'insumo'] } },
+    });
+    if (conexiones !== null) {
+      escenario.respuestas.push({ status: 200, cuerpo: { conexiones, truncado: false } });
+    }
+    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[fila], 'Ver')[0].disparar('click');
+    await asentarVarias();
+  }
+
+  /** The rows of the test block's table, each cell as text. */
+  function filasDePrueba(escenario: Escenario): string[][] {
+    return buscar(nodo(escenario, 'plantilla-prueba-tabla'), (n) => n.tagName === 'tr').map((tr) => tr.hijos.map((celda) => celda.textContent));
+  }
+
+  /** Boots with a tenant and one connection, opens a template with one numero parameter and chooses the connection. */
+  async function plantillaListaParaProbar(): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otro' }]);
+    await elegirTenant(escenario);
+    await abrirParaProbar(escenario, 0, [{ nombre: 'umbral', tipo: 'numero' }], CONEXIONES_CH35);
+    nodo(escenario, 'plantilla-prueba-conexion').value = 'c-1';
+    return escenario;
+  }
+
+  async function probar(escenario: Escenario, respuesta: { status: number; cuerpo: unknown; falla?: boolean }): Promise<void> {
+    escenario.respuestas.push(respuesta);
+    nodo(escenario, 'plantilla-probar').disparar('click');
+    await asentarVarias();
+  }
+
+  test('CH-35 the test block sits inside the template panel, after the statement and before Cerrar', () => {
+    const html = marcado();
+    const panel = html.indexOf('id="plantilla-panel"');
+    const bloque = html.indexOf('id="plantilla-prueba"');
+    assert.ok(panel < html.indexOf('id="plantilla-sql"'));
+    assert.ok(html.indexOf('id="plantilla-sql"') < bloque);
+    assert.ok(bloque < html.indexOf('id="plantilla-cerrar"'));
+    assert.ok(html.indexOf('id="plantilla-cerrar"') < html.indexOf('</aside>', panel));
+    assert.match(html, /<button id="plantilla-probar"[^>]*type="button"/);
+  });
+
+  test('CH-35 opening a template fills the connection list and adds one input per parameter', async () => {
+    const escenario = await plantillaListaParaProbar();
+    const selector = nodo(escenario, 'plantilla-prueba-conexion');
+    assert.deepEqual(selector.options.map((o) => [o.value, o.textContent]), [['', 'Elegí una conexión'], ['c-1', 'food-store (c-1…)']]);
+    const entradas = buscar(nodo(escenario, 'plantilla-prueba-valores'), (n) => n.tagName === 'input');
+    assert.equal(entradas.length, 1);
+    assert.equal(nodo(escenario, 'plantilla-prueba-valores').textContent, 'umbral');
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones');
+  });
+
+  test('CH-35 Probar sends one POST to the template test route with the tenant, the connection and the values', async () => {
+    const escenario = await plantillaListaParaProbar();
+    buscar(nodo(escenario, 'plantilla-prueba-valores'), (n) => n.tagName === 'input')[0].value = '5';
+    const antes = escenario.peticiones.length;
+    await probar(escenario, {
+      status: 200,
+      cuerpo: respuestaOk({ columnas: ['id', 'nota'], filas: [[1, '<b>x</b>'], [2, null]], paginacion: { limite: 50, desplazamiento: 0, hayMas: false, siguienteDesplazamiento: null, topeFilas: 200 } }),
+    });
+    assert.equal(escenario.peticiones.length, antes + 1);
+    assert.deepEqual(escenario.peticiones[antes], { url: '/plantillas/p-9/prueba', tenant: 't-1', cuerpo: { conexionId: 'c-1', valores: { umbral: 5 } } });
+    assert.deepEqual(filasDePrueba(escenario), [['id', 'nota'], ['1', '<b>x</b>'], ['2', 'NULL']]);
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, '2 filas.');
+    assert.equal(nodo(escenario, 'plantilla-probar').disabled, false);
+  });
+
+  test('CH-35 hayMas adds the line saying the test shows only the first page', async () => {
+    const escenario = await plantillaListaParaProbar();
+    await probar(escenario, { status: 200, cuerpo: respuestaOk({ filas: [[1]], paginacion: { limite: 50, desplazamiento: 0, hayMas: true, siguienteDesplazamiento: 50, topeFilas: 200 } }) });
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, '1 fila. Hay más filas; la prueba muestra solo la primera página.');
+  });
+
+  test('CH-35 a 409 vista-canonica-no-aprobada names the entities, points to Mapeo and shows no table', async () => {
+    const escenario = await plantillaListaParaProbar();
+    await probar(escenario, { status: 409, cuerpo: { error: 'vista-canonica-no-aprobada', entidades: ['producto', 'insumo'] } });
+    assert.equal(
+      nodo(escenario, 'plantilla-prueba-aviso').textContent,
+      'Las vistas de estas entidades no están aprobadas en esta conexión: producto, insumo. Mapealas y validalas en Mapeo y validación.',
+    );
+    assert.equal(nodo(escenario, 'plantilla-prueba-tabla').hijos.length, 0);
+  });
+
+  test('CH-35 the other answers are written as legible text and leave no table', async () => {
+    const escenario = await plantillaListaParaProbar();
+    const aviso = (): string => nodo(escenario, 'plantilla-prueba-aviso').textContent;
+    await probar(escenario, { status: 200, cuerpo: { resultado: 'fallo', fase: 'x', categoria: 'y', codigo: '42P01' } });
+    assert.equal(aviso(), 'La ejecución falló y la consola no pudo identificar el motivo. (SQLSTATE 42P01)');
+    await probar(escenario, { status: 409, cuerpo: { error: 'credencial-ilegible' } });
+    assert.match(aviso(), /^La credencial guardada para esta conexión no se pudo descifrar\./);
+    await probar(escenario, { status: 404, cuerpo: { error: 'conexion-no-encontrada' } });
+    assert.equal(aviso(), 'La plantilla o la conexión ya no existen.');
+    await probar(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/valores/umbral'], problemas: [{ parametro: 'umbral', motivo: 'valor-faltante', campo: '/valores/umbral' }] } });
+    assert.equal(aviso(), 'Revisá estos parámetros: «umbral» no tiene valor.');
+    await probar(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/conexionId'] } });
+    assert.equal(aviso(), 'Revisá estos parámetros: /conexionId.');
+    await probar(escenario, { status: 500, cuerpo: { error: 'x' } });
+    assert.equal(aviso(), 'La aplicación respondió HTTP 500.');
+    await probar(escenario, { status: 200, cuerpo: null });
+    assert.equal(aviso(), 'La aplicación respondió algo que la consola no pudo interpretar (HTTP 200).');
+    await probar(escenario, { status: 200, cuerpo: {}, falla: true });
+    assert.equal(aviso(), 'No se pudo contactar con la aplicación.');
+    assert.equal(nodo(escenario, 'plantilla-prueba-tabla').hijos.length, 0);
+    assert.equal(nodo(escenario, 'plantilla-probar').disabled, false);
+  });
+
+  test('CH-35 with no active tenant the block says so and sends nothing', async () => {
+    const escenario = await arrancar();
+    await abrirParaProbar(escenario, 0, [], null);
+    const antes = escenario.peticiones.length;
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, 'Elegí un tenant para probar la plantilla.');
+    nodo(escenario, 'plantilla-probar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, 'Elegí un tenant para probar la plantilla.');
+    assert.deepEqual(nodo(escenario, 'plantilla-prueba-conexion').options, []);
+  });
+
+  test('CH-35 with no connection chosen the block says so and sends nothing', async () => {
+    const escenario = await plantillaListaParaProbar();
+    nodo(escenario, 'plantilla-prueba-conexion').value = '';
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'plantilla-probar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, 'Elegí una conexión para probar la plantilla.');
+  });
+
+  test('CH-35 a tenant with no connections says to register one', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirParaProbar(escenario, 0, [], []);
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, 'Registrá una conexión de este tenant para probar la plantilla.');
+    assert.deepEqual(nodo(escenario, 'plantilla-prueba-conexion').options.map((o) => o.value), ['']);
+  });
+
+  test('CH-35 opening another template clears the previous result and its inputs', async () => {
+    const escenario = await plantillaListaParaProbar();
+    await probar(escenario, { status: 200, cuerpo: respuestaOk() });
+    assert.ok(filasDePrueba(escenario).length > 0);
+    await abrirParaProbar(escenario, 1, [], CONEXIONES_CH35);
+    assert.equal(nodo(escenario, 'plantilla-titulo').textContent, 'Otra plantilla');
+    assert.equal(nodo(escenario, 'plantilla-prueba-tabla').hijos.length, 0);
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, '');
+    assert.equal(nodo(escenario, 'plantilla-prueba-valores').hijos.length, 0);
+  });
+
+  test('CH-35 closing the panel clears the result', async () => {
+    const escenario = await plantillaListaParaProbar();
+    await probar(escenario, { status: 200, cuerpo: respuestaOk() });
+    nodo(escenario, 'plantilla-cerrar').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-prueba-tabla').hijos.length, 0);
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, '');
+  });
+
+  test('CH-35 switching the tenant clears the result and re-reads the connections of the new one', async () => {
+    const escenario = await plantillaListaParaProbar();
+    await probar(escenario, { status: 200, cuerpo: respuestaOk() });
+    // The open panel asks for the new tenant's connections first, then the usual switch requests.
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [{ id: 'c-2', nombre: 'otra' }], truncado: false } });
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'plantilla-prueba-tabla').hijos.length, 0);
+    assert.equal(nodo(escenario, 'plantilla-prueba-aviso').textContent, '');
+    assert.deepEqual(nodo(escenario, 'plantilla-prueba-conexion').options.map((o) => o.value), ['', 'c-2']);
+  });
+
+  test('CH-35 a hostile connection name is shown as text', async () => {
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirParaProbar(escenario, 0, [], [{ id: 'c-1', nombre: hostil }]);
+    assert.equal(nodo(escenario, 'plantilla-prueba-conexion').options[1].textContent, hostil + ' (c-1…)');
   });
 
   test('CH-30d Contrato shows each entity with its fields, type, obligatoriness and automations', async () => {

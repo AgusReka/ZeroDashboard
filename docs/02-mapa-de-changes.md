@@ -92,6 +92,7 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-32b | Consola: «Nueva conexión», «Nuevo tenant», «Nuevo usuario» y el asistente de automatizaciones en pop-up (DEC-173), «Crear y elegir» un tenant, confirmación de «Reponer clave» y la tabla de automatizaciones con el nombre de la conexión y el horario en palabras (auditoría del 2026-10-13, F2). **Archivado** | — |
 | CH-33 | La consola ajusta una automatización en el lugar (valores, horario y destinatario, DEC-174). Para dar de baja un tenant hay que escribir su nombre, en la consola y en la API (DEC-175). Viene de la auditoría del 2026-10-13, fase F3. **Archivado** | — |
 | CH-34 | La pantalla Mapeo y validación trae una guía «Cómo mapear» y, por entidad, un SELECT de ejemplo sobre la réplica de demo que se copia a un editor vacío sin pisar nada (DEC-176). **Archivado** | — |
+| CH-35 | El panel de una plantilla trae «Probar en el tenant activo»: se elige una conexión del tenant, se completan los parámetros y se ve qué devuelve la plantilla por `POST /plantillas/:id/prueba`, sin guardarla como consulta (DEC-177). Viene de la auditoría del 2026-10-13, fase F3. | — |
 
 ### Partición de CH-19
 

@@ -458,6 +458,16 @@ function documentoConsola(nombreOperador: string): string {
     <p id="plantilla-entidades"></p>
     <p id="plantilla-parametros"></p>
     <pre id="plantilla-sql"></pre>
+    <!-- CH-35 (DEC-177): the one tenant-scoped part of this screen. It runs the template on a connection of the active tenant; nothing is saved. -->
+    <section id="plantilla-prueba" aria-labelledby="plantilla-prueba-titulo">
+      <h3 id="plantilla-prueba-titulo" class="zd-h3">Probar en el tenant activo</h3>
+      <label for="plantilla-prueba-conexion" class="zd-label">Conexión</label>
+      <select id="plantilla-prueba-conexion" class="zd-select"></select>
+      <div id="plantilla-prueba-valores"></div>
+      <button id="plantilla-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+      <p id="plantilla-prueba-aviso" class="ayuda" role="status"></p>
+      <div class="zd-table-wrap zd-table-scroll"><table id="plantilla-prueba-tabla" class="zd-table"></table></div>
+    </section>
     <button id="plantilla-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar</button>
   </div>
 </aside>
@@ -3600,6 +3610,9 @@ function cambiarTenant(id) {
   olvidarConsultaCargada();
   limpiarParametros();
   limpiarAutomatizaciones();
+  // CH-35: a template test result belongs to the tenant it ran for; an open panel re-reads the new tenant's connections.
+  limpiarPruebaPlantilla();
+  if (!panelPlantilla.hidden) { cargarConexionesPrueba(); }
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
   // CH-32a: no connection of the tenant just left stays chosen; with no tenant the picker says so.
   conexionPrevia = '';
@@ -4502,6 +4515,127 @@ async function leerGlobal(url, aviso) {
   return cuerpo;
 }
 
+// CH-35 (DEC-177): the test block of the panel. The open template and its parameter inputs
+// live here; generacionPrueba drops an answer that arrives after the panel moved on (another
+// template, closed, or another tenant).
+var selectorPrueba = document.getElementById('plantilla-prueba-conexion');
+var contenedorPrueba = document.getElementById('plantilla-prueba-valores');
+var botonProbar = document.getElementById('plantilla-probar');
+var avisoPrueba = document.getElementById('plantilla-prueba-aviso');
+var tablaPrueba = document.getElementById('plantilla-prueba-tabla');
+var plantillaAbierta = null;
+var entradasPrueba = [];
+var generacionPrueba = 0;
+var AVISO_PRUEBA_SIN_TENANT = 'Elegí un tenant para probar la plantilla.';
+var AVISO_PROBANDO = 'Probando…';
+
+function limpiarPruebaPlantilla() {
+  generacionPrueba += 1;
+  botonProbar.disabled = false;
+  vaciar(tablaPrueba);
+  avisoPrueba.textContent = '';
+}
+
+// One scoped call through pedir(). null: no tenant, or a tenant refusal the banner already
+// shows. Otherwise {status, cuerpo, red}: red is true when the request itself failed.
+async function leerPrueba(url, opciones) {
+  var respuesta;
+  try { respuesta = await pedir(url, opciones); } catch (fallaDeRed) {
+    return { status: 0, cuerpo: null, red: true };
+  }
+  if (respuesta === null) { return null; }
+  var cuerpo = null;
+  try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+  if (manejarFalloDeTenant(cuerpo)) { return null; }
+  return { status: respuesta.status, cuerpo: cuerpo, red: false };
+}
+
+async function cargarConexionesPrueba() {
+  var g = generacionPrueba;
+  vaciar(selectorPrueba);
+  if (tenantActivo === null) { avisoPrueba.textContent = AVISO_PRUEBA_SIN_TENANT; return; }
+  selectorPrueba.appendChild(opcionDe('', 'Cargando conexiones…'));
+  var leido = await leerPrueba('/conexiones');
+  if (g !== generacionPrueba) { return; }
+  vaciar(selectorPrueba);
+  if (leido === null || leido.red || leido.status !== 200 || leido.cuerpo === null || !Array.isArray(leido.cuerpo.conexiones)) {
+    selectorPrueba.appendChild(opcionDe('', 'Sin conexiones para elegir'));
+    avisoPrueba.textContent = 'No se pudieron cargar las conexiones.';
+    return;
+  }
+  var filas = leido.cuerpo.conexiones;
+  selectorPrueba.appendChild(opcionDe('', filas.length === 0 ? 'No hay conexiones' : 'Elegí una conexión'));
+  filas.forEach(function (fila) {
+    var idConexion = String(fila.id);
+    selectorPrueba.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+  });
+  selectorPrueba.value = '';
+  if (filas.length === 0) { avisoPrueba.textContent = 'Registrá una conexión de este tenant para probar la plantilla.'; }
+}
+
+// A 400 from the test route: the parameter problems when it carries them, else the fields.
+function mensajeDePruebaInvalida(cuerpo) {
+  var partes = [];
+  if (Array.isArray(cuerpo.problemas)) {
+    cuerpo.problemas.forEach(function (problema) {
+      if (problema === null || typeof problema !== 'object') { return; }
+      var motivo = Object.prototype.hasOwnProperty.call(MENSAJES_PARAMETRO, problema.motivo)
+        ? MENSAJES_PARAMETRO[problema.motivo] : 'no es válido';
+      partes.push((typeof problema.parametro === 'string' ? '«' + problema.parametro + '» ' : '') + motivo);
+    });
+  }
+  if (partes.length === 0 && Array.isArray(cuerpo.campos)) { partes = cuerpo.campos.map(String); }
+  return 'Revisá estos parámetros: ' + (partes.length === 0 ? 'el cuerpo enviado' : partes.join('; ')) + '.';
+}
+
+async function probarPlantilla() {
+  if (plantillaAbierta === null) { return; }
+  if (tenantActivo === null) { avisoPrueba.textContent = AVISO_PRUEBA_SIN_TENANT; return; }
+  if (selectorPrueba.value === '') { avisoPrueba.textContent = 'Elegí una conexión para probar la plantilla.'; return; }
+  // A new try starts from an empty block; the first page only, so no limite is sent.
+  limpiarPruebaPlantilla();
+  var g = generacionPrueba;
+  botonProbar.disabled = true;
+  avisoPrueba.textContent = AVISO_PROBANDO;
+  var leido = await leerPrueba('/plantillas/' + encodeURIComponent(plantillaAbierta.id) + '/prueba', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conexionId: selectorPrueba.value, valores: valoresDe(entradasPrueba) })
+  });
+  if (g !== generacionPrueba) { return; }
+  botonProbar.disabled = false;
+  // null: the banner already says why (tenant refusal), and the block has nothing to add.
+  if (leido === null) { avisoPrueba.textContent = ''; return; }
+  var cuerpo = leido.cuerpo;
+  if (leido.red) { avisoPrueba.textContent = 'No se pudo contactar con la aplicación.'; return; }
+  if (cuerpo === null) {
+    avisoPrueba.textContent = 'La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + leido.status + ').';
+    return;
+  }
+  if (leido.status === 409 && cuerpo.error === 'vista-canonica-no-aprobada') {
+    var entidades = Array.isArray(cuerpo.entidades) ? cuerpo.entidades.map(String).join(', ') : '';
+    avisoPrueba.textContent = entidades === ''
+      ? 'Las vistas de esta plantilla no están aprobadas en esta conexión. Mapealas y validalas en Mapeo y validación.'
+      : 'Las vistas de estas entidades no están aprobadas en esta conexión: ' + entidades + '. Mapealas y validalas en Mapeo y validación.';
+    return;
+  }
+  if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) { avisoPrueba.textContent = MENSAJES_ERROR[cuerpo.error]; return; }
+  if (leido.status === 404) { avisoPrueba.textContent = 'La plantilla o la conexión ya no existen.'; return; }
+  if (leido.status === 400) { avisoPrueba.textContent = mensajeDePruebaInvalida(cuerpo); return; }
+  if (leido.status !== 200) { avisoPrueba.textContent = 'La aplicación respondió HTTP ' + leido.status + '.'; return; }
+  if (cuerpo.resultado !== 'ok') { avisoPrueba.textContent = mensajeDeFallo(cuerpo); return; }
+  var columnas = Array.isArray(cuerpo.columnas) ? cuerpo.columnas.map(String) : [];
+  var filas = (Array.isArray(cuerpo.filas) ? cuerpo.filas : []).map(function (fila) {
+    return (Array.isArray(fila) ? fila : []).map(textoDeCelda);
+  });
+  renderizarTabla(tablaPrueba, columnas, filas, '');
+  var texto = filas.length === 1 ? '1 fila.' : filas.length + ' filas.';
+  if (cuerpo.paginacion && cuerpo.paginacion.hayMas === true) {
+    texto += ' Hay más filas; la prueba muestra solo la primera página.';
+  }
+  avisoPrueba.textContent = texto;
+}
+
 async function verPlantilla(id) {
   var cuerpo = await leerGlobal('/plantillas/' + encodeURIComponent(id), avisoPlantillas);
   if (cuerpo === null || cuerpo.plantilla === undefined) { return; }
@@ -4513,7 +4647,13 @@ async function verPlantilla(id) {
   document.getElementById('plantilla-parametros').textContent = 'Parámetros: ' + (parametros.length === 0 ? 'ninguno'
     : parametros.map(function (p) { return String(p.nombre) + ' (' + String(p.tipo) + ')'; }).join(', '));
   document.getElementById('plantilla-sql').textContent = String(plantilla.sql);
+  // CH-35: the test block starts empty for this template, with its own parameter inputs.
+  plantillaAbierta = { id: id, parametros: parametros };
+  limpiarPruebaPlantilla();
+  vaciar(contenedorPrueba);
+  entradasPrueba = construirValores(contenedorPrueba, parametros);
   panelPlantilla.hidden = false;
+  cargarConexionesPrueba();
 }
 
 async function cargarPantallaPlantillas() {
@@ -4534,7 +4674,11 @@ async function cargarPantallaPlantillas() {
     : (cuerpo.plantillas.length === 0 ? 'Todavía no hay plantillas.' : '');
 }
 
-document.getElementById('plantilla-cerrar').addEventListener('click', function () { panelPlantilla.hidden = true; });
+document.getElementById('plantilla-cerrar').addEventListener('click', function () {
+  panelPlantilla.hidden = true;
+  limpiarPruebaPlantilla();
+});
+document.getElementById('plantilla-probar').addEventListener('click', probarPlantilla);
 
 // ---- CH-30d (DEC-21, screen C-04): Contrato -----------------------------------------------
 
