@@ -86,7 +86,8 @@ Requiere D-1 y D-2 cerradas. Los changes de este bloque están definidos en grue
 | CH-30b | Pantallas de Tenants y Conexiones (un tenant dado de baja se ve en Tenants y no se elige, DEC-168). **Archivado** | T1, A1 |
 | CH-30c | Pantallas de Agentes y Usuarios del panel, y conexión por el agente. **Archivado** | C1, T3 |
 | CH-30d | Pantallas de Mapeo y validación (un SQL por entidad, DEC-169), Plantillas y Contrato. **Archivado** | M1–M4 |
-| CH-30e | Pantallas de Auditoría y Tiempos de alta | A5, G1 |
+| CH-30e1 | Pantalla de Auditoría sobre `GET /auditoria` (DEC-178) | A5 |
+| CH-30e2 | `GET /tiempos-alta` del tenant activo y pantalla de Tiempos de alta; enmienda DEC-87 (DEC-178) | G1 |
 | CH-31 | Datos de desarrollo y prueba: base aparte para los tests, réplica de demo `food_store` en Compose y semilla de demo opcional que deja todo funcionando (DEC-170, DEC-171). **Archivado** | — |
 | CH-32a | Consola: consultas guardadas sin duplicados al guardar, «Consulta nueva» y selector de conexión y formularios de alta y modificación en pop-up para todo el sistema (auditoría del 2026-10-13, F1; DEC-172, DEC-173). **Archivado** | B1, B2, B4 |
 | CH-32b | Consola: «Nueva conexión», «Nuevo tenant», «Nuevo usuario» y el asistente de automatizaciones en pop-up (DEC-173), «Crear y elegir» un tenant, confirmación de «Reponer clave» y la tabla de automatizaciones con el nombre de la conexión y el horario en palabras (auditoría del 2026-10-13, F2). **Archivado** | — |

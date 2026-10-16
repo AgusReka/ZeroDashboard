@@ -3272,6 +3272,31 @@ Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_s
 
 ---
 
+### DEC-178 — CH-30e: Tiempos de alta se lee por una ruta nueva del tenant activo; enmienda DEC-87
+
+**Contexto.** DEC-87 resolvió G1 con `scripts/marcas-alta.sql` y descartó a propósito una ruta y un panel de consola. DEC-165, posterior, puso «Tiempos de alta» en la navegación de la consola. La pantalla no tiene de dónde leer: ninguna ruta devuelve las marcas, y el script recorre todos los tenants sin pasar por el aislamiento (DEC-90).
+
+**Opciones.**
+- (a) Una ruta nueva de solo lectura, `GET /tiempos-alta`, que devuelve las marcas de DEC-89 por cada conexión del tenant de la cabecera, por el cliente aislado.
+- (b) Sacar la pantalla de la navegación (enmienda DEC-165) y dejar G1 como script.
+- (c) Armar la pantalla en el navegador con las rutas que ya existen, sin ruta nueva.
+
+**Decisión.** (a).
+- La ruta solo lee y solo ve el tenant activo; el identificador de tenant sale de la cabecera, como en toda la consola (regla 2).
+- El script sigue siendo la herramienta de P4 para todos los tenants; DEC-90 no cambia.
+- Un test corre la ruta y el script sobre los mismos datos y exige las mismas marcas, para que las dos implementaciones no se separen.
+- CH-30e se parte en dos changes de un PR cada uno: CH-30e1, la pantalla de Auditoría sobre `GET /auditoria`; CH-30e2, la ruta y la pantalla de Tiempos de alta.
+
+**Por qué.** DEC-165 es la elección de producto más reciente y explícita, y P1 necesita ver en qué etapa está un tenant mientras lo pone en marcha. (b) deja esa información fuera de la aplicación. (c) multiplica las llamadas por vista, lleva la lógica de las marcas al script del navegador y las ejecuciones por conexión no salen en una sola llamada.
+
+**Se resigna.** Las marcas tienen dos implementaciones, SQL y aplicación. Valen los mismos límites del artefacto que el script: la marca de conexión es el registro (DEC-88), la de validación es mutable y las marcas miden tiempo transcurrido, no esfuerzo.
+
+**Decidido por:** el usuario, 2026-10-16, durante la exploración de CH-30e, eligiendo la opción recomendada. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
