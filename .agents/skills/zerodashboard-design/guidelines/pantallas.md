@@ -74,6 +74,7 @@ Superficie densa, escritorio primero. Toda pantalla vive bajo la **barra de tena
 ### C-12 Catálogo inicial de plantillas — D3 · CH-21 · PENDIENTE
 - **Datos**: `id` · `nombre` · `descripcion` · `icono` · `tolerancia_frescura` (minutos, 60) · `campos_requeridos` (lista).
 - Plantillas: Alerta de stock físico · Alerta de stock producible · Reporte diario. Una plantilla con mapeo incompleto aparece deshabilitada con motivo.
+- **Probar (CH-35, DEC-177)**: el panel de una plantilla trae «Probar en el tenant activo»: select de conexión del tenant, un campo por parámetro y «Probar»; el resultado (tabla, filas mostradas, si hay más, o el motivo del fallo) se escribe como texto dentro del bloque. No guarda la plantilla como consulta.
 
 ### C-13 Formato de correo de la plantilla — N3 · CH-21 · PENDIENTE
 - **Datos**: `asunto` (con variables de negocio) · `titulo` · `columnas_visibles` · `texto_sin_datos`.
