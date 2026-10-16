@@ -73,7 +73,3 @@ The ids join `IDS`; `pantalla-auditoria` joins `IDS_OCULTOS`. A comment above th
 
 ## Size
 About 160 lines of code and 150 of tests. One PR.
-</content>
-</invoke>
-<invoke name="Bash">
-<parameter name="command">cd "C:/Users/messi/OneDrive/Documentos/Proyectos/ZeroDashboard" && ls openspec/changes/CH-30e1-pantalla-auditoria && head -3 openspec/changes/CH-30e1-pantalla-auditoria/proposal.md openspec/changes/CH-30e1-pantalla-auditoria/tasks.md openspec/changes/CH-30e1-pantalla-auditoria/specs/query-console/spec.md && gentle-ai sdd-status CH-30e1-pantalla-auditoria --cwd . --json 2>&1 | rg '"nextRecommended"|blockedReasons|"proposal"|"tasks":' | head

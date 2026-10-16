@@ -235,6 +235,15 @@ const IDS = [
   'nav-consultas',
   'nav-automatizaciones',
   'nav-frescura',
+  // CH-30e1 (DEC-163): the Auditoría screen, its filters and its table.
+  'pantalla-auditoria',
+  'nav-auditoria',
+  'aud-desde',
+  'aud-hasta',
+  'aud-resultado',
+  'aud-filtrar',
+  'auditoria-aviso',
+  'auditoria-cuerpo',
   'formulario',
   'conexion',
   'sql',
@@ -375,7 +384,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -3199,7 +3208,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura'] as const;
+  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'consultas', 'automatizaciones', 'frescura', 'auditoria'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -4059,6 +4068,210 @@ describe('the console document, served by the real route', () => {
     await elegirTenant(escenario);
     await abrirParaProbar(escenario, 0, [], [{ id: 'c-1', nombre: hostil }]);
     assert.equal(nodo(escenario, 'plantilla-prueba-conexion').options[1].textContent, hostil + ' (c-1…)');
+  });
+
+  // ---- CH-30e1 (DEC-163, screen C-12): the Auditoría screen -----------------------------------
+
+  const REGISTRO_AUDITORIA = {
+    id: 'r-1',
+    creadoEn: new Date(2026, 9, 14, 9, 5, 7).toISOString(),
+    tenantNombre: 'Food Store',
+    operadorId: 'op-1',
+    operadorNombre: 'Ana',
+    origen: 'consulta',
+    conexionId: 'c-1',
+    consultaGuardadaId: 'q-1',
+    consultaVersion: 3,
+    consultaNombre: 'Stock',
+    plantillaId: null,
+    sql: 'SELECT 1',
+    resultado: 'fallo',
+    fase: 'ejecucion',
+    categoria: 'tiempo-agotado',
+    codigo: null,
+    filas: null,
+    duracionMs: 1234,
+  };
+  const CONEXIONES_AUDITORIA = [{ id: 'c-1', nombre: 'Réplica principal' }];
+
+  /** What opening the screen asks for, in request order: the connection names, then the audit listing. */
+  function respuestasAuditoria(
+    registros: unknown[],
+    extra: Record<string, unknown> = {},
+    conexiones: unknown[] = CONEXIONES_AUDITORIA,
+  ): Array<{ status: number; cuerpo: unknown }> {
+    return [
+      { status: 200, cuerpo: { conexiones, truncado: false } },
+      { status: 200, cuerpo: { registros, truncado: false, ...extra } },
+    ];
+  }
+
+  /** Selects the tenant, then opens Auditoría with `registros` queued as its listing. */
+  async function abrirAuditoria(registros: unknown[] = [REGISTRO_AUDITORIA], extra: Record<string, unknown> = {}): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push(...respuestasAuditoria(registros, extra));
+    irA(escenario, '#auditoria');
+    await asentarVarias();
+    return escenario;
+  }
+
+  /** The text of each cell of the first row of the audit table. */
+  function celdasAuditoria(escenario: Escenario, fila = 0): string[] {
+    return nodo(escenario, 'auditoria-cuerpo').hijos[fila].hijos.map((celda) => celda.textContent);
+  }
+
+  test('CH-30e1 Auditoría comes after Frescura de datos in the daily work, and starts hidden', () => {
+    const marcado = documento.slice(0, documento.indexOf('<script>'));
+    assert.ok(marcado.indexOf('id="nav-frescura"') < marcado.indexOf('id="nav-auditoria"'));
+    assert.ok(marcado.indexOf('id="nav-auditoria"') < marcado.indexOf('</nav>'));
+    assert.ok(marcado.indexOf('id="pantalla-frescura"') < marcado.indexOf('id="pantalla-auditoria"'));
+    assert.match(marcado, /<section id="pantalla-auditoria"[^>]*hidden/);
+  });
+
+  test('CH-30e1 the hash shows only Auditoría and marks its link current', async () => {
+    soloVisible(await arrancar(undefined, undefined, '#auditoria'), 'auditoria');
+  });
+
+  test('CH-30e1 with no tenant, Auditoría asks for one and sends nothing', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    irA(escenario, '#auditoria');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'Elegí un tenant para ver su auditoría.');
+    assert.equal(nodo(escenario, 'auditoria-cuerpo').hijos.length, 0);
+  });
+
+  test('CH-30e1 showing Auditoría reads the connections and the audit with the tenant header, and shows a failed run', async () => {
+    const escenario = await abrirAuditoria();
+    assert.deepEqual(
+      escenario.peticiones.slice(-2).map((p) => [p.url, p.tenant]),
+      [['/conexiones', 't-1'], ['/auditoria', 't-1']],
+    );
+    const fecha = new Date(REGISTRO_AUDITORIA.creadoEn);
+    const dos = (n: number): string => String(n).padStart(2, '0');
+    const [cuando, operador, origen, conexion, consulta, sql, filasVistas, duracion, resultado] = celdasAuditoria(escenario);
+    assert.equal(cuando, `${dos(fecha.getDate())}/${dos(fecha.getMonth() + 1)}/${fecha.getFullYear()} ${dos(fecha.getHours())}:${dos(fecha.getMinutes())}:${dos(fecha.getSeconds())}`);
+    assert.equal(operador, 'Ana');
+    assert.equal(origen, 'Consulta');
+    assert.equal(conexion, 'Réplica principal');
+    assert.equal(consulta, 'Stock v3');
+    assert.equal(sql, 'SELECT 1SELECT 1');
+    assert.equal(filasVistas, '');
+    assert.equal(duracion, '1,2 s');
+    assert.match(resultado, /^Falló: .*tiempo máximo/);
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, '');
+  });
+
+  test('CH-30e1 a template row, an ad hoc row and an unknown connection id', async () => {
+    const escenario = await abrirAuditoria([
+      { ...REGISTRO_AUDITORIA, consultaGuardadaId: null, consultaVersion: null, consultaNombre: null, plantillaId: 'p-9', origen: 'plantilla-prueba', resultado: 'ok', fase: null, categoria: null, filas: 12, duracionMs: 40 },
+      { ...REGISTRO_AUDITORIA, consultaGuardadaId: null, consultaVersion: null, consultaNombre: null, origen: 'validacion-mapeo', conexionId: '0123456789abcdef', resultado: 'ok', filas: null, duracionMs: 999 },
+      { ...REGISTRO_AUDITORIA, origen: 'conexion-prueba', plantillaId: null, consultaNombre: null, consultaVersion: null, resultado: 'ok', duracionMs: null },
+      { ...REGISTRO_AUDITORIA, origen: 'otro-origen' },
+    ]);
+    const plantilla = celdasAuditoria(escenario, 0);
+    assert.equal(plantilla[2], 'Prueba de plantilla');
+    assert.equal(plantilla[4], 'Plantilla p-9');
+    assert.equal(plantilla[6], '12');
+    assert.equal(plantilla[7], '40 ms');
+    assert.equal(plantilla[8], 'OK');
+    const adhoc = celdasAuditoria(escenario, 1);
+    assert.equal(adhoc[2], 'Validación de mapeo');
+    assert.equal(adhoc[3], '01234567');
+    assert.equal(adhoc[4], 'Ad hoc');
+    assert.equal(adhoc[7], '999 ms');
+    assert.equal(celdasAuditoria(escenario, 2)[2], 'Prueba de conexión');
+    assert.equal(celdasAuditoria(escenario, 2)[7], '');
+    assert.equal(celdasAuditoria(escenario, 3)[2], 'otro-origen');
+  });
+
+  test('CH-30e1 the filters go in the URL as the local day bounds and the result', async () => {
+    const escenario = await abrirAuditoria();
+    nodo(escenario, 'aud-desde').value = '2026-10-14';
+    nodo(escenario, 'aud-hasta').value = '2026-10-14';
+    nodo(escenario, 'aud-resultado').value = 'ok';
+    escenario.respuestas.push(...respuestasAuditoria([]));
+    nodo(escenario, 'aud-filtrar').disparar('click');
+    await asentarVarias();
+    const pedido = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.equal(pedido.tenant, 't-1');
+    const url = new URL(pedido.url, 'http://consola.test');
+    assert.equal(url.pathname, '/auditoria');
+    assert.equal(url.searchParams.get('desde'), new Date(2026, 9, 14).toISOString());
+    assert.equal(url.searchParams.get('hasta'), new Date(2026, 9, 14, 23, 59, 59, 999).toISOString());
+    assert.equal(url.searchParams.get('resultado'), 'ok');
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'No hay ejecuciones registradas con estos filtros.');
+    assert.equal(nodo(escenario, 'auditoria-cuerpo').hijos.length, 0);
+  });
+
+  test('CH-30e1 inverted dates say so and send nothing', async () => {
+    const escenario = await abrirAuditoria();
+    nodo(escenario, 'aud-desde').value = '2026-10-15';
+    nodo(escenario, 'aud-hasta').value = '2026-10-14';
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'aud-filtrar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'La fecha «Desde» es posterior a «Hasta».');
+  });
+
+  test('CH-30e1 a cut listing says it shows the 200 most recent, and a 400 points to the dates', async () => {
+    const escenario = await abrirAuditoria([REGISTRO_AUDITORIA], { truncado: true });
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'Se muestran las 200 ejecuciones más recientes. Acotá las fechas para ver las anteriores.');
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+      { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/desde'] } },
+    );
+    nodo(escenario, 'aud-filtrar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'Revisá las fechas del filtro.');
+  });
+
+  test('CH-30e1 a failure to read the connections leaves the short id, and a network failure says so', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push(
+      { status: 500, cuerpo: { error: 'interno' } },
+      { status: 200, cuerpo: { registros: [REGISTRO_AUDITORIA], truncado: false } },
+    );
+    irA(escenario, '#auditoria');
+    await asentarVarias();
+    assert.equal(celdasAuditoria(escenario)[3], 'c-1');
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+      { status: 200, cuerpo: {}, falla: true },
+    );
+    nodo(escenario, 'aud-filtrar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'No se pudo contactar con la aplicación.');
+  });
+
+  test('CH-30e1 the statement shows as text, cut to 80 characters in the summary and whole inside', async () => {
+    const largo = '<b>SELECT</b> ' + 'x'.repeat(100);
+    const escenario = await abrirAuditoria([{ ...REGISTRO_AUDITORIA, sql: largo }]);
+    const detalle = buscar(nodo(escenario, 'auditoria-cuerpo'), (n) => n.tagName === 'details')[0];
+    const [resumen, completo] = detalle.hijos;
+    assert.equal(resumen.tagName, 'summary');
+    assert.equal(resumen.textContent, largo.slice(0, 80) + '…');
+    assert.equal(completo.tagName, 'code');
+    assert.equal(completo.textContent, largo);
+    assert.ok(!script.slice(script.indexOf('CH-30e1 (DEC-163')).includes('inner' + 'HTML'));
+  });
+
+  test('CH-30e1 switching the tenant while Auditoría is shown reloads it for the new tenant', async () => {
+    const escenario = await abrirAuditoria();
+    // The screen's two reads fall between the switch's third and fourth requests: the automations load awaits its first answer.
+    const cambio = respuestasDeTenant();
+    escenario.respuestas.push(...cambio.slice(0, 3), ...respuestasAuditoria([{ ...REGISTRO_AUDITORIA, operadorNombre: 'Beto' }]), ...cambio.slice(3));
+    nodo(escenario, 'tenant').value = 't-2';
+    nodo(escenario, 'tenant').disparar('change');
+    await asentarVarias();
+    const pedidos = escenario.peticiones.filter((p) => p.url === '/auditoria');
+    assert.equal(pedidos.length, 2);
+    assert.equal(pedidos[1].tenant, 't-2');
+    assert.equal(celdasAuditoria(escenario)[1], 'Beto');
   });
 
   test('CH-30d Contrato shows each entity with its fields, type, obligatoriness and automations', async () => {

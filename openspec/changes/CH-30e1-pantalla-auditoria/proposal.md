@@ -39,5 +39,3 @@ Front end only, in `src/consola.ts`, following the Conexiones screen: static mar
 | A slow answer for the previous tenant or filters overwrites a newer one | Medium | Generation counter, as in `opcionesDeVia` |
 | A statement with markup is rendered as HTML | Low | Every value through `textContent`; a `<b>` test |
 | New ids break `verificarIds` or G3' | Medium | Static markup, ids in `IDS`, plain elements from the script |
-</content>
-</invoke>

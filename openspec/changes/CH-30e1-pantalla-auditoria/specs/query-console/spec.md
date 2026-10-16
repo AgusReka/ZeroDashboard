@@ -70,5 +70,3 @@ The screen SHALL offer no way to change or delete a row. When the answer says `t
 #### Scenario: Markup in a statement is text
 - **WHEN** a row's `sql` contains `<b>`
 - **THEN** it is shown verbatim and no element is created from it
-</content>
-</invoke>

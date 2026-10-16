@@ -42,5 +42,3 @@ One PR for both would be ~710 lines: over the 400 budget, so the change is cut i
 - Ids are a contract (DEC-164) and guard G3' forbids `zd-*` classes in the script; new ids go in `IDS`.
 - Audit `sql` can be long: the table shows a truncated summary; the full text needs a detail view (the guide does not define one).
 - Option 1 is the first console data source that duplicates a versioned research script.
-</content>
-</invoke>
