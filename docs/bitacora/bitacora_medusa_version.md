@@ -69,7 +69,7 @@ Sale de `SELECT version()` en la salida cruda de la sección 3.
 
 ## 2. Cómo calcula `insumo.stockDisponible` la vista `06_vistas_medusa.sql`
 
-`openspec/changes/CH-16b-vistas-canonicas/sql/06_vistas_medusa.sql`, líneas 16–22:
+`openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/06_vistas_medusa.sql`, líneas 16–22:
 
 ```sql
 CREATE OR REPLACE VIEW v_insumo AS

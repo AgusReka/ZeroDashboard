@@ -11,14 +11,14 @@
 
 ## Scripts: nombre original → nombre en el change
 
-Los scripts del kit se guardaron en `openspec/changes/CH-16c-saleor-caso-negativo/sql/` con la numeración que sigue a la de CH-16b (que termina en `08_vistas_woo.sql`). Contenido idéntico al del kit (`docs/saleor_kit/`), sin modificaciones.
+Los scripts del kit se guardaron en `openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/sql/` con la numeración que sigue a la de CH-16b (que termina en `08_vistas_woo.sql`). Contenido idéntico al del kit (`docs/saleor_kit/`), sin modificaciones.
 
 | Nombre original (kit) | Nombre en el change |
 |---|---|
 | `07_inventario_esquema_saleor.sql` | `09_inventario_esquema_saleor.sql` |
 | `08_vistas_saleor.sql` | `10_vistas_saleor.sql` |
 
-Las salidas crudas están en `openspec/changes/CH-16c-saleor-caso-negativo/salidas/`.
+Las salidas crudas están en `openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/salidas/`.
 
 ---
 
@@ -67,8 +67,8 @@ Se conserva la salida cruda y el diagnóstico que llevó a detener la corrida. P
 ```
 docker compose -f ../saleor-platform/docker-compose.yml exec -T -e PGPASSWORD=saleor db \
   psql -h localhost -U saleor_read_only -d saleor -f - \
-  < openspec/changes/CH-16c-saleor-caso-negativo/sql/09_inventario_esquema_saleor.sql \
-  > openspec/changes/CH-16c-saleor-caso-negativo/salidas/salida_09_2026-09-24.txt 2>&1
+  < openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/sql/09_inventario_esquema_saleor.sql \
+  > openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/salidas/salida_09_2026-09-24.txt 2>&1
 ```
 
 Hora: 13:21:55 (sección 0: `now()` = `2026-09-24 16:21:56.343276+00`). exit 0.
@@ -190,8 +190,8 @@ La consulta del diagnóstico está transcripta en la salida (secciones D1–D3).
 ```
 docker compose -f ../saleor-platform/docker-compose.yml exec -T -e PGPASSWORD=saleor db \
   psql -h localhost -d saleor -U saleor -f - \
-  < openspec/changes/CH-16c-saleor-caso-negativo/sql/09_inventario_esquema_saleor.sql \
-  > openspec/changes/CH-16c-saleor-caso-negativo/salidas/salida_09_definitiva_saleor_2026-09-24.txt 2>&1
+  < openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/sql/09_inventario_esquema_saleor.sql \
+  > openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/salidas/salida_09_definitiva_saleor_2026-09-24.txt 2>&1
 ```
 
 Hora: 13:28:51 (sección 0: `now()` = `2026-09-24 16:28:51.710298+00`). exit 0.
@@ -369,8 +369,8 @@ SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls FROM pg_roles
 ```
 docker compose -f ../saleor-platform/docker-compose.yml exec -T -e PGPASSWORD=ch16c db \
   psql -h localhost -U zd_ch16c_creador -d saleor -v ON_ERROR_STOP=1 -f - \
-  < openspec/changes/CH-16c-saleor-caso-negativo/sql/10_vistas_saleor.sql \
-  > openspec/changes/CH-16c-saleor-caso-negativo/salidas/salida_10_2026-09-24.txt 2>&1
+  < openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/sql/10_vistas_saleor.sql \
+  > openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/salidas/salida_10_2026-09-24.txt 2>&1
 ```
 
 exit 0. Salida cruda (`salidas/salida_10_2026-09-24.txt`):

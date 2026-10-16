@@ -30,7 +30,7 @@ Antes de tocar la base se buscaron las bitácoras de WF-01 y WF-03 y los Anexos 
 | Bitácora de WF-01 | No está. Solo aparece mencionada en `bitacora_CH-16b_tres_esquemas.md`, `mapa-historias.md` y en el `README_correr.md` de CH-16b. |
 | Bitácora de WF-03 | No está y nada la menciona. |
 | Anexo A, consulta de stock físico (WF-01a) | No está. `bitacora_CH-16b_tres_esquemas.md` (hallazgo 2) solo anota que esa rama "necesita su propia consulta canónica, con un `NOT EXISTS`". |
-| Anexo A, consulta de WF-01c | Hay una copia parcial en `openspec/changes/CH-16b-vistas-canonicas/sql/02_query_original.sql`, **sin el `HAVING`**. |
+| Anexo A, consulta de WF-01c | Hay una copia parcial en `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/02_query_original.sql`, **sin el `HAVING`**. |
 | Anexo C (tres consultas de WF-03) | No hay ningún rastro. |
 
 Por decisión del autor (2026-09-24), WF-01c se reprodujo con `02_query_original.sql`, y WF-01a y WF-03 se registran como no reproducibles. No se reconstruyó ninguna consulta de memoria.

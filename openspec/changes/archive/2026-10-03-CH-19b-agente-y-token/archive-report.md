@@ -237,7 +237,7 @@ gentle-ai sdd-archive-compose \
 - `exploration.md` ✅
 
 **Not archived**: 
-- `openspec/changes/CH-19-conectividad-definitiva/` remains in place (umbrella for CH-19c1–19e per launch instructions)
+- `openspec/changes/archive/2026-10-16-CH-19-conectividad-definitiva/` remains in place (umbrella for CH-19c1–19e per launch instructions)
 
 ## Diff Verification
 

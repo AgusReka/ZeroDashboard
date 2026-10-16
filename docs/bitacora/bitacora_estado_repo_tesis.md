@@ -94,7 +94,7 @@ Detalle de `openspec/` en `origin/master` (por subcarpeta):
 | Subcarpeta | Archivos | Inserciones | Borrados |
 |---|---|---|---|
 | `openspec/changes/archive/` | 79 | +8385 | −0 |
-| `openspec/changes/CH-16d-segunda-automatizacion-y-with/` | 19 | +2143 | −0 |
+| `openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/` | 19 | +2143 | −0 |
 | `openspec/changes/CH-09-tenant-schema-mapping/` (borrados: se movieron a `archive/`) | 7 | +0 | −503 |
 | `openspec/specs/` | 15 | +1623 | −24 |
 
@@ -256,7 +256,7 @@ src/server.ts:79:    planificador.iniciar();
 
 ### 3.1 Sección 6.2 — comparación original vs. canónica de Food Store (CH-16b)
 
-**Ubicación:** `docs/bitacora/bitacora_CH-16b_tres_esquemas.md`, líneas 38 (V-3 sobre la base real) y 94 (V-3 sobre el fixture). Consultas: `openspec/changes/CH-16b-vistas-canonicas/sql/02_query_original.sql` y `04_consulta_canonica.sql`.
+**Ubicación:** `docs/bitacora/bitacora_CH-16b_tres_esquemas.md`, líneas 38 (V-3 sobre la base real) y 94 (V-3 sobre el fixture). Consultas: `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/02_query_original.sql` y `04_consulta_canonica.sql`.
 
 Texto literal, línea 38:
 

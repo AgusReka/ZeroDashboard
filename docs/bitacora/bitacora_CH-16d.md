@@ -10,7 +10,7 @@
 - La tarea 3 fue una única transacción de lectura y escritura en Food Store, terminada en `ROLLBACK` y confirmada por el autor antes de ejecutarse. El resultado se verificó en una sesión nueva.
 - No se crearon ni se modificaron vistas. No se modificó ningún archivo SQL existente. No se tocó Saleor.
 
-**Archivos del change:** `openspec/changes/CH-16d-segunda-automatizacion-y-with/`
+**Archivos del change:** `openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/`
 - `sql/11_consulta_canonica_stock_fisico.sql`: canónica de WF-01a, con umbral `<= 20`.
 - `sql/12_consulta_canonica_stock_fisico_sin_umbral.sql`: la misma, sin la línea del umbral.
 - `sql/13_stock_producible_con_with_foodstore.sql` y `sql/13_stock_producible_con_with_medusa.sql`: DEC-31 aplicado a `04_consulta_canonica.sql`.
@@ -179,7 +179,7 @@ Las dos versiones corrieron en la misma transacción `REPEATABLE READ READ ONLY`
 
 ## Anexo — comandos y salidas crudas completas
 
-Comandos (Git Bash, desde `openspec/changes/CH-16d-segunda-automatizacion-y-with/`). Cada salida empieza con la hora local de `date -Iseconds` y termina con el código de salida de `psql`:
+Comandos (Git Bash, desde `openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/`). Cada salida empieza con la hora local de `date -Iseconds` y termina con el código de salida de `psql`:
 
 ```bash
 # Food Store (tareas 2, 3 y 5)
@@ -192,7 +192,7 @@ Con `-e`, `psql` repite cada sentencia antes de su resultado, así que cada sali
 
 ### A.2 — Tarea 2 (Food Store)
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t2_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t2_output.txt`
 
 ```text
 2026-09-25T13:03:28-03:00
@@ -312,7 +312,7 @@ exit=0
 
 ### A.3.1 — Tarea 3, intento 1 (cortado por la guarda, I-2)
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t3_intento1_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t3_intento1_output.txt`
 
 ```text
 2026-09-25T13:05:59-03:00
@@ -339,7 +339,7 @@ exit=3
 
 ### A.3.1 bis — Tarea 3, intento 1: verificación en sesión nueva
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t3_intento1_verificacion_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t3_intento1_verificacion_output.txt`
 
 ```text
 2026-09-25T13:05:59-03:00
@@ -364,7 +364,7 @@ exit=0
 
 ### A.3.2 — Tarea 3, corrida definitiva (Food Store)
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t3_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t3_output.txt`
 
 ```text
 2026-09-25T13:06:57-03:00
@@ -463,7 +463,7 @@ exit=0
 
 ### A.3.2 bis — Tarea 3: verificación en sesión nueva
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t3_verificacion_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t3_verificacion_output.txt`
 
 ```text
 2026-09-25T13:06:58-03:00
@@ -488,7 +488,7 @@ exit=0
 
 ### A.4 — Tarea 4 (Medusa)
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t4_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t4_output.txt`
 
 ```text
 2026-09-25T13:03:40-03:00
@@ -536,7 +536,7 @@ exit=0
 
 ### A.5.1 — Tarea 5 (Food Store)
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t5_foodstore_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t5_foodstore_output.txt`
 
 ```text
 2026-09-25T13:04:20-03:00
@@ -963,7 +963,7 @@ exit=0
 
 ### A.5.2 — Tarea 5 (Medusa)
 
-`openspec/changes/CH-16d-segunda-automatizacion-y-with/salidas/t5_medusa_output.txt`
+`openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/salidas/t5_medusa_output.txt`
 
 ```text
 2026-09-25T13:04:21-03:00

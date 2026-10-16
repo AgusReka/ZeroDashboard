@@ -160,8 +160,8 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-15 | C-07 Tiempos de alta | API |
 | CH-17a, CH-17b | C-10 Ejecuciones: estados | EXISTE |
 | CH-19b | C-05 Agentes | API |
-| CH-19d1 | C-01 y C-05: conectividad | PENDIENTE |
-| CH-19d2 | C-05: automatizaciones en riesgo | PENDIENTE |
+| CH-19d1 | C-01 y C-05: conectividad | A FUTURO (DEC-179) |
+| CH-19d2 | C-05: automatizaciones en riesgo | A FUTURO (DEC-179) |
 | CH-21 | C-09 Alta en dos pasos · C-03 Plantillas | EXISTE / API |
 | CH-24 | C-11 Frescura · C-03 tolerancias | EXISTE |
 | CH-25 | C-08 Consultas: versiones | EXISTE (verificación visual pendiente) |

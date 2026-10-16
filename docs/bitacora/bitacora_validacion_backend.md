@@ -211,7 +211,7 @@ Para tener también la salida en el formato nativo de `psql`, se ejecutaron los 
 ### Comando
 
 ```
-cd /c/Users/messi/OneDrive/Documentos/Proyectos/ZeroDashboard/openspec/changes/CH-16b-vistas-canonicas/sql
+cd /c/Users/messi/OneDrive/Documentos/Proyectos/ZeroDashboard/openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql
 date -Iseconds
 { echo "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;"; echo "SELECT now();"; grep -vi "^SET search_path" 02_query_original.sql; cat 04_consulta_canonica.sql; echo "ROLLBACK;"; } \
   | docker exec -i -e PGOPTIONS="-c default_transaction_read_only=on" foodstore-backend-fastapi-db-1 psql -U postgres -d food_store -v ON_ERROR_STOP=1

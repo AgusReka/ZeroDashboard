@@ -7,11 +7,11 @@
 
 | Plataforma | Archivo | Vistas | ¿Corrió sobre una instancia real? |
 |---|---|---|---|
-| Food Store | `openspec/changes/CH-16b-vistas-canonicas/sql/03_vistas_foodstore.sql` | `v_producto`, `v_insumo`, `v_receta_componente` | Sí: base `food_store`, esquema `public`, 2026-09-21 (`bitacora_CH-16b_tres_esquemas.md:15`) |
-| Medusa | `openspec/changes/CH-16b-vistas-canonicas/sql/06_vistas_medusa.sql` | `v_producto`, `v_insumo`, `v_receta_componente` | Sí: `ch16-medusa-pg`, base `medusa_db` (`bitacora_CH-16b_tres_esquemas.md:16`); Medusa 2.21.0 (`bitacora_medusa_version.md:13`) |
+| Food Store | `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/03_vistas_foodstore.sql` | `v_producto`, `v_insumo`, `v_receta_componente` | Sí: base `food_store`, esquema `public`, 2026-09-21 (`bitacora_CH-16b_tres_esquemas.md:15`) |
+| Medusa | `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/06_vistas_medusa.sql` | `v_producto`, `v_insumo`, `v_receta_componente` | Sí: `ch16-medusa-pg`, base `medusa_db` (`bitacora_CH-16b_tres_esquemas.md:16`); Medusa 2.21.0 (`bitacora_medusa_version.md:13`) |
 | Medusa | `docs/bitacora/CH-16-mapeo-del-segundo-esquema.md:144-170` | `v_pedido`, `v_item_pedido` | Sí, pero solo el `CREATE VIEW`: 0 filas, porque el seed no crea pedidos (`CH-16-mapeo-del-segundo-esquema.md:36`, V-9 en `:53`) |
-| WooCommerce | `openspec/changes/CH-16b-vistas-canonicas/sql/08_vistas_woo.sql` | `v_producto` | **No.** Ver "Registro de ejecución de `08_vistas_woo.sql`" |
-| Saleor | `openspec/changes/CH-16c-saleor-caso-negativo/sql/10_vistas_saleor.sql` (idéntico a `docs/saleor_kit/08_vistas_saleor.sql`) | `v_producto` | Sí: Saleor 3.23.36, 81 filas (`bitacora_CH-16c_saleor.md:4`, `:475`) |
+| WooCommerce | `openspec/changes/archive/2026-09-23-CH-16b-vistas-canonicas/sql/08_vistas_woo.sql` | `v_producto` | **No.** Ver "Registro de ejecución de `08_vistas_woo.sql`" |
+| Saleor | `openspec/changes/archive/2026-09-24-CH-16c-saleor-caso-negativo/sql/10_vistas_saleor.sql` (idéntico a `docs/saleor_kit/08_vistas_saleor.sql`) | `v_producto` | Sí: Saleor 3.23.36, 81 filas (`bitacora_CH-16c_saleor.md:4`, `:475`) |
 
 Nota: `06_vistas_medusa.sql:2` dice transcribir las vistas de CH-16 "TAL CUAL", pero omite `v_pedido` y `v_item_pedido`. Las expresiones de pedido e item_pedido de Medusa se toman de la bitácora de CH-16 (decisión del autor, 2026-09-24).
 

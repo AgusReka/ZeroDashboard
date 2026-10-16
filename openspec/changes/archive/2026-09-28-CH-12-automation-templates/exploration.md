@@ -10,7 +10,7 @@
 - **Saved queries**: `ConsultaGuardada` — tenant-scoped, create+list+get-by-id only, no update (DEC-10), JSON `parametros` column (DEC-55).
 - **Execution engine**: `src/consulta-ejecucion.ts` (`ejecutarConsulta`) is the single read-only pipeline (`BEGIN TRANSACTION READ ONLY`, DEC-08 privilege check, `LIMIT/OFFSET` wrapper); it accepts only a branded `SentenciaPreparada`.
 - **Domain entities (`docs/00-contexto.md` §8)**: `plantilla` and `automatizacion` (instancia de plantilla en un tenant) are distinct. Instantiation is D2/D3 in CH-21 (R2): "elegir plantilla, completar parámetros".
-- **Real canonical SQL today** (experiment artifacts, not wired in): `openspec/changes/CH-16d-segunda-automatizacion-y-with/sql/13_stock_producible_con_with_foodstore.sql` (WITH-composed) and `11_consulta_canonica_stock_fisico.sql` (hardcoded `<= 20` threshold). No `reporte-diario` canonical query exists (DEC-29).
+- **Real canonical SQL today** (experiment artifacts, not wired in): `openspec/changes/archive/2026-09-25-CH-16d-segunda-automatizacion-y-with/sql/13_stock_producible_con_with_foodstore.sql` (WITH-composed) and `11_consulta_canonica_stock_fisico.sql` (hardcoded `<= 20` threshold). No `reporte-diario` canonical query exists (DEC-29).
 - No code models "condición", "formato" or "tolerancia de frescura" — story vocabulary only (D1, X3, N1–N3, F1–F2), no prior DEC.
 - **Tenant-agnostic route precedent**: `GET /contrato` is exempt from `x-tenant-id` (DEC-24); it holds no Prisma client.
 - `src/consola.ts` was only extended by CH-04/05/11; D1 names no UI element.
