@@ -1,6 +1,6 @@
 # Auditoría del 2026-10-13 (TODO-ZD-13-10)
 
-Respuesta a `docs/TODO-ZD-13-10.md`. Es una auditoría: no se cambió código. Cada afirmación lleva una marca:
+**Cerrada el 2026-10-16:** todas las fases están hechas; ver §9. Respuesta a `docs/TODO-ZD-13-10.md`. Es una auditoría: no se cambió código. Cada afirmación lleva una marca:
 
 - **(H)** hecho verificado en el código, la base o los documentos.
 - **(Hi)** hipótesis.
@@ -164,3 +164,19 @@ Además, actualizar `README.md` para que apunte a `docs/guia/`.
 1. F0: re-registrar las conexiones de Food Store. Destraba las pruebas manuales de todo lo demás.
 2. Cerrar CH-22b, que es deuda SDD con riesgo de pisar specs posteriores.
 3. CH-32a, que corrige el único defecto funcional confirmado del lado de la interfaz (el duplicado al guardar).
+
+## 9. Cierre (2026-10-16)
+
+| Fase o punto | Resolución |
+|---|---|
+| F0, datos | Hecho el 2026-10-13 (§5). |
+| F1 | CH-32a, archivado. |
+| F2 | CH-32b, archivado. |
+| F3, plantilla → consulta | DEC-177, CH-35, archivado. |
+| F3, edición de automatizaciones y baja escrita | DEC-174 y DEC-175, CH-33, archivado. |
+| F3, Tiempos de alta | DEC-178: `GET /tiempos-alta` y su pantalla, CH-30e2, archivado. Las filas de §2 y §5 que dicen que no tiene ruta quedaron viejas. |
+| F4, documentación | `docs/guia/` (ocho guías) y `README.md` reescrito. |
+| §6, CH-22b | Archivado. |
+| §6, CH-16b a CH-16d | Movidos a `openspec/changes/archive/`. |
+| §6, CH-19 y fila 13 de §2 | DEC-179: CH-19d1, CH-19d2 y CH-19e son trabajo a futuro; el paraguas está archivado. |
+| §6, CH-30 | Cerrado con CH-30e2. |
