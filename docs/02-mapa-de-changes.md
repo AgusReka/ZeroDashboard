@@ -150,7 +150,7 @@ Orden sugerido: CH-29, CH-28 y CH-30; CH-20 después de CH-29.
 | ID | Change | Historias |
 |---|---|---|
 | CH-25 | Versionado de consultas guardadas. **Archivado** | B4 |
-| CH-26 | Advertencia de frescura insuficiente al activar | F3 |
+| CH-26 | Advertencia de frescura insuficiente al activar: en el asistente de la consola, al crear la automatización (DEC-180) | F3 |
 | CH-27 | Visualización de últimos resultados en el panel. **Fuera de alcance** mientras D-1 siga cerrada en DEC-93: el sistema no persiste las filas | P4h |
 
 ---
