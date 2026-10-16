@@ -730,8 +730,9 @@ function documentoConsola(nombreOperador: string): string {
 
 <!--
   CH-13 (DEC-78, DEC-79, DEC-80): outside #formulario for the reason saved queries are,
-  and every button is type="button". There is no edit, delete or reactivate control on
-  purpose: a mistaken automation is deactivated and created again.
+  and every button is type="button". There is no delete or reactivate control on purpose:
+  «Ajustar» edits values, schedule and recipient in place (DEC-174); anything else is
+  changed by deactivating the automation and creating it again.
 -->
 <section id="automatizaciones">
   <h2 class="zd-h2">Automatizaciones</h2>

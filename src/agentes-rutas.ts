@@ -12,7 +12,8 @@ import type { RegistroAgentes } from './registro-agentes.js';
  * hooks resolved from the header (DEC-13), and the body never names one (rule 2). The
  * `/agente/` prefix, slash-terminated, stays reserved for the agent's own routes (DEC-116).
  *
- * There is no operator authentication, as on every other admin route; DEC-121 accepts it.
+ * Since CH-29 (DEC-152) the operator guard in `src/rutas.ts` covers these routes, as every
+ * other admin route; DEC-121 originally accepted them without operator authentication.
  */
 
 /**
