@@ -75,6 +75,29 @@ const frescuraSchema = {
   properties: { ventanaMinutos: {}, actualizadaAhora: {} },
 } as const;
 
+interface BajaTenantBody {
+  /** Untrusted until the handler checks it is a string. */
+  nombre: unknown;
+}
+
+/**
+ * CH-33 (DEC-175): the baja carries the tenant's name, typed by the operator, so a call
+ * cannot deactivate the wrong tenant by mistake. `propertyNames` for the reason
+ * `registroTenantSchema` documents. `nombre` carries no `type` on purpose, as in
+ * `frescuraSchema`: a schema type would let AJV coerce `5` into `"5"`, so the handler
+ * checks it is a string. An empty string is a well-formed answer that matches no name (a
+ * name has at least one character), so it is the same `409` as any other wrong name.
+ */
+const bajaTenantSchema = {
+  type: 'object',
+  additionalProperties: false,
+  propertyNames: { enum: ['nombre'] },
+  required: ['nombre'],
+  properties: {
+    nombre: {},
+  },
+} as const;
+
 /** Built without a session registry, a baja closes no socket (CH-19c1). */
 const SIN_REGISTRO: Pick<RegistroAgentes, 'cerrarTenant'> = { cerrarTenant: () => {} };
 
@@ -137,34 +160,56 @@ export function registerTenantRoutes(
    *
    * There is no mirror-image `alta` route. DEC-14 has no reactivation, so no route in
    * this module ever writes `activo: true`.
+   *
+   * CH-33 (DEC-175): the body names the tenant. The name is compared only after the
+   * existence and state checks, so the route tells a caller nothing it did not before.
    */
-  app.post<{ Params: TenantParams }>('/tenants/:id/baja', async (request, reply) => {
-    // Read first rather than `update`-and-catch: an already-inactive tenant has to be
-    // told apart from an unknown one, and `update` reports both as the same P2025.
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: request.params.id },
-      select: TenantPublico,
-    });
-    if (tenant === null) {
-      return reply.code(404).send({ error: 'tenant-no-encontrado' });
-    }
-    if (!tenant.activo) {
-      // The same `409` the request hook answers for a deactivated active tenant: the
-      // request conflicts with the resource's current state, and repeating the baja
-      // must not report a second, fictitious transition.
-      return reply.code(409).send({ error: 'tenant-desactivado' });
-    }
+  app.post<{ Params: TenantParams; Body: BajaTenantBody }>(
+    '/tenants/:id/baja',
+    { schema: { body: bajaTenantSchema }, attachValidation: true },
+    async (request, reply) => {
+      if (request.validationError) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: camposInvalidos(request.validationError),
+        });
+      }
+      if (typeof request.body.nombre !== 'string') {
+        return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/nombre'] });
+      }
 
-    const actualizado = await prisma.tenant.update({
-      where: { id: request.params.id },
-      data: { activo: false },
-      select: TenantPublico,
-    });
-    // The row is written: the tenant's agent sockets close with 4002 (DEC-122 Q6).
-    agentes.cerrarTenant(request.params.id);
+      // Read first rather than `update`-and-catch: an already-inactive tenant has to be
+      // told apart from an unknown one, and `update` reports both as the same P2025.
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: request.params.id },
+        select: TenantPublico,
+      });
+      if (tenant === null) {
+        return reply.code(404).send({ error: 'tenant-no-encontrado' });
+      }
+      if (!tenant.activo) {
+        // The same `409` the request hook answers for a deactivated active tenant: the
+        // request conflicts with the resource's current state, and repeating the baja
+        // must not report a second, fictitious transition.
+        return reply.code(409).send({ error: 'tenant-desactivado' });
+      }
+      // Exact comparison, no trimming and no case folding: the confirmation is the name
+      // as stored, and anything else is a mistake to stop, not to correct.
+      if (request.body.nombre !== tenant.nombre) {
+        return reply.code(409).send({ error: 'confirmacion-no-coincide' });
+      }
 
-    return reply.code(200).send({ tenant: actualizado });
-  });
+      const actualizado = await prisma.tenant.update({
+        where: { id: request.params.id },
+        data: { activo: false },
+        select: TenantPublico,
+      });
+      // The row is written: the tenant's agent sockets close with 4002 (DEC-122 Q6).
+      agentes.cerrarTenant(request.params.id);
+
+      return reply.code(200).send({ tenant: actualizado });
+    },
+  );
 
   /**
    * Console-only (rule 2: the client panel never reaches it) and exempt from the tenant

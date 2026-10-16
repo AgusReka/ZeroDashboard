@@ -93,7 +93,7 @@ function documentoConsola(nombreOperador: string): string {
     font-weight: var(--weight-semibold); white-space: nowrap; cursor: pointer; }
   button:not(.zd-btn):hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
   button:not(.zd-btn):disabled { cursor: not-allowed; opacity: .5; }
-  .ver-ejecuciones + .desactivar { margin-left: var(--space-3); }
+  .ver-ejecuciones + .desactivar, .ver-ejecuciones + .ajustar, .ajustar + .desactivar { margin-left: var(--space-3); }
   /* One alert region; a multi-line refusal keeps its line breaks. */
   .banner { margin: var(--space-6) 0 0; padding: var(--space-5) var(--space-6); border: var(--border-width) solid var(--error-border);
     border-left: var(--space-2) solid var(--error); border-radius: var(--radius-md); background: var(--error-soft);
@@ -113,7 +113,7 @@ function documentoConsola(nombreOperador: string): string {
   /* CH-32a PR2 (DEC-173): the query pop-up holds the whole form and the result, so it is wider than the
      shared dialog; every pop-up's unsaved-changes question sits in its actions row, level with the buttons. */
   #consulta-dialogo .zd-dialog { width: min(1100px, 100%); }
-  #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar {
+  #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar, #aj-confirmar {
     display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
   #guardadas { list-style: none; padding: 0; margin: var(--space-5) 0 0; }
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
@@ -242,6 +242,29 @@ function documentoConsola(nombreOperador: string): string {
       <button class="zd-btn zd-btn--primary" type="submit" form="tenant-alta">Crear tenant</button>
       <button id="tenant-crear-elegir" class="zd-btn zd-btn--secondary" type="button">Crear y elegir</button>
       <button id="tenant-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
+<!--
+  CH-33 (DEC-175): a baja cannot be undone, so it is confirmed here by typing the tenant's name, and the route
+  checks the same name. The script writes the sentence and the action's text, and enables the action only while
+  the field holds the exact name. Closing a confirmation never asks: #tb-confirmar stays hidden.
+-->
+<div id="tenant-baja" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="tb-titulo">
+    <h2 id="tb-titulo" class="zd-dialog__title">Dar de baja un tenant</h2>
+    <p id="tb-texto"></p>
+    <div class="zd-form">
+      <div>
+        <label for="tb-nombre" class="zd-label">Escribí el nombre del tenant para confirmar</label>
+        <input id="tb-nombre" class="zd-input" type="text" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <p id="tb-aviso" class="ayuda" role="status"></p>
+    <div class="zd-dialog__actions">
+      <span id="tb-confirmar" hidden></span>
+      <button id="tb-dar-de-baja" class="zd-btn zd-btn--danger" type="button" disabled>Dar de baja</button>
+      <button id="tb-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
   </div>
 </div>
@@ -640,7 +663,7 @@ function documentoConsola(nombreOperador: string): string {
 -->
 <section id="automatizaciones">
   <h2 class="zd-h2">Automatizaciones</h2>
-  <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. No se puede editar ni reactivar una automatización: para corregirla, se desactiva y se crea otra.</p>
+  <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. Una automatización se puede ajustar sin perder su historial: sus valores, su horario y su destinatario. Para cambiar la plantilla o la conexión, se desactiva y se crea otra; una automatización desactivada no se reactiva.</p>
 
   <!--
     CH-21c (DEC-129): creation is a two-step wizard. The stepper and both panels are static
@@ -700,7 +723,7 @@ function documentoConsola(nombreOperador: string): string {
       <label for="auto-cron" class="zd-label">Expresión cron (minuto hora día-del-mes mes día-de-la-semana)</label>
       <input id="auto-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *" readonly>
 
-      <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional; no se puede cambiar después)</label>
+      <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional)</label>
       <input id="auto-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
 
       <!-- CH-21c (DEC-131): a schematic of the notification email. Text nodes only, filled by the
@@ -726,6 +749,53 @@ function documentoConsola(nombreOperador: string): string {
       <button id="auto-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
       <button id="auto-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
     </span>
+   </div>
+  </div>
+
+  <!--
+    CH-33 (DEC-174): «Ajustar» on an active row opens this pop-up, prefilled from GET /automatizaciones/:id.
+    Values, schedule and recipient change in place; the template and the connection are shown as text only.
+    The script builds one control per declared parameter in #aj-valores, as the wizard does in #auto-valores.
+  -->
+  <div id="auto-ajuste" class="zd-dialog-backdrop" hidden>
+   <div class="zd-dialog zd-form" role="dialog" aria-modal="true" aria-labelledby="aj-titulo">
+    <h2 id="aj-titulo" class="zd-dialog__title">Ajustar automatización</h2>
+    <p id="aj-resumen" class="ayuda"></p>
+    <div id="aj-valores"></div>
+
+    <div class="zd-form-row">
+      <div>
+        <label for="aj-frecuencia" class="zd-label">Frecuencia</label>
+        <select id="aj-frecuencia" class="zd-select" aria-describedby="aj-horario-texto">
+          <option value="diaria" selected>Todos los días</option>
+          <option value="lun-vie">De lunes a viernes</option>
+          <option value="lun-sab">De lunes a sábado</option>
+          <option value="personalizado">Personalizado (expresión cron)</option>
+        </select>
+      </div>
+      <div>
+        <label for="aj-hora" class="zd-label">Hora (24 horas)</label>
+        <input id="aj-hora" class="zd-input" type="time" value="08:00" aria-describedby="aj-horario-texto">
+      </div>
+    </div>
+    <p id="aj-horario-texto" class="ayuda"></p>
+
+    <label for="aj-cron" class="zd-label">Expresión cron (minuto hora día-del-mes mes día-de-la-semana)</label>
+    <input id="aj-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" readonly>
+
+    <label for="aj-destinatario" class="zd-label">Correo del destinatario (opcional; vacío: no se envía correo)</label>
+    <input id="aj-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
+
+    <p id="aj-aviso" class="ayuda" role="status"></p>
+    <div class="zd-dialog__actions">
+      <span id="aj-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="aj-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="aj-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button id="aj-guardar" class="zd-btn zd-btn--primary" type="button">Guardar ajustes</button>
+      <button id="aj-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
    </div>
   </div>
 
@@ -943,6 +1013,8 @@ var botonVolverAuto = document.getElementById('auto-volver');
 var selectorFrecuencia = document.getElementById('auto-frecuencia');
 var entradaHora = document.getElementById('auto-hora');
 var textoHorario = document.getElementById('auto-horario-texto');
+// CH-33: the wizard's schedule controls and the adjust pop-up's are the same four, driven by one function.
+var HORARIO_ALTA = { frecuencia: selectorFrecuencia, hora: entradaHora, cron: entradaCron, texto: textoHorario, momento: 'al crear' };
 
 // The template catalog by id, for naming each automation's plantilla in the list, and
 // the value controls of the template chosen in the create form.
@@ -1047,8 +1119,9 @@ function crearDialogo(opciones) {
   opciones.fondo.addEventListener('keydown', function (evento) {
     if (evento.key === 'Escape') { pedirCerrar(); }
   });
-  opciones.descartar.addEventListener('click', cerrar);
-  opciones.seguir.addEventListener('click', function () { opciones.confirmar.hidden = true; });
+  // A confirmation (CH-33, the tenant baja) never has changes to discard and brings neither button.
+  if (opciones.descartar) { opciones.descartar.addEventListener('click', cerrar); }
+  if (opciones.seguir) { opciones.seguir.addEventListener('click', function () { opciones.confirmar.hidden = true; }); }
   var dialogo = { abrir: abrir, cerrar: cerrar, pedirCerrar: pedirCerrar, abierto: function () { return !opciones.fondo.hidden; } };
   dialogos.push(dialogo);
   return dialogo;
@@ -1983,19 +2056,32 @@ function cronDeFrecuencia(frecuencia, texto) {
 
 // The cron field is never hidden: a preset makes it read-only and writes its translation
 // (empty for an invalid hour); Personalizado makes it editable and leaves what it holds.
-function actualizarHorario() {
-  var frecuencia = selectorFrecuencia.value;
+// c: { frecuencia, hora, cron, texto, momento } (HORARIO_ALTA or HORARIO_AJUSTE).
+function actualizarHorarioDe(c) {
+  var frecuencia = c.frecuencia.value;
   var personalizado = frecuencia === 'personalizado';
-  entradaCron.readOnly = !personalizado;
-  entradaHora.disabled = personalizado;
+  c.cron.readOnly = !personalizado;
+  c.hora.disabled = personalizado;
   if (personalizado) {
-    textoHorario.textContent = 'Expresión cron estándar de cinco campos, ' + ZONA_DEL_DESPLIEGUE + '. Se valida al crear.';
+    c.texto.textContent = 'Expresión cron estándar de cinco campos, ' + ZONA_DEL_DESPLIEGUE + '. Se valida ' + c.momento + '.';
     return;
   }
-  var cron = cronDeFrecuencia(frecuencia, entradaHora.value);
-  entradaCron.value = cron === null ? '' : cron;
-  textoHorario.textContent = cron === null ? 'Elegí una hora válida (HH:MM, 24 horas).'
-    : NOMBRES_FRECUENCIA[frecuencia] + ' a las ' + entradaHora.value + ', ' + ZONA_DEL_DESPLIEGUE + '.';
+  var cron = cronDeFrecuencia(frecuencia, c.hora.value);
+  c.cron.value = cron === null ? '' : cron;
+  c.texto.textContent = cron === null ? 'Elegí una hora válida (HH:MM, 24 horas).'
+    : NOMBRES_FRECUENCIA[frecuencia] + ' a las ' + c.hora.value + ', ' + ZONA_DEL_DESPLIEGUE + '.';
+}
+
+function actualizarHorario() {
+  actualizarHorarioDe(HORARIO_ALTA);
+}
+
+// The cron the controls describe now: a preset's rebuilt from the hour ('' for an invalid one), or the
+// Personalizado expression as typed.
+function cronDeControles(c) {
+  if (c.frecuencia.value === 'personalizado') { return c.cron.value.trim(); }
+  var cron = cronDeFrecuencia(c.frecuencia.value, c.hora.value);
+  return cron === null ? '' : cron;
 }
 
 // dd/mm/aaaa HH:MM of a server instant, in the zone the server named. A zone or an
@@ -2265,12 +2351,19 @@ async function elegirPlantilla(id) {
     if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
     detalle = resultado.cuerpo.plantilla;
   }
-  var parametros = detalle.parametros;
+  filasValoresAuto = construirValores(contenedorValoresAuto, detalle.parametros);
+}
+
+// One labelled value control per declared parameter, appended to contenedor; the entries valoresDe reads.
+// Shared by the wizard and the adjust pop-up (CH-33).
+function construirValores(contenedor, parametros) {
+  var entradas = [];
   (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
     var entrada = { nombre: String(parametro.nombre), tipo: String(parametro.tipo), valor: controlDeValor(String(parametro.tipo)) };
-    contenedorValoresAuto.appendChild(rotular(entrada.nombre, entrada.valor));
-    filasValoresAuto.push(entrada);
+    contenedor.appendChild(rotular(entrada.nombre, entrada.valor));
+    entradas.push(entrada);
   });
+  return entradas;
 }
 
 // --- Template availability (CH-21c, DEC-127) ---------------------------------------
@@ -2373,7 +2466,8 @@ function dosDigitos(numero) {
   return (numero < 10 ? '0' : '') + numero;
 }
 
-function horarioEnPalabras(cron) {
+// CH-33: the preset and the HH:MM hour a cron is, or null; the adjust pop-up opens on them.
+function presetDeCron(cron) {
   var campos = String(cron).split(' ');
   if (campos.length !== 5 || campos[2] !== '*' || campos[3] !== '*') { return null; }
   if (!esNumeroDeUnoODosDigitos(campos[0]) || !esNumeroDeUnoODosDigitos(campos[1])) { return null; }
@@ -2385,7 +2479,12 @@ function horarioEnPalabras(cron) {
     if (DIAS_FRECUENCIA[clave] === campos[4]) { frecuencia = clave; }
   });
   if (frecuencia === null) { return null; }
-  return NOMBRES_FRECUENCIA[frecuencia] + ' a las ' + dosDigitos(hora) + ':' + dosDigitos(minuto);
+  return { frecuencia: frecuencia, hora: dosDigitos(hora) + ':' + dosDigitos(minuto) };
+}
+
+function horarioEnPalabras(cron) {
+  var preset = presetDeCron(cron);
+  return preset === null ? null : NOMBRES_FRECUENCIA[preset.frecuencia] + ' a las ' + preset.hora;
 }
 
 // The Horario cell: the words, then the expression in monospace; the expression alone when it is none of
@@ -2439,8 +2538,9 @@ async function listarAutomatizaciones() {
     filas.map(function (fila) {
       var acciones = document.createElement('span');
       acciones.appendChild(boton('Ver ejecuciones', 'ver-ejecuciones', function () { verEjecuciones(fila.id); }));
-      // The only state change offered, and only while it can still happen (DEC-79).
+      // Only while it can still happen (DEC-79): adjusting in place (DEC-174) and deactivating.
       if (fila.activo === true) {
+        acciones.appendChild(boton('Ajustar', 'ajustar', function () { abrirAjuste(String(fila.id)); }));
         acciones.appendChild(boton('Desactivar', 'desactivar', function () { desactivar(fila.id); }));
       }
       var nombre = nombresPlantilla[fila.plantillaId];
@@ -2491,18 +2591,24 @@ async function crearAutomatizacion() {
   if (resultado === null) { llevarBannerA(dialogoAlta, avisoDialogoAlta); return; }
   // A 400, like any other refusal, is told inside the pop-up and leaves it on step 2 with every value as typed.
   if (resultado.status === 400) {
-    var campos = Array.isArray(resultado.cuerpo.campos) ? resultado.cuerpo.campos : [];
-    avisarEnDialogo(dialogoAlta, avisoDialogoAlta, campos.indexOf('/cron') !== -1
-      ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
-      : campos.indexOf('/destinatario') !== -1
-        ? 'El correo del destinatario no es válido. Escriba una sola dirección, por ejemplo operaciones@empresa.com, sin espacios, comas ni punto y coma.'
-        : mensajeDeSolicitudInvalida(resultado.cuerpo, []));
+    avisarEnDialogo(dialogoAlta, avisoDialogoAlta, mensajeDe400DeAutomatizacion(resultado.cuerpo));
     return;
   }
   if (resultado.status !== 201) { avisarEnDialogo(dialogoAlta, avisoDialogoAlta, textoDeRechazo(resultado)); return; }
   cerrarAlta();
   mostrarConfirmacion(confirmacionDeAlta(resultado.cuerpo));
   await listarAutomatizaciones();
+}
+
+// A 400 of the create or the adjust (CH-33): the schedule and the recipient have their own sentence; anything
+// else, a value problem included, is read as on every other route.
+function mensajeDe400DeAutomatizacion(cuerpo) {
+  var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos : [];
+  return campos.indexOf('/cron') !== -1
+    ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
+    : campos.indexOf('/destinatario') !== -1
+      ? 'El correo del destinatario no es válido. Escriba una sola dirección, por ejemplo operaciones@empresa.com, sin espacios, comas ni punto y coma.'
+      : mensajeDeSolicitudInvalida(cuerpo, []);
 }
 
 async function desactivar(id) {
@@ -2516,6 +2622,186 @@ async function desactivar(id) {
   }
   await listarAutomatizaciones();
 }
+
+// --- Adjust an automation in place (CH-33, DEC-174) ---------------------------------------
+// «Ajustar» reads the automation and its template's current declaration, then opens a pop-up with one
+// control per declared parameter (a stored value the template no longer declares is dropped), the schedule
+// (a preset cron on its preset and hour, any other on Personalizado) and the recipient. «Guardar ajustes»
+// sends only what changed against what was loaded: the whole values map, the cron, or the recipient (an
+// emptied one as null, which stops the email). The template and the connection are shown, never sent.
+
+var fondoAjuste = document.getElementById('auto-ajuste');
+var resumenAjuste = document.getElementById('aj-resumen');
+var contenedorValoresAjuste = document.getElementById('aj-valores');
+var HORARIO_AJUSTE = {
+  frecuencia: document.getElementById('aj-frecuencia'),
+  hora: document.getElementById('aj-hora'),
+  cron: document.getElementById('aj-cron'),
+  texto: document.getElementById('aj-horario-texto'),
+  momento: 'al guardar'
+};
+var entradaDestinatarioAjuste = document.getElementById('aj-destinatario');
+var avisoAjuste = document.getElementById('aj-aviso');
+var botonGuardarAjuste = document.getElementById('aj-guardar');
+var filasValoresAjuste = [];
+var idAjuste = null;
+var baseAjuste = null;
+var generacionAjuste = 0;
+
+// What the form says now, comparable with what was loaded: the values as JSON (declaration order), the
+// cron the schedule controls describe and the trimmed recipient.
+function estadoAjuste() {
+  return {
+    valores: JSON.stringify(valoresDe(filasValoresAjuste)),
+    cron: cronDeControles(HORARIO_AJUSTE),
+    destinatario: entradaDestinatarioAjuste.value.trim()
+  };
+}
+
+function hayCambiosEnAjuste() {
+  if (baseAjuste === null) { return false; }
+  var ahora = estadoAjuste();
+  return ahora.valores !== baseAjuste.valores || ahora.cron !== baseAjuste.cron || ahora.destinatario !== baseAjuste.destinatario;
+}
+
+// Emptied however the pop-up closed, and the token moves so an answer still in flight lands nowhere.
+function limpiarAjuste() {
+  generacionAjuste += 1;
+  idAjuste = null;
+  baseAjuste = null;
+  vaciar(contenedorValoresAjuste);
+  filasValoresAjuste = [];
+  resumenAjuste.textContent = '';
+  entradaDestinatarioAjuste.value = '';
+  avisoAjuste.textContent = '';
+  HORARIO_AJUSTE.frecuencia.value = 'diaria';
+  HORARIO_AJUSTE.hora.value = '08:00';
+  actualizarHorarioDe(HORARIO_AJUSTE);
+}
+
+var dialogoAjuste = crearDialogo({
+  fondo: fondoAjuste,
+  // The first field is the first parameter's control, or the frequency when the template declares none.
+  primerCampo: { focus: function () { (filasValoresAjuste.length > 0 ? filasValoresAjuste[0].valor : HORARIO_AJUSTE.frecuencia).focus(); } },
+  cancelar: document.getElementById('aj-cancelar'),
+  confirmar: document.getElementById('aj-confirmar'),
+  descartar: document.getElementById('aj-descartar'),
+  seguir: document.getElementById('aj-seguir'),
+  hayCambios: hayCambiosEnAjuste,
+  alCerrar: limpiarAjuste
+});
+
+// The stored values go into the controls as text; a boolean selects 'true' or 'false'. A declared parameter
+// with no stored value stays blank.
+function llenarAjuste(guardada, plantilla) {
+  idAjuste = String(guardada.id);
+  var nombre = nombresPlantilla[guardada.plantillaId];
+  resumenAjuste.textContent = 'Plantilla: ' + (nombre === undefined ? String(plantilla.nombre) : nombre) +
+    ' · Conexión: ' + nombreDeConexion(guardada.conexionId) + '. La plantilla y la conexión no se cambian.';
+  filasValoresAjuste = construirValores(contenedorValoresAjuste, plantilla.parametros);
+  var valores = guardada.valores !== null && typeof guardada.valores === 'object' ? guardada.valores : {};
+  filasValoresAjuste.forEach(function (entrada) {
+    if (Object.prototype.hasOwnProperty.call(valores, entrada.nombre) && valores[entrada.nombre] !== null) {
+      entrada.valor.value = String(valores[entrada.nombre]);
+    }
+  });
+  var preset = presetDeCron(guardada.cron);
+  if (preset === null) {
+    HORARIO_AJUSTE.frecuencia.value = 'personalizado';
+    HORARIO_AJUSTE.cron.value = String(guardada.cron);
+  } else {
+    HORARIO_AJUSTE.frecuencia.value = preset.frecuencia;
+    HORARIO_AJUSTE.hora.value = preset.hora;
+  }
+  actualizarHorarioDe(HORARIO_AJUSTE);
+  entradaDestinatarioAjuste.value = typeof guardada.destinatario === 'string' ? guardada.destinatario : '';
+  baseAjuste = estadoAjuste();
+}
+
+async function abrirAjuste(id) {
+  ocultarBanner();
+  limpiarAjuste();
+  var g = generacionAjuste;
+  var resultado = await pedirAutomatizacion('/automatizaciones/' + encodeURIComponent(id));
+  if (resultado === null || g !== generacionAjuste) { return; }
+  if (resultado.status !== 200 || resultado.cuerpo.automatizacion === null || typeof resultado.cuerpo.automatizacion !== 'object') {
+    mostrarRechazo(resultado);
+    if (resultado.status === 404) { await listarAutomatizaciones(); }
+    return;
+  }
+  var guardada = resultado.cuerpo.automatizacion;
+  var plantilla = detallesPlantilla[guardada.plantillaId];
+  if (plantilla === undefined) {
+    var detalle = await pedirAutomatizacion('/plantillas/' + encodeURIComponent(String(guardada.plantillaId)));
+    if (detalle === null || g !== generacionAjuste) { return; }
+    if (detalle.status !== 200 || detalle.cuerpo.plantilla === null || typeof detalle.cuerpo.plantilla !== 'object') {
+      mostrarRechazo(detalle);
+      return;
+    }
+    plantilla = detalle.cuerpo.plantilla;
+  }
+  llenarAjuste(guardada, plantilla);
+  dialogoAjuste.abrir();
+}
+
+// DEC-129's wording for the next run; a 200 without it keeps the first sentence. DEC-95: a schedule, not a promise.
+function confirmacionDeAjuste(cuerpo) {
+  var guardado = 'Se guardaron los ajustes.';
+  if (typeof cuerpo.proximaEjecucion !== 'string' || typeof cuerpo.zonaHoraria !== 'string') { return guardado; }
+  return guardado + ' Próxima ejecución programada: ' + formatearInstante(cuerpo.proximaEjecucion, cuerpo.zonaHoraria) +
+    ', zona horaria ' + cuerpo.zonaHoraria + '.';
+}
+
+async function guardarAjuste() {
+  avisoAjuste.textContent = '';
+  if (idAjuste === null || baseAjuste === null) { return; }
+  // A preset's cron is rebuilt from the hour as it is now; an invalid hour sends nothing.
+  actualizarHorarioDe(HORARIO_AJUSTE);
+  if (HORARIO_AJUSTE.frecuencia.value !== 'personalizado' && cronDeControles(HORARIO_AJUSTE) === '') {
+    avisoAjuste.textContent = 'La hora no es válida. Escribí HH:MM en 24 horas, por ejemplo 08:30.';
+    return;
+  }
+  var ahora = estadoAjuste();
+  // No tenant, template or connection here: the header names the tenant (DEC-15) and the rest never changes.
+  var cambios = {};
+  if (ahora.valores !== baseAjuste.valores) { cambios.valores = valoresDe(filasValoresAjuste); }
+  if (ahora.cron !== baseAjuste.cron) { cambios.cron = ahora.cron; }
+  if (ahora.destinatario !== baseAjuste.destinatario) { cambios.destinatario = ahora.destinatario === '' ? null : ahora.destinatario; }
+  if (Object.keys(cambios).length === 0) {
+    avisoAjuste.textContent = 'No hay cambios para guardar.';
+    return;
+  }
+  botonGuardarAjuste.disabled = true;
+  var g = generacionAjuste;
+  var resultado = await pedirAutomatizacion('/automatizaciones/' + encodeURIComponent(idAjuste) + '/ajustes', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cambios)
+  });
+  botonGuardarAjuste.disabled = false;
+  // Dropped when the pop-up closed meanwhile (a tenant switch included).
+  if (g !== generacionAjuste) { return; }
+  if (resultado === null) { llevarBannerA(dialogoAjuste, avisoAjuste); return; }
+  if (resultado.status === 400) {
+    avisarEnDialogo(dialogoAjuste, avisoAjuste, mensajeDe400DeAutomatizacion(resultado.cuerpo));
+    return;
+  }
+  if (resultado.status !== 200) {
+    avisarEnDialogo(dialogoAjuste, avisoAjuste, textoDeRechazo(resultado));
+    // Deactivated or gone meanwhile: the list shows it as it is now.
+    if (resultado.status === 404 || resultado.status === 409) { await listarAutomatizaciones(); }
+    return;
+  }
+  dialogoAjuste.cerrar();
+  mostrarConfirmacion(confirmacionDeAjuste(resultado.cuerpo));
+  await listarAutomatizaciones();
+}
+
+HORARIO_AJUSTE.frecuencia.addEventListener('change', function () { actualizarHorarioDe(HORARIO_AJUSTE); });
+// Both events: some browsers fire input per keystroke in a time control, others only change.
+HORARIO_AJUSTE.hora.addEventListener('input', function () { actualizarHorarioDe(HORARIO_AJUSTE); });
+HORARIO_AJUSTE.hora.addEventListener('change', function () { actualizarHorarioDe(HORARIO_AJUSTE); });
+botonGuardarAjuste.addEventListener('click', function () { guardarAjuste(); });
 
 // One legible sentence per closed category; a SQLSTATE only when the row carries one.
 function errorDeCorrida(fila) {
@@ -3452,15 +3738,11 @@ function botonTenant(texto, alHacerClic) {
   return b;
 }
 
-// The action cell of an active tenant: Elegir and Dar de baja, or the inline confirmation.
+// The action cell of an active tenant: Elegir and Dar de baja, which opens the confirmation pop-up (CH-33).
 function accionesTenant(td, tenant) {
   vaciar(td);
   td.appendChild(botonTenant('Elegir como activo', function () { cambiarTenant(String(tenant.id)); }));
-  td.appendChild(botonTenant('Dar de baja', function () {
-    vaciar(td);
-    td.appendChild(botonTenant('Dar de baja ' + String(tenant.nombre), function () { darDeBaja(tenant); }));
-    td.appendChild(botonTenant('Cancelar', function () { accionesTenant(td, tenant); }));
-  }));
+  td.appendChild(botonTenant('Dar de baja', function () { abrirBaja(tenant); }));
 }
 
 function renderizarTenants(tenants) {
@@ -3496,19 +3778,69 @@ async function cargarTenantsPantalla() {
   renderizarTenants(cuerpo.tenants);
 }
 
-async function darDeBaja(tenant) {
+// CH-33 (DEC-175): the baja pop-up. The action stays disabled until the field holds the tenant's name exactly
+// (no trimming, no case folding, as the route compares it), and the typed text is what is sent.
+var campoNombreBaja = document.getElementById('tb-nombre');
+var botonBaja = document.getElementById('tb-dar-de-baja');
+var avisoBaja = document.getElementById('tb-aviso');
+var tenantEnBaja = null;
+
+function limpiarBaja() {
+  campoNombreBaja.value = '';
+  botonBaja.disabled = true;
+  avisoBaja.textContent = '';
+}
+
+var dialogoBaja = crearDialogo({
+  fondo: document.getElementById('tenant-baja'),
+  primerCampo: campoNombreBaja,
+  cancelar: document.getElementById('tb-cancelar'),
+  confirmar: document.getElementById('tb-confirmar'),
+  hayCambios: function () { return false; },
+  alAbrir: limpiarBaja,
+  alCerrar: function () { limpiarBaja(); tenantEnBaja = null; }
+});
+
+function abrirBaja(tenant) {
+  tenantEnBaja = { id: String(tenant.id), nombre: String(tenant.nombre) };
+  document.getElementById('tb-texto').textContent = 'Vas a dar de baja «' + tenantEnBaja.nombre + '». No se puede deshacer: ' +
+    'no se va a poder elegir ni operar sobre él, sus agentes se desconectan y sus datos quedan solo como registro.';
+  botonBaja.textContent = 'Dar de baja ' + tenantEnBaja.nombre;
+  dialogoBaja.abrir();
+}
+
+campoNombreBaja.addEventListener('input', function () {
+  botonBaja.disabled = tenantEnBaja === null || campoNombreBaja.value !== tenantEnBaja.nombre;
+});
+
+botonBaja.addEventListener('click', function () {
+  if (tenantEnBaja === null || campoNombreBaja.value !== tenantEnBaja.nombre) { return; }
+  darDeBaja(tenantEnBaja, campoNombreBaja.value);
+});
+
+async function darDeBaja(tenant, nombre) {
   var id = String(tenant.id);
+  avisoBaja.textContent = '';
   var respuesta;
   try {
-    respuesta = await fetch('/tenants/' + encodeURIComponent(id) + '/baja', { method: 'POST' }).then(siNoAutenticado);
+    respuesta = await fetch('/tenants/' + encodeURIComponent(id) + '/baja', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: nombre })
+    }).then(siNoAutenticado);
   } catch (fallaDeRed) {
-    avisoTenant.textContent = 'No se pudo contactar con la aplicación.';
+    avisoBaja.textContent = 'No se pudo contactar con la aplicación.';
     return;
   }
   if (respuesta.status !== 200) {
-    avisoTenant.textContent = 'No se pudo dar de baja el tenant (HTTP ' + respuesta.status + ').';
+    var cuerpo = null;
+    try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
+    avisoBaja.textContent = cuerpo !== null && cuerpo.error === 'confirmacion-no-coincide'
+      ? 'El nombre no coincide con el del tenant. No se dio de baja.'
+      : 'No se pudo dar de baja el tenant (HTTP ' + respuesta.status + ').';
     return;
   }
+  dialogoBaja.cerrar();
   if (id === tenantActivo) {
     cambiarTenant(null);
     mostrarBanner('Diste de baja el tenant activo. Elegí otro en la barra superior.');

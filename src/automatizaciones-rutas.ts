@@ -1,19 +1,21 @@
 import type { FastifyInstance } from 'fastify';
-import type { Prisma } from './generated/prisma/client.js';
+import { Prisma } from './generated/prisma/client.js';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
 import { cronValido, proximaEjecucion } from './automatizaciones.js';
 import { camposInvalidos } from './conexiones.js';
 import { sanearSql } from './consulta-ejecucion.js';
 import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { direccionValida } from './correo.js';
-import { prepararSentencia } from './parametros.js';
+import { prepararSentencia, type ProblemaParametro } from './parametros.js';
 
 /**
  * CH-13: the automation lifecycle routes — create, list, get, deactivate (DEC-74,
  * DEC-78, DEC-79) — and the runs listing (DEC-80). None is exempt from `x-tenant-id`: `Automatizacion` is a scoped model,
  * so every read and write below is filtered by the tenant the hooks resolved from the
- * header (DEC-13), and the body never names one (rule 2). There is no edit, no delete
- * and no reactivation route; a mistaken automation is deactivated and created again.
+ * header (DEC-13), and the body never names one (rule 2). CH-33 (DEC-174) adds the
+ * adjust: values, schedule and recipient change in place, on the same row. There is no
+ * delete and no reactivation route, and the template and the connection never change: for
+ * those, the automation is deactivated and created again.
  */
 
 /**
@@ -99,6 +101,118 @@ const registroAutomatizacionSchema = {
  */
 export function destinatarioDe(valor: string | undefined): string | null {
   return valor === undefined ? null : valor.replace(/^[ \t]+|[ \t]+$/g, '');
+}
+
+// ---- CH-33 (DEC-174): the operator's adjust ------------------------------------------
+
+/** The adjust body as the route hands it over: only the three keys, values still untrusted. */
+export interface CuerpoAjusteOperador {
+  valores?: Record<string, unknown>;
+  cron?: string;
+  /** `null` clears it: the automation stops sending email (DEC-174, CH-33 D2). */
+  destinatario?: string | null;
+}
+
+/** Columns to write: only the ones the body sent. */
+export interface DatosAjusteOperador {
+  valores?: Record<string, unknown>;
+  cron?: string;
+  destinatario?: string | null;
+}
+
+export type ResolucionAjusteOperador =
+  | { ok: true; datos: DatosAjusteOperador }
+  | { ok: false; campos: string[]; problemas?: ProblemaParametro[] };
+
+/**
+ * Checks an adjust body with the alta's own rules and returns the columns to write. It is
+ * not the panel's `resolverAjustes`: that one knows only `umbral` and the three preset
+ * schedules, while the operator edits whatever the alta sets (CH-33 D1). Every offender is
+ * named together, as JSON pointers like the alta's, so the console reads them unchanged.
+ * `valores` replaces the stored map as a whole: nothing is merged, so a key the template no
+ * longer declares cannot linger, and the stored row is not needed here.
+ */
+export function resolverAjusteOperador(
+  cuerpo: CuerpoAjusteOperador,
+  plantilla: { sql: string; parametros: unknown },
+  zona: string,
+): ResolucionAjusteOperador {
+  const campos: string[] = [];
+  const datos: DatosAjusteOperador = {};
+  let problemas: ProblemaParametro[] | undefined;
+
+  if (cuerpo.cron !== undefined) {
+    if (cronValido(cuerpo.cron, zona)) {
+      datos.cron = cuerpo.cron;
+    } else {
+      campos.push('/cron');
+    }
+  }
+
+  if (cuerpo.destinatario === null) {
+    datos.destinatario = null;
+  } else if (cuerpo.destinatario !== undefined) {
+    const limpio = destinatarioDe(cuerpo.destinatario);
+    if (limpio !== null && direccionValida(limpio)) {
+      datos.destinatario = limpio;
+    } else {
+      campos.push('/destinatario');
+    }
+  }
+
+  if (cuerpo.valores !== undefined) {
+    // Only the verdict is used, as in the alta: every run composes the statement again.
+    const preparada = prepararSentencia(sanearSql(plantilla.sql), plantilla.parametros, cuerpo.valores);
+    if (preparada.ok) {
+      datos.valores = cuerpo.valores;
+    } else {
+      problemas = preparada.problemas;
+      for (const campo of new Set(preparada.problemas.map((problema) => problema.campo))) {
+        campos.push(campo);
+      }
+    }
+  }
+
+  if (campos.length > 0) {
+    return problemas === undefined ? { ok: false, campos } : { ok: false, campos, problemas };
+  }
+  return { ok: true, datos };
+}
+
+/**
+ * Strict body, `propertyNames` included for the reason `registroAutomatizacionSchema`
+ * documents, so `plantillaId`, `conexionId`, `activo` or `tenantId` are a `400`, never a
+ * silent drop. `valores` is a container only, as in the alta (DEC-60), and has no `default`:
+ * an absent key must stay absent, or every adjust would rewrite the map. `destinatario`
+ * admits `null`, which clears it.
+ */
+const ajusteOperadorSchema = {
+  type: 'object',
+  additionalProperties: false,
+  minProperties: 1,
+  propertyNames: { enum: ['valores', 'cron', 'destinatario'] },
+  properties: {
+    valores: { type: 'object' },
+    cron: { type: 'string', minLength: 1 },
+    destinatario: { type: ['string', 'null'], maxLength: 254 },
+  },
+} as const;
+
+/** `P2025` is Prisma's "no row to update": the row vanished between the read and the write. */
+function esFilaInexistente(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
+}
+
+/** The next fire as ISO UTC, or `null` when a stored expression no longer resolves. */
+function proximaIso(cron: string, ahora: Date, zona: string): string | null {
+  if (!cronValido(cron, zona)) {
+    return null;
+  }
+  try {
+    return proximaEjecucion(cron, ahora, zona).toISOString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -243,6 +357,76 @@ export function registerAutomatizacionRoutes(
         select: AutomatizacionCompleta,
       });
       return reply.code(200).send({ automatizacion });
+    },
+  );
+
+  /**
+   * CH-33 (DEC-174): adjust in place. Read first through the scoped model, as `desactivar`
+   * does: another tenant's id is `null`, the same `404` as an unknown one, and a deactivated
+   * row is a `409` (DEC-79: nothing reactivates or edits it). `Plantilla` is global (DEC-61)
+   * and its id comes from a row the extension already scoped. The scheduler re-reads `cron`
+   * and `valores` on every tick, so the change applies from the next run.
+   */
+  app.put<{ Params: AutomatizacionParams; Body: CuerpoAjusteOperador }>(
+    '/automatizaciones/:id/ajustes',
+    { schema: { body: ajusteOperadorSchema }, attachValidation: true },
+    async (request, reply) => {
+      if (request.validationError) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: camposInvalidos(request.validationError),
+        });
+      }
+      const actual = await prisma.automatizacion.findUnique({
+        where: { id: request.params.id },
+        select: { activo: true, plantillaId: true },
+      });
+      if (actual === null) {
+        return reply.code(404).send({ error: 'automatizacion-no-encontrada' });
+      }
+      if (!actual.activo) {
+        return reply.code(409).send({ error: 'automatizacion-desactivada' });
+      }
+      const plantilla = await prisma.plantilla.findUnique({
+        where: { id: actual.plantillaId },
+        select: { sql: true, parametros: true },
+      });
+      if (plantilla === null) {
+        return reply.code(404).send({ error: 'plantilla-no-encontrada' });
+      }
+
+      const resolucion = resolverAjusteOperador(request.body, plantilla, zonaHoraria);
+      if (!resolucion.ok) {
+        return reply.code(400).send({
+          error: 'solicitud-invalida',
+          campos: resolucion.campos,
+          ...(resolucion.problemas === undefined ? {} : { problemas: resolucion.problemas }),
+        });
+      }
+      const { valores, cron, destinatario } = resolucion.datos;
+      try {
+        const automatizacion = await prisma.automatizacion.update({
+          where: { id: request.params.id },
+          data: {
+            // Sound cast: `prepararSentencia` accepted every key as declared and every value
+            // as a string, finite number or boolean (as in the alta).
+            ...(valores === undefined ? {} : { valores: valores as Prisma.InputJsonObject }),
+            ...(cron === undefined ? {} : { cron }),
+            ...(destinatario === undefined ? {} : { destinatario }),
+          },
+          select: AutomatizacionCompleta,
+        });
+        return reply.code(200).send({
+          automatizacion,
+          proximaEjecucion: proximaIso(automatizacion.cron, new Date(), zonaHoraria),
+          zonaHoraria,
+        });
+      } catch (error) {
+        if (esFilaInexistente(error)) {
+          return reply.code(404).send({ error: 'automatizacion-no-encontrada' });
+        }
+        throw error;
+      }
     },
   );
 

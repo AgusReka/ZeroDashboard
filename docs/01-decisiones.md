@@ -3163,6 +3163,64 @@ No son decisiones nuevas: son la mecánica interna de decisiones ya firmes, resu
 
 ---
 
+### DEC-174 — La consola ajusta una automatización en el lugar, igual que el panel; extiende DEC-138
+
+**Contexto.** La auditoría del 2026-10-13 (§4.5, F3) señaló una inconsistencia. Desde CH-23 el panel del cliente ajusta en la misma fila los valores (el umbral), el horario y el destinatario de una automatización (DEC-138). La consola, en cambio, sigue bajo DEC-79 y DEC-82: para cambiar algo, el operador desactiva la automatización y crea otra.
+
+**Opciones.**
+- (a) La consola ajusta los mismos campos que el panel, en el lugar.
+- (b) Igual que (a), y además permite cambiar la conexión.
+- (c) Mantener DEC-79: «Editar» crea una copia y desactiva la original.
+- (d) Sin edición; solo se documenta la diferencia.
+
+**Decisión.** (a). Se suma una ruta de operador con alcance de tenant (`X-Tenant-Id`) que actualiza `valores`, `cron` y `destinatario` de la misma fila. La plantilla y la conexión no se cambian. DEC-79 y DEC-82 quedan enmendadas también para la consola. Desactivar sigue siendo la única forma de detener una automatización.
+
+**Precisión (exploración de CH-33, 2026-10-14).** El operador edita lo mismo que carga en el alta:
+- todos los parámetros declarados por la plantilla;
+- cualquier cron válido, sea uno de los horarios predefinidos o uno personalizado;
+- el destinatario, que también se puede quitar: sin destinatario, la automatización deja de mandar correo.
+
+La validación es la del alta (`prepararSentencia`, `cronValido` y `direccionValida`), que `panel-ajustes` también usa por dentro. No se reusa `resolverAjustes`, porque solo conoce el umbral y los horarios predefinidos. El panel no cambia. Lo decidió el usuario.
+
+**Por qué.** Conserva el id y el historial de ejecuciones, igual que en el panel (DEC-138). Las dos superficies quedan con las mismas reglas de ajuste. Como la conexión no cambia, el historial nunca mezcla dos conexiones y no hace falta volver a validar el mapeo.
+
+**Se resigna.**
+- Hay una ruta de escritura nueva, que entra en el barrido de aislamiento T2 y necesita su prueba con dos tenants.
+- Para cambiar la plantilla o la conexión, todavía hay que crear otra automatización.
+- El formulario de ajuste va en un pop-up (DEC-173).
+
+**Decidido por:** el usuario, 2026-10-14, en la fase F3 de la auditoría del 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-175 — La baja de un tenant exige escribir su nombre, en la consola y en la API
+
+**Contexto.** La baja de un tenant no tiene vuelta atrás (DEC-14). Hoy la confirma un segundo clic en línea, y solo en el cliente. La auditoría del 2026-10-13 (§3.4, F3) dejó pendiente decidir si hay que pedir que se escriba el nombre.
+
+**Opciones.**
+- (a) Nombre escrito, validado solo en el front.
+- (b) Nombre escrito en el front, y la ruta también lo exige.
+- (c) Un pop-up que nombra el tenant, sin escribir nada.
+
+**Decisión.** (b).
+- **Consola.** La baja se confirma en un pop-up que nombra el tenant y avisa que no se puede deshacer. «Dar de baja» queda deshabilitado hasta que se escribe el nombre exacto.
+- **API.** `POST /tenants/:id/baja` exige el nombre en el cuerpo. Si no coincide con el del tenant, responde 409 y no da de baja nada. Si falta, la validación de esquema lo rechaza.
+
+**Por qué.** El operador es global (DEC-15), así que la única defensa contra el error humano es la confirmación. Si la confirmación también vive en el backend, un script o una llamada directa a la API tampoco pueden dar de baja el tenant equivocado.
+
+**Se resigna.**
+- El contrato de la ruta cambia: todo cliente de la API tiene que enviar el nombre, y los tests que hoy la llaman sin cuerpo se actualizan.
+- Esta confirmación es una excepción a la regla de DEC-173 sobre las confirmaciones en línea: va en un pop-up.
+- El código de error se define en el diseño del change.
+
+**Decidido por:** el usuario, 2026-10-14, en la fase F3 de la auditoría del 2026-10-13. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
