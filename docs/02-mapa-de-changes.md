@@ -18,6 +18,20 @@ Secuencia de trabajo. Cada change es una unidad de especificación e implementac
 
 ---
 
+## Versión 1.0 (2026-10-16)
+
+La versión 1.0 cierra los releases R0 a R3 de `docs/mapa-historias.md` §5, con estas exclusiones explícitas. Se marca con el tag `v1.0.0` sobre `master`.
+
+| Queda afuera | Historia | Motivo |
+|---|---|---|
+| Detectar un tenant inalcanzable antes de que falle una ejecución (CH-19d1, CH-19d2) | C2 (R2) | Trabajo a futuro (DEC-179): el latido del agente no hace nada |
+| Registrar el costo de conectividad de cada alta (CH-19e) | C3 (R2) | Trabajo a futuro (DEC-179) |
+| Ver los últimos resultados en el panel (CH-27) | P4h (R3) | Fuera de alcance mientras los resultados no se persistan (DEC-93) |
+
+Lo demás de R0 a R3 está construido y archivado; F3 se cumple con el actor real, P1 en el asistente de la consola (DEC-180). La compuerta D-6 (declaración de uso de asistentes de IA) sigue abierta: no bloquea el código, pero hay que resolverla antes de la entrega.
+
+---
+
 ## R0 — Consola mínima
 
 No depende de ninguna compuerta salvo D-3 (stack). Se puede empezar hoy.
