@@ -1,8 +1,12 @@
 # ZeroDashboard
 
-Consola propia de consultas de solo lectura contra la base de un cliente (P1: el implementador). Estado actual: **R0 completo** (CH-01 a CH-05) — conectarse a una base, escribir una consulta, ejecutarla, guardarla y volver a cargarla.
+Plataforma que ofrece automatizaciones operativas a e-commerce pequeños sin modificar su plataforma de venta. El cliente expone una réplica de solo lectura de su base; ZeroDashboard se conecta, mapea ese esquema a un contrato canónico y ejecuta sobre él un catálogo de automatizaciones que avisan por correo. La consola (`/consola`) es la herramienta del implementador (P1); el panel (`/panel`) es la del administrador del negocio (P2).
 
-La documentación de arquitectura vive en `docs/` (ver `AGENTS.md` para el índice). Este archivo es la referencia operativa: cómo levantar el entorno y usar la API/consola.
+## Estado actual
+
+La consola, el motor de automatizaciones con aviso por correo, el panel del cliente y la conexión por agente están implementados (CH-01 a CH-35). Queda como **trabajo a futuro** CH-19d1, CH-19d2 y CH-19e (latido del agente, estado de conectividad y runbook de alta; DEC-179). CH-26 sigue pendiente y CH-27 está fuera de alcance mientras los resultados no se persistan (DEC-93). Detalle por change: [`docs/02-mapa-de-changes.md`](docs/02-mapa-de-changes.md).
+
+**Cómo se usa:** [`docs/guia/`](docs/guia/README.md) (arquitectura, alta de tenant, mapeo, consultas, plantillas, automatizaciones, usuarios y diagnóstico).
 
 ## Versión evaluada en la tesis
 
@@ -21,139 +25,75 @@ La documentación de arquitectura vive en `docs/` (ver `AGENTS.md` para el índi
 ## Levantar el entorno
 
 ```bash
-cp .env.example .env   # completar POSTGRES_PASSWORD si hace falta
+cp .env.example .env   # completar lo que quede vacío; CREDENTIAL_MASTER_KEY es obligatoria
 docker compose up -d --build
 curl http://localhost:3000/health   # {"status":"ready","db":"connected"}
 ```
 
-La app corre en `http://localhost:3000`. La base propia de ZeroDashboard (`db`) **no** expone puerto al host — solo es alcanzable desde dentro de la red de Compose. Esto es intencional: la app le habla por el nombre de servicio `db`, nada más necesita llegar a ella desde afuera.
+La app escucha en `APP_PORT` (los ejemplos y `npm run smoke` usan 3000). La base propia (`db`) **no** expone puerto al host: solo es alcanzable dentro de la red de Compose.
 
-`npm run smoke` levanta todo el stack y corre un checklist de punta a punta contra los specs de CH-01, CH-03, CH-04 y CH-05 (lo baja todo al final).
+Al iniciar, el contenedor aplica las migraciones (`prisma migrate deploy`), corre la siembra (`prisma/seed.ts`) y arranca el servidor. La siembra crea el tenant «Food Store» si no hay ninguno y las plantillas del catálogo inicial que falten.
 
-## Conectar a una base externa (la base del cliente)
+`CREDENTIAL_MASTER_KEY` es una clave de 32 bytes en base64, una por despliegue. Sin ella, o con una inválida, el contenedor se niega a arrancar: es el comportamiento previsto.
 
-La base propia de ZeroDashboard es distinta de la base que se quiere *leer* (la del cliente — "Food Store" en los ejemplos de la tesis). Son dos Postgres separados a propósito (DEC-01/DEC-03): en producción, la base del cliente nunca va a estar en el mismo servidor.
+### Variables opcionales
 
-Si la base del cliente corre en Docker en tu misma máquina, **no uses `localhost`** como host al registrar la conexión: el container de la app tiene su propio `localhost` (se refiere a sí mismo). Usá `host.docker.internal`, que Docker Desktop resuelve a tu PC desde cualquier container.
+`docker-compose.yml` reenvía estas variables al servicio `app`; sin valor, rige el predeterminado.
 
-### 1. Registrar una conexión
+| Variable | Para qué |
+|---|---|
+| `ZONA_HORARIA_AUTOMATIZACIONES` | Zona IANA en que se leen los horarios cron. Predeterminada: `UTC`. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TIMEOUT_MS` | Servidor de correo. Sin `SMTP_HOST` no se envía correo y cada corrida lo registra. Con `SMTP_HOST`, el resto debe ser válido o el contenedor no arranca. |
+| `CONNECTION_RETRY_ATTEMPTS`, `CONNECTION_RETRY_PAUSE_MS` | Reintentos de conexión de las corridas programadas (3 intentos y 5000 ms; máximo 5 intentos). |
 
-```
-POST /conexiones
-Content-Type: application/json
+La aplicación también lee `CONNECTION_TEST_TIMEOUT_MS` (5000 ms), `QUERY_TIMEOUT_MS` (15 000 ms) y `MAX_FILAS_CONSULTA` (200), pero `docker-compose.yml` no las reenvía: con Compose rigen los predeterminados salvo que se agreguen al servicio `app`.
 
-{
-  "nombre": "food-store",
-  "motor": "postgresql",
-  "host": "host.docker.internal",
-  "puerto": 5433,
-  "baseDeDatos": "food_store",
-  "usuarioDb": "lector_zerodashboard",
-  "credencial": "…",
-  "soloLectura": true          // opcional, default true — informativo, no lo verifica la app
-}
+### Primer operador
+
+La consola exige ingreso (DEC-152). El primer operador se crea por línea de comandos; la clave se pide por entrada estándar (mínimo 12 caracteres):
+
+```bash
+docker compose exec app node dist/operador-alta.js <nombre>
 ```
 
-El nombre de la base la decide el `.env`/`docker-compose.yml` del proyecto food-store al levantarse — si no conecta, confirmá el nombre real con el usuario `postgres` primero (`POST /conexiones/:id/prueba`) antes de asumir que es el mismo que documenta el README de ese proyecto.
+Después, `http://localhost:3000/consola` muestra «Ingresar». Detalle en [Usuarios y permisos](docs/guia/07-usuarios-y-permisos.md).
 
-Devuelve `201` con la conexión creada (sin `credencial` — nunca se lee de vuelta en ninguna respuesta):
+### Perfiles de Compose
 
-```json
-{"conexion":{"id":"…","nombre":"food-store","motor":"postgresql","host":"…","puerto":5433,"baseDeDatos":"team_hero_db","usuarioDb":"postgres","soloLectura":true,"creadaEn":"…","actualizadaEn":"…"}}
-```
-
-Validación: `nombre`, `motor`, `host`, `puerto` (1-65535), `baseDeDatos`, `usuarioDb`, `credencial` son obligatorios; cualquier propiedad no reconocida se rechaza. `400 solicitud-invalida` con `campos: [...]` indicando qué falló.
-
-### 2. Probar la conexión
-
-```
-POST /conexiones/:id/prueba
-```
-
-```json
-{"resultado":"ok","categoria":null,"codigo":null,"host":"…","puerto":5433,"duracionMs":28}
-```
-
-Si falla, `resultado` es `"fallo"` y `categoria` distingue el motivo: `credenciales-invalidas`, `base-inexistente`, `tiempo-agotado` (no contesta en `CONNECTION_TEST_TIMEOUT_MS`, default 5000ms), u otro. `codigo` es el SQLSTATE crudo cuando aplica. La credencial nunca aparece en la respuesta ni en los logs.
-
-### 3. Ejecutar una consulta
-
-```
-POST /consultas/ejecutar
-Content-Type: application/json
-
-{
-  "conexionId": "…",
-  "sql": "SELECT * FROM productos",
-  "limite": 50,            // opcional, default 50, máximo 200
-  "desplazamiento": 0      // opcional, default 0
-}
-```
-
-Éxito (siempre `200`, el veredicto vive en el body):
-
-```json
-{
-  "resultado": "ok",
-  "fase": "ejecucion",
-  "columnas": ["id", "nombre", "precio"],
-  "filas": [[1, "…", 10.5], ...],
-  "paginacion": {"limite": 50, "desplazamiento": 0, "hayMas": true, "siguienteDesplazamiento": 50},
-  "duracionMs": 12
-}
-```
-
-Fallo:
-
-```json
-{"resultado": "fallo", "fase": "permisos", "categoria": "rol-superusuario", "codigo": null, "duracionMs": 38}
-```
-
-**Dos capas de solo-lectura, en dos fases distintas (`fase`):**
-
-- `fase: "permisos"` — el rol de base conectado tiene privilegios que no debería tener, y la consulta **ni se envía** (DEC-08). `categoria` es una de `rol-superusuario`, `rol-con-escritura-en-tabla`, `rol-con-create-en-esquema`. **Esto es lo que vas a pisar si probás con un usuario `postgres` por defecto**: es superusuario, así que se bloquea siempre, incluso para un `SELECT`. Necesitás un rol de solo lectura de verdad — ver más abajo.
-- `fase: "ejecucion"` — la consulta se envió y el propio motor la rechazó (DEC-09: transacción `READ ONLY`, sin parser de SQL). `categoria`: `no-es-lectura` (escritura o DDL), `error-sintaxis`, `error-datos`, `tiempo-agotado` (no termina en `QUERY_TIMEOUT_MS`, default 15000ms), `permiso-denegado`, `error-desconocido`.
-- `fase: "conexion"` — no se pudo conectar al servidor de base en absoluto (mismas categorías que la prueba de conexión).
-
-**Crear un rol de solo lectura en la base del cliente** (correlo contra esa base, no contra la propia de ZeroDashboard):
-
-```sql
-CREATE ROLE lector_zerodashboard LOGIN PASSWORD 'elegí-algo';
-GRANT CONNECT ON DATABASE team_hero_db TO lector_zerodashboard;
-GRANT USAGE ON SCHEMA public TO lector_zerodashboard;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO lector_zerodashboard;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO lector_zerodashboard;
-```
-
-Registrá la conexión con `usuarioDb: "lector_zerodashboard"` y esa contraseña en vez de `postgres`.
-
-### 4. Guardar, listar y cargar consultas
-
-```
-POST /consultas-guardadas          { "nombre": "…", "descripcion": "…" (opcional), "sql": "…" }   -> 201 { consultaGuardada }  (incluye sql)
-GET  /consultas-guardadas                                                                          -> 200 { consultasGuardadas: [...], truncado }  (sin sql, hasta 200 filas, más nuevas primero)
-GET  /consultas-guardadas/:id                                                                      -> 200 { consultaGuardada }  (incluye sql) | 404 { error: "consulta-guardada-no-encontrada" }
-```
-
-No hay `update` ni `delete` todavía (CH-05, DEC-10). Nombres repetidos están permitidos (no hay restricción de unicidad). Una consulta guardada **no** está atada a ninguna conexión (DEC-11): al guardarla no se elige conexión, se elige recién al ejecutarla — la misma consulta se puede correr contra cualquier conexión registrada.
-
-### 5. Consola web
-
-`GET /consola` — página HTML mínima: editor de SQL, selector de conexión (por id), tabla de resultados paginada, y la sección de consultas guardadas (guardar la actual, ver la lista, cargar una al editor). Sin autenticación — es la herramienta del implementador (P1), no del cliente.
-
-## ¿Cuántas conexiones y consultas guardadas puedo tener?
-
-Todas las que quieras — no hay límite ni restricción de unicidad en `nombre`, para conexiones ni para consultas guardadas. Lo que **todavía no existe** es multi-tenant real: hoy hay un único tenant sembrado en la base (DEC-06) y todo — conexiones, consultas guardadas — cuelga de ese mismo tenant, resuelto siempre del lado del servidor (nunca lo mandás vos). No hay alta de tenants, ni selector de tenant, ni aislamiento entre tenants todavía.
-
-Eso es **CH-06 (release R1)**: ahí se agrega la entidad tenant utilizable de verdad, con aislamiento probado (dos tenants cargados, cero fuga de datos entre ellos) y un indicador de tenant activo en la interfaz. Hasta entonces, "más de una conexión" sí — "más de un cliente aislado" todavía no.
-
-## Códigos de error comunes
-
-| HTTP | `error` | Cuándo |
+| Perfil | Comando | Qué agrega |
 |---|---|---|
-| 400 | `solicitud-invalida` | Body inválido; `campos` lista qué propiedades fallaron |
-| 404 | `conexion-no-encontrada` | `POST /conexiones/:id/prueba` con un id inexistente |
-| 404 | `consulta-guardada-no-encontrada` | `GET /consultas-guardadas/:id` con un id inexistente |
-| 503 | `tenant-no-inicializado` | No hay tenant sembrado (no debería pasar fuera de una base recién creada sin `seed`) |
+| `demo` | `docker compose --profile demo up -d --build` | Réplica de demo `food_store` (servicio `replica-demo`, sin puerto en el host). Con `SEED_DEMO=1`, la siembra deja operador `demo`, tenant «Food Store», conexión, mapeo validado, una consulta, un usuario del panel y una automatización activa. |
+| `correo` | `docker compose --profile correo up -d` | Mailpit para ver los correos: interfaz en `http://localhost:8026`. Hay que apuntar la app a él con `SMTP_HOST=mailpit` y `SMTP_PORT=1025`. |
 
-`POST /consultas/ejecutar` nunca devuelve un error HTTP por un fallo de la consulta en sí — siempre `200`, con el veredicto en `resultado`/`fase`/`categoria` como se explicó arriba.
+La demo exige `SEED_DEMO=1`, `REPLICA_DEMO_PASSWORD`, `DEMO_OPERADOR_CLAVE` (mínimo 12 caracteres), `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE`, en el entorno o en `.env`. Si falta alguna o la réplica no responde, la app no arranca y dice cuál falta. Solo el valor exacto `1` activa la siembra (DEC-171).
+
+## Scripts
+
+| Comando | Qué hace |
+|---|---|
+| `npm run build` | Compila con `tsc` a `dist/`. |
+| `npm run dev` | Servidor con recarga, con `--env-file=.env`. |
+| `npm start` | Corre `dist/server.js`. |
+| `npm run migrate` / `npm run prisma:generate` | `prisma migrate deploy` / `prisma generate`. |
+| `npm run seed` | Corre la siembra; importa de `dist/`, así que requiere `npm run build` antes. |
+| `npm run operador:alta -- <nombre>` | Crea un operador o repone su clave; requiere `dist/`. |
+| `npm run smoke` | Levanta el stack completo con Docker y recorre los escenarios de punta a punta; lo baja al terminar. Necesita Docker y un `.env`. |
+| `npm test` | Toda la suite (`tsx --test`). Los tests con base real se omiten si no hay Postgres alcanzable. |
+| `npm run test:db` | Corre la suite contra su propia base, `zerodashboard_test`, que crea y migra; se niega a usar la de desarrollo. Requiere `TEST_DB_PASSWORD`; usa `TEST_DB_HOST`, `TEST_DB_PORT` (5432), `TEST_DB_USER` (`zerodashboard`) y `TEST_DB_NAME`. |
+| `npm run build:agente` | Compila el agente que corre en la red del cliente. |
+
+`db` no publica puerto, así que `test:db` desde el host necesita publicarlo con un `docker-compose.override.yml` local.
+
+## Conexión por agente
+
+El agente corre junto a la réplica del cliente y abre la conexión hacia la aplicación. Se levanta con `docker-compose.agente.yml` y `.env.agente.example`; el paso a paso está en [Alta de tenant y conexión](docs/guia/02-alta-de-tenant-y-conexion.md).
+
+## Documentación
+
+| Documento | Contenido |
+|---|---|
+| [`docs/guia/`](docs/guia/README.md) | Guías de uso: de la puesta en marcha al diagnóstico. |
+| `docs/00-contexto.md` | Qué es el proyecto, usuarios, arquitectura y reglas no negociables. |
+| `docs/01-decisiones.md` | Decisiones de arquitectura (DEC-NN) y compuertas. |
+| `docs/02-mapa-de-changes.md` | Secuencia de trabajo y estado de cada change. |
+| `AGENTS.md` | Reglas para quien modifique el repositorio. |
