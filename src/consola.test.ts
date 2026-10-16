@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { cronValido } from './automatizaciones.js';
-import { registerConsolaRoute } from './consola.js';
+import { jsonEnScript, registerConsolaRoute } from './consola.js';
 import { CONTRATO_CANONICO } from './contrato.js';
+import { EJEMPLOS_MAPEO } from './mapeo-ejemplos.js';
 import { asuntoCorreo, componerCorreo } from './correo.js';
 import { RUTAS_ESTILOS } from './estilos-rutas.js';
 import { evaluarVistas } from './plantillas.js';
@@ -216,6 +217,8 @@ const IDS = [
   'mapeo-conexion',
   'mapeo-validar',
   'mapeo-aviso',
+  // CH-34 (DEC-176): the collapsible «Cómo mapear» guide above the entities.
+  'mapeo-guia',
   'mapeo-entidades',
   'mapeo-automatizaciones',
   'pantalla-consultas',
@@ -4025,6 +4028,74 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     assert.match(bloqueEntidad(escenario, 'producto').textContent, /Válida/);
     assert.equal(editorDe(bloqueEntidad(escenario, 'producto')).value, 'SELECT 2 AS id');
+  });
+
+  // ---- CH-34 (DEC-176): the «Cómo mapear» guide and an example SELECT per entity -----------
+
+  test('CH-34 the guide is static markup, closed, above the entities', () => {
+    const html = marcado();
+    assert.ok(html.indexOf('id="mapeo-aviso"') < html.indexOf('id="mapeo-guia"'));
+    assert.ok(html.indexOf('id="mapeo-guia"') < html.indexOf('id="mapeo-entidades"'));
+    const guia = html.match(/<details id="mapeo-guia"[^>]*>[\s\S]*?<\/details>/)?.[0] ?? '';
+    assert.ok(guia.length > 0, 'the guide is a details element');
+    assert.ok(!/\bopen\b/.test(guia.match(/^<details[^>]*>/)?.[0] ?? ''), 'closed by default');
+    assert.match(guia, /<summary>Cómo mapear<\/summary>/);
+    assert.equal((guia.match(/<li>/g) ?? []).length, 5, 'five steps');
+    assert.match(guia, /entidades opcionales pueden quedar sin mapear/);
+  });
+
+  test('CH-34 «Usar de punto de partida» copies the example into the empty insumo editor and sends nothing', async () => {
+    const escenario = await abrirMapeo();
+    const insumo = bloqueEntidad(escenario, 'insumo');
+    assert.equal(editorDe(insumo).value, '');
+    const antes = escenario.peticiones.length;
+    botonesCon(insumo, 'Usar de punto de partida')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(editorDe(insumo).value, EJEMPLOS_MAPEO.insumo);
+    assert.equal(escenario.peticiones.length, antes, 'no request');
+    assert.match(insumo.textContent, /Sin mapear/, 'the state is untouched');
+    assert.match(nodo(escenario, 'mapeo-aviso').textContent, /Se copió el ejemplo de insumo/);
+  });
+
+  test('CH-34 the example never overwrites SQL: producto stays as it was and the notice says so', async () => {
+    const escenario = await abrirMapeo();
+    const producto = bloqueEntidad(escenario, 'producto');
+    const antes = escenario.peticiones.length;
+    botonesCon(producto, 'Usar de punto de partida')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(editorDe(producto).value, SQL_PRODUCTO);
+    assert.equal(escenario.peticiones.length, antes, 'no request');
+    assert.match(producto.textContent, /Inválida/, 'the state is untouched');
+    assert.match(nodo(escenario, 'mapeo-aviso').textContent, /El editor de producto ya tiene SQL/);
+    // Whitespace alone counts as empty.
+    editorDe(producto).value = ' \n\t ';
+    botonesCon(producto, 'Usar de punto de partida')[0].disparar('click');
+    assert.equal(editorDe(producto).value, EJEMPLOS_MAPEO.producto);
+  });
+
+  test('CH-34 every entity block renders its example as text under a details element', async () => {
+    const escenario = await abrirMapeo();
+    for (const entidad of ENTIDADES_CONTRATO) {
+      const bloque = bloqueEntidad(escenario, entidad);
+      const detalle = buscar(bloque, (n) => n.tagName === 'details');
+      assert.equal(detalle.length, 1, entidad + ' has one example');
+      assert.match(detalle[0].hijos[0].textContent, /Ejemplo sobre la réplica de demo \(food_store\)/);
+      const pre = buscar(detalle[0], (n) => n.tagName === 'pre');
+      assert.equal(pre.length, 1);
+      assert.equal(pre[0].textContent, EJEMPLOS_MAPEO[entidad], 'verbatim, as textContent');
+      assert.equal(pre[0].hijos.length, 0, 'a text node holder only');
+    }
+  });
+
+  test('CH-34 jsonEnScript never emits "</" or a raw line separator, and round-trips the value', () => {
+    const valor = { a: '</script><!-- <b>', b: 'x\u2028y\u2029z', c: "'q' \"d\"\n" };
+    const salida = jsonEnScript(valor);
+    assert.ok(!salida.includes('</') && !salida.includes('<'), 'no "<" at all');
+    assert.ok(!salida.includes('\u2028') && !salida.includes('\u2029'));
+    assert.deepEqual(JSON.parse(salida), valor);
+    assert.ok(!jsonEnScript(EJEMPLOS_MAPEO).includes('</'));
+    assert.equal(script.split('</' + 'script').length - 1, 0, 'no closing tag inside the script');
+    assert.equal(documento.split('</' + 'script').length - 1, 1, 'the document has only its own closing tag');
   });
 
   // ---- CH-20 (DEC-161): the run names the loaded saved query while its text is unchanged ----

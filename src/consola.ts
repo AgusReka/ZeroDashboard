@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { OperadorAutenticado } from './consola-auth.js';
 import { escaparHtml } from './correo.js';
+import { EJEMPLOS_MAPEO } from './mapeo-ejemplos.js';
 
 /**
  * The whole console: one self-contained HTML document held as a constant.
@@ -30,8 +31,25 @@ import { escaparHtml } from './correo.js';
  *
  * CH-29 (DEC-154): the document is built per request because it names the operator in
  * the tenant bar. That name is stored data, so it is interpolated only through
- * `escaparHtml`; it is the one interpolation in the whole document.
+ * `escaparHtml`; it is the only interpolation of stored data in the whole document.
+ *
+ * CH-34 (DEC-176): the second interpolation is a compile-time constant, not stored data — the
+ * mapping examples (`EJEMPLOS_MAPEO`), written once into the script through `jsonEnScript`.
+ * They reach the page only as `textContent` and as an editor `value`, never as markup.
  */
+
+/**
+ * A constant as a JavaScript literal that is safe inside an inline script: `JSON.stringify`
+ * with `<` escaped (so no `</script>` can close the block) and the two line separators that
+ * end a statement in older engines escaped too.
+ */
+export function jsonEnScript(valor: unknown): string {
+  return JSON.stringify(valor)
+    .replace(/</g, '\\u003c')
+    .replaceAll(String.fromCharCode(0x2028), '\\u2028')
+    .replaceAll(String.fromCharCode(0x2029), '\\u2029');
+}
+
 function documentoConsola(nombreOperador: string): string {
   return `<!doctype html>
 <html lang="es">
@@ -154,6 +172,12 @@ function documentoConsola(nombreOperador: string): string {
   #mapeo-entidades { display: grid; gap: var(--space-6); }
   #mapeo-entidades textarea { width: 100%; min-height: 8rem; font-family: var(--font-mono); font-size: var(--text-sm); }
   #mapeo-entidades ul { margin: var(--space-3) 0 0; padding-inline-start: var(--space-6); }
+  /* CH-34 (DEC-176): the guide above the entities and each entity's example. */
+  #mapeo-guia { margin: 0 0 var(--space-6); }
+  #mapeo-guia summary { cursor: pointer; font-weight: 600; }
+  #mapeo-guia ol { margin: var(--space-3) 0; padding-inline-start: var(--space-6); }
+  #mapeo-entidades details { margin: var(--space-3) 0; }
+  #mapeo-entidades pre { margin: var(--space-3) 0; overflow-x: auto; font-family: var(--font-mono); font-size: var(--text-sm); }
 </style>
 </head>
 <body class="zd-root">
@@ -481,6 +505,18 @@ function documentoConsola(nombreOperador: string): string {
   <select id="mapeo-conexion" class="zd-select"></select>
 </div>
 <p id="mapeo-aviso" class="ayuda" role="status"></p>
+<!-- CH-34 (DEC-176): static, closed by default; the per-entity examples are built by the script. -->
+<details id="mapeo-guia" class="zd-card">
+  <summary>Cómo mapear</summary>
+  <ol>
+    <li>Elegí la conexión del tenant.</li>
+    <li>Por cada entidad, escribí un SELECT sobre la réplica del cliente que devuelva los campos del contrato con esos mismos nombres. Los que tienen mayúsculas van entre comillas dobles ("stockDisponible") y cada uno con el tipo del contrato.</li>
+    <li>Guardá cada entidad.</li>
+    <li>Validá el mapeo y revisá el resultado de cada campo; si el tipo no coincide, la pista dice qué casteo probar.</li>
+    <li>La tabla de automatizaciones dice cuáles quedan habilitadas y por qué.</li>
+  </ol>
+  <p class="ayuda">Las entidades opcionales pueden quedar sin mapear. Cada entidad trae un ejemplo sobre la réplica de demo.</p>
+</details>
 <div id="mapeo-entidades"></div>
 <h2 class="zd-h2">Automatizaciones</h2>
 <div class="zd-table-wrap zd-table-scroll">
@@ -4538,6 +4574,9 @@ var cuerpoAutomatizacionesMapeo = document.getElementById('mapeo-automatizacione
 var bloquesMapeo = {};
 var conexionMapeo = null;
 
+// CH-34 (DEC-176): one fixed example SELECT per entity, a constant written once by the server.
+var EJEMPLOS_MAPEO = ${jsonEnScript(EJEMPLOS_MAPEO)};
+
 var ESTADOS_ENTIDAD = { 'no-mapeada': 'Sin mapear', 'no-validado': 'Sin validar', valida: 'Válida', invalida: 'Inválida' };
 
 function textoDeEstado(estado) {
@@ -4582,6 +4621,20 @@ async function guardarVista(entidad) {
   }
 }
 
+// CH-34 (DEC-176): copies the entity's example into its editor only when the editor is empty.
+// It sends nothing and leaves the entity's state alone; it never overwrites the operator's SQL.
+function usarEjemplo(entidad) {
+  var bloque = bloquesMapeo[entidad];
+  if (bloque === undefined || typeof EJEMPLOS_MAPEO[entidad] !== 'string') { return; }
+  if (bloque.editor.value.trim() === '') {
+    bloque.editor.value = EJEMPLOS_MAPEO[entidad];
+    bloque.editor.focus();
+    avisoMapeo.textContent = 'Se copió el ejemplo de ' + entidad + '. Adaptalo a la réplica del cliente y guardalo.';
+  } else {
+    avisoMapeo.textContent = 'El editor de ' + entidad + ' ya tiene SQL. Vacialo para usar el ejemplo.';
+  }
+}
+
 // Builds the entity's block the first time and keeps it, so a repaint never loses an edit.
 function bloqueDeEntidad(fila) {
   var entidad = String(fila.entidad);
@@ -4596,6 +4649,18 @@ function bloqueDeEntidad(fila) {
     bloque.appendChild(titulo);
     bloque.appendChild(estado);
     bloque.appendChild(editor);
+    // The example is text (a pre) and the copy goes through usarEjemplo; plain elements, no classes.
+    if (typeof EJEMPLOS_MAPEO[entidad] === 'string') {
+      var ejemplo = document.createElement('details');
+      var rotuloEjemplo = document.createElement('summary');
+      rotuloEjemplo.textContent = 'Ejemplo sobre la réplica de demo (food_store)';
+      var sqlEjemplo = document.createElement('pre');
+      sqlEjemplo.textContent = EJEMPLOS_MAPEO[entidad];
+      ejemplo.appendChild(rotuloEjemplo);
+      ejemplo.appendChild(sqlEjemplo);
+      ejemplo.appendChild(botonTenant('Usar de punto de partida', function () { usarEjemplo(entidad); }));
+      bloque.appendChild(ejemplo);
+    }
     bloque.appendChild(botonTenant('Guardar', function () { guardarVista(entidad); }));
     bloque.appendChild(diagnostico);
     contenedorEntidades.appendChild(bloque);
