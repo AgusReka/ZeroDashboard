@@ -5,7 +5,7 @@
 2. Aparece el bloque X (motor), con planificación, historial y control de fallos.
 3. Se incorpora anti-alcance específico del motor, que es donde el proyecto puede desbordarse sin que se note.
 
-**Estado:** borrador. Cuatro compuertas siguen abiertas.
+**Estado:** vigente. La versión 1.0 cerró R0 a R3 (tag `v1.0.0`; copia congelada en `docs/versiones/v1/mapa-historias.md`). Las historias de §4 son el catálogo del producto: las de la v2 se agregan en su bloque, con el siguiente código libre.
 
 ---
 
@@ -159,6 +159,8 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 
 ## 5. Releases
 
+R0 a R3 forman la **versión 1.0** (cerrada, tag `v1.0.0`), salvo C2 y C3 (trabajo a futuro, DEC-179) y P4h (fuera de alcance, DEC-93).
+
 **R0 — Consola mínima, local, un cliente.** A1, A3, B1, B2, G2, G3.
 No depende de ninguna compuerta. Empezable hoy.
 
@@ -169,6 +171,8 @@ No depende de ninguna compuerta. Empezable hoy.
 Requiere D-1 y D-2 cerradas.
 
 **R3 — Refinamiento.** B4, F3, P4h.
+
+**R4 — Versión 2, en planificación.** Candidatos: C2, C3 y P4h, más las historias nuevas que se decidan. El orden y el alcance salen de `02-mapa-de-changes.md`.
 
 ---
 

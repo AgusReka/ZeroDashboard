@@ -29,5 +29,5 @@ Los lectores son quienes usan la consola, que corresponde al usuario P1 de `docs
 |---|---|
 | Levantar el entorno, scripts y pruebas | [`README.md`](../../README.md) |
 | Por qué algo es como es | `docs/01-decisiones.md` |
-| Estado del trabajo y trabajo a futuro | `docs/02-mapa-de-changes.md` |
+| Estado del trabajo y trabajo a futuro | `docs/02-mapa-de-changes.md` (versión en curso) y `docs/versiones/` (versiones cerradas) |
 | Reglas del proyecto para quien lo modifica | [`AGENTS.md`](../../AGENTS.md) |
