@@ -91,4 +91,5 @@ Este repositorio es el artefacto de un trabajo final. Eso impone dos requisitos 
 | `01-decisiones.md` | Decisiones tomadas y compuertas abiertas | Media, crece |
 | `02-mapa-de-changes.md` | Secuencia de trabajo | Baja, se reordena |
 | `mapa-historias.md` | Historias de usuario completas | Media |
+| `versiones/` | Mapas congelados de cada versión cerrada | Nula, no se editan |
 | `bitacora/` | Registro fechado de desarrollo | Crece |

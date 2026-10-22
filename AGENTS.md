@@ -12,6 +12,7 @@ Este archivo no reemplaza la documentación del proyecto: la referencia. No resu
 | `docs/01-decisiones.md` | Decisiones de arquitectura tomadas y compuertas abiertas |
 | `docs/02-mapa-de-changes.md` | Secuencia de trabajo del proyecto, un change a la vez |
 | `docs/mapa-historias.md` | Historias de usuario completas, agrupadas por bloque y release |
+| `docs/versiones/` | Mapas congelados de cada versión cerrada; no se editan |
 
 ## Reglas no negociables
 
