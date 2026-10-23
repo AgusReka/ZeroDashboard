@@ -3590,6 +3590,108 @@ Cómo se obtiene el `chat_id` del destinatario:
 
 ---
 
+### DEC-187 — N6: varias direcciones por automatización, en un solo mensaje
+
+**Contexto.**
+- La automatización guarda una única dirección (DEC-82). DEC-130 y DEC-140 dejaron la lista de destinatarios como límite del artefacto, y la pantalla P-04 del panel edita un solo destinatario.
+- N6 (R4) pide que un aviso le llegue a más de una persona.
+- El límite se había fijado para no ampliar el motor (regla 6). Pero un mensaje a varias direcciones sigue siendo una notificación por ejecución: no cambia el patrón ni el control de X6.
+
+**Opciones.**
+
+Dónde vive la lista:
+- (a) En la automatización: `destinatarios`, una lista de direcciones validadas con un tope fijo en el código, que reemplaza a `destinatario` con una migración que conserva el valor existente.
+- (b) En el tenant: una lista de distribución que comparten todas sus automatizaciones.
+- (c) Mantener una sola dirección y el límite de DEC-130.
+
+Cómo se envía:
+- (i) Un solo mensaje con todas las direcciones en «Para».
+- (ii) Un solo mensaje con las direcciones en copia oculta.
+- (iii) Un mensaje por dirección.
+
+**Decisión.** (a), con (i) y un tope de 5.
+- **Por qué (a) con (i).** Cada aviso puede ir a gente distinta (stock a depósito, ventas a la dueña), y P-04 ya edita el destinatario por automatización. Con (i) se mantiene un mensaje por ejecución y un solo resultado de envío. Los destinatarios son del mismo negocio, así que verse entre ellos no expone a terceros.
+- (iii) contradice «una ejecución produce una notificación».
+
+**Forma.**
+- Cada dirección se valida con `direccionValida`, se recorta y se deduplica. Una lista vacía se registra como `sin-destinatario`, como hoy.
+- El alta de la consola y P-04 del panel editan la lista.
+- El resultado del envío no cambia: si el servidor SMTP acepta el mensaje, es `enviada`. Un rechazo de todas las direcciones es `fallo-envio` con la categoría de DEC-83.
+- Telegram no cambia: sigue siendo un chat vinculado por tenant (DEC-185).
+
+**Se resigna.**
+- Una dirección rechazada entre varias aceptadas no queda registrada por separado.
+- La migración toca una columna en uso por el motor y por el panel.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-188 — N7: la plantilla puede declarar el texto del mensaje con las columnas del resultado
+
+**Contexto.**
+- El renderizador genérico de DEC-85 arma una tabla con todas las columnas que devuelve la consulta. Las columnas y sus nombres ya se eligen en el `SELECT`, con alias.
+- Esa tabla funciona en el correo pero no en Telegram (DEC-185), que no muestra tablas. Y el cliente lee mejor una frase por fila que una grilla («Harina 000: quedan 3 unidades»).
+- N7 (R4) pide que el mensaje muestre los datos que importan del resultado, con un mensaje por ejecución y no uno por fila.
+
+**Opciones.**
+- (a) Sin cambios: la tabla de todas las columnas, y la selección se hace en el `SELECT`.
+- (b) Dos textos opcionales en la plantilla: un encabezado y una línea por fila con marcadores `{columna}`. Los marcadores se reemplazan por el valor de la celda (`textoDeCelda`), escapado según el canal. Sin los dos textos, se usa la tabla de hoy.
+- (c) Un lenguaje de plantillas completo: condiciones, formatos de número y fecha, bucles.
+
+**Decisión.** (b).
+- **Por qué (b).** Es lo mínimo que hace legible un aviso en Telegram y en el correo, y deja el contenido en manos de P1 sin tocar el motor. Los marcadores solo sustituyen valores, y la repetición por fila es siempre la misma, así que no hay expresiones.
+- (c) es un lenguaje dentro de la notificación, que es el tipo de crecimiento que el anti-alcance busca evitar.
+
+**Forma.**
+- Hay dos campos opcionales en `Plantilla`, con una migración que se puede sumar a la de DEC-182.
+- Al guardar, un marcador que no aparece entre las columnas de la última prueba de la plantilla se rechaza con su nombre.
+- En la ejecución, si falta una columna, el mensaje usa la tabla de hoy y la ejecución lo registra, en lugar de mandar un texto con huecos.
+- El corte por cantidad de filas y el aviso de corte siguen como en el correo (N2).
+
+**Se resigna.**
+- No hay formatos por columna (moneda, fecha): el valor se muestra como lo devuelve la consulta, y el formato se resuelve en el SQL.
+- Hay un tipo nuevo de error de plantilla, el de los marcadores, que hay que mostrar en la pantalla de DEC-182.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-189 — X10: vista previa del mensaje en la consola, sin envío manual
+
+**Contexto.**
+- Hoy una automatización solo corre en su horario: no hay ruta de ejecución manual. El anti-alcance del motor dice «todo es programado».
+- Ya existe la prueba de plantilla (`POST /plantillas/:id/prueba`, DEC-62): ejecuta la consulta contra una conexión, devuelve las filas y queda en la auditoría (`registrarEjecucion`).
+- X10 (R4) pide ver qué mensaje saldría sin esperar al horario. Para el video, además, se quiere mostrar el aviso llegando.
+
+**Opciones.**
+- (a) Vista previa en la consola: ejecuta la consulta de la automatización con su conexión y sus valores, y muestra las filas y el mensaje armado de su canal. No envía nada, no crea una `Ejecucion` y queda en la auditoría como la prueba de plantilla.
+- (b) La vista previa más un botón «Enviar ahora», que dispara la ejecución completa por el mismo camino del planificador y la registra con origen `manual`.
+- (c) Nada: para ver un aviso hay que esperar al horario.
+
+**Decisión.** (a).
+- **Por qué (a).** Da todo lo que X10 pide sin agregar un disparador. Para el video alcanza con una automatización de demo con horario de cada minuto (`* * * * *`), y el aviso llega por el camino real.
+- (b) no es un webhook, pero es un segundo origen de ejecuciones. Exige reescribir el motivo del anti-alcance («todo es programado») y revisar el control de solapamiento (X4) y el de duplicados (X6) para el disparo manual.
+
+**Forma.**
+- La vista previa vive en el detalle de la automatización, en la consola. El panel no la tiene (regla 1: P2 no ejecuta consultas a pedido).
+- Reutiliza `componerSentencia`, la ejecución de solo lectura y los mismos renderizadores del correo y de Telegram, y aplica `minimoFilas` (DEC-186) para mostrar si el aviso saldría.
+- El mensaje se muestra como texto o HTML en un marco aislado, armado con los mismos escapes que el envío real.
+
+**Se resigna.**
+- La vista previa carga la réplica del cliente cada vez que se usa, como la prueba de plantilla.
+- Ver un envío real sigue dependiendo del horario.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
