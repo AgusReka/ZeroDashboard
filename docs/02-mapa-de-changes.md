@@ -8,17 +8,17 @@ La versión 1.0 está cerrada: tag `v1.0.0`. Su mapa, con CH-01 a CH-35 y la sec
 
 ---
 
-## Cómo usar esto
-
-**Una especificación por change, no una por release.** El mapa de historias completo no se pasa como entrada de una sola spec: produce un plan inabarcable y código que no se alcanza a revisar.
-
-**Criterio de tamaño.** Un change debería poder revisarse entero en una sentada. Si al leer el plan generado no podés seguir qué hace cada parte, el change es demasiado grande y hay que partirlo.
-
-**Antes de cada change:** verificar que las decisiones que toca ya estén en `01-decisiones.md`. Si aparece una decisión de arquitectura no registrada, se frena y se registra primero.
-
+## Cómo usar esto
+
+**Una especificación por change, no una por release.** El mapa de historias completo no se pasa como entrada de una sola spec: produce un plan inabarcable y código que no se alcanza a revisar.
+
+**Criterio de tamaño.** Un change debería poder revisarse entero en una sentada. Si al leer el plan generado no podés seguir qué hace cada parte, el change es demasiado grande y hay que partirlo.
+
+**Antes de cada change:** verificar que las decisiones que toca ya estén en `01-decisiones.md`. Si aparece una decisión de arquitectura no registrada, se frena y se registra primero.
+
 **Después de cada change:** entrada en la bitácora con fecha, fricciones encontradas y tiempo invertido.
 
-**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-36 y la próxima decisión, DEC-181. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
+**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-37 y la próxima decisión, DEC-182. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
 
 ---
 
@@ -40,7 +40,7 @@ Todavía no tiene alcance decidido. Un candidato pasa a la tabla de changes reci
 
 | ID | Change | Historias |
 |---|---|---|
-| — | Todavía no hay. | — |
+| CH-36 | Reorganización de `src/` en carpetas por dominio, sin cambiar el comportamiento (DEC-181) | — |
 
 ---
 

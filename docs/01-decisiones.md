@@ -3346,6 +3346,43 @@ Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_s
 
 ---
 
+### DEC-181 — CH-36: `src/` se organiza en carpetas por dominio, sin cambiar el comportamiento
+
+**Contexto.** Al cerrar la v1, `src/` tiene 133 archivos en una sola carpeta (unas 47.000 líneas con los tests). Los prefijos ya agrupan por funcionalidad (`consultas-*`, `panel-*`, `agente-*`), pero la estructura no lo muestra, y la v2 suma dominios nuevos (reportes, canales). La exploración del 2026-10-23 midió unas 410 líneas de `import` a reescribir en unos 100 archivos. Los imports son relativos, con extensión `.js` y sin alias. Encontró además dos ciclos entre los grupos:
+- `agente` ↔ `conexiones`: `agentes-rutas` usa `camposInvalidos` de `conexiones.ts`, y `conexiones` usa `SIN_AGENTES` de `canal-agente`.
+- `panel` ↔ `usuarios`: este ciclo lo cierra solo un fixture de test, `usuarios-panel-apoyo.ts`.
+
+**Opciones.**
+- (a) Movimiento puro a carpetas de dominio. Los dos ciclos quedan documentados como deuda.
+- (b) Movimiento a carpetas de dominio, más la extracción de `camposInvalidos` a `compartido/` para cortar el ciclo `agente` ↔ `conexiones`.
+- (c) Carpetas gruesas por superficie (`consola/`, `panel/`, `motor/`, `nucleo/`, `agente/`). Hay menos imports cruzados, pero la estructura no nombra el dominio.
+- (d) Capas hexagonales (puertos, adaptadores, inyección de dependencias).
+
+**Decisión.** (b).
+- **Carpetas.** Hay una por dominio: `app/`, `compartido/`, `aislamiento/`, `ejecucion/`, `consultas/`, `conexiones/`, `agente/`, `auditoria/`, `automatizaciones/`, `plantillas/`, `contrato/`, `mapeo/`, `panel/`, `consola/`, `usuarios/`, `tenants/` y `semillas/`. Un dominio nuevo de la v2 abre su propia carpeta.
+- **Asignación por contenido.** Cada archivo va a la carpeta de lo que hace, no a la de su prefijo. Por ejemplo, `consulta-ejecucion` y `parametros` van a `ejecucion/`, `tiempos-alta` va a `conexiones/` y `mapeo-ejemplos` va a `consola/`. Cada test queda junto al módulo que prueba.
+- **Lo que no se mueve.** Quedan donde están `src/server.ts`, `src/operador-alta.ts`, `src/generated/`, `src/agente-proceso/` y `src/agente-protocolo.ts`. Sus rutas compiladas las citan `package.json`, el `Dockerfile`, `docker-entrypoint.sh`, `scripts/smoke.sh`, el `README` y la frontera del agente (`frontera.test.ts`, `tsconfig.agente.json`).
+- **Único cambio de código.** `camposInvalidos` pasa a `compartido/`, sin cambiar su firma ni su comportamiento. El ciclo `panel` ↔ `usuarios`, que cierra solo el fixture, se deja documentado.
+- **Tests que dependen de la ruta.** Los tests que escanean la carpeta plana (`marcas-alta.test.ts` y `validacion-mapeo-rutas.test.ts`) pasan a escanear recursivamente. Si no, después del movimiento pasarían sin probar nada. Las rutas relativas a `public/ui` y a `scripts/` se ajustan a la nueva profundidad.
+
+**Por qué.**
+- La estructura nombra el dominio del producto. Un lector de la tesis, o un agente, encuentra el código de una historia sin conocer los prefijos.
+- Cortar el ciclo `agente` ↔ `conexiones` cuesta una función y deja las dependencias en una sola dirección.
+- (d) reescribe el sistema a semanas de la entrega sin sumar nada a la contribución.
+- (c) junta en `motor/` o `nucleo/` dominios que la v2 va a hacer crecer por separado.
+
+**Se resigna.**
+- No hay separación en capas dentro de cada dominio: rutas, reglas y acceso a datos siguen conviviendo en los mismos módulos. Queda como trabajo futuro.
+- `src/consola.ts` (unas 5.400 líneas de HTML y JS en un string) se mueve sin partirse.
+- `git blame` necesita `-C` o `--follow` para atravesar el movimiento.
+- Las menciones a `src/<archivo>.ts` en decisiones y specs anteriores quedan como registro histórico y no se reescriben. Se actualizan solo las referencias vivas: `openspec/config.yaml`, `prisma/seed.ts` y las guías de la skill de diseño.
+
+**Decidido por:** el usuario, 2026-10-23, durante la exploración de CH-36, eligiendo la opción recomendada. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
