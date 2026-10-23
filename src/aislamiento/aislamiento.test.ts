@@ -16,16 +16,16 @@ import {
   registrarContextoTenant,
 } from './contexto-tenant.js';
 import { registerConexionRoutes } from '../conexiones/conexiones.js';
-import { registerConsultaRoutes } from '../consultas.js';
-import { registerConsultaGuardadaRoutes } from '../consultas-guardadas.js';
-import { registerVistaCanonicaRoutes } from '../vistas-canonicas.js';
-import { registerValidacionMapeoRoutes } from '../validacion-mapeo-rutas.js';
-import { registerPlantillaPruebaRoute } from '../plantilla-prueba.js';
-import { registerAutomatizacionRoutes } from '../automatizaciones-rutas.js';
-import { crearPlanificador } from '../planificador.js';
+import { registerConsultaRoutes } from '../consultas/consultas.js';
+import { registerConsultaGuardadaRoutes } from '../consultas/consultas-guardadas.js';
+import { registerVistaCanonicaRoutes } from '../mapeo/vistas-canonicas.js';
+import { registerValidacionMapeoRoutes } from '../mapeo/validacion-mapeo-rutas.js';
+import { registerPlantillaPruebaRoute } from '../plantillas/plantilla-prueba.js';
+import { registerAutomatizacionRoutes } from '../automatizaciones/automatizaciones-rutas.js';
+import { crearPlanificador } from '../automatizaciones/planificador.js';
 import { cifrarCredencial } from '../compartido/cripto-credencial.js';
-import type { Correo } from '../correo.js';
-import type { Notificador } from '../notificador.js';
+import type { Correo } from '../automatizaciones/correo.js';
+import type { Notificador } from '../automatizaciones/notificador.js';
 
 /**
  * CH-06 tasks 3.2–3.6 — **T2**: "ninguna operación devuelve filas del otro", proven by

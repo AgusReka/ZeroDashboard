@@ -4,11 +4,11 @@ import { PrismaClient } from './generated/prisma/client.js';
 import { loadConfig } from './compartido/config.js';
 import { cargarEstilos } from './compartido/estilos-rutas.js';
 import { crearRegistroAgentes } from './agente/registro-agentes.js';
-import { registrarRutas } from './rutas.js';
+import { registrarRutas } from './app/rutas.js';
 import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
-import { crearPlanificador } from './planificador.js';
-import { crearNotificadorSmtp } from './notificador.js';
-import { registrarApagado } from './apagado.js';
+import { crearPlanificador } from './automatizaciones/planificador.js';
+import { crearNotificadorSmtp } from './automatizaciones/notificador.js';
+import { registrarApagado } from './app/apagado.js';
 
 const config = loadConfig();
 // CH-21a (DEC-124): the five shared stylesheet files are read once, here, before any

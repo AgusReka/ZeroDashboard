@@ -7,7 +7,7 @@ import { extenderConAislamiento } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { registerAuditoriaRoutes } from './auditoria.js';
 import { LIMITE_LISTADO } from '../compartido/listados.js';
-import { alcanzable, databaseUrl, motivoSkip } from '../consola-auth-apoyo.js';
+import { alcanzable, databaseUrl, motivoSkip } from '../consola/consola-auth-apoyo.js';
 
 process.env.APP_PORT ??= '3000';
 process.env.DATABASE_URL ??= databaseUrl;

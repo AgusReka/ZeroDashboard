@@ -7,7 +7,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { registerTenantRoutes } from './tenants.js';
-import { registerConsultaGuardadaRoutes } from '../consultas-guardadas.js';
+import { registerConsultaGuardadaRoutes } from '../consultas/consultas-guardadas.js';
 import { crearRegistroAgentes } from '../agente/registro-agentes.js';
 import { socketsVivos } from '../agente/registro-agentes-apoyo.js';
 
