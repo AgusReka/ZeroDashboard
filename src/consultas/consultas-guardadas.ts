@@ -289,7 +289,7 @@ export function registerConsultaGuardadaRoutes(
    * CH-25 (DEC-146, DEC-150): a full edit. The previous state is archived, the row takes the
    * new content and its `version` goes up, all in one interactive transaction, so a failure
    * midway leaves neither a gap in the history nor a half-updated row. The scoping holds
-   * inside the transaction (`src/aislamiento-versiones.test.ts`). The checks are the create
+   * inside the transaction (`src/aislamiento/aislamiento-versiones.test.ts`). The checks are the create
    * route's own (`validarCuerpoConsulta`), and an edit that changes nothing is a `409` that
    * writes nothing: a note alone never makes a version.
    */

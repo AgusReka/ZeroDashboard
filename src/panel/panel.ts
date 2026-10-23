@@ -13,12 +13,12 @@ import { levantarSesionPanel } from './panel-auth.js';
  * (`/ui/styles.css`) and page-local layout rules that use tokens only — nothing
  * console-specific lives in `public/ui/`, per the DEC-124 contract.
  *
- * The page is plain HTML + CSS + JS served as a string, like `src/consola.ts`: no
+ * The page is plain HTML + CSS + JS served as a string, like `src/consola/consola.ts`: no
  * static-file plugin, no build, no framework. Two properties of this module are
  * load-bearing and worth stating:
  *
  *  - **The tenant enters only from the session row (rule 2, DEC-135).** The header
- *    hooks exempt `GET /panel` by exact row (see `src/contexto-tenant.ts`) because
+ *    hooks exempt `GET /panel` by exact row (see `src/aislamiento/contexto-tenant.ts`) because
  *    the panel client never sends `X-Tenant-Id`; the handler resolves the tenant via
  *    `levantarSesionPanel(prisma, { opcional: true })`, which attaches
  *    `request.sesionPanel` (with `tenantNombre`) or serves the login screen. The page

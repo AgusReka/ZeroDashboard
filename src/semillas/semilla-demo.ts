@@ -66,7 +66,7 @@ const REPLICA = {
 /**
  * The saved query reads the real table, not a canonical view: saved queries run raw
  * against the replica (no view composition). `:umbral` is the CH-11 marker syntax of
- * `src/parametros.ts`; the `::numeric` cast lets a decimal threshold bind against the
+ * `src/ejecucion/parametros.ts`; the `::numeric` cast lets a decimal threshold bind against the
  * integer column, as the catalog's `stock-fisico` does.
  */
 const SQL_CONSULTA = `SELECT

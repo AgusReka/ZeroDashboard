@@ -18,7 +18,7 @@ process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzI
  * CH-28 shared setup for the live-database panel-user suites: an app with the tenant
  * hooks, the user routes and the panel login, so a test can create a user from the
  * "console" and log into the panel with the generated password in the same app. The
- * operator guard is left out on purpose: `src/rutas.test.ts` proves it covers these
+ * operator guard is left out on purpose: `src/app/rutas.test.ts` proves it covers these
  * routes. The logger writes to a buffer so a suite can assert a password never reached it.
  */
 export interface Montaje {

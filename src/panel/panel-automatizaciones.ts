@@ -20,7 +20,7 @@ export interface CopyNegocio {
 
 /**
  * Business wording keyed by the template's `automatizacion` slug (DEC-128), the `TEMAS`
- * precedent of `src/correo.ts`. A `Map` lookup, so a slug such as `constructor` never
+ * precedent of `src/automatizaciones/correo.ts`. A `Map` lookup, so a slug such as `constructor` never
  * reaches `Object.prototype`. Insertion order is the order of `disponibles`.
  */
 export const COPY_NEGOCIO: ReadonlyMap<string, CopyNegocio> = new Map([

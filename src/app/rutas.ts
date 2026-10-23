@@ -38,7 +38,7 @@ export interface DependenciasRutas {
  * CH-29 (DEC-152): the whole route table of the application, moved out of
  * `src/server.ts` unchanged in order so a test can build the real app and prove every
  * registered route is either guarded by the operator guard or in its closed exemption
- * list (`src/rutas.test.ts`). `src/server.ts` keeps configuration, clients, the
+ * list (`src/app/rutas.test.ts`). `src/server.ts` keeps configuration, clients, the
  * scheduler, shutdown and `listen`; nothing here opens a connection or a port.
  */
 export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): void {
@@ -47,7 +47,7 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-29 (DEC-152): the operator guard comes FIRST, ahead even of the tenant hooks below,
   // so a request without a console session is a 401 before the tenant header is read. It
   // cannot be turned off; the only ways past it are a valid session or an exact row of
-  // `EXENCIONES_OPERADOR` in `src/consola-auth.ts`.
+  // `EXENCIONES_OPERADOR` in `src/consola/consola-auth.ts`.
   registrarGuardOperador(app, prisma);
 
   // FIRST, before every `register*Routes` below. Fastify runs same-name hooks in
@@ -99,7 +99,7 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-22a (DEC-136): the client panel's own authentication surface, exempt from the
   // `X-Tenant-Id` header hooks by `RUTAS_PANEL_PUBLICAS` — the panel derives the tenant
   // exclusively from the session cookie (DEC-135), with the audited unscoped lookups in
-  // `src/aislamiento-prisma.ts`.
+  // `src/aislamiento/aislamiento-prisma.ts`.
   registerPanelAuthRoutes(app, prisma);
   // CH-22b (DEC-137): the panel's read-only "mis automatizaciones", session-guarded and exempt
   // by one exact row in `RUTAS_PANEL_PUBLICAS`. The clock stays at its default.
@@ -108,7 +108,7 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-22a PR3: `GET /panel` serves the P-01 login screen without a session or the panel
   // shell with the tenant name once `levantarSesionPanel` resolves one (DEC-135). The page
   // route is exempt from the `X-Tenant-Id` header hooks by exact GET row in
-  // `src/contexto-tenant.ts`, not by `RUTAS_PANEL_PUBLICAS`.
+  // `src/aislamiento/contexto-tenant.ts`, not by `RUTAS_PANEL_PUBLICAS`.
   registerPanelRoutes(app, prisma);
   // CH-29 (DEC-151): the console's login and logout; the login is exempt from the guard,
   // the logout is not.

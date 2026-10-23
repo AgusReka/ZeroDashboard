@@ -350,7 +350,7 @@ echo "-- data-modifying CTE (Data-Modifying Statements Are Rejected) --"
 # mean "this statement is not a read", so the classifier maps both to no-es-lectura
 # and the operator gets one legible reason either way. The rejection is engine-
 # enforced and nothing is written, which is what the row count below proves. See
-# the note on the matching case in src/consultas.test.ts.
+# the note on the matching case in src/consultas/consultas.test.ts.
 antes=$(contar_articulos)
 ejecutar_ch04 "$id_lector" \
   "WITH x AS (DELETE FROM ch04_smoke.articulo RETURNING *) SELECT * FROM x" \

@@ -2,11 +2,11 @@
  * The two credential-safety sanitizers shared by every phase that classifies a
  * raw PostgreSQL driver error.
  *
- * They were CH-03's module-private helpers in `src/db-probe.ts` and were **moved**
+ * They were CH-03's module-private helpers in `src/ejecucion/db-probe.ts` and were **moved**
  * here verbatim — not copied — when CH-04 added a second classifier
  * (`classifyExecutionError`). One definition means one place where the rule
  * "only `error.code`, and only when it has a known machine shape" can be read,
- * reviewed, or broken. `src/db-probe.test.ts` passes unchanged across the move
+ * reviewed, or broken. `src/ejecucion/db-probe.test.ts` passes unchanged across the move
  * and is the regression guard for it.
  */
 

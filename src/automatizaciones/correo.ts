@@ -2,8 +2,8 @@
  * CH-14: the pure half of the email notification (N1, N2). Two things live here and
  * nothing else: whether a string is one header-safe recipient address (DEC-82), and how a
  * run's columns and rows become a subject, an HTML part and a text part (DEC-84, DEC-85).
- * No Fastify, no Prisma, no pg, no nodemailer: `src/notificador.ts` owns the transport and
- * `src/planificador.ts` decides whether to call it.
+ * No Fastify, no Prisma, no pg, no nodemailer: `src/automatizaciones/notificador.ts` owns the transport and
+ * `src/automatizaciones/planificador.ts` decides whether to call it.
  */
 
 // ---- recipient validation (DEC-82) ---------------------------------------------------

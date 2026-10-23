@@ -50,7 +50,7 @@ app.addHook('onClose', async () => {
 });
 
 // CH-29 (DEC-152): the operator guard, the tenant hooks and every route, in their
-// load-bearing order, live in `src/rutas.ts` so a test can build the same route table.
+// load-bearing order, live in `src/app/rutas.ts` so a test can build the same route table.
 registrarRutas(app, { prisma, registro, estilos, zonaHoraria: config.zonaHoraria });
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops

@@ -35,7 +35,7 @@
 --   docker exec -i -e PGOPTIONS="-c default_transaction_read_only=on" zerodashboard-db-1 psql -X -v ON_ERROR_STOP=1 -P pager=off -U zerodashboard -d zerodashboard < scripts/marcas-alta.sql
 --
 -- El archivo es una sola sentencia SELECT, sin marcadores de parámetro ni comandos de
--- psql, para que el test (src/marcas-alta.test.ts) la ejecute sin modificarla.
+-- psql, para que el test (src/conexiones/marcas-alta.test.ts) la ejecute sin modificarla.
 
 WITH vistas AS (
   SELECT "conexionId"          AS conexion_id,

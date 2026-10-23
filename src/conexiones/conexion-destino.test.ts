@@ -40,7 +40,7 @@ describe('camposDeDestino — the channel is threaded without inspection', () =>
  * legibly instead of being dialled.
  *
  * Same target and same skip contract as the other integration suites; see
- * `src/conexiones.test.ts`'s header for the TEST_DB_* variables.
+ * `src/conexiones/conexiones.test.ts`'s header for the TEST_DB_* variables.
  */
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -81,7 +81,7 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
-  "bring up the Compose db service and set TEST_DB_* (see src/conexiones.test.ts's header)";
+  "bring up the Compose db service and set TEST_DB_* (see src/conexiones/conexiones.test.ts's header)";
 
 describe(
   'destinoDeConexion — the single credential-bearing read',

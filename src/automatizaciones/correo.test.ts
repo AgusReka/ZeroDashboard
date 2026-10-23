@@ -10,7 +10,7 @@ import {
 
 /**
  * Unit cases for CH-14 Phase 2: the pure email renderer (N1, N2; DEC-84, DEC-85) and the
- * recipient check (DEC-82). No network, no database, no nodemailer: `src/correo.ts` only
+ * recipient check (DEC-82). No network, no database, no nodemailer: `src/automatizaciones/correo.ts` only
  * turns a run's columns and rows into text, and says whether a string is one address.
  */
 

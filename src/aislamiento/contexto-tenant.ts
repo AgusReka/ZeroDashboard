@@ -9,7 +9,7 @@ import { RUTAS_ESTILOS } from '../compartido/estilos-rutas.js';
  *
  * This is the first request-context mechanism in the project. It exists so route
  * handlers stop mentioning tenants at all: the tenant enters through one header, is
- * validated once, and is read back by `src/aislamiento-prisma.ts` on every query
+ * validated once, and is read back by `src/aislamiento/aislamiento-prisma.ts` on every query
  * against a scoped model. Nothing else is allowed to resolve a tenant.
  *
  * `node:async_hooks` is built into Node, so this adds no dependency.
@@ -71,7 +71,7 @@ export function exigirTenantActivo(): TenantActivo {
  *
  * Production has exactly two entries into a tenant context: the request hooks below,
  * and — since CH-13 (design-level resolution under DEC-13/DEC-14) — the scheduler in
- * `src/planificador.ts`, which has no request to read a header from. The scheduler
+ * `src/automatizaciones/planificador.ts`, which has no request to read a header from. The scheduler
  * derives `tenant` only from own-database `Tenant` rows with `activo = true`, never from
  * any externally supplied value (regla 2), and runs one tenant's automations per
  * context. Its boot sweep (CH-17a, DEC-99) also enters deactivated tenants, from the same
@@ -100,7 +100,7 @@ export function conTenantActivo<T>(tenant: TenantActivo, fn: () => Promise<T>): 
  * `/contrato` joins the list under DEC-24. The canonical contract is not tenant data at
  * all: it is a static catalog, identical for every tenant, and tenant-agnostic by
  * construction rather than by filtering. Its handler holds no Prisma client — the
- * registrar in `src/contrato-rutas.ts` takes the app and nothing else — so the route has
+ * registrar in `src/contrato/contrato-rutas.ts` takes the app and nothing else — so the route has
  * no scoped model it could leak even if a later edit tried to reach for one. That
  * structural absence, not a promise about the handler's body, is what makes exempting it
  * safe.
@@ -115,7 +115,7 @@ export function conTenantActivo<T>(tenant: TenantActivo, fn: () => Promise<T>): 
  * is replaced in place and never deleted (DEC-68).
  *
  * The shared stylesheet joins under DEC-124 with five exact `GET` rows, one per file,
- * built from `RUTAS_ESTILOS`: the same list `src/estilos-rutas.ts` registers the routes
+ * built from `RUTAS_ESTILOS`: the same list `src/compartido/estilos-rutas.ts` registers the routes
  * from, so a route and its row cannot diverge and a new file inherits nothing. The assets
  * are identical for every tenant and their registrar receives no database client, the
  * DEC-24 argument again. There is no `/ui/` prefix row and no `HEAD` row: an unlisted
@@ -130,11 +130,11 @@ const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
 
 /**
  * The panel surface (CH-22a, DEC-135): exact rows, one per public endpoint of
- * `src/panel-auth.ts`, plus the read of CH-22b (DEC-137). The panel never resolves a tenant from the request — the login
+ * `src/panel/panel-auth.ts`, plus the read of CH-22b (DEC-137). The panel never resolves a tenant from the request — the login
  * reads the user by email before any tenant exists, and every authenticated route
  * derives the tenant exclusively from the session cookie (rule 2). These rows exist
  * so the header hooks above do not demand an `X-Tenant-Id` that the panel client has
- * no business sending; the session hook in `src/panel-auth.ts` is the only tenant
+ * no business sending; the session hook in `src/panel/panel-auth.ts` is the only tenant
  * resolution the surface trusts. Rows are exact like every other entry here: a
  * look-alike path or a different method stays scoped and fails closed.
  *
@@ -151,7 +151,7 @@ export const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The stylesheet rows (DEC-124 A3). Exported only so `src/estilos-rutas.test.ts` can
+ * The stylesheet rows (DEC-124 A3). Exported only so `src/compartido/estilos-rutas.test.ts` can
  * assert they equal the registered routes exactly; nothing else reads it.
  */
 export const ESTILOS_EXENTOS: ReadonlySet<string> = new Set(

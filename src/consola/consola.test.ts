@@ -2614,7 +2614,7 @@ describe('the console document, served by the real route', () => {
     return (cuerpo?.hijos ?? []).map((fila) => fila.hijos.map((celda) => celda.textContent));
   }
 
-  /** The same vectors as `src/frescura.test.ts`: window, tolerance, label shown. */
+  /** The same vectors as `src/tenants/frescura.test.ts`: window, tolerance, label shown. */
   const VECTORES_FRESCURA: Array<[number | null, number, string]> = [
     [null, 60, 'Sin declarar'],
     [0, 0, 'Al día'],

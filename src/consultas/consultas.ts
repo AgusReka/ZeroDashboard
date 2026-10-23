@@ -145,7 +145,7 @@ export function registerConsultaRoutes(
 
       if (ejecucion.resultado === 'fallo') {
         // Sanitized summary only. The `app.log.error(error, …)` form used by
-        // src/health.ts would serialize the driver error, which carries the
+        // src/app/health.ts would serialize the driver error, which carries the
         // plaintext password in `connectionParameters`.
         app.log.warn(
           {

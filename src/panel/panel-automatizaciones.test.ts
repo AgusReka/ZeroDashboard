@@ -347,7 +347,7 @@ describe('glosario — no technical term reaches the client copy', () => {
 
 // ---- 2.x route against a live PostgreSQL target (CH-22b PR2) -------------------------
 
-/** Same target and variables as `src/panel-auth.test.ts` (see `src/aislamiento.test.ts`). */
+/** Same target and variables as `src/panel/panel-auth.test.ts` (see `src/aislamiento/aislamiento.test.ts`). */
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
   port: Number(process.env.TEST_DB_PORT ?? '5432'),
@@ -376,7 +376,7 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
-  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento.test.ts)';
+  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento/aislamiento.test.ts)';
 
 interface CuerpoAutomatizaciones {
   activas: Array<Record<string, unknown> & { titulo: string; estado: string }>;

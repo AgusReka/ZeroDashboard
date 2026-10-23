@@ -14,8 +14,8 @@ import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 /**
  * Integration cases for CH-09 (tasks 2.1–2.11). Like CH-05's saved queries, this module
  * is routes plus Prisma with no pure classifier to isolate, so the meaningful coverage
- * is `app.inject()` against a real database — the convention `src/conexiones.test.ts`
- * established and `src/consultas-guardadas.test.ts` follows.
+ * is `app.inject()` against a real database — the convention `src/conexiones/conexiones.test.ts`
+ * established and `src/consultas/consultas-guardadas.test.ts` follows.
  *
  * The target is the project's own Compose `db` service. `docker-compose.yml` does not
  * publish its port, so either publish it with a local override or point these
@@ -111,7 +111,7 @@ describe('vistas canonicas — static guarantees', () => {
     for (const prohibido of ['destinoDeConexion', 'probeConnection', 'ejecutarConsulta', 'credencial']) {
       assert.ok(
         !fuente.includes(prohibido),
-        `src/vistas-canonicas.ts must not reference ${prohibido}`,
+        `src/mapeo/vistas-canonicas.ts must not reference ${prohibido}`,
       );
     }
   });
