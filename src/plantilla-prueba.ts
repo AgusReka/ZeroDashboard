@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { registrarEjecucion, veredictoDeEjecucion } from './auditoria.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { loadConfig } from './config.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
 import { ejecutarConsulta } from './consulta-ejecucion.js';

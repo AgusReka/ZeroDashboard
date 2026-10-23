@@ -3,7 +3,7 @@ import { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
 import { cronValido, proximaEjecucion } from './automatizaciones.js';
 import { destinatarioDe } from './automatizaciones-rutas.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import { conTenantActivo } from './contexto-tenant.js';
 import { sanearSql } from './consulta-ejecucion.js';
 import { direccionValida } from './correo.js';

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registrarEjecucion, veredictoDeSondeo } from './auditoria.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
 import { destinoDeConexion } from './conexion-destino.js';
 import { sentenciaDeSondeo, sondearEstructura } from './consulta-ejecucion.js';
