@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { conTenantActivo } from './contexto-tenant.js';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
 import { generarTokenSesion, hashTokenSesion, verificarClave } from './crypto-auth.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import { leerCookie } from './cookies.js';
 import { normalizarCorreo } from './usuarios-panel.js';
 

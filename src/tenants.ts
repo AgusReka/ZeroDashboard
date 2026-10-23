@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from './aislamiento-prisma.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import { resolverFrescura, type CuerpoFrescura } from './frescura.js';
 import type { RegistroAgentes } from './registro-agentes.js';
 
