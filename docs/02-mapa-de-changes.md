@@ -86,6 +86,5 @@ No son changes, pero condicionan la entrega.
   - Falla provocada y aislamiento entre tenants.
 
   Los datos salen de CH-49.
-- [ ] Entrada de CH-36 en la bitácora.
 
 Se quitaron de esta lista, por estar resueltos en la v1: cerrar D-3 (DEC-05), escribir el modelo de datos (CH-02) y verificar los candidatos de D-5 (DEC-26).
