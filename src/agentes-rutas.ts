@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
 import { generarTokenAgente, hashTokenAgente } from './agente-token.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import type { RegistroAgentes } from './registro-agentes.js';
 
 /**

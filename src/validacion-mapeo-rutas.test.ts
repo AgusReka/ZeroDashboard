@@ -158,10 +158,12 @@ describe('validacion de mapeo — static guarantees', () => {
    * reach it — whatever its handler does at runtime.
    */
   test('only src/validacion-mapeo-rutas.ts calls sondearEstructura', async () => {
+    // Scans src/ recursively (generated code excluded), so a module in any domain folder counts.
     const directorio = new URL('./', import.meta.url);
     const llamadores: string[] = [];
-    for (const nombre of await readdir(directorio)) {
-      if (!nombre.endsWith('.ts') || nombre.endsWith('.test.ts')) {
+    for (const entrada of await readdir(directorio, { recursive: true })) {
+      const nombre = entrada.replaceAll('\\', '/');
+      if (!nombre.endsWith('.ts') || nombre.endsWith('.test.ts') || nombre.startsWith('generated/')) {
         continue;
       }
       const fuente = await readFile(new URL(nombre, directorio), 'utf8');

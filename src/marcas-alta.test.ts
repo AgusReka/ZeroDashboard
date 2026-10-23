@@ -115,10 +115,12 @@ const motivoSkip: string | false = alcanzable
 
 describe('marcas del alta — static guarantees', () => {
   test('no application module in src/ references the script (no route exposure)', async () => {
+    // Scans src/ recursively (generated code excluded), so a module in any domain folder counts.
     const directorio = new URL('./', import.meta.url);
     const referencias: string[] = [];
-    for (const nombre of await readdir(directorio)) {
-      if (!nombre.endsWith('.ts') || nombre.endsWith('.test.ts')) continue;
+    for (const entrada of await readdir(directorio, { recursive: true })) {
+      const nombre = entrada.replaceAll('\\', '/');
+      if (!nombre.endsWith('.ts') || nombre.endsWith('.test.ts') || nombre.startsWith('generated/')) continue;
       const fuente = await readFile(new URL(nombre, directorio), 'utf8');
       if (fuente.includes('marcas-alta')) referencias.push(nombre);
     }
