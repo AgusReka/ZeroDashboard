@@ -3,10 +3,10 @@ import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
 import { EXENCIONES_OPERADOR } from './consola-auth.js';
-import { cargarEstilos } from './estilos-rutas.js';
-import { crearRegistroAgentes } from './registro-agentes.js';
+import { cargarEstilos } from './compartido/estilos-rutas.js';
+import { crearRegistroAgentes } from './agente/registro-agentes.js';
 import { registrarRutas } from './rutas.js';
 
 process.env.APP_PORT ??= '3000';

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import pg from 'pg';
-import type { SondeoEntidad } from './consulta-ejecucion.js';
-import { CONTRATO_CANONICO, type EntidadCanonica, type TipoSemantico } from './contrato.js';
+import type { SondeoEntidad } from './ejecucion/consulta-ejecucion.js';
+import { CONTRATO_CANONICO, type EntidadCanonica, type TipoSemantico } from './contrato/contrato.js';
 import {
   aceptaTipo,
   diagnosticar,

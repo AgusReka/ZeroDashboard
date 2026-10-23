@@ -4,9 +4,9 @@ import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
-import { generarTokenSesion } from './crypto-auth.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
+import { generarTokenSesion } from './compartido/crypto-auth.js';
 import { registerPanelAjustesRoutes } from './panel-ajustes.js';
 
 /**

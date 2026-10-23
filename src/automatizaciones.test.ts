@@ -14,7 +14,7 @@ import {
   type ResultadoCorrida,
   type SalidaNotificacion,
 } from './automatizaciones.js';
-import type { EjecucionExitosa, EjecucionFallida } from './consulta-ejecucion.js';
+import type { EjecucionExitosa, EjecucionFallida } from './ejecucion/consulta-ejecucion.js';
 
 /**
  * Unit cases for CH-13 Phase 2: the pure half of the scheduler. No database, no Fastify,

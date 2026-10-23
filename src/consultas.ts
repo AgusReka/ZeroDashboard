@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { consultaGuardadaVerificada, registrarEjecucion, veredictoDeEjecucion } from './auditoria.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
-import { loadConfig } from './config.js';
+import { consultaGuardadaVerificada, registrarEjecucion, veredictoDeEjecucion } from './auditoria/auditoria.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { loadConfig } from './compartido/config.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
-import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
-import { ejecutarConsulta, sanearSql } from './consulta-ejecucion.js';
-import { ErrorCredencialIlegible } from './cripto-credencial.js';
-import { prepararSentencia, TIPOS_PARAMETRO } from './parametros.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './agente/canal-agente.js';
+import { camposDeDestino, destinoDeConexion } from './conexiones/conexion-destino.js';
+import { ejecutarConsulta, sanearSql } from './ejecucion/consulta-ejecucion.js';
+import { ErrorCredencialIlegible } from './compartido/cripto-credencial.js';
+import { prepararSentencia, TIPOS_PARAMETRO } from './ejecucion/parametros.js';
 
 interface EjecucionBody {
   conexionId: string;

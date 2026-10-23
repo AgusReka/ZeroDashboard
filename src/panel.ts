@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { levantarSesionPanel } from './panel-auth.js';
 
 /**

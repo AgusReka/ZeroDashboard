@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { ESTILOS_EXENTOS, RUTAS_PANEL_PUBLICAS } from './contexto-tenant.js';
-import { leerCookie } from './cookies.js';
-import { generarTokenSesion, hashTokenSesion, hashearClave, verificarClave } from './crypto-auth.js';
+import { ESTILOS_EXENTOS, RUTAS_PANEL_PUBLICAS } from './aislamiento/contexto-tenant.js';
+import { leerCookie } from './compartido/cookies.js';
+import { generarTokenSesion, hashTokenSesion, hashearClave, verificarClave } from './compartido/crypto-auth.js';
 
 /**
  * CH-29 (DEC-151 to DEC-154): the console operator's session — its cookie, its

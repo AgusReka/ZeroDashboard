@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from 'fastify';
-import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
+import { conTenantInyectado, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import {
   cierreConNotificacion,
   cierreDeResultado,
@@ -10,15 +10,15 @@ import {
   type ResultadoCorrida,
   type SalidaNotificacion,
 } from './automatizaciones.js';
-import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
-import { loadConfig } from './config.js';
-import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
-import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from './consulta-ejecucion.js';
-import { conTenantActivo, type TenantActivo } from './contexto-tenant.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './agente/canal-agente.js';
+import { loadConfig } from './compartido/config.js';
+import { camposDeDestino, destinoDeConexion } from './conexiones/conexion-destino.js';
+import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from './ejecucion/consulta-ejecucion.js';
+import { conTenantActivo, type TenantActivo } from './aislamiento/contexto-tenant.js';
 import { componerCorreo } from './correo.js';
-import { ErrorCredencialIlegible } from './cripto-credencial.js';
+import { ErrorCredencialIlegible } from './compartido/cripto-credencial.js';
 import type { Notificador } from './notificador.js';
-import { prepararSentencia } from './parametros.js';
+import { prepararSentencia } from './ejecucion/parametros.js';
 import { componerSentencia, evaluarVistas } from './plantillas.js';
 
 /**

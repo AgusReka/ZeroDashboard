@@ -5,11 +5,11 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { registerConexionRoutes } from './conexiones.js';
+import { registerConexionRoutes } from './conexiones/conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { LIMITE_LISTADO, registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
 
 /**
  * Integration cases for CH-05 (tasks 2.1–2.10). This module is routes plus Prisma —

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import type { WebSocket } from 'ws';
-import { generarTokenAgente } from '../agente-token.js';
-import { LIMITE_TRAMA_DATOS, type CanalAgente } from '../canal-agente.js';
-import { LIMITES, crearRegistroAgentes } from '../registro-agentes.js';
+import { generarTokenAgente } from '../agente/agente-token.js';
+import { LIMITE_TRAMA_DATOS, type CanalAgente } from '../agente/canal-agente.js';
+import { LIMITES, crearRegistroAgentes } from '../agente/registro-agentes.js';
 import { FORMATO_SESION, FORMATO_TOKEN, LIMITES_AGENTE } from './limites.js';
 
 /**
