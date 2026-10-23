@@ -10,7 +10,7 @@ import { conTenantActivo, ErrorSinTenantActivo } from './contexto-tenant.js';
  * CH-25 (DEC-146): the history table is a scoped model, and the scoping holds inside an
  * interactive transaction, which is where edit and restore will write. The design rests on
  * that second property, so it is proved here before any route is built on it. Same target
- * and variables as `src/aislamiento.test.ts`.
+ * and variables as `src/aislamiento/aislamiento.test.ts`.
  */
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -40,7 +40,7 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
-  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento.test.ts)';
+  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento/aislamiento.test.ts)';
 
 describe(
   'ConsultaGuardadaVersion is scoped, also inside an interactive transaction (CH-25 PR1)',

@@ -6,7 +6,7 @@ import { generarTokenSesion, hashearClave } from '../compartido/crypto-auth.js';
 
 /**
  * CH-29 shared setup for the live-database console-auth suites, as
- * `src/consultas-versiones-apoyo.ts` is for CH-25: the `TEST_DB_*` target, the
+ * `src/consultas/consultas-versiones-apoyo.ts` is for CH-25: the `TEST_DB_*` target, the
  * reachability probe that turns an absent database into a skip, and operator and
  * session fixtures. Not a test file itself (no `.test.ts`), so the runner never
  * executes it on its own.

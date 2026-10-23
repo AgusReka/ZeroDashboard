@@ -9,7 +9,7 @@ import { LIMITE_LISTADO } from '../compartido/listados.js';
  *
  * This is a second implementation of the CH-15 marks script, which stays the P4 tool
  * across every tenant (DEC-90) and is never read here (its static guard forbids naming it). The two must not drift:
- * `src/tiempos-alta-rutas.test.ts` runs both on one fixture and requires the same marks.
+ * `src/conexiones/tiempos-alta-rutas.test.ts` runs both on one fixture and requires the same marks.
  * Orderings and tie-breaks run in PostgreSQL, as the script's do, so both use the same
  * collation. The script's limits hold here too: the connection mark is the registration
  * (DEC-88), the validation mark is mutable, and marks measure elapsed time, not effort.

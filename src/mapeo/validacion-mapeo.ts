@@ -15,7 +15,7 @@ import {
  * CH-10: the pure half of mapping validation (M3, M4). It compares the columns a
  * zero-row probe reported against the typed canonical contract, and derives the
  * per-automation applicability report from the persisted results. No database, no
- * connection, no clock: `src/validacion-mapeo-rutas.ts` owns every side effect, and
+ * connection, no clock: `src/mapeo/validacion-mapeo-rutas.ts` owns every side effect, and
  * this module is proven without either database in `validacion-mapeo.test.ts`.
  *
  * The one exception is `registrarVeredictos` (CH-31, DEC-171): the write of the verdicts

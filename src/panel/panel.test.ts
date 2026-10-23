@@ -17,7 +17,7 @@ import { registerPanelRoutes } from './panel.js';
  * request carries `X-Tenant-Id` for someone else (rule 2: the panel never resolves
  * a tenant from the request).
  *
- * Same live-database wiring as `src/panel-auth.test.ts`: the fixtures are one
+ * Same live-database wiring as `src/panel/panel-auth.test.ts`: the fixtures are one
  * `Tenant` with one `Usuario` (tenant A) plus a decoy tenant B that only exists to
  * prove the header is ignored. The page route is registered through the real
  * registrar, after the real tenant-context hooks, exactly as `src/server.ts`
@@ -37,7 +37,7 @@ const databaseUrl =
 
 process.env.APP_PORT ??= '3000';
 process.env.DATABASE_URL ??= databaseUrl;
-// Same fixture key `src/aislamiento.test.ts` supplies for suites that boot the app.
+// Same fixture key `src/aislamiento/aislamiento.test.ts` supplies for suites that boot the app.
 process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
 
 /** The password every fixture user shares; never stored, only submitted at login. */
@@ -63,7 +63,7 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
-  "bring up the Compose db service and set TEST_DB_* (see src/panel-auth.test.ts)";
+  "bring up the Compose db service and set TEST_DB_* (see src/panel/panel-auth.test.ts)";
 
 describe(
   'GET /panel — login screen and session shell (CH-22a PR3, P-01)',

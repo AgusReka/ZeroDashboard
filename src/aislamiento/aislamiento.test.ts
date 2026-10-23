@@ -1035,7 +1035,7 @@ describe(
 
     test('3.6 Tenant is not a scoped model, so the resolution hook has no escape hatch', async () => {
       // The other half of the same claim: `Tenant` is deliberately absent from
-      // MODELOS_AISLADOS, which is what lets the hook and `src/tenants.ts` share this
+      // MODELOS_AISLADOS, which is what lets the hook and `src/tenants/tenants.ts` share this
       // one client. If it were scoped, resolving a tenant would need an unscoped
       // handle and the guarantee would have a hole in it by construction.
       const aislado = extenderConAislamiento(db);
