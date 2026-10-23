@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { AperturaSesion, CodigoCierre, CodigoErrorAgente, MensajeControl, SesionFallida } from './agente-protocolo.js';
-import { classifyConnectionError } from './db-probe.js';
+import { classifyConnectionError } from './ejecucion/db-probe.js';
 
 /**
  * CH-19a, cases P1 and P2. The protocol catalog is types only (DEC-120): the agent

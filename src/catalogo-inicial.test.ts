@@ -6,10 +6,10 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
-import { sentenciaPaginada } from './consulta-ejecucion.js';
-import { prepararSentencia } from './parametros.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
+import { sentenciaPaginada } from './ejecucion/consulta-ejecucion.js';
+import { prepararSentencia } from './ejecucion/parametros.js';
 import { componerSentencia, evaluarVistas } from './plantillas.js';
 import { datosDePlantilla, PlantillaCompleta, registerPlantillaRoutes } from './plantillas-rutas.js';
 import {

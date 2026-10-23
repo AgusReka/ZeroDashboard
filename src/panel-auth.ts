@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { conTenantActivo } from './contexto-tenant.js';
-import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
-import { generarTokenSesion, hashTokenSesion, verificarClave } from './crypto-auth.js';
+import { conTenantActivo } from './aislamiento/contexto-tenant.js';
+import { conTenantInyectado, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { generarTokenSesion, hashTokenSesion, verificarClave } from './compartido/crypto-auth.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { leerCookie } from './cookies.js';
+import { leerCookie } from './compartido/cookies.js';
 import { normalizarCorreo } from './usuarios-panel.js';
 
 /**

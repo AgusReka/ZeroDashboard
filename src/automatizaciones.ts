@@ -4,9 +4,9 @@ import type {
   EjecucionFallida,
   FaseEjecucion,
   ResultadoEjecucion,
-} from './consulta-ejecucion.js';
-import { CONTRATO_CANONICO } from './contrato.js';
-import { codigoPublicable } from './pg-error.js';
+} from './ejecucion/consulta-ejecucion.js';
+import { CONTRATO_CANONICO } from './contrato/contrato.js';
+import { codigoPublicable } from './ejecucion/pg-error.js';
 import type { EstadoNoAprobado } from './plantillas.js';
 
 /**

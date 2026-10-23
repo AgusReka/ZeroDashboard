@@ -1,6 +1,6 @@
 import pg from 'pg';
 import type { Prisma } from './generated/prisma/client.js';
-import type { CategoriaEjecucion, SondeoEntidad } from './consulta-ejecucion.js';
+import type { CategoriaEjecucion, SondeoEntidad } from './ejecucion/consulta-ejecucion.js';
 import {
   AUTOMATIZACIONES,
   CONTRATO_CANONICO,
@@ -9,7 +9,7 @@ import {
   type EntidadCanonica,
   type Obligatoriedad,
   type TipoSemantico,
-} from './contrato.js';
+} from './contrato/contrato.js';
 
 /**
  * CH-10: the pure half of mapping validation (M3, M4). It compares the columns a

@@ -1,11 +1,11 @@
 import Fastify from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { loadConfig } from './config.js';
-import { cargarEstilos } from './estilos-rutas.js';
-import { crearRegistroAgentes } from './registro-agentes.js';
+import { loadConfig } from './compartido/config.js';
+import { cargarEstilos } from './compartido/estilos-rutas.js';
+import { crearRegistroAgentes } from './agente/registro-agentes.js';
 import { registrarRutas } from './rutas.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
 import { crearPlanificador } from './planificador.js';
 import { crearNotificadorSmtp } from './notificador.js';
 import { registrarApagado } from './apagado.js';

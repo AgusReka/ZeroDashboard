@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
-import { conTenantInyectado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { conTenantInyectado } from './aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { sanearSql } from './consulta-ejecucion.js';
-import { CONTRATO_CANONICO } from './contrato.js';
+import { sanearSql } from './ejecucion/consulta-ejecucion.js';
+import { CONTRATO_CANONICO } from './contrato/contrato.js';
 
 /**
  * CH-09: operator-authored canonical-view SQL, one definition per `Conexion` ×

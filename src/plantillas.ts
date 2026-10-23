@@ -1,6 +1,6 @@
-import { sanearSql } from './consulta-ejecucion.js';
-import { AUTOMATIZACIONES, CONTRATO_CANONICO } from './contrato.js';
-import { analizarSentencia, validarDeclaracion, type ProblemaParametro } from './parametros.js';
+import { sanearSql } from './ejecucion/consulta-ejecucion.js';
+import { AUTOMATIZACIONES, CONTRATO_CANONICO } from './contrato/contrato.js';
+import { analizarSentencia, validarDeclaracion, type ProblemaParametro } from './ejecucion/parametros.js';
 import type { EstadoValidacion } from './validacion-mapeo.js';
 
 /**

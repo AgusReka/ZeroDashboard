@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CONTRATO_CANONICO } from './contrato.js';
+import { CONTRATO_CANONICO } from './contrato/contrato.js';
 import { EJEMPLOS_MAPEO } from './mapeo-ejemplos.js';
 
 /** CH-34 (DEC-176): each example matches its entity in the contract. */

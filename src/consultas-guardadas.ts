@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
-import { conTenantInyectado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { conTenantInyectado } from './aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { LIMITE_LISTADO } from './listados.js';
+import { LIMITE_LISTADO } from './compartido/listados.js';
 import {
   analizarVersion,
   leerCuerpoRestauracion,
@@ -11,7 +11,7 @@ import {
   resolverNota,
   validarCuerpoConsulta,
 } from './consultas-versiones.js';
-import { TIPOS_PARAMETRO } from './parametros.js';
+import { TIPOS_PARAMETRO } from './ejecucion/parametros.js';
 
 /**
  * The metadata projection every list row is built from. Unlike `ConexionPublica`,

@@ -5,9 +5,9 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
-import { cifrarCredencial } from './cripto-credencial.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
+import { cifrarCredencial } from './compartido/cripto-credencial.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 
 /**

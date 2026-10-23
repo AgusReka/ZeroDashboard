@@ -1,10 +1,10 @@
-import { filaDeAuditoria, veredictoDeSondeo } from './auditoria.js';
+import { filaDeAuditoria, veredictoDeSondeo } from './auditoria/auditoria.js';
 import { ID_STOCK_FISICO } from './catalogo-inicial.js';
-import { sentenciaDeSondeo, sondearEstructura } from './consulta-ejecucion.js';
-import { CONTRATO_CANONICO } from './contrato.js';
-import { cifrarCredencial } from './cripto-credencial.js';
-import { hashearClave } from './crypto-auth.js';
-import type { DestinoPostgres } from './db-probe.js';
+import { sentenciaDeSondeo, sondearEstructura } from './ejecucion/consulta-ejecucion.js';
+import { CONTRATO_CANONICO } from './contrato/contrato.js';
+import { cifrarCredencial } from './compartido/cripto-credencial.js';
+import { hashearClave } from './compartido/crypto-auth.js';
+import type { DestinoPostgres } from './ejecucion/db-probe.js';
 import type { PrismaClient } from './generated/prisma/client.js';
 import { LARGO_MINIMO_CLAVE, validarClave } from './operador-alta.js';
 import { correoValido, normalizarCorreo } from './usuarios-panel.js';
