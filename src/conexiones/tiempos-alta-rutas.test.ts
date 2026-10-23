@@ -8,7 +8,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { registerTiemposAltaRoutes } from './tiempos-alta.js';
-import { alcanzable, databaseUrl, motivoSkip, objetivo } from '../consola-auth-apoyo.js';
+import { alcanzable, databaseUrl, motivoSkip, objetivo } from '../consola/consola-auth-apoyo.js';
 
 process.env.APP_PORT ??= '3000';
 process.env.DATABASE_URL ??= databaseUrl;

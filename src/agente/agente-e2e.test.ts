@@ -12,7 +12,7 @@ import { generarTokenAgente, hashTokenAgente } from './agente-token.js';
 import { registerConexionRoutes } from '../conexiones/conexiones.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { cifrarCredencial } from '../compartido/cripto-credencial.js';
-import { crearPlanificador } from '../planificador.js';
+import { crearPlanificador } from '../automatizaciones/planificador.js';
 import { crearRegistroAgentes } from './registro-agentes.js';
 
 /**

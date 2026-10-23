@@ -1,7 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { CATALOGO_INICIAL, sembrarCatalogoInicial } from '../dist/catalogo-inicial.js';
+import { CATALOGO_INICIAL, sembrarCatalogoInicial } from '../dist/plantillas/catalogo-inicial.js';
 import { PrismaClient } from '../dist/generated/prisma/client.js';
-import { leerEntornoDemo, sembrarDemo } from '../dist/semilla-demo.js';
+import { leerEntornoDemo, sembrarDemo } from '../dist/semillas/semilla-demo.js';
 
 function requiredEnv(name: string): string {
   const value = process.env[name];

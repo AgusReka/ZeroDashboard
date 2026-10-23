@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, describe, test } from 'node:test';
 import pg from 'pg';
-import { esFalloReintentable } from '../automatizaciones.js';
+import { esFalloReintentable } from '../automatizaciones/automatizaciones.js';
 import { SIN_AGENTES } from './canal-agente.js';
 import { SIN_DIAL, SOLICITUD, TECHO_MS, cerrarServidor, par, puerto, techo, tic } from './canal-agente-apoyo.js';
 import { ejecutarConsulta } from '../ejecucion/consulta-ejecucion.js';

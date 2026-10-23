@@ -4,8 +4,8 @@ Sistema visual y especificación de pantallas de **ZeroDashboard**: plataforma m
 
 ## Fuentes
 - `docs/design/prompt-claude-design.md` (en la raíz del repositorio) — brief del producto (superficies, matriz de pantallas con historia/change/estado al 2026-10-03, restricciones de alcance y técnicas). **Única fuente.** No se recibió código, Figma, screenshots ni logo.
-- Repositorio referido por el brief (no adjunto): `src/consola.ts` (la UI actual se sirve como string de TypeScript desde Fastify), `AGENTS.md` (regla 1: nada de SQL en el panel), `openspec/changes/archive`, `docs/01-decisiones.md`.
-- Decisión pendiente (no tomada acá): cómo se sirven los archivos de UI (string en `src/consola.ts` vs. estáticos). Se registra antes de CH-22.
+- Repositorio referido por el brief (no adjunto): `src/consola/consola.ts` (la UI actual se sirve como string de TypeScript desde Fastify), `AGENTS.md` (regla 1: nada de SQL en el panel), `openspec/changes/archive`, `docs/01-decisiones.md`.
+- Decisión pendiente (no tomada acá): cómo se sirven los archivos de UI (string en `src/consola/consola.ts` vs. estáticos). Se registra antes de CH-22.
 
 ## Superficies
 1. **CONSOLA** (P1 · Implementador) — herramienta interna del proveedor; ve todos los tenants; usuario técnico. Densa, utilitaria, escritorio primero.

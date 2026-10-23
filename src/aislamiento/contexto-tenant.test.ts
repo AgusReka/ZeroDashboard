@@ -12,12 +12,12 @@ import {
   tenantActivoOpcional,
 } from './contexto-tenant.js';
 import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
-import { registerHealthRoute } from '../health.js';
-import { registerConsolaRoute } from '../consola.js';
+import { registerHealthRoute } from '../app/health.js';
+import { registerConsolaRoute } from '../consola/consola.js';
 import { registerContratoRoutes } from '../contrato/contrato-rutas.js';
 import { RUTAS_ESTILOS, cargarEstilos, registerEstilosRoutes } from '../compartido/estilos-rutas.js';
 import { registerTenantRoutes } from '../tenants/tenants.js';
-import { registerConsultaGuardadaRoutes } from '../consultas-guardadas.js';
+import { registerConsultaGuardadaRoutes } from '../consultas/consultas-guardadas.js';
 
 /**
  * CH-06 tasks 2.1 and 2.2 — the routing boundary the threat matrix marks **applicable**.
