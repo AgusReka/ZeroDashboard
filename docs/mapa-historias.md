@@ -40,7 +40,7 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 |---|---|---|---|
 | P1 | Implementador (vos) | Consola | Todos los tenants |
 | P2 | Administrador PYME | Panel | Su tenant únicamente |
-| P3 | Cliente final | Telegram | Su pedido |
+| P3 | Cliente final | Ninguna (límite del artefacto, DEC-185) | — |
 | P4 | Investigador (vos) | Registro | Tiempos y fricciones |
 
 **Reglas que no se negocian:**
@@ -111,6 +111,8 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 | X6 | Como P2, quiero no recibir el mismo aviso dos veces por un mismo evento | Control de envío: una ejecución produce como máximo una notificación | R2 |
 | X7 | Como P1, quiero que una ejecución interrumpida no deje estado inconsistente | Al reiniciar el servicio, las ejecuciones colgadas se marcan como fallidas, no quedan "en curso" para siempre | R2 |
 | X8 | Como P1, quiero que un fallo de un tenant no afecte a los demás | Aislamiento de errores en la ejecución; una conexión caída no detiene el planificador | R2 |
+| X9 | Como P1, quiero que una automatización avise solo si el resultado alcanza un mínimo de filas | Mínimo por automatización, que vale 1 por defecto (igual que hoy). Con filas pero por debajo del mínimo, la ejecución queda registrada como omitida por el mínimo (DEC-186) | R4 |
+| X10 | Como P1, quiero ver qué mensaje saldría de una automatización sin esperar al horario | Vista previa con los datos actuales, sin enviar nada. **Requiere decisión:** si además puede enviarse en el momento, es un disparador manual, y el anti-alcance dice que todo es programado | R4 |
 
 > X1 a X3 son el esqueleto mínimo: sin ellos no hay automatización, solo un editor de consultas. X4 a X8 son lo que separa un cron de juguete de algo presentable. X6 es el equivalente de la fricción del correo duplicado que ya documentaste en la bitácora de WF-01, ahora resuelto por diseño en vez de con un nodo de límite.
 
@@ -121,6 +123,10 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 | N1 | Como P2, quiero recibir el resultado por correo con formato legible | Reutiliza el HTML ya validado en los tres workflows | R1 |
 | N2 | Como P2, quiero que el correo se vea bien también cuando no hay datos | Degradación elegante con mensaje, sin campos rotos | R1 |
 | N3 | Como P1, quiero definir el formato de salida en la plantilla | Plantilla de correo asociada a la plantilla de automatización | R2 |
+| N4 | Como P2, quiero recibir los avisos por Telegram | La automatización elige el canal. Llega un mensaje por ejecución al chat vinculado del tenant; sin vínculo, la ejecución lo registra (DEC-185) | R4 |
+| N5 | Como P2, quiero vincular mi Telegram sin datos técnicos | Código de un solo uso desde el panel, que se le manda al bot. Sin webhook ni puertos entrantes (DEC-185) | R4 |
+| N6 | Como P2, quiero que un aviso le llegue a más de una persona | Varias direcciones validadas por automatización. **Requiere decisión:** reabre DEC-82 y el límite de DEC-130 | R4 |
+| N7 | Como P1, quiero que el mensaje muestre los datos que importan del resultado | Columnas elegidas de la plantilla en el cuerpo del mensaje, con un mensaje por ejecución y no uno por fila. **Requiere decisión** | R4 |
 
 ### D — Catálogo de plantillas
 
@@ -129,6 +135,8 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 | D1 | Como P1, quiero definir una plantilla reutilizable | Consulta sobre vistas canónicas + parámetros + condición + formato + tolerancia de frescura | R1 |
 | D2 | Como P1, quiero instanciar una plantilla para un tenant | Alta en dos pasos: elegir plantilla, completar parámetros | R2 |
 | D3 | Como P1, quiero que el catálogo inicial cubra los casos validados | Stock físico, stock producible, reporte diario | R2 |
+| D4 | Como P1, quiero crear una plantilla desde la consola | Formulario contra las vistas canónicas, prueba contra una conexión antes de guardar y título y descripción para el cliente (DEC-182) | R4 |
+| D5 | Como P1, quiero corregir una plantilla sin cambiar lo que corre en otros tenants | Una plantilla en uso no se edita: se duplica, y la original no cambia (DEC-182) | R4 |
 
 ### F — Frescura de datos
 
@@ -146,6 +154,18 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 | P2h | Como P2, quiero ajustar umbrales y horarios sin pedir nada | Formulario validado; efecto en la próxima ejecución | R2 |
 | P3h | Como P2, quiero enterarme si algo falló | Estado de error visible y notificación | R2 |
 | P4h | Como P2, quiero ver el último resultado sin abrir el correo | Tabla o gráfico armado, sin SQL a la vista. **Sujeto a D-1** | R3 |
+
+### R — Reportes del cliente (DEC-183, DEC-184)
+
+Los códigos llevan el sufijo `h`, como los del panel, para no confundirse con los releases.
+
+| ID | Historia | Criterio de aceptación | Release |
+|---|---|---|---|
+| R1h | Como P1, quiero definir un reporte sobre las vistas canónicas | Consulta contra `v_*` con parámetros declarados y un tipo de visualización de una lista cerrada: número, tabla, barras o línea. Sirve para todo tenant mapeado sin reescribirse | R4 |
+| R2h | Como P1, quiero armar el tablero de un tenant | Elegir qué reportes ve el cliente y en qué orden | R4 |
+| R3h | Como P2, quiero ver mi tablero de reportes | Se ejecuta en vivo, sin guardar filas (DEC-93), sin SQL ni términos técnicos y con un tope de filas. El tenant sale de la sesión. Cada gráfico tiene una tabla equivalente accesible | R4 |
+| R4h | Como P2, quiero elegir el período de un reporte | Solo los períodos que P1 declaró, con el valor validado y nunca SQL | R4 |
+| R5h | Como P2, quiero saber si los datos del tablero están al día | Frescura de la réplica visible, solo informativa (CH-24) | R4 |
 
 ### G — Instrumentación (tesis)
 
@@ -172,7 +192,7 @@ Requiere D-1 y D-2 cerradas.
 
 **R3 — Refinamiento.** B4, F3, P4h.
 
-**R4 — Versión 2, en planificación.** Candidatos: C2, C3 y P4h, más las historias nuevas que se decidan. El orden y el alcance salen de `02-mapa-de-changes.md`.
+**R4 — Versión 2, en planificación.** D4, D5, N4–N7, X9, X10 y R1h–R5h. Siguen como candidatos C2, C3 y P4h. El orden y el alcance salen de `02-mapa-de-changes.md`, y N6, N7 y X10 necesitan antes su decisión.
 
 ---
 
@@ -186,6 +206,9 @@ Requiere D-1 y D-2 cerradas.
 | Constructor visual de consultas sin código | Territorio de herramientas de BI existentes |
 | Capa de IA | Extensión futura ya documentada |
 | Facturación y cobro | Fuera del alcance académico |
+| Bot de Telegram para el cliente final (P3) | Exige datos personales que el contrato no expone y una notificación por cliente (DEC-185) |
+
+> **Los reportes de R1h a R5h no son un constructor de consultas.** El SQL lo escribe P1 contra las vistas canónicas, la visualización es de una lista cerrada y P2 solo elige un período declarado (DEC-183).
 
 ### Del motor (**crítico**)
 
@@ -197,7 +220,7 @@ El motor puede crecer indefinidamente sin que se note. Estos límites son la def
 | Nodos de integración genéricos | El catálogo tiene destinos fijos: correo y Telegram |
 | Ramificaciones, bucles y transformaciones encadenadas | El patrón es lineal: consulta, condición, notificación |
 | Ejecución por items al estilo n8n | Una ejecución produce una notificación |
-| Disparadores por webhook | Todo es programado, salvo el bot, que es caso aparte |
+| Disparadores por webhook | Todo es programado. El bot de Telegram solo vincula chats, consultando hacia afuera, y no dispara automatizaciones (DEC-185) |
 
 > Si aparece un caso de uso que el patrón no cubre, se documenta como límite del artefacto. No se amplía el motor. Ese registro es material del Cap. 6.
 
@@ -224,6 +247,7 @@ El motor puede crecer indefinidamente sin que se note. Estos límites son la def
 | M | Cap. 4, Cap. 7 contribución principal |
 | X, N | Cap. 4 decisión de motor propio con alternativa evaluada; Cap. 5 diseño |
 | D, P | Cap. 5 diseño |
+| R | Cap. 5 diseño; Cap. 7, como segunda clase de artefacto genérico sobre el contrato canónico |
 | F | Cap. 4 decisiones, Cap. 6 limitaciones |
 | R1 completo | Cap. 6 resultados, Cap. 8 generalización |
 | G | Cap. 3 instrumentos, Cap. 6 barreras |
