@@ -20,7 +20,7 @@ import type { EjecucionExitosa, EjecucionFallida } from '../ejecucion/consulta-e
  * Unit cases for CH-13 Phase 2: the pure half of the scheduler. No database, no Fastify,
  * no connection. Cron validity (DEC-76), the due-window check in the configured timezone
  * (DEC-77), and the mapping from a run's outcome to the closed `Ejecucion` columns (X2)
- * are proven here; `src/planificador.ts` only adds I/O around these functions.
+ * are proven here; `src/automatizaciones/planificador.ts` only adds I/O around these functions.
  */
 
 const UTC = 'UTC';

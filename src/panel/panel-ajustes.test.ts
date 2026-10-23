@@ -31,7 +31,7 @@ function fila(parche: Partial<FilaAjustes> = {}): FilaAjustes {
 
 // ---- preset mapping (DEC-129 vectors, the table the console also pins) -------------
 
-/** The same vectors as `VECTORES_HORARIO` in `src/consola.test.ts`: dias, hora, cron. */
+/** The same vectors as `VECTORES_HORARIO` in `src/consola/consola.test.ts`: dias, hora, cron. */
 const VECTORES: Array<['todos' | 'lun-vie' | 'lun-sab', string, string]> = [
   ['todos', '08:30', '30 8 * * *'],
   ['lun-vie', '08:30', '30 8 * * 1-5'],

@@ -45,7 +45,7 @@ describe('classifyExecutionError — classification rows', () => {
    * subquery: parse analysis refuses it before the executor, so `PreventCommandIfReadOnly`
    * never gets to raise `25006`. Same meaning for the operator, different catch point,
    * therefore the same category — and the raw code is still reported so the two stay
-   * distinguishable. Pinned live by `src/consultas.test.ts` case 6.1 and its companion.
+   * distinguishable. Pinned live by `src/consultas/consultas.test.ts` case 6.1 and its companion.
    */
   test('row 3: SQLSTATE 0A000 is also "not a read", not the unknown fallback', () => {
     const resultado = classifyExecutionError(errorConCodigo('0A000'));

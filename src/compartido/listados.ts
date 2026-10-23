@@ -6,7 +6,8 @@
  * instead of silently returning a short list.
  *
  * CH-21c: moved here from `consultas-guardadas.ts`, which re-exports it, so that
- * `conexiones.ts` can read it without an import cycle (`consultas-guardadas.ts` already
- * imports `camposInvalidos` from `conexiones.ts`). This module imports nothing.
+ * `conexiones.ts` can read it without an import cycle (`consultas-guardadas.ts` then
+ * imported `camposInvalidos` from `conexiones.ts`; since CH-36 that helper lives in
+ * `campos-invalidos.ts`). This module imports nothing.
  */
 export const LIMITE_LISTADO = 200;

@@ -5,7 +5,7 @@
  *
  * It lives here, as a static module, and **not** as a Prisma model (DEC-21). The
  * contract is identical for every tenant, so it is not tenant data: there is no
- * migration, no row, and no entry in `MODELOS_AISLADOS`. `src/contrato-rutas.ts`
+ * migration, no row, and no entry in `MODELOS_AISLADOS`. `src/contrato/contrato-rutas.ts`
  * projects this constant verbatim over `GET /contrato`, which is what keeps the
  * endpoint from ever drifting away from the definition.
  *
@@ -20,7 +20,7 @@
  * **No personal field and no buyer entity appears below, by construction** (DEC-23).
  * None of the three automations needs a buyer identity, so there is no `cliente`
  * entity to hang a domicilio, a teléfono or a correo off. This is a structural
- * absence, not a filter applied at read time, and `src/contrato.test.ts` sweeps every
+ * absence, not a filter applied at read time, and `src/contrato/contrato.test.ts` sweeps every
  * name in the catalog to keep it that way.
  *
  * Naming, stated once and permanently because CH-09's mapeo will key off these exact
@@ -36,7 +36,7 @@
  *
  * DEC-22 left these labels as free text to be reconciled once a real `Plantilla` existed;
  * DEC-67 (CH-12) closes it. This object is now the single source of `Plantilla.automatizacion`:
- * `src/plantillas.ts` derives `VALORES_AUTOMATIZACION` from it, and the catalog routes
+ * `src/plantillas/plantillas.ts` derives `VALORES_AUTOMATIZACION` from it, and the catalog routes
  * validate that field as an `enum` of those values. A new label is therefore an edit here,
  * and every label a field names is, by construction, a value a template may carry.
  */
@@ -54,7 +54,7 @@ export type Obligatoriedad = 'obligatorio' | 'opcional';
  * The semantic type a field declares (DEC-39): what CH-10's validation compares a
  * mapped column's Postgres type against. Deliberately not a physical Postgres type —
  * the same concept is `int`, `uuid` or `text` depending on the platform, and a tolerant
- * OID → category table (`src/validacion-mapeo.ts`) absorbs that heterogeneity.
+ * OID → category table (`src/mapeo/validacion-mapeo.ts`) absorbs that heterogeneity.
  *
  * `identificador` covers the identity and reference fields (`id`, `pedidoId`,
  * `productoId`, `insumoId`) and `pedido.numero`, which is an integer on one platform and

@@ -15,7 +15,7 @@ import { registerPanelAuthRoutes } from './panel-auth.js';
  * surface — login, logout, session state — exercised through the real route module
  * and the real tenant-context hooks, exactly as `src/server.ts` wires them.
  *
- * The target is the project's own Compose `db` service, like `src/aislamiento.test.ts`
+ * The target is the project's own Compose `db` service, like `src/aislamiento/aislamiento.test.ts`
  * (see that file's header for the variables). Each fixture is one `Tenant` and one
  * `Usuario` with a scrypt hash built by the PR1 module, so a case can pick how many of
  * the two rows are active.
@@ -34,7 +34,7 @@ const databaseUrl =
 
 process.env.APP_PORT ??= '3000';
 process.env.DATABASE_URL ??= databaseUrl;
-// Same fixture key `src/aislamiento.test.ts` supplies for suites that boot the app.
+// Same fixture key `src/aislamiento/aislamiento.test.ts` supplies for suites that boot the app.
 process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
 
 /** The password every fixture user shares; never stored, only submitted at login. */
@@ -327,7 +327,7 @@ describe(
       );
     });
 
-    /** The repo's canonical Prisma error-code matcher (see `src/aislamiento.test.ts`). */
+    /** The repo's canonical Prisma error-code matcher (see `src/aislamiento/aislamiento.test.ts`). */
     const conCodigo = (codigo: string) => (error: unknown) =>
       error instanceof Prisma.PrismaClientKnownRequestError && error.code === codigo;
 

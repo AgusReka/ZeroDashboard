@@ -15,7 +15,7 @@ import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
  * Integration cases for CH-05 (tasks 2.1–2.10). This module is routes plus Prisma —
  * there is no pure classifier or sanitizer to test in isolation the way CH-03 and
  * CH-04 had — so the meaningful coverage is integration through `app.inject()`
- * against a real database, which is what `src/conexiones.test.ts` established.
+ * against a real database, which is what `src/conexiones/conexiones.test.ts` established.
  *
  * The target is the project's own Compose `db` service. `docker-compose.yml` does not
  * publish its port, so either publish it with a local override or point these

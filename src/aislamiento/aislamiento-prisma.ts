@@ -15,10 +15,10 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  *    quietly crossing tenants in production.
  *
  * **Known limits, stated rather than prevented.** `$queryRaw` / `$executeRaw` bypass
- * model-level extensions (`src/health.ts` uses one, on no scoped model). Nested writes
+ * model-level extensions (`src/app/health.ts` uses one, on no scoped model). Nested writes
  * through a relation are likewise unreached; no route uses them. Both are the residual
  * surface of the single point of failure DEC-13 knowingly accepted.
- * `src/consulta-ejecucion.ts` is outside this boundary altogether — it talks to the
+ * `src/ejecucion/consulta-ejecucion.ts` is outside this boundary altogether — it talks to the
  * *tenant's* replica through `pg`, which is a different database.
  *
  * CH-13 adds `Automatizacion` and `Ejecucion` (DEC-74, X2). Both are tenant data with a
@@ -142,7 +142,7 @@ export function aplicarAlcance(
  * `src/server.ts` keeps only the return value: the raw client is not held in scope, so
  * there is no un-scoped handle for a handler to reach for. `Tenant` is deliberately
  * absent from `MODELOS_AISLADOS`, which is what lets the resolution hook and
- * `src/tenants.ts` use this same client with no escape hatch.
+ * `src/tenants/tenants.ts` use this same client with no escape hatch.
  */
 export function extenderConAislamiento(prisma: PrismaClient) {
   return prisma.$extends({
