@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { LIMITE_LISTADO } from './listados.js';
+import { LIMITE_LISTADO } from './compartido/listados.js';
 import { alcanzable, contenido, montarEntorno, motivoSkip, type Entorno } from './consultas-versiones-apoyo.js';
 
 /**

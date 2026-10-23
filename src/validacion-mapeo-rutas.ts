@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { registrarEjecucion, veredictoDeSondeo } from './auditoria.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import { registrarEjecucion, veredictoDeSondeo } from './auditoria/auditoria.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
-import { destinoDeConexion } from './conexion-destino.js';
-import { sentenciaDeSondeo, sondearEstructura } from './consulta-ejecucion.js';
-import { CONTRATO_CANONICO } from './contrato.js';
-import { ErrorCredencialIlegible } from './cripto-credencial.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './agente/canal-agente.js';
+import { destinoDeConexion } from './conexiones/conexion-destino.js';
+import { sentenciaDeSondeo, sondearEstructura } from './ejecucion/consulta-ejecucion.js';
+import { CONTRATO_CANONICO } from './contrato/contrato.js';
+import { ErrorCredencialIlegible } from './compartido/cripto-credencial.js';
 import { informe, registrarVeredictos, type FilaValidacion } from './validacion-mapeo.js';
 
 /**

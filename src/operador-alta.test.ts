@@ -3,8 +3,8 @@ import { PassThrough, Writable } from 'node:stream';
 import { after, before, describe, test } from 'node:test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
-import { verificarClave } from './crypto-auth.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { verificarClave } from './compartido/crypto-auth.js';
 import {
   alcanzable,
   borrarOperadores,

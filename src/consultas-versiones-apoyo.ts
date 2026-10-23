@@ -2,9 +2,9 @@ import net from 'node:net';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
 
 /**
  * CH-25: the setup the saved-query edit and history route tests share (a live PostgreSQL

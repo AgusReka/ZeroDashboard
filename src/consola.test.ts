@@ -3,10 +3,10 @@ import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { cronValido } from './automatizaciones.js';
 import { jsonEnScript, registerConsolaRoute } from './consola.js';
-import { CONTRATO_CANONICO } from './contrato.js';
+import { CONTRATO_CANONICO } from './contrato/contrato.js';
 import { EJEMPLOS_MAPEO } from './mapeo-ejemplos.js';
 import { asuntoCorreo, componerCorreo } from './correo.js';
-import { RUTAS_ESTILOS } from './estilos-rutas.js';
+import { RUTAS_ESTILOS } from './compartido/estilos-rutas.js';
 import { evaluarVistas } from './plantillas.js';
 
 /**

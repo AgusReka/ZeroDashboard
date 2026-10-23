@@ -8,8 +8,8 @@ import {
   cookieVaciaConsola,
   requiereOperador,
 } from './consola-auth.js';
-import { ESTILOS_EXENTOS, RUTAS_PANEL_PUBLICAS } from './contexto-tenant.js';
-import { leerCookie } from './cookies.js';
+import { ESTILOS_EXENTOS, RUTAS_PANEL_PUBLICAS } from './aislamiento/contexto-tenant.js';
+import { leerCookie } from './compartido/cookies.js';
 
 describe('CH-29 console session cookie (DEC-151)', () => {
   test('the cookie has its own name, apart from the panel cookie', () => {

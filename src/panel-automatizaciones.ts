@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { cronValido, proximaEjecucion } from './automatizaciones.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
-import { conTenantActivo } from './contexto-tenant.js';
-import { LIMITE_LISTADO } from './listados.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { conTenantActivo } from './aislamiento/contexto-tenant.js';
+import { LIMITE_LISTADO } from './compartido/listados.js';
 import { levantarSesionPanel } from './panel-auth.js';
 
 /**

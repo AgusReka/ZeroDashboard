@@ -5,10 +5,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { ID_STOCK_FISICO, sembrarCatalogoInicial } from './catalogo-inicial.js';
 import { alcanzable, databaseUrl, motivoSkip } from './consola-auth-apoyo.js';
-import type { ResultadoSondeo, SondeoEntidad } from './consulta-ejecucion.js';
-import { CONTRATO_CANONICO, type TipoSemantico } from './contrato.js';
-import { descifrarCredencial } from './cripto-credencial.js';
-import { verificarClave } from './crypto-auth.js';
+import type { ResultadoSondeo, SondeoEntidad } from './ejecucion/consulta-ejecucion.js';
+import { CONTRATO_CANONICO, type TipoSemantico } from './contrato/contrato.js';
+import { descifrarCredencial } from './compartido/cripto-credencial.js';
+import { verificarClave } from './compartido/crypto-auth.js';
 import { IDS_DEMO, leerEntornoDemo, sembrarDemo, type EntornoDemo } from './semilla-demo.js';
 
 process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import {
   alcanzable,
   borrarOperadores,

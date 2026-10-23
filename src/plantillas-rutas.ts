@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { sanearSql } from './consulta-ejecucion.js';
+import { sanearSql } from './ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from './consultas-guardadas.js';
-import { TIPOS_PARAMETRO } from './parametros.js';
+import { TIPOS_PARAMETRO } from './ejecucion/parametros.js';
 import { FORMATOS, VALORES_AUTOMATIZACION, problemasDePlantilla } from './plantillas.js';
 import { ENTIDADES_CANONICAS } from './vistas-canonicas.js';
 

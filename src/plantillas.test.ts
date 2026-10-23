@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { AUTOMATIZACIONES, CONTRATO_CANONICO } from './contrato.js';
-import { prepararSentencia } from './parametros.js';
+import { AUTOMATIZACIONES, CONTRATO_CANONICO } from './contrato/contrato.js';
+import { prepararSentencia } from './ejecucion/parametros.js';
 import {
   componerSentencia,
   evaluarVistas,

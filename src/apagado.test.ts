@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { describe, test } from 'node:test';
 import Fastify from 'fastify';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { registrarApagado } from './apagado.js';
 import { crearPlanificador, type Reloj } from './planificador.js';
 
