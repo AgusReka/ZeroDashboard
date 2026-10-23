@@ -3383,6 +3383,99 @@ Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_s
 
 ---
 
+### DEC-182 — Plantillas creadas y editadas desde la consola
+
+**Contexto.**
+- DEC-61 dejó la plantilla como un catálogo global persistido, que P1 escribe por API. El backend ya existe: `POST /plantillas` y `PUT /plantillas/:id` validan el cuerpo con `problemasDePlantilla`, y `POST /plantillas/:id/prueba` la ejecuta contra una conexión de un tenant (DEC-62).
+- La consola solo muestra las plantillas, sin poder modificarlas: hoy no hay forma de crear una sin usar la API a mano.
+- La v2 busca que P1 escriba sus propias automatizaciones contra las vistas canónicas `v_*`, en lugar de usar SQL crudo del tenant. La decisión del 2026-10-23 mantiene el contrato canónico como único camino de las automatizaciones.
+
+Hay dos huecos de diseño.
+1. **Editar una plantilla en uso.** `PUT` reemplaza la plantilla, y esa plantilla es global. Una edición cambia en silencio, desde la próxima ejecución, las automatizaciones de todos los tenants que la usan.
+2. **El texto de negocio.** El panel muestra solo las plantillas que tienen un texto de negocio, y esos textos están fijos en el código por id (DEC-137). Una plantilla creada desde la consola nunca aparecería en el panel.
+
+**Opciones.**
+
+Edición de una plantilla en uso:
+- (a) Se puede editar siempre. Rige desde la próxima ejecución en todos los tenants, como hoy lo hace la API, y queda registrada en la auditoría.
+- (b) Mientras alguna automatización la use, no se edita: se duplica. La consola ofrece «Duplicar y editar», y la copia no tiene automatizaciones.
+- (c) Versionarla como las consultas guardadas (CH-25), con cada automatización atada a una versión.
+
+Texto de negocio:
+- (a) Campos nuevos en `Plantilla` (título y descripción para el cliente), con una migración. Los dos textos de DEC-137 pasan a la semilla.
+- (b) Se mantiene el mapa en el código. Una plantilla nueva no aparece en el panel hasta que se agregue su texto en el código.
+
+**Decisión.** Edición (b) y texto de negocio (a).
+- **Edición (b).** La edición nunca cambia lo que corre en otro tenant, y no hace falta el modelo de versiones de (c).
+- **Texto de negocio (a).** Sin ese campo, «crear plantillas desde la consola» no llega al cliente.
+
+**Alcance que no cambia.**
+- La plantilla sigue escribiéndose contra `v_*` y ejecutándose con `componerSentencia`.
+- Sigue validándose con las listas cerradas del código (DEC-63, DEC-65, DEC-67).
+- La condición sigue siendo el `WHERE` parametrizado más «sin filas no se envía» (DEC-64, DEC-84).
+- No se agrega ningún modo de automatización sobre SQL del tenant.
+
+**Por qué.** Hace usable algo que el backend ya permite, y cada plantilla nueva es una prueba más de que el contrato canónico alcanza para escribir automatizaciones genéricas.
+
+**Se resigna.**
+- Con (b), el catálogo puede acumular copias parecidas, y una corrección no se propaga a las automatizaciones existentes: hay que recrearlas.
+- Con (a) en el texto de negocio, se suma una migración a un modelo que hasta ahora no la tuvo desde CH-12.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-183 — Reportes para el cliente: consultas sobre vistas canónicas, visualización fija y tablero en el panel
+
+**Contexto.**
+- La v2 quiere sumar reportería para P2, al estilo de los tableros de herramientas de BI: una consulta, una forma de mostrarla (gráfico, tabla o número) y una vista que agrupe varios reportes.
+- Hay tres restricciones vigentes:
+  - **Regla 1 y DEC-04:** P2 no escribe consultas. El diferencial frente a las herramientas de BI es justamente que el cliente no opera la herramienta.
+  - **DEC-93:** no se persisten las filas devueltas. Por eso CH-27 (P4h) quedó fuera de alcance.
+  - **Anti-alcance:** excluye el «constructor visual de consultas sin código».
+- Ninguna excluye que P1 escriba la consulta y el panel muestre su resultado en vivo.
+
+**Opciones.**
+
+Fuente del reporte:
+- (a) Catálogo global de reportes escritos por P1 contra las vistas canónicas `v_*`, como las plantillas (DEC-61). Cada tenant los ejecuta a través de su mapeo.
+- (b) Reportes por tenant, escritos por P1 sobre el SQL crudo de su réplica (como una consulta guardada, DEC-11).
+- (c) Dejar la reportería fuera, como límite del artefacto.
+
+Parámetros que puede elegir P2:
+- (a) Ninguno: el reporte se ve tal como lo definió P1.
+- (b) Solo un período (por ejemplo, últimos 7, 30 o 90 días), declarado por P1 en el reporte como un parámetro de tipo fecha.
+
+**Decisión.** Fuente (a) y parámetros (b).
+- **Fuente (a).** Un mismo reporte sirve para todos los tenants sin reescribirse, que es el argumento de la tesis. (b) sería una herramienta de BI más chica.
+- **Parámetros (b).** Sin elegir el período, un tablero de ventas es casi decorativo. El período es un valor validado contra la declaración, no SQL (regla 1).
+
+**Forma.**
+- **Reporte.** Tiene nombre, texto para el cliente, una consulta contra `v_*` con parámetros declarados, entidades que usa y un tipo de visualización de una lista cerrada en el código: número, tabla, barras o línea. El tipo fija qué columnas espera; por ejemplo, barras espera una etiqueta y un valor.
+- **Tablero.** P1 elige, por tenant, qué reportes ve el cliente y en qué orden. El tablero se guarda como configuración del tenant, sin filas.
+- **Ejecución en vivo.** Cada vista del tablero ejecuta las consultas contra la réplica (por agente o directo, como cualquier otra ejecución) y no guarda el resultado (DEC-93).
+- **Tope de filas.** La salida tiene un tope fijo en el código. El panel solo recibe las columnas que el tipo de visualización declara (regla 5).
+- **Tenant.** Sale solo de la sesión del panel (DEC-135, regla 2).
+- **Frescura.** El tablero muestra la frescura de la réplica (CH-24), como información.
+
+**Fuera de esta decisión.** Cómo se dibujan los gráficos en el navegador (biblioteca propia en SVG o una biblioteca externa servida desde `public/`) queda para una DEC separada, porque cruza la forma de servir la interfaz.
+
+**Por qué.** Suma el valor de la reportería sin que P2 escriba consultas y sin custodiar filas. Además, apoyado en el contrato canónico, agrega una segunda clase de artefacto genérico (reportes, además de automatizaciones) para el capítulo de resultados.
+
+**Se resigna.**
+- Cada vista del tablero carga la réplica del cliente, porque no hay caché por DEC-93. Un tablero con muchos reportes es lento si el agente o la réplica lo son.
+- No hay exploración libre, filtros arbitrarios ni descarga de datos.
+- Un reporte que no se puede expresar sobre `v_*` no entra; se documenta como límite del artefacto.
+- Requiere historias nuevas en `docs/mapa-historias.md` (R4) y la aclaración en el anti-alcance de que reporte = SQL escrito por P1 más una visualización fija, no un constructor.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

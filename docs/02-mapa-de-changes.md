@@ -18,7 +18,7 @@ La versión 1.0 está cerrada: tag `v1.0.0`. Su mapa, con CH-01 a CH-35 y la sec
 
 **Después de cada change:** entrada en la bitácora con fecha, fricciones encontradas y tiempo invertido.
 
-**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-37 y la próxima decisión, DEC-182. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
+**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-37 y la próxima decisión, DEC-184. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
 
 ---
 
