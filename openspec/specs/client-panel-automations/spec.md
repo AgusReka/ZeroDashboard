@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Letting the client (P2, business administrator) see in the panel which automations the business has and which ones it could have, with status, last run and next run, in business language and without any SQL or technical term (story **P1h**, CH-22b); showing a visible failure state when an active automation's last finished run failed (story **P3h**, CH-22c); and adjusting an automation in place (story **P2h**, CH-23). Strictly enforces **Rule 1** (no SQL, no technical terms in P2) and **Rule 2** (tenant derived exclusively from the session). The contract is fixed by DEC-137 and DEC-138; the tenant derivation by DEC-135; the surface by DEC-04 and DEC-136; the template copy by DEC-128; the schedule patterns by DEC-129.
+Letting the client (P2, business administrator) see in the panel which automations the business has and which ones it could have, with status, last run and next run, in business language and without any SQL or technical term (story **P1h**, CH-22b); showing a visible failure state when an active automation's last finished run failed (story **P3h**, CH-22c); and adjusting an automation in place (story **P2h**, CH-23). Strictly enforces **Rule 1** (no SQL, no technical terms in P2) and **Rule 2** (tenant derived exclusively from the session). The contract is fixed by DEC-137 and DEC-138; the tenant derivation by DEC-135; the surface by DEC-04 and DEC-136; the template copy by DEC-128, now stored on the template row (DEC-182, DEC-190, CH-37); the schedule patterns by DEC-129.
 
 ## Requirements
 
@@ -122,38 +122,52 @@ A paused automation SHALL never be `con_falla`. The failure state is visible onl
 
 ### Requirement: Available Automations Rule (DEC-137)
 
-`disponibles` SHALL contain every global template that has a business copy entry (DEC-128) and for which the session's tenant has no automation with `activo = true`. It SHALL NOT be filtered by connection readiness. A template without business copy SHALL NOT be listed. A template for which the tenant has only paused automations SHALL be listed as available. Templates sharing an `automatizacion` slug SHALL be listed once, and none of them SHALL be listed when any of them has an active automation of the tenant.
+`disponibles` SHALL contain every global template that has a client text — a `titulo` and a `descripcion` that are both non-null and non-blank after trimming — and whose title is not the title of a template for which the session's tenant has an automation with `activo = true`. It SHALL NOT be filtered by connection readiness. A template without a client text SHALL NOT be listed. A template for which the tenant has only paused automations SHALL be listed as available. Templates with the same title SHALL be listed once. Two titles are the same when they are equal after trimming and lower-casing in `es`. The items SHALL be ordered by title with a Spanish collation, then by template `id`, so the same catalog always gives the same list. Each item SHALL carry the stored `titulo` and `descripcion`, trimmed.
+(Previously: a template was listed when its `automatizacion` slug had an entry in the panel's copy map; twins were grouped and hidden by slug; the order was the map's insertion order, then `id`.)
 
 #### Scenario: Template with an active automation is not available
 
-- **GIVEN** a tenant with an active automation of the `stock-fisico` template
+- **GIVEN** a tenant with an active automation of the template titled «Aviso de stock bajo»
 - **WHEN** the route is called
-- **THEN** `disponibles` SHALL NOT contain the `stock-fisico` entry
+- **THEN** `disponibles` SHALL NOT contain an item titled «Aviso de stock bajo»
 
 #### Scenario: Template with only a paused automation is available
 
-- **GIVEN** a tenant whose only automation of the `stock-fisico` template has `activo = false`
+- **GIVEN** a tenant whose only automation of the template titled «Aviso de stock bajo» has `activo = false`
 - **WHEN** the route is called
-- **THEN** `disponibles` SHALL contain the `stock-fisico` entry
+- **THEN** `disponibles` SHALL contain the «Aviso de stock bajo» item
 
-#### Scenario: Template without business copy is hidden
+#### Scenario: Template without a client text is hidden
 
-- **GIVEN** a global template whose `automatizacion` slug has no business copy entry
+- **GIVEN** a global template whose `titulo` is null, or whose `descripcion` is null or blank
 - **WHEN** the route is called
 - **THEN** `disponibles` SHALL NOT contain it
 
+#### Scenario: A new template with its own title is listed beside a seeded one of the same slug
+
+- **GIVEN** a tenant with an active automation of the seeded `stock-fisico` template, and a second `stock-fisico` template titled «Aviso de stock por depósito»
+- **WHEN** the route is called
+- **THEN** `disponibles` SHALL contain the «Aviso de stock por depósito» item
+- **AND** SHALL NOT contain «Aviso de stock bajo»
+
 #### Scenario: Another tenant's automation does not hide a template
 
-- **GIVEN** Tenant B has an active automation of `stock-fisico` and Tenant A has none
+- **GIVEN** Tenant B has an active automation of the template titled «Aviso de stock bajo» and Tenant A has none
 - **WHEN** Tenant A calls the route
-- **THEN** A's `disponibles` SHALL contain the `stock-fisico` entry
+- **THEN** A's `disponibles` SHALL contain the «Aviso de stock bajo» item
 
-#### Scenario: Twin templates are listed once and hidden together
+#### Scenario: Templates with the same title are listed once and hidden together
 
-- **GIVEN** two global templates with the slug `stock-fisico`, and a tenant with an active automation of one of them
+- **GIVEN** two global templates titled «Aviso de stock bajo» and «aviso de stock bajo », and a tenant with an active automation of one of them
 - **WHEN** the route is called
-- **THEN** `disponibles` SHALL NOT contain the `stock-fisico` entry
-- **AND** without that automation it SHALL contain the entry exactly once
+- **THEN** `disponibles` SHALL NOT contain either
+- **AND** without that automation it SHALL contain exactly one of them, the one with the lower `id`
+
+#### Scenario: Order is by title
+
+- **GIVEN** the two seeded templates and a tenant without automations
+- **WHEN** the route is called
+- **THEN** `disponibles` SHALL list «Aviso de productos que ya casi no podés armar» before «Aviso de stock bajo»
 
 ### Requirement: Last Execution Is the Latest Finished One (DEC-137)
 
@@ -263,19 +277,26 @@ A paused automation SHALL never be `con_falla`. The failure state is visible onl
 
 ### Requirement: Business Copy Map With Neutral Fallback (DEC-128, DEC-137)
 
-Titles and descriptions SHALL come from a map kept in the panel module, keyed by the template's `automatizacion` slug (the `TEMAS` precedent of `src/correo.ts`), and SHALL be written in business language per the panel glossary (`lenguaje.md`). For an automation whose template slug is not in the map, the item SHALL use a neutral fallback title and description and SHALL NOT throw. The stored template `nombre` (console text) SHALL NOT be used as a fallback.
+Titles and descriptions SHALL come from the `titulo` and `descripcion` columns of the automation's template (DEC-182, DEC-190), and SHALL be written in business language per the panel glossary (`lenguaje.md`), which the template routes enforce at save time (`automation-templates`). For an automation whose template has no client text, as defined in "Available Automations Rule", the item SHALL use a neutral fallback title and description kept in the panel module, and SHALL NOT throw. A template with only one of the two texts SHALL use the fallback for both. The stored template `nombre` (console text) SHALL NOT be used as a fallback.
+(Previously: titles and descriptions came from a map kept in the panel module, keyed by the template's `automatizacion` slug.)
 
-#### Scenario: Mapped slug
+#### Scenario: Template with a client text
 
-- **GIVEN** an automation of the `stock-fisico` template
-- **THEN** its `titulo` and `descripcion` SHALL be the map's entry for `stock-fisico`
+- **GIVEN** an automation whose template has `titulo` «Aviso de stock bajo» and a non-blank `descripcion`
+- **THEN** its item's `titulo` and `descripcion` SHALL be those stored texts, trimmed
 
-#### Scenario: Unmapped slug on an existing automation
+#### Scenario: Template without a client text on an existing automation
 
-- **GIVEN** an automation whose template slug is `reporte-semanal`, absent from the map
+- **GIVEN** an automation whose template has `titulo` null
 - **WHEN** the route is called
 - **THEN** the item SHALL appear in `activas` with the neutral fallback `titulo` and `descripcion`
 - **AND** the template's `nombre` SHALL NOT appear in the response
+
+#### Scenario: Half-filled template
+
+- **GIVEN** an automation whose template has a `titulo` and a blank `descripcion`
+- **WHEN** the route is called
+- **THEN** the item SHALL carry the neutral fallback `titulo` and `descripcion`, never the stored `titulo` with the fallback description
 
 ### Requirement: Panel Page Shows the Automations Screen in Defined States (P-02, DEC-137)
 
