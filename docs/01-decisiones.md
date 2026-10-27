@@ -3692,6 +3692,62 @@ Cómo se envía:
 
 ---
 
+### DEC-190 — CH-37: textos para el cliente en la base; enmienda DEC-137 en la regla de disponibles
+
+**Contexto.**
+- DEC-182 (a) suma a `Plantilla` un título y una descripción para el cliente, con una migración, y pasa los dos textos fijos de DEC-137 a la semilla.
+- Hoy esos textos viven en `COPY_NEGOCIO` (`src/panel/panel-automatizaciones.ts`), indexados por la etiqueta `automatizacion` y no por el id de la plantilla. La etiqueta es una lista cerrada de tres valores (`AUTOMATIZACIONES`, DEC-67), así que toda plantilla nueva comparte la etiqueta con alguna de la semilla.
+- DEC-137 deduplica «disponibles» por etiqueta, y una automatización activa oculta su etiqueta. Con esa regla, una plantilla creada en CH-38 nunca aparecería en el panel.
+- La semilla solo crea las filas que faltan y nunca actualiza una existente (DEC-125, DEC-68). Una base ya instalada no recibiría los textos desde la semilla.
+- El orden de «disponibles» sale del orden del mapa en el código, que desaparece.
+
+Quedan cuatro puntos que DEC-182 no resuelve.
+
+**Opciones.**
+
+Carga de los textos en bases instaladas:
+- (a) La migración los carga por etiqueta, en toda plantilla con `stock-fisico` o `stock-producible`.
+- (b) La migración los carga solo en las dos plantillas de la semilla, por su id fijo.
+
+Clave de la deduplicación y de «una activa oculta a su gemela»:
+- (a) El título para el cliente.
+- (b) La etiqueta, como en DEC-137.
+- (c) Ninguna: una tarjeta por plantilla con textos.
+
+Rutas de escritura:
+- (a) `POST` y `PUT /plantillas` aceptan los dos campos en CH-37.
+- (b) Los aceptan recién en CH-38.
+
+Orden de «disponibles»:
+- (a) Por título y después por `id`.
+- (b) Por `id`.
+
+**Decisión.** (a) en los cuatro puntos.
+- **Carga (a).** El panel muestra exactamente lo mismo que hoy, incluidas las copias creadas por API, y la semilla sigue sin actualizar filas (DEC-125 no cambia).
+- **Deduplicación (a).** Dos plantillas con el mismo título son, para el cliente, la misma oferta. Una plantilla nueva con su propio título aparece en el panel. Una automatización activa oculta las plantillas con su mismo título.
+- **Rutas (a).** Sin eso no hay forma de darle sus textos a una plantilla nueva, y CH-38 queda solo de front.
+- **Orden (a).** Es predecible para el cliente.
+
+**Forma.**
+- Dos columnas opcionales en `Plantilla`, `titulo` y `descripcion`. Las filas que ya existen y las que crean los tests quedan válidas.
+- Una plantilla aparece en «disponibles» solo si tiene los dos textos, sin estar vacíos. Una automatización activa cuya plantilla no tiene textos sigue mostrando el texto neutro de DEC-137, nunca el `nombre`.
+- En `POST` y `PUT`, los dos campos son opcionales, tienen un tope de largo y se rechazan si contienen un término prohibido del glosario del panel (DEC-04). El tope lo fija la especificación. `PUT` reemplaza la plantilla entera, así que si no trae los campos, los borra, como pasa con cualquier otro campo.
+- `GET /plantillas/:id` devuelve los dos campos. El resumen de `GET /plantillas` no cambia.
+- La entrada de la consola (`DESCRIPCIONES_PLANTILLA`, DEC-131) es texto para el operador y no cambia. El correo tampoco cambia.
+
+**Por qué.** Es lo mínimo para que una plantilla creada desde la consola llegue al cliente. El panel no cambia para quien ya lo usa, salvo el orden de las tarjetas.
+
+**Se resigna.**
+- Las dos tarjetas de la semilla cambian de lugar.
+- El control del glosario deja de ser una prueba sobre una constante y pasa a ser una validación al guardar. Un texto cargado por SQL directo en la base no pasa por ese control.
+- Dos plantillas con títulos distintos y la misma consulta se muestran como dos ofertas.
+
+**Decidido por:** el usuario, 2026-10-24, en la exploración de CH-37, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

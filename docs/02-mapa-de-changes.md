@@ -18,7 +18,7 @@ La versión 1.0 está cerrada: tag `v1.0.0`. Su mapa, con CH-01 a CH-35 y la sec
 
 **Después de cada change:** entrada en la bitácora con fecha, fricciones encontradas y tiempo invertido.
 
-**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-50 y la próxima decisión, DEC-190. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
+**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-50 y la próxima decisión, DEC-191. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
 
 ---
 
@@ -50,7 +50,7 @@ Orden de ejecución pensado para grabar el video cuanto antes: primero las autom
 | Orden | ID | Change | Historias | Depende de | Notas |
 |---|---|---|---|---|---|
 | 0 | CH-36 | Reorganización de `src/` en carpetas por dominio, sin cambiar el comportamiento | — | — | DEC-181. PRs #199 a #202 |
-| 1 | CH-37 | Textos para el cliente en la plantilla: título y descripción en la base, con una migración. Los dos textos fijos de DEC-137 pasan a la semilla, y el panel los lee de la base | D4 | CH-36 | DEC-182. Requisito de CH-38: sin estos textos, una plantilla nueva no aparece en el panel |
+| 1 | CH-37 | Textos para el cliente en la plantilla: título y descripción en la base, con una migración. Los dos textos fijos de DEC-137 pasan a la semilla, y el panel los lee de la base | D4 | CH-36 | DEC-182, DEC-190. Requisito de CH-38: sin estos textos, una plantilla nueva no aparece en el panel |
 | 2 | CH-38 | Pantalla de plantillas en la consola: crear, probar contra una conexión, guardar y «Duplicar y editar» una plantilla en uso | D4, D5 | CH-37 | ⚠ DEC-182. Usa las rutas que ya existen (`POST` y `PUT /plantillas`, `/prueba`). Hay que bloquear el `PUT` sobre una plantilla en uso |
 | 3 | CH-39 | Texto del mensaje: encabezado y línea por fila con marcadores `{columna}`, validados contra la última prueba, en el correo | N7 | CH-38 | DEC-188. Los campos se cargan en la pantalla de CH-38 |
 | 4 | CH-40 | Mínimo de filas por automatización y resultado `omitida-bajo-minimo` | X9 | CH-36 | DEC-186. Se carga en el alta de la consola |
