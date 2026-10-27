@@ -17,7 +17,7 @@ import { prepararSentencia, type SentenciaPreparada } from './parametros.js';
  * CH-19a spike: does `pg.Client` over an injected duplex keep every guarantee a direct
  * dial has? The fake below follows the design's "Fake Duplex Contract", which also binds
  * the 19c1 channel. The live cases relay bytes to the test PostgreSQL (TEST_DB_*, see
- * `src/conexiones.test.ts`'s header); the others need no server. If C2 or Q1 fails, the
+ * `src/conexiones/conexiones.test.ts`'s header); the others need no server. If C2 or Q1 fails, the
  * stream seam is refuted and DEC-112 goes back to the user.
  */
 const objetivo = {

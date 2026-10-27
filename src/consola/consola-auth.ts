@@ -9,7 +9,7 @@ import { generarTokenSesion, hashTokenSesion, hashearClave, verificarClave } fro
  * CH-29 (DEC-151 to DEC-154): the console operator's session — its cookie, its
  * resolution and the closed list of routes that need none.
  *
- * It mirrors the panel's mechanism (`src/panel-auth.ts`, DEC-133, DEC-134) without the
+ * It mirrors the panel's mechanism (`src/panel/panel-auth.ts`, DEC-133, DEC-134) without the
  * tenant: an operator works across every tenant, and the tenant still arrives
  * explicitly on each request (DEC-15). So nothing here enters a tenant context, and
  * `Operador` and `SesionConsola` are read through the extended client untouched, like

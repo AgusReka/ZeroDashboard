@@ -17,11 +17,11 @@ import { normalizarCorreo } from '../usuarios/usuarios-panel.js';
  *    header, no query token: the `HttpOnly` cookie (DEC-134) is read by the hook and
  *    nothing else, and the database holds only the SHA-256 hash of its token. The
  *    three routes below are exempt from the `X-Tenant-Id` header hooks (the closed
- *    allowlist in `src/contexto-tenant.ts`), because the tenant on the panel never
+ *    allowlist in `src/aislamiento/contexto-tenant.ts`), because the tenant on the panel never
  *    comes from the request at all.
  *  - **The tenant enters from the session row, never from the client (rule 2,
  *    DEC-135).** `levantarSesionPanel` resolves the token through the audited
- *    unscoped lookups in `src/aislamiento-prisma.ts` (the same treatment the agent
+ *    unscoped lookups in `src/aislamiento/aislamiento-prisma.ts` (the same treatment the agent
  *    token got), and each handler runs inside `conTenantActivo(sesion.tenant.…)` — the
  *    exact mechanism DEC-135 names (`entrarContextoTenant`), under the name this
  *    repository actually exports. A client-supplied `X-Tenant-Id` on a panel route is
@@ -149,7 +149,7 @@ async function resolverSesion(
  * With `opcional: false` (the default, and the only mode the API routes use) every
  * refusal below returns a reply before the handler — unknown token, expired row
  * (cleaned up on use, per the spec), deactivated tenant, deactivated user — with
- * the exact codes `src/panel-auth.test.ts` pins.
+ * the exact codes `src/panel/panel-auth.test.ts` pins.
  *
  * With `opcional: true` (the panel page, CH-22a PR3) the hook never replies: the
  * handler must load whether the session exists or not, serving the login screen
@@ -189,7 +189,7 @@ export function levantarSesionPanel(
 /**
  * The three auth endpoints (DEC-136). `ingresar` is public; `salir` and `sesion` run
  * through `levantarSesionPanel`. All three are on the exemption allowlist in
- * `src/contexto-tenant.ts` (task 2.4): the panel surface never resolves a tenant from
+ * `src/aislamiento/contexto-tenant.ts` (task 2.4): the panel surface never resolves a tenant from
  * a header.
  */
 export function registerPanelAuthRoutes(app: FastifyInstance, prisma: PrismaAislado): void {

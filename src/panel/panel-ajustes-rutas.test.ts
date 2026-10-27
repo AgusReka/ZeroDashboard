@@ -13,7 +13,7 @@ import { registerPanelAjustesRoutes } from './panel-ajustes.js';
  * CH-23 (DEC-138 to DEC-141): `GET` and `PUT /api/panel/automatizaciones/:id/ajustes`
  * against a live PostgreSQL target, with the two-tenant proof of rule 2: another tenant's
  * id answers exactly what an unknown id answers, and its row is never written. Same target
- * and variables as `src/panel-automatizaciones.test.ts` (see `src/aislamiento.test.ts`).
+ * and variables as `src/panel/panel-automatizaciones.test.ts` (see `src/aislamiento/aislamiento.test.ts`).
  */
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -43,7 +43,7 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
-  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento.test.ts)';
+  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento/aislamiento.test.ts)';
 
 /** Wednesday 2026-10-07 10:00 UTC: the clock `proximaEjecucion` is computed from. */
 const RELOJ = new Date('2026-10-07T10:00:00Z');

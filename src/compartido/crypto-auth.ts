@@ -7,7 +7,7 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
  * a per-user random salt, and nothing here adds a native-compiled dependency to the
  * build or the container (DEC-133's stated reason for choosing the runtime's own KDF
  * over bcrypt/argon2). This module is pure — no database, no request, no clock — which
- * is what lets `src/crypto-auth.test.ts` pin every claim about it without a server.
+ * is what lets `src/compartido/crypto-auth.test.ts` pin every claim about it without a server.
  *
  * **Nothing here ever returns, logs or embeds the plaintext password** (regla 5's
  * minimization applied to credentials): `hashearClave` yields only the versioned
@@ -53,7 +53,7 @@ function hexInvalido(valor: string, longitud: number): boolean {
  * Hashes a password into `s1:<saltHex>:<keyHex>`.
  *
  * A fresh 16-byte salt is drawn per call, so two users (or two hashes of the same
- * user) never share one — the property `src/crypto-auth.test.ts` proves by hashing
+ * user) never share one — the property `src/compartido/crypto-auth.test.ts` proves by hashing
  * the same password twice. The derivation runs asynchronously through `derivarClave`
  * so the KDF never blocks the event loop (the proposal's stated risk mitigation).
  */
@@ -98,7 +98,7 @@ export async function verificarClave(clavePlana: string, hashAlmacenado: string)
  * A fresh panel session token (DEC-134): 256 random bits for the `HttpOnly` cookie,
  * and the SHA-256 hex of them — the only form that reaches `SesionPanel.tokenHash`.
  *
- * Same construction as the agent token (`src/agente-token.ts`): a plain hash is enough
+ * Same construction as the agent token (`src/agente/agente-token.ts`): a plain hash is enough
  * because the token carries 256 random bits and is not a password a dictionary could
  * guess. The raw token never touches the database, so a leaked row cannot be replayed.
  */
@@ -110,7 +110,7 @@ export function generarTokenSesion(): { tokenPlano: string; tokenHash: string } 
 
 /**
  * The SHA-256 hex digest of a session token: what `SesionPanel.tokenHash` holds and
- * what the panel hook looks up, exactly like `hashTokenAgente` (`src/agente-token.ts`)
+ * what the panel hook looks up, exactly like `hashTokenAgente` (`src/agente/agente-token.ts`)
  * — the raw token never touches the database or the logs (DEC-134).
  */
 export function hashTokenSesion(tokenPlano: string): string {

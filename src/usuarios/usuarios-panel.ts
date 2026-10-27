@@ -23,7 +23,7 @@ export function generarClavePanel(): string {
 }
 
 /**
- * The one email normalization, shared with the panel login (`src/panel-auth.ts`), so the
+ * The one email normalization, shared with the panel login (`src/panel/panel-auth.ts`), so the
  * stored form and the looked-up form can never diverge: trimmed and lowercased.
  */
 export function normalizarCorreo(texto: string): string {

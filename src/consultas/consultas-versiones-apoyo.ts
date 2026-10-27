@@ -10,7 +10,7 @@ import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
  * CH-25: the setup the saved-query edit and history route tests share (a live PostgreSQL
  * target, an app with the saved-query routes, two tenants and the request helpers), kept in
  * one place so the two test files do not repeat it. Same target and variables as
- * `src/consultas-guardadas.test.ts` (see `src/aislamiento.test.ts`). Not a test file.
+ * `src/consultas/consultas-guardadas.test.ts` (see `src/aislamiento/aislamiento.test.ts`). Not a test file.
  */
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -40,7 +40,7 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
 export const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 export const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
-  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento.test.ts)';
+  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento/aislamiento.test.ts)';
 
 /** A saved query as the create and the edit answer it. */
 export interface Consulta {

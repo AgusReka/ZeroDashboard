@@ -2594,7 +2594,7 @@ async function sondearConexion() {
 
 // CH-32b (audit obs. 12): the list reads in words. «De lunes a viernes a las 06:00» for a cron of the three
 // presets (DEC-129), the reverse of cronDeFrecuencia and the same wording as frecuenciaDeCron on the server
-// (src/panel-automatizaciones.ts); null for any other expression. Five fields on single spaces, the day-of-month
+// (src/panel/panel-automatizaciones.ts); null for any other expression. Five fields on single spaces, the day-of-month
 // and month fields a star, the day-of-week one of the preset values, and a minute and an hour of one or two digits
 // in range, checked by characters (no pattern literal in this page).
 function esNumeroDeUnoODosDigitos(texto) {
@@ -3027,7 +3027,7 @@ var ICONOS_FRESCURA = {
   ]
 };
 
-// The client twin of evaluarFrescura in src/frescura.ts, pinned by the same vectors: an
+// The client twin of evaluarFrescura in src/tenants/frescura.ts, pinned by the same vectors: an
 // undeclared window is its own state, and a window equal to the tolerance is still al-dia.
 function estadoFrescura(ventana, tolerancia) {
   if (ventana === null || ventana === undefined) { return 'sin-declarar'; }
@@ -5312,7 +5312,7 @@ cargarTenants().then(function () {
 
 /**
  * CH-29 (DEC-154): the console's login screen, served by `GET /consola` when the request
- * carries no valid operator session. Built on the panel's P-01 pattern (`src/panel.ts`)
+ * carries no valid operator session. Built on the panel's P-01 pattern (`src/panel/panel.ts`)
  * with the shared `.zd-*` classes: a centered card, one form, one error banner, a loading
  * button. It carries no data at all, so nothing in it needs escaping. The script posts
  * the name and password as JSON to `POST /consola/ingresar` and reloads on success, so the
@@ -5424,7 +5424,7 @@ export type ResolverOperador = (cabeceraCookie: string | undefined) => Promise<O
  * where an operator without a session logs in (DEC-152). With a valid session it serves
  * the console naming the operator; without one, the login screen. It takes a resolver
  * rather than a `PrismaClient` so the page itself still touches no database: production
- * passes `resolverSesionConsola` (`src/rutas.ts`), the console tests a fixed operator.
+ * passes `resolverSesionConsola` (`src/app/rutas.ts`), the console tests a fixed operator.
  * `no-store`, because the page names a person and changes with the session. `/` is left
  * unclaimed.
  */

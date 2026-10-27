@@ -20,10 +20,10 @@ import type { FastifyInstance } from 'fastify';
  * **The registrar takes the app and the loaded sheets, nothing else.** The assets are
  * identical for every tenant and no handler here holds a database handle, which is the
  * structural premise of their tenant-header exemption (DEC-124 A3, the DEC-24 argument).
- * `src/contexto-tenant.ts` builds those exempt rows from `RUTAS_ESTILOS`, the same list
+ * `src/aislamiento/contexto-tenant.ts` builds those exempt rows from `RUTAS_ESTILOS`, the same list
  * that registers the routes, so the two cannot diverge. This module never imports that
  * one, so there is no import cycle, and it does no IO at the top level, so importing the
- * list reads no file. `src/estilos-rutas.test.ts` pins the signature and the absence of
+ * list reads no file. `src/compartido/estilos-rutas.test.ts` pins the signature and the absence of
  * any database client name in this source.
  *
  * Headers: `text/css; charset=utf-8` (the comments carry non-ASCII characters),

@@ -11,8 +11,8 @@ import { registerTenantRoutes } from './tenants.js';
 
 /**
  * CH-24 (DEC-142 to DEC-145): `PUT /tenants/:id/frescura` and the two new tenant fields
- * against a live PostgreSQL target. Same target and variables as `src/tenants.test.ts`
- * (see `src/aislamiento.test.ts`).
+ * against a live PostgreSQL target. Same target and variables as `src/tenants/tenants.test.ts`
+ * (see `src/aislamiento/aislamiento.test.ts`).
  */
 const objetivo = {
   host: process.env.TEST_DB_HOST ?? 'localhost',
@@ -42,7 +42,7 @@ function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<bo
 const alcanzable = await esAlcanzable(objetivo.host, objetivo.port, 1000);
 const motivoSkip =
   `no PostgreSQL server at ${objetivo.host}:${objetivo.port} — ` +
-  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento.test.ts)';
+  'bring up the Compose db service and set TEST_DB_* (see src/aislamiento/aislamiento.test.ts)';
 
 interface TenantPayload {
   id: string;

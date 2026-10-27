@@ -211,7 +211,7 @@ describe('GET /contrato — the read-only projection of the static catalog', () 
     for (const prohibido of ['aislamiento-prisma', 'PrismaAislado', 'PrismaClient', 'prisma']) {
       assert.ok(
         !fuente.includes(prohibido),
-        `src/contrato-rutas.ts must not mention ${prohibido}: the route holds no database handle`,
+        `src/contrato/contrato-rutas.ts must not mention ${prohibido}: the route holds no database handle`,
       );
     }
   });

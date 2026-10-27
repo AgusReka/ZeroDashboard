@@ -12,7 +12,7 @@ import { componerSentencia, evaluarVistas, type VistaAComponer } from './plantil
 
 /**
  * CH-12: `POST /plantillas/:id/prueba`, the template test route (DEC-62). Unlike the
- * catalog in `src/plantillas-rutas.ts`, it is **not** exempt from `x-tenant-id`: it
+ * catalog in `src/plantillas/plantillas-rutas.ts`, it is **not** exempt from `x-tenant-id`: it
  * resolves a tenant-owned `Conexion`, so it takes the full scoped client and lives in
  * its own file, where that capability is visible to grep.
  */

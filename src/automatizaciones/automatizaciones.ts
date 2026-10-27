@@ -14,7 +14,7 @@ import type { EstadoNoAprobado } from '../plantillas/plantillas.js';
  * else: whether a stored schedule is standard cron (DEC-76), whether an automation is due
  * inside a tick's window in the deployment's timezone (DEC-77), and how a run's outcome
  * becomes the closed columns of its `Ejecucion` row. No Fastify, no Prisma, no
- * connection: `src/planificador.ts` owns every side effect.
+ * connection: `src/automatizaciones/planificador.ts` owns every side effect.
  *
  * `cron-parser` is used for next-fire calculation only (DEC-76). Nothing here, or
  * anywhere else, asks it to run a task.

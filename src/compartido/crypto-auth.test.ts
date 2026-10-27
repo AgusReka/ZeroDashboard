@@ -100,7 +100,7 @@ describe('the key comparison is constant-time (DEC-133)', () => {
    * The behavioral case above cannot tell `timingSafeEqual` apart from a plain `===`:
    * both refuse a different key, and wall-clock timing is not a deterministic test.
    * The mechanism itself is therefore pinned on the source text — the same technique
-   * `src/vistas-canonicas.test.ts` case 2.11 uses for DEC-31.
+   * `src/mapeo/vistas-canonicas.test.ts` case 2.11 uses for DEC-31.
    */
   test('the comparison goes through node:crypto timingSafeEqual, pinned on the source', async () => {
     const fuente = await readFile(new URL('./crypto-auth.ts', import.meta.url), 'utf8');

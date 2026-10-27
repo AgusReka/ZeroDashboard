@@ -17,7 +17,7 @@ import { COPY_NEGOCIO, registerPanelAutomatizacionesRoutes } from '../panel/pane
  * `X-Tenant-Id: <tenant-b>`, which the panel surface ignores by construction (the
  * routes are exempt from the header hooks and the tenant enters through the session).
  *
- * The same target and fixture key as `src/aislamiento.test.ts`: the Compose `db`
+ * The same target and fixture key as `src/aislamiento/aislamiento.test.ts`: the Compose `db`
  * service (see that file's header for the TEST_DB_* variables).
  */
 const objetivo = {

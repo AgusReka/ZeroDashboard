@@ -8,7 +8,7 @@ import type { EstadoValidacion } from '../mapeo/validacion-mapeo.js';
  * else: the save-time parameter checks, reused unchanged from CH-11 (DEC-52); the view
  * gate that lets a template compose only views whose saved validation passed (DEC-71);
  * and the `WITH` composition itself (DEC-70). No Fastify, no Prisma, no connection:
- * `src/plantillas-rutas.ts` and `src/plantilla-prueba.ts` own every side effect.
+ * `src/plantillas/plantillas-rutas.ts` and `src/plantillas/plantilla-prueba.ts` own every side effect.
  *
  * Rule 4 holds by construction. The composed text is built from stored operator SQL
  * (`Plantilla.sql`, `VistaCanonica.sql` — DEC-31), fixed literals, and aliases read from

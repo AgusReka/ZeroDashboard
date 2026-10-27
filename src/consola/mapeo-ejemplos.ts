@@ -10,7 +10,7 @@
  * quoted because Postgres folds unquoted identifiers to lowercase.
  *
  * The keys are the contract's entity names. The contract has no entity-name union type, so
- * `src/mapeo-ejemplos.test.ts` enforces that the keys and the aliases equal the contract.
+ * `src/consola/mapeo-ejemplos.test.ts` enforces that the keys and the aliases equal the contract.
  * The console writes this constant into its inline script once; it is code, not stored data.
  */
 export const EJEMPLOS_MAPEO: Readonly<Record<string, string>> = {

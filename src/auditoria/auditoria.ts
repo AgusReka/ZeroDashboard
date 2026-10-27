@@ -240,7 +240,7 @@ export type ContextoDeRuta = Omit<ContextoAuditado, 'operador'>;
  * statement — and swallowed.
  *
  * A request without an operator only exists in a test app built without the operator
- * guard; `src/rutas.test.ts` proves production always has one. Nothing is written then,
+ * guard; `src/app/rutas.test.ts` proves production always has one. Nothing is written then,
  * and an `error` line says so, so a future exemption of an audited route cannot go unseen.
  */
 export async function registrarEjecucion(

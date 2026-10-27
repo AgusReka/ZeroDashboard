@@ -61,7 +61,7 @@ model Conexion {
 
 // CH-11 (DEC-48, DEC-55): `parametros` is the query's parameter declaration, a JSON list
 // of `{nombre, tipo}` read and written whole with the row. Its content is validated in
-// the application (`src/parametros.ts`), not by the database. The `[]` default is what
+// the application (`src/ejecucion/parametros.ts`), not by the database. The `[]` default is what
 // makes the migration additive: every pre-CH-11 row backfills as declaring nothing.
 model ConsultaGuardada {
   id            String                    @id @default(uuid())
@@ -123,7 +123,7 @@ model ConsultaGuardadaVersion {
 // CH-10 (DEC-40, DEC-41, DEC-44): the latest structural validation result lives on the
 // row itself, never in a history model. `estadoValidacion` is plain TEXT for the same
 // reason `entidad` is ('no-validado' | 'valida' | 'invalida', checked in
-// `src/validacion-mapeo.ts`). Its default is what makes the migration additive: every
+// `src/mapeo/validacion-mapeo.ts`). Its default is what makes the migration additive: every
 // pre-CH-10 row backfills as never validated. Re-registering the SQL resets all three.
 model VistaCanonica {
   id                    String    @id @default(uuid())
@@ -145,7 +145,7 @@ model VistaCanonica {
 
 // CH-12 (DEC-61): an automation template is a GLOBAL catalog entry, not tenant data.
 // It has no `tenantId` column and no relation to `Tenant`, and it is deliberately
-// absent from `MODELOS_AISLADOS` in `src/aislamiento-prisma.ts`, so the isolation
+// absent from `MODELOS_AISLADOS` in `src/aislamiento/aislamiento-prisma.ts`, so the isolation
 // extension passes it through exactly as it passes `Tenant` through. A template becomes
 // tenant-bound only when a tenant instantiates it as an automation, which is CH-21's
 // job, not this model's.
@@ -273,7 +273,7 @@ model Agente {
 // the panel. Every row belongs to exactly one Tenant, `correo` is globally unique so
 // a duplicate registration is refused by the database (spec: "Unique email
 // constraint"), and `claveHash` holds only the `s1:<salt>:<key>` scrypt envelope from
-// `src/crypto-auth.ts` — never a plaintext password (regla 5). `activo` has the same
+// `src/compartido/crypto-auth.ts` — never a plaintext password (regla 5). `activo` has the same
 // meaning as `Tenant.activo` (DEC-14): deactivation keeps the row, and the login path
 // fails closed on it. `nombre` is nullable so a user provisioned with the tenant can
 // exist without one (spec: "an optional `nombre` string").
