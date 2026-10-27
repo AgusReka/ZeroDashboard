@@ -3476,6 +3476,120 @@ Parámetros que puede elegir P2:
 
 ---
 
+### DEC-184 — Los gráficos de los reportes usan una biblioteca externa copiada en `public/ui/`
+
+**Contexto.**
+- DEC-183 fija cuatro tipos de visualización para los reportes del panel: número, tabla, barras y línea.
+- Las páginas son strings de TypeScript. Solo la hoja de estilos se sirve como archivos fijos desde `public/ui/`, con una lista cerrada de rutas exactas (DEC-124). No hay plugin de archivos estáticos, CSP ni scripts de terceros.
+- Todo dato que llega de la API se asigna con `textContent`, nunca con `innerHTML`, porque las filas vienen de la réplica del cliente (comentario de cabecera de `src/consola/consola.ts`).
+
+**Opciones.**
+- (a) Un dibujante propio en el script del panel: arma SVG con `createElementNS` y pone los textos con `textContent`, sin dependencias.
+- (b) Una biblioteca externa de gráficos, copiada en `public/ui/` y servida con el mecanismo de DEC-124.
+- (c) Una biblioteca desde un CDN.
+- (d) SVG armado en el servidor y enviado ya dibujado al panel.
+
+**Decisión.** (b).
+- **Biblioteca:** Chart.js 4, con licencia MIT, en su build UMD. Se copia en forma literal en `public/ui/vendor/` y se fija una versión exacta. Copiarla es una nueva fila en la lista fija de DEC-124, con su prueba.
+- **Dibujo en `<canvas>`.** Chart.js dibuja etiquetas y tooltips sobre el `<canvas>`, sin insertar HTML. Así se mantiene el criterio de que ningún dato del cliente llega al DOM como marcado. Los textos fuera del gráfico (título y estados) siguen yendo con `textContent`.
+- **Colores.** Salen de los tokens de la skill de diseño, leídos con `getComputedStyle` y pasados a la configuración. No se usa la paleta propia de la biblioteca.
+- **Número y tabla.** No usan la biblioteca: el número es el componente de tarjeta de la skill, y la tabla, la tabla del sistema.
+- **Accesibilidad.** Cada gráfico tiene una tabla equivalente accesible, porque un `<canvas>` no lo es.
+- **Columnas faltantes.** Si el resultado no trae las columnas que el tipo declara, se ve un estado de error del reporte, no un gráfico roto.
+
+**Por qué.**
+- Da tooltips, leyendas y animaciones sin escribirlas, que es lo que se ve en el video y en el uso diario.
+- Copiarla en `public/ui/` reutiliza un mecanismo ya decidido y no agrega un origen de terceros que ejecute código en la sesión del cliente, que es lo que descarta (c).
+- (a) obligaba a escribir y mantener un dibujante por tipo.
+- (d) obligaba a escapar en el servidor el texto que va adentro del SVG.
+
+**Se resigna.**
+- Es un archivo de terceros grande, cargado en la página del panel, que se actualiza a mano, con su propia superficie de fallas. El PR que lo copia necesita una excepción de tamaño, como la copia de la skill en CH-21a.
+- La paleta y la tipografía de los gráficos dependen de la configuración que se le pase, no del CSS del sistema.
+- Es la primera dependencia del front.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo la opción (b) sobre la recomendada (a). La biblioteca, Chart.js, la propuso el agente y la confirmó el usuario el mismo día. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-185 — Telegram como segundo canal: bot global de la plataforma, avisos al administrador de la PYME y vínculo por código
+
+**Contexto.**
+- `docs/00-contexto.md` nombra Telegram como canal del catálogo inicial (§7) y al cliente final (P3) como persona con superficie Telegram (§3). No hay código ni historias para ninguno de los dos.
+- Hoy la notificación es un único correo HTML por ejecución, a una sola dirección guardada en la automatización (DEC-65, DEC-81, DEC-82). Sin SMTP configurado, la ejecución corre igual y registra `no-configurada` (DEC-86).
+- El anti-alcance excluye los disparadores por webhook y la ejecución por ítems: una ejecución produce una notificación.
+
+**Opciones.**
+
+A quién le llega:
+- (a) Al administrador de la PYME (P2), como el correo.
+- (b) Además, un bot para el cliente final (P3) que responda por su propio pedido.
+
+Bot:
+- (a) Un bot global de la plataforma, con el token en la variable de entorno `TELEGRAM_BOT_TOKEN` (regla 7), opcional con el mismo criterio que DEC-86.
+- (b) Un bot por tenant, con el token guardado cifrado como las credenciales de conexión.
+
+Cómo se obtiene el `chat_id` del destinatario:
+- (a) Vínculo por código: el panel muestra «Vincular Telegram» con un código de un solo uso y vencimiento corto. P2 le manda `/start <código>` al bot, y la plataforma lo recibe consultando `getUpdates` hacia afuera, sin webhook ni puertos entrantes.
+- (b) Carga manual: P1 escribe el `chat_id` en la consola, y P2 tiene que averiguarlo por su cuenta.
+
+**Decisión.** Destinatario (a), bot (a) y vínculo (a).
+- **Destinatario (a).** (b) es un producto aparte: un bot conversacional con consultas por cliente final, que exige datos personales que hoy el contrato no expone (regla 5) y una ejecución por ítem. P3 se registra como límite del artefacto y se corrige el contexto.
+- **Bot (a).** Un solo secreto, sin entidades nuevas. El bot se presenta como la plataforma.
+- **Vínculo (a).** El cliente no tiene que saber qué es un `chat_id`. La consulta saliente mantiene el argumento de no abrir puertos entrantes, igual que el agente.
+
+**Forma.**
+- La automatización elige un canal, `correo` o `telegram`.
+- Con `telegram`, el destino es el chat vinculado del tenant. Si no hay vínculo, el resultado es `sin-vinculo`, visible como cualquier otro resultado.
+- El mensaje es texto, armado por un renderizador genérico a partir de las mismas filas que el correo (como DEC-85). Recorta al límite de un mensaje de Telegram y avisa el corte, como el correo.
+- Sigue siendo un mensaje por ejecución, sin reintento del envío (como el correo).
+
+**Se resigna.**
+- El contenido del mensaje pasa por los servidores de Telegram. Es una segunda salida de datos del tenant hacia un tercero, igual que el relay SMTP de DEC-81, y se anota en las consideraciones éticas y legales.
+- La consulta a `getUpdates` es un ciclo nuevo en segundo plano, solo para vincular; no dispara automatizaciones.
+- Un solo chat vinculado por tenant.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-186 — Condición explícita: mínimo de filas para notificar, por automatización
+
+**Contexto.**
+- La condición es el `WHERE` parametrizado de la plantilla más la regla «sin filas no se envía» (DEC-64, DEC-84). La auditoría del 2026-10-13 dejó las condiciones explícitas como trabajo futuro.
+- «El valor supera X» ya se expresa hoy: el umbral es un parámetro dentro del SQL, como en `stock-fisico`, y el cliente lo ajusta desde el panel (CH-23).
+- Lo que el SQL no expresa sin deformar el resultado es «avisar solo si hay al menos N filas»: un `HAVING` sobre el conteo cambia las filas que llegan al mensaje.
+
+**Opciones.**
+- (a) Sin cambios: toda condición queda en el SQL.
+- (b) Un mínimo de filas en la automatización (`minimoFilas`, entero, por defecto 1), evaluado por el motor después de la consulta y antes de notificar.
+- (c) El mismo mínimo, declarado en la plantilla.
+- (d) Una condición sobre una columna del resultado (suma, máximo o mínimo comparado contra un valor).
+
+**Decisión.** (b).
+- **(b).** Cubre lo único que el SQL no expresa bien. Con el valor por defecto en 1, el comportamiento actual no cambia (DEC-84). Es la condición del patrón consulta → condición → notificación, no una capacidad nueva del motor (regla 6).
+- (c) haría que el mismo aviso con distinto mínimo exija otra plantilla.
+- (d) es un pequeño lenguaje de expresiones dentro del motor, que es justo lo que el anti-alcance defiende que no se construya.
+
+**Forma.**
+- Hay una columna nueva con una migración, y se valida como entero entre 1 y el tope de filas del motor.
+- Cuando hay filas pero no llegan al mínimo, la ejecución registra `omitida-bajo-minimo`, distinto de `omitida-sin-filas`.
+- Se carga en el alta de la consola, y su ajuste desde el panel queda fuera hasta que una historia lo pida.
+
+**Se resigna.**
+- No hay condiciones sobre valores agregados fuera del SQL, ni combinaciones (Y, O).
+- Una condición más rica se sigue escribiendo en la consulta de la plantilla.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
