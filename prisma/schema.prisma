@@ -156,7 +156,9 @@ model VistaCanonica {
 // plain TEXT for the reason `VistaCanonica.entidad` is: their allowed values live in
 // code (`AUTOMATIZACIONES`, DEC-67; `correo-html`, DEC-65), so a DB enum would be a
 // second source of truth. `toleranciaFrescuraMinutos` is stored and not yet enforced
-// (DEC-66). A template is replaced in place by id and never deleted (DEC-68).
+// (DEC-66). A template is replaced in place by id and never deleted (DEC-68). `titulo` and
+// `descripcion` are the client panel's texts (DEC-182, DEC-190), optional, checked in the
+// application.
 model Plantilla {
   id                        String           @id @default(uuid())
   nombre                    String
@@ -166,6 +168,8 @@ model Plantilla {
   automatizacion            String
   formato                   String
   toleranciaFrescuraMinutos Int
+  titulo                    String?
+  descripcion               String?
   automatizaciones          Automatizacion[]
 }
 

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Prisma } from '../generated/prisma/client.js';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
+import { terminosProhibidosEn } from '../compartido/glosario-panel.js';
 import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
 import { TIPOS_PARAMETRO } from '../ejecucion/parametros.js';
@@ -34,6 +35,8 @@ export const PlantillaCompleta = {
   sql: true,
   parametros: true,
   entidades: true,
+  titulo: true,
+  descripcion: true,
 } as const;
 
 export interface RegistroPlantillaBody {
@@ -45,6 +48,9 @@ export interface RegistroPlantillaBody {
   automatizacion: string;
   formato: string;
   toleranciaFrescuraMinutos: number;
+  /** The client panel's texts (DEC-182, DEC-190); `null` or absent means "no client text". */
+  titulo?: string | null;
+  descripcion?: string | null;
 }
 
 interface PlantillaParams {
@@ -69,6 +75,8 @@ export const registroPlantillaSchema = {
       'automatizacion',
       'formato',
       'toleranciaFrescuraMinutos',
+      'titulo',
+      'descripcion',
     ],
   },
   required: ['nombre', 'sql', 'entidades', 'automatizacion', 'formato', 'toleranciaFrescuraMinutos'],
@@ -96,6 +104,11 @@ export const registroPlantillaSchema = {
     // Stored, never enforced (DEC-66). Fastify's AJV coerces a numeric string like
     // `'30'`; `-1`, `1.5` and `'treinta'` are still rejected.
     toleranciaFrescuraMinutos: { type: 'integer', minimum: 0 },
+    // Optional client texts. Length and glossary are checked by `rechazoDePlantilla` on the
+    // trimmed value, not with `maxLength`, which would count the surrounding spaces. A JSON
+    // `null` is coerced to `''` by Fastify's AJV and stored as `null`.
+    titulo: { type: 'string' },
+    descripcion: { type: 'string' },
   },
 } as const;
 
@@ -117,9 +130,38 @@ function valoresRechazados(validation: unknown, cuerpo: unknown): unknown[] {
   });
 }
 
+/** Character caps of the client texts, measured after trimming. */
+export const LARGO_MAXIMO_TEXTO_CLIENTE = { titulo: 80, descripcion: 200 } as const;
+
+/** Trimmed text, or `null` when absent, null or blank. */
+export function textoCliente(valor: string | null | undefined): string | null {
+  const recortado = valor?.trim() ?? '';
+  return recortado === '' ? null : recortado;
+}
+
 /**
- * The save-time checks shared by create and replace: AJV, then a statement
- * that is blank once trimmed, then the CH-11 parameter rules (DEC-56/57/59). Returns the
+ * The client texts that break their cap or the panel glossary, as JSON pointers, plus the
+ * forbidden terms found (deduplicated). Empty `campos` means both texts are acceptable.
+ */
+function rechazoDeTextos(cuerpo: RegistroPlantillaBody): { campos: string[]; terminos: string[] } {
+  const campos: string[] = [];
+  const terminos = new Set<string>();
+  for (const campo of ['titulo', 'descripcion'] as const) {
+    const texto = textoCliente(cuerpo[campo]);
+    if (texto === null) continue;
+    const prohibidos = terminosProhibidosEn(texto);
+    if (texto.length > LARGO_MAXIMO_TEXTO_CLIENTE[campo] || prohibidos.length > 0) {
+      campos.push(`/${campo}`);
+    }
+    prohibidos.forEach((termino) => terminos.add(termino));
+  }
+  return { campos, terminos: [...terminos] };
+}
+
+/**
+ * The save-time checks shared by create and replace: AJV, then the client texts (length
+ * and glossary), then a statement that is blank once trimmed, then the CH-11 parameter
+ * rules (DEC-56/57/59). Returns the
  * `400` envelope, or `null` when the body may be written.
  */
 export function rechazoDePlantilla(
@@ -132,6 +174,14 @@ export function rechazoDePlantilla(
       error: 'solicitud-invalida',
       campos: camposInvalidos(validationError),
       ...(rechazados.length > 0 ? { rechazados } : {}),
+    };
+  }
+  const textos = rechazoDeTextos(cuerpo);
+  if (textos.campos.length > 0) {
+    return {
+      error: 'solicitud-invalida',
+      campos: textos.campos,
+      ...(textos.terminos.length > 0 ? { terminos: textos.terminos } : {}),
     };
   }
   // `sanearSql` as a predicate only, as `/consultas-guardadas` uses it: the statement is
@@ -161,6 +211,8 @@ export function datosDePlantilla(cuerpo: RegistroPlantillaBody) {
     automatizacion: cuerpo.automatizacion,
     formato: cuerpo.formato,
     toleranciaFrescuraMinutos: cuerpo.toleranciaFrescuraMinutos,
+    titulo: textoCliente(cuerpo.titulo),
+    descripcion: textoCliente(cuerpo.descripcion),
   };
 }
 

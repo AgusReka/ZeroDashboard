@@ -47,6 +47,15 @@ La aplicación compone `WITH v_<entidad> AS (<vista canónica>), … SELECT * FR
 
 Solo por la API de la aplicación, con sesión de operador: `POST /plantillas` crea y `PUT /plantillas/:id` reemplaza en el lugar, sin versiones (DEC-68). El cuerpo lleva `nombre`, `sql`, `parametros`, `entidades`, `automatizacion`, `formato` y `toleranciaFrescuraMinutos`. Las rutas del catálogo no piden `X-Tenant-Id`; la de prueba (`POST /plantillas/:id/prueba`) sí, porque usa una conexión de un tenant.
 
+### Título y descripción para el cliente
+
+El cuerpo admite además dos campos opcionales, `titulo` (hasta 80 caracteres) y `descripcion` (hasta 200). Son los textos que el panel del cliente muestra en la tarjeta de la automatización (DEC-182, DEC-190). Se recortan los espacios de los bordes antes de medir y de guardar, y un valor en blanco se guarda como `null`.
+
+- **Solo se ofrecen las plantillas con los dos textos.** Una plantilla sin título o sin descripción no aparece en «disponibles» del panel; si ya tiene una automatización, el panel usa un texto neutro.
+- **Glosario del panel.** Los textos no pueden contener, sin distinguir mayúsculas, `tenant`, `cron`, `sql`, `consulta`, `query`, `ejecución`, `réplica`, `parámetro`, `timeout` ni `plantilla`. Si alguno aparece, la API responde `400 solicitud-invalida` con el campo en `campos` (`/titulo` o `/descripcion`) y los términos hallados en `terminos`, y no escribe nada. Pasarse del largo también da `400` con el campo en `campos`.
+- **Dos plantillas con el mismo título** (sin distinguir mayúsculas) se ofrecen como una sola, y si una de ellas está activa para el tenant, ninguna se ofrece.
+- **`PUT` reemplaza todo el cuerpo.** Un `PUT` que omite `titulo` o `descripcion` los deja en `null`; para conservarlos hay que reenviarlos.
+
 ## Límites
 
 - **Límite.** La consola no crea, edita ni borra plantillas, y no existe un borrado de plantillas en ninguna superficie (DEC-68).
