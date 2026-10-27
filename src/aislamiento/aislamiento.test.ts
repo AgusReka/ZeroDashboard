@@ -1307,12 +1307,14 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     const columnas = Object.values(Prisma.PlantillaScalarFieldEnum);
     assert.deepEqual(columnas.sort(), [
       'automatizacion',
+      'descripcion',
       'entidades',
       'formato',
       'id',
       'nombre',
       'parametros',
       'sql',
+      'titulo',
       'toleranciaFrescuraMinutos',
     ]);
     // The control: a scoped model does carry it, so the absence above is meaningful.
