@@ -1,3 +1,19 @@
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:661395a523cc5f54a839c58cdb2cf44ea61a647508edda2f9a66d61225350f50
+verdict: pass
+blockers: 0
+critical_findings: 0
+requirements: 6/6
+scenarios: 22/22
+test_command: TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres TEST_DB_NAME=zerodashboard_test DATABASE_URL=postgresql://zerodashboard:postgres@localhost:5434/zerodashboard_test npx tsx --test src/compartido/glosario-panel.test.ts src/panel/panel-automatizaciones.test.ts src/plantillas/plantillas-rutas.test.ts src/plantillas/catalogo-inicial.test.ts src/plantillas/migracion-textos-cliente.test.ts src/aislamiento/aislamiento-panel.test.ts src/aislamiento/aislamiento.test.ts
+test_exit_code: 0
+test_output_hash: sha256:ba4689c672cabc2d1d58ccda0a8f501775597f800a6c5e416e87e73a151b033c
+build_command: npx tsc --noEmit
+build_exit_code: 0
+build_output_hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
 # Verify report: CH-37 — Client-facing title and description on the template
 
 **Verdict: PASS.** Date: 2026-10-27. Branch: `ch37/textos-cliente`, PR #211 (`size:exception`). An independent read-only review first gave PASS WITH WARNINGS. Its two warnings and one suggestion are test gaps, fixed in this pass (see "Findings").
@@ -8,6 +24,7 @@
 | `npx tsc --noEmit` | exit 0 |
 | `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db` | 1515 / 1519. The 4 failures are the known false positives in `conexiones.test.ts` (the `postgres` password). The first run also caught the exact `Plantilla` column list in `aislamiento.test.ts`, which was then updated. |
 | The three test files touched by the fixes, on `zerodashboard_test` | 77 / 77 pass, none skipped |
+| The seven CH-37 test files (envelope `test_command`), on `zerodashboard_test` | 164 / 164 pass, none skipped, exit 0 |
 
 ## Spec scenarios → evidence
 Test files are under `src/`. `PA` is `panel/panel-automatizaciones.test.ts`, `PR` is `plantillas/plantillas-rutas.test.ts`, `CI` is `plantillas/catalogo-inicial.test.ts` and `MIG` is `plantillas/migracion-textos-cliente.test.ts`.
