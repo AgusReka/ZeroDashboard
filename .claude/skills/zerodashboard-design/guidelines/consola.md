@@ -192,7 +192,7 @@ Todos usan los tokens existentes; ninguno usa violeta.
 
 Cada paso entra solo, sin romper los demás. Los `id` actuales se **mueven, no se renombran**.
 
-1. **Hoja compartida.** Agregar `styles.css` (tokens + `components.css`) junto al string actual de `src/consola.ts`, `data-surface="consola"` en `<body>`. Sin cambios de marcado: solo tipografía y color. Riesgo nulo.
+1. **Hoja compartida.** Agregar `styles.css` (tokens + `components.css`) junto al string actual de `src/consola/consola.ts`, `data-surface="consola"` en `<body>`. Sin cambios de marcado: solo tipografía y color. Riesgo nulo.
 2. **Barra de tenant (CH-06).** Reemplazar su marcado por `.zd-tenantbar` manteniendo ids y el selector. Agregar los estados "ningún tenant" y "dado de baja" (este último deshabilita acciones con un solo flag en `<body>`, p. ej. `data-congelado`).
 3. **Esqueleto sin mover nada.** Envolver la página actual en `.zd-shell` con la navegación lateral; cada ítem es un **ancla** a la sección existente (`#consultas`, `#automatizaciones`, `#frescura`). La página sigue siendo una sola: el script y los tests no cambian.
 4. **Separar en pantallas por hash.** Mostrar una sección por vez según `location.hash` (`hidden` en las demás). Mismo DOM, mismos ids: los tests que buscan elementos siguen encontrándolos.
@@ -202,7 +202,7 @@ Cada paso entra solo, sin romper los demás. Los `id` actuales se **mueven, no s
 8. **Pantallas nuevas sobre API existente**, cada una independiente, en el orden del recorrido: Conexiones (CH-03) → Tenants → Agentes (CH-19b) → Mapeo y validación (CH-09/10) → Plantillas y Contrato (solo lectura) → Tiempos de alta (CH-15).
 9. **PENDIENTES** cuando exista el backend: conectividad (CH-19d1) en barra y agentes; en riesgo (CH-19d2); Auditoría.
 
-**Mapa de ids**: no tuve acceso a `src/consola.ts`, así que el mockup no reproduce los ids actuales. Antes del paso 3, completar esta tabla leyendo el archivo:
+**Mapa de ids**: no tuve acceso a `src/consola/consola.ts`, así que el mockup no reproduce los ids actuales. Antes del paso 3, completar esta tabla leyendo el archivo:
 
 | id actual | Pantalla destino | Contenedor nuevo |
 |---|---|---|
@@ -222,7 +222,7 @@ Cada paso entra solo, sin romper los demás. Los `id` actuales se **mueven, no s
 
 Esta guía se importó de la exportación de Claude Design sin sus cambios al panel (que revertían DEC-93: P-06 «Último resultado» y el botón «Ver último resultado» siguen fuera de alcance). Antes de implementar cualquier pantalla de acá (CH-30), resolver:
 
-1. **Mapeo de ids.** Esta guía se escribió sin ver `src/consola.ts` y el mockup usa ids propios (`q-sql`, `q-result`, `a-cx`…). Los ids de la consola real (lista `IDS` de `src/consola.test.ts`) son contrato con el script y los tests: se mueven de lugar, no se renombran. Completar la tabla de la sección 5 contra esa lista.
+1. **Mapeo de ids.** Esta guía se escribió sin ver `src/consola/consola.ts` y el mockup usa ids propios (`q-sql`, `q-result`, `a-cx`…). Los ids de la consola real (lista `IDS` de `src/consola/consola.test.ts`) son contrato con el script y los tests: se mueven de lugar, no se renombran. Completar la tabla de la sección 5 contra esa lista.
 2. **El mockup no es código portable.** Es HTML, CSS y JS plano, pero arma el marcado con cadenas e `innerHTML` y tiene unos 55 estilos en línea en sus `.js`. La consola real escribe todo como texto con nodos y no asigna clases `zd-*` desde el script (guardia G3'). Usarlo como referencia visual; los estilos en línea pasan a clases.
 3. **Fuera del inventario del prompt.** El botón de modo claro u oscuro del pie de la navegación (`app.js`; el modo va por tokens y por la preferencia del sistema) no se implementa sin decisión.
 4. **Conectividad.** La barra de tenant y el selector muestran conectado, desconectado y último latido como si existieran: son de CH-19d1 y CH-19d2, no construidos. Hasta entonces, no se muestran.

@@ -6,11 +6,11 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
-import { NOMBRE_COOKIE_CONSOLA, registrarGuardOperador } from '../consola-auth.js';
+import { NOMBRE_COOKIE_CONSOLA, registrarGuardOperador } from '../consola/consola-auth.js';
 import { registerConexionRoutes } from '../conexiones/conexiones.js';
-import { registerConsultaRoutes } from '../consultas.js';
-import { registerPlantillaPruebaRoute } from '../plantilla-prueba.js';
-import { registerValidacionMapeoRoutes } from '../validacion-mapeo-rutas.js';
+import { registerConsultaRoutes } from '../consultas/consultas.js';
+import { registerPlantillaPruebaRoute } from '../plantillas/plantilla-prueba.js';
+import { registerValidacionMapeoRoutes } from '../mapeo/validacion-mapeo-rutas.js';
 import {
   alcanzable,
   borrarOperadores,
@@ -20,7 +20,7 @@ import {
   motivoSkip,
   nombreUnico,
   objetivo,
-} from '../consola-auth-apoyo.js';
+} from '../consola/consola-auth-apoyo.js';
 
 process.env.APP_PORT ??= '3000';
 process.env.DATABASE_URL ??= databaseUrl;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
-import { alcanzable, databaseUrl, motivoSkip } from '../consola-auth-apoyo.js';
+import { alcanzable, databaseUrl, motivoSkip } from '../consola/consola-auth-apoyo.js';
 
 /**
  * CH-20 (DEC-162): the audit table refuses UPDATE, DELETE and TRUNCATE, whoever asks — here

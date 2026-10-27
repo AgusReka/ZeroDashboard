@@ -8,8 +8,8 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { conTenantActivo, registrarContextoTenant } from './contexto-tenant.js';
 import { hashearClave } from '../compartido/crypto-auth.js';
-import { registerPanelAuthRoutes } from '../panel-auth.js';
-import { COPY_NEGOCIO, registerPanelAutomatizacionesRoutes } from '../panel-automatizaciones.js';
+import { registerPanelAuthRoutes } from '../panel/panel-auth.js';
+import { COPY_NEGOCIO, registerPanelAutomatizacionesRoutes } from '../panel/panel-automatizaciones.js';
 
 /**
  * CH-22a task 2.2 (DEC-135, T2): the two-tenant panel isolation proof. User A logs in

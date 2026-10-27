@@ -13,7 +13,7 @@ import {
   databaseUrl,
   motivoSkip,
   nombreUnico,
-} from './consola-auth-apoyo.js';
+} from './consola/consola-auth-apoyo.js';
 import { ejecutar, leerClave, validarClave, validarNombre } from './operador-alta.js';
 
 /** A writable that keeps everything written to it, to assert what was (not) printed. */
