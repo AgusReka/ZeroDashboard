@@ -75,14 +75,17 @@ describe('migration plantilla_textos_cliente — backfill on live rows', { skip:
   let prisma!: PrismaClient;
   const marca = `CH-37 migracion ${Date.now()}`;
   const fisico = randomUUID();
+  // An operator-created twin of the seeded slug: the backfill keys on the slug, not the id.
+  const gemela = randomUUID();
   const producible = randomUUID();
   const otra = randomUUID();
-  const ids = [fisico, producible, otra];
+  const ids = [fisico, gemela, producible, otra];
 
   before(async () => {
     prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
     for (const [id, automatizacion] of [
       [fisico, 'stock-fisico'],
+      [gemela, 'stock-fisico'],
       [producible, 'stock-producible'],
       [otra, 'reporte-diario'],
     ] as const) {
@@ -125,6 +128,7 @@ describe('migration plantilla_textos_cliente — backfill on live rows', { skip:
         });
         const porId = new Map(filas.map((f) => [f.id, f]));
         assert.deepEqual(porId.get(fisico), { id: fisico, ...textosDe('stock-fisico') });
+        assert.deepEqual(porId.get(gemela), { id: gemela, ...textosDe('stock-fisico') });
         assert.deepEqual(porId.get(producible), { id: producible, ...textosDe('stock-producible') });
         assert.deepEqual(porId.get(otra), { id: otra, titulo: null, descripcion: null });
         throw reversion;

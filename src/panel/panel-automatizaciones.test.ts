@@ -343,8 +343,10 @@ describe('proyectarDisponibles — what the client can still turn on', () => {
   test('1.8 the title key ignores case and surrounding spaces, and the lowest id wins across them', () => {
     const lista = proyectarDisponibles(
       [
-        { id: 'p-5', titulo: 'aviso de stock bajo', descripcion: 'Texto de p-5' },
-        { id: 'p-4', titulo: '  AVISO de stock bajo ', descripcion: 'Texto de p-4' },
+        // The raw titles sort p-5 first (leading spaces, then lower case before upper case),
+        // so only a sort by the normalized key lets the lower id win.
+        { id: 'p-5', titulo: '  aviso de stock bajo ', descripcion: 'Texto de p-5' },
+        { id: 'p-4', titulo: 'AVISO de stock bajo', descripcion: 'Texto de p-4' },
       ],
       new Set(),
     );
