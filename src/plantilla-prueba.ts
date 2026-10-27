@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { registrarEjecucion, veredictoDeEjecucion } from './auditoria.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
-import { loadConfig } from './config.js';
+import { registrarEjecucion, veredictoDeEjecucion } from './auditoria/auditoria.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { loadConfig } from './compartido/config.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { SIN_AGENTES, type AbridorDeCanales } from './canal-agente.js';
-import { camposDeDestino, destinoDeConexion } from './conexion-destino.js';
-import { ejecutarConsulta } from './consulta-ejecucion.js';
-import { ErrorCredencialIlegible } from './cripto-credencial.js';
-import { prepararSentencia } from './parametros.js';
+import { SIN_AGENTES, type AbridorDeCanales } from './agente/canal-agente.js';
+import { camposDeDestino, destinoDeConexion } from './conexiones/conexion-destino.js';
+import { ejecutarConsulta } from './ejecucion/consulta-ejecucion.js';
+import { ErrorCredencialIlegible } from './compartido/cripto-credencial.js';
+import { prepararSentencia } from './ejecucion/parametros.js';
 import { componerSentencia, evaluarVistas, type VistaAComponer } from './plantillas.js';
 
 /**

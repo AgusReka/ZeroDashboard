@@ -1,10 +1,10 @@
-import { sanearSql } from './consulta-ejecucion.js';
+import { sanearSql } from './ejecucion/consulta-ejecucion.js';
 import {
   analizarSentencia,
   validarDeclaracion,
   type DeclaracionParametro,
   type ProblemaParametro,
-} from './parametros.js';
+} from './ejecucion/parametros.js';
 
 /**
  * CH-25 (DEC-146 to DEC-150): the pure half of saved-query versioning. It holds the content

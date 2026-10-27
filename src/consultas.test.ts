@@ -5,11 +5,11 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { registerConexionRoutes } from './conexiones.js';
+import { registerConexionRoutes } from './conexiones/conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
-import { cifrarCredencial } from './cripto-credencial.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
+import { cifrarCredencial } from './compartido/cripto-credencial.js';
 
 /**
  * Integration cases for CH-04 (tasks 6.1–6.5). They dial a real PostgreSQL server on

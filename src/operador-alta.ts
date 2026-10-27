@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url';
 import type { Readable, Writable } from 'node:stream';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { hashearClave } from './crypto-auth.js';
+import { hashearClave } from './compartido/crypto-auth.js';
 
 /**
  * CH-29 (DEC-153): `npm run operador:alta -- <nombre>` creates a console operator or, when

@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { cronValido, proximaEjecucion } from './automatizaciones.js';
 import { destinatarioDe } from './automatizaciones-rutas.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { conTenantActivo } from './contexto-tenant.js';
-import { sanearSql } from './consulta-ejecucion.js';
+import { conTenantActivo } from './aislamiento/contexto-tenant.js';
+import { sanearSql } from './ejecucion/consulta-ejecucion.js';
 import { direccionValida } from './correo.js';
-import { prepararSentencia, validarDeclaracion } from './parametros.js';
+import { prepararSentencia, validarDeclaracion } from './ejecucion/parametros.js';
 import { levantarSesionPanel } from './panel-auth.js';
 import { DIAS_PRESET, horarioPresetDeCron, type Dias } from './panel-automatizaciones.js';
 

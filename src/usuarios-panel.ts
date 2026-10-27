@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
-import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
+import { conTenantInyectado, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { hashearClave } from './crypto-auth.js';
-import { LIMITE_LISTADO } from './listados.js';
+import { hashearClave } from './compartido/crypto-auth.js';
+import { LIMITE_LISTADO } from './compartido/listados.js';
 
 /**
  * CH-28 (DEC-155 to DEC-158): the client administrators (P2) who log into the panel,

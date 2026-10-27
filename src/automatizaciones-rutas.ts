@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
-import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
+import { conTenantInyectado, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { cronValido, proximaEjecucion } from './automatizaciones.js';
 import { camposInvalidos } from './compartido/campos-invalidos.js';
-import { sanearSql } from './consulta-ejecucion.js';
+import { sanearSql } from './ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { direccionValida } from './correo.js';
-import { prepararSentencia, type ProblemaParametro } from './parametros.js';
+import { prepararSentencia, type ProblemaParametro } from './ejecucion/parametros.js';
 
 /**
  * CH-13: the automation lifecycle routes — create, list, get, deactivate (DEC-74,

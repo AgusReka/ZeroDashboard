@@ -1,16 +1,16 @@
 import type { FastifyInstance } from 'fastify';
-import type { PrismaAislado } from './aislamiento-prisma.js';
+import type { PrismaAislado } from './aislamiento/aislamiento-prisma.js';
 import { registerHealthRoute } from './health.js';
-import { registerConexionRoutes } from './conexiones.js';
+import { registerConexionRoutes } from './conexiones/conexiones.js';
 import { registerConsultaRoutes } from './consultas.js';
 import { registerConsultaGuardadaRoutes } from './consultas-guardadas.js';
 import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
 import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
 import { registerConsolaRoute } from './consola.js';
 import { registerConsolaAuthRoutes, registrarGuardOperador, resolverSesionConsola } from './consola-auth.js';
-import { registerContratoRoutes } from './contrato-rutas.js';
-import { registerEstilosRoutes, type EstilosCargados } from './estilos-rutas.js';
-import { registerTenantRoutes } from './tenants.js';
+import { registerContratoRoutes } from './contrato/contrato-rutas.js';
+import { registerEstilosRoutes, type EstilosCargados } from './compartido/estilos-rutas.js';
+import { registerTenantRoutes } from './tenants/tenants.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
@@ -18,13 +18,13 @@ import { registerPanelAuthRoutes } from './panel-auth.js';
 import { registerPanelAjustesRoutes } from './panel-ajustes.js';
 import { registerPanelAutomatizacionesRoutes } from './panel-automatizaciones.js';
 import { registerPanelRoutes } from './panel.js';
-import { registerAgenteRoutes } from './agentes-rutas.js';
+import { registerAgenteRoutes } from './agente/agentes-rutas.js';
 import { registerUsuarioPanelRoutes } from './usuarios-panel.js';
-import { registerAuditoriaRoutes } from './auditoria.js';
-import { registerTiemposAltaRoutes } from './tiempos-alta.js';
-import { registrarServidorAgentes } from './agente-servidor.js';
-import type { RegistroAgentes } from './registro-agentes.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
+import { registerAuditoriaRoutes } from './auditoria/auditoria.js';
+import { registerTiemposAltaRoutes } from './conexiones/tiempos-alta.js';
+import { registrarServidorAgentes } from './agente/agente-servidor.js';
+import type { RegistroAgentes } from './agente/registro-agentes.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
 
 /** What the route table needs from the entry point: clients and loaded assets, no I/O. */
 export interface DependenciasRutas {

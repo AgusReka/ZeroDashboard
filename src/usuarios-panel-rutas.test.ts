@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { verificarClave } from './crypto-auth.js';
-import { LIMITE_LISTADO } from './listados.js';
+import { verificarClave } from './compartido/crypto-auth.js';
+import { LIMITE_LISTADO } from './compartido/listados.js';
 import {
   alcanzable,
   correoUnico,

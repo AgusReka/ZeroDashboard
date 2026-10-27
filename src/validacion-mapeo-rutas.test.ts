@@ -7,11 +7,11 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { registerConexionRoutes } from './conexiones.js';
+import { registerConexionRoutes } from './conexiones/conexiones.js';
 import { registerVistaCanonicaRoutes } from './vistas-canonicas.js';
 import { registerValidacionMapeoRoutes } from './validacion-mapeo-rutas.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
 
 /**
  * Integration cases for CH-10 (tasks 4.1–4.9, spec `mapping-validation`). Every claim
@@ -171,7 +171,7 @@ describe('validacion de mapeo — static guarantees', () => {
         llamadores.push(nombre);
       }
     }
-    assert.deepEqual(llamadores.sort(), ['consulta-ejecucion.ts', 'validacion-mapeo-rutas.ts']);
+    assert.deepEqual(llamadores.sort(), ['ejecucion/consulta-ejecucion.ts', 'validacion-mapeo-rutas.ts']);
   });
 });
 

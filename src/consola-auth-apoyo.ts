@@ -1,8 +1,8 @@
 import net from 'node:net';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
-import { generarTokenSesion, hashearClave } from './crypto-auth.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { generarTokenSesion, hashearClave } from './compartido/crypto-auth.js';
 
 /**
  * CH-29 shared setup for the live-database console-auth suites, as

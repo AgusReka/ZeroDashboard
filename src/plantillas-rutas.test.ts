@@ -4,8 +4,8 @@ import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { extenderConAislamiento, type PrismaAislado } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
+import { extenderConAislamiento, type PrismaAislado } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
 import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { registerPlantillaRoutes } from './plantillas-rutas.js';
 

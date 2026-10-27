@@ -6,10 +6,10 @@ import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
-import { registerConexionRoutes } from './conexiones.js';
+import { registerConexionRoutes } from './conexiones/conexiones.js';
 import { ENTIDADES_CANONICAS, registerVistaCanonicaRoutes } from './vistas-canonicas.js';
-import { extenderConAislamiento } from './aislamiento-prisma.js';
-import { registrarContextoTenant } from './contexto-tenant.js';
+import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
+import { registrarContextoTenant } from './aislamiento/contexto-tenant.js';
 
 /**
  * Integration cases for CH-09 (tasks 2.1–2.11). Like CH-05's saved queries, this module
