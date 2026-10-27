@@ -112,7 +112,7 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 | X7 | Como P1, quiero que una ejecución interrumpida no deje estado inconsistente | Al reiniciar el servicio, las ejecuciones colgadas se marcan como fallidas, no quedan "en curso" para siempre | R2 |
 | X8 | Como P1, quiero que un fallo de un tenant no afecte a los demás | Aislamiento de errores en la ejecución; una conexión caída no detiene el planificador | R2 |
 | X9 | Como P1, quiero que una automatización avise solo si el resultado alcanza un mínimo de filas | Mínimo por automatización, que vale 1 por defecto (igual que hoy). Con filas pero por debajo del mínimo, la ejecución queda registrada como omitida por el mínimo (DEC-186) | R4 |
-| X10 | Como P1, quiero ver qué mensaje saldría de una automatización sin esperar al horario | Vista previa con los datos actuales, sin enviar nada. **Requiere decisión:** si además puede enviarse en el momento, es un disparador manual, y el anti-alcance dice que todo es programado | R4 |
+| X10 | Como P1, quiero ver qué mensaje saldría de una automatización sin esperar al horario | Vista previa en la consola con los datos actuales, sin enviar nada y sin registrar una ejecución. No hay envío manual: todo sigue siendo programado (DEC-189) | R4 |
 
 > X1 a X3 son el esqueleto mínimo: sin ellos no hay automatización, solo un editor de consultas. X4 a X8 son lo que separa un cron de juguete de algo presentable. X6 es el equivalente de la fricción del correo duplicado que ya documentaste en la bitácora de WF-01, ahora resuelto por diseño en vez de con un nodo de límite.
 
@@ -125,8 +125,8 @@ Recomendaciones: D-1 solo consultas y metadatos. D-2 agente saliente, porque es 
 | N3 | Como P1, quiero definir el formato de salida en la plantilla | Plantilla de correo asociada a la plantilla de automatización | R2 |
 | N4 | Como P2, quiero recibir los avisos por Telegram | La automatización elige el canal. Llega un mensaje por ejecución al chat vinculado del tenant; sin vínculo, la ejecución lo registra (DEC-185) | R4 |
 | N5 | Como P2, quiero vincular mi Telegram sin datos técnicos | Código de un solo uso desde el panel, que se le manda al bot. Sin webhook ni puertos entrantes (DEC-185) | R4 |
-| N6 | Como P2, quiero que un aviso le llegue a más de una persona | Varias direcciones validadas por automatización. **Requiere decisión:** reabre DEC-82 y el límite de DEC-130 | R4 |
-| N7 | Como P1, quiero que el mensaje muestre los datos que importan del resultado | Columnas elegidas de la plantilla en el cuerpo del mensaje, con un mensaje por ejecución y no uno por fila. **Requiere decisión** | R4 |
+| N6 | Como P2, quiero que un aviso le llegue a más de una persona | Hasta 5 direcciones validadas por automatización, en un solo mensaje con todas en «Para» (DEC-187, que reabre DEC-82 y DEC-130) | R4 |
+| N7 | Como P1, quiero que el mensaje muestre los datos que importan del resultado | Encabezado y línea por fila con marcadores `{columna}`, opcionales en la plantilla, dentro de un mensaje por ejecución y no uno por fila. Sin esos textos, se usa la tabla (DEC-188) | R4 |
 
 ### D — Catálogo de plantillas
 
@@ -192,7 +192,7 @@ Requiere D-1 y D-2 cerradas.
 
 **R3 — Refinamiento.** B4, F3, P4h.
 
-**R4 — Versión 2, en planificación.** D4, D5, N4–N7, X9, X10 y R1h–R5h. Siguen como candidatos C2, C3 y P4h. El orden y el alcance salen de `02-mapa-de-changes.md`, y N6, N7 y X10 necesitan antes su decisión.
+**R4 — Versión 2, en planificación.** D4, D5, N4–N7, X9, X10 y R1h–R5h. Siguen como candidatos C2, C3 y P4h. El orden y el alcance salen de `02-mapa-de-changes.md`.
 
 ---
 
