@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -27,9 +28,13 @@ const VALIDA = {
   toleranciaFrescuraMinutos: 30,
 };
 
+/** What a body without client texts echoes back for them (DEC-182). */
+const SIN_TEXTOS = { titulo: null, descripcion: null };
+
 interface CuerpoRechazo {
   error: string;
   campos: string[];
+  terminos?: string[];
   rechazados?: unknown[];
   problemas?: { parametro: string | null; motivo: string }[];
 }
@@ -137,6 +142,32 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () 
     assert.deepEqual(cuerpo.problemas?.map((p) => [p.parametro, p.motivo]), [['x', 'sin-usar']]);
   });
 
+  test('3.1 a client text with a forbidden term is refused naming the field and the terms', async () => {
+    const cuerpo = await rechazar({ descripcion: 'Corre la consulta cada mañana' });
+    assert.deepEqual(cuerpo.campos, ['/descripcion']);
+    assert.deepEqual(cuerpo.terminos, ['consulta']);
+    // Case-insensitive, and the same term in both fields is listed once.
+    const varios = await rechazar({ titulo: 'Una CONSULTA SQL', descripcion: 'otra Consulta' });
+    assert.deepEqual(varios.campos, ['/titulo', '/descripcion']);
+    assert.deepEqual(varios.terminos, ['sql', 'consulta']);
+  });
+
+  test('3.1 a client text over its cap is refused naming the field, after trimming', async () => {
+    const titulo = await rechazar({ titulo: 'a'.repeat(81) });
+    assert.deepEqual(titulo.campos, ['/titulo']);
+    assert.equal(titulo.terminos, undefined);
+    assert.deepEqual((await rechazar({ descripcion: 'a'.repeat(201) })).campos, ['/descripcion']);
+    assert.deepEqual((await rechazar({ titulo: `  ${'a'.repeat(81)}  ` })).campos, ['/titulo']);
+  });
+
+  test('3.1 titulo and descripcion are schema keys, not stripped as unknown ones', async () => {
+    // Under `removeAdditional` a key missing from `propertyNames.enum` would vanish and the
+    // body would be accepted; being refused for its content proves the key reached the check.
+    assert.deepEqual((await rechazar({ titulo: 'Usa SQL' })).terminos, ['sql']);
+    assert.deepEqual((await rechazar({ descripcion: 'Usa un timeout' })).terminos, ['timeout']);
+    assert.deepEqual((await rechazar({ titulo: { uno: 1 } })).campos, ['/titulo']);
+  });
+
   test('4.1 a replace runs the same save-time checks before any write', async () => {
     const reemplazar = async (payload: Record<string, unknown>): Promise<CuerpoRechazo> => {
       const respuesta = await app.inject({ method: 'PUT', url: '/plantillas/cualquiera', payload });
@@ -149,6 +180,10 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () 
     assert.deepEqual((await reemplazar({ ...VALIDA, sql: '  ' })).campos, ['/sql']);
     const posicional = await reemplazar({ ...VALIDA, sql: 'SELECT * FROM v_producto WHERE id = $1' });
     assert.ok(posicional.problemas?.some((p) => p.motivo === 'posicional-a-mano'), JSON.stringify(posicional));
+    const conTermino = await reemplazar({ ...VALIDA, descripcion: 'Corre la consulta cada mañana' });
+    assert.deepEqual(conTermino.campos, ['/descripcion']);
+    assert.deepEqual(conTermino.terminos, ['consulta']);
+    assert.deepEqual((await reemplazar({ ...VALIDA, titulo: 'a'.repeat(81) })).campos, ['/titulo']);
   });
 });
 
@@ -189,6 +224,9 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
   /** The raw client: fixtures and cleanup only. The app gets the extended one. */
   let prisma!: PrismaClient;
   const marca = `CH-12 u3 ${Date.now()}`;
+  // Per-file tag in the client titles: `Plantilla` is global and `test:db` runs every file
+  // at once, so a titled template must not look like another file's. No glossary term in it.
+  const etiqueta = `ch37-rutas-${randomBytes(3).toString('hex')}`;
 
   before(async () => {
     prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -216,8 +254,66 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
     const creada = await crear({ nombre: `${marca} alta`, entidades: ['insumo', 'producto'] });
     const { id, ...campos } = creada;
     assert.ok(typeof id === 'string' && id.length > 0);
-    assert.deepEqual(campos, { ...VALIDA, nombre: `${marca} alta`, entidades: ['insumo', 'producto'] });
+    assert.deepEqual(campos, {
+      ...VALIDA,
+      ...SIN_TEXTOS,
+      nombre: `${marca} alta`,
+      entidades: ['insumo', 'producto'],
+    });
     assert.deepEqual(await prisma.plantilla.findUnique({ where: { id } }), creada);
+  });
+
+  test('3.1 a create with client texts echoes them trimmed, and get-by-id returns the same', async () => {
+    const creada = await crear({
+      nombre: `${marca} con textos`,
+      titulo: `  Aviso de prueba ${etiqueta} `,
+      descripcion: ' Una descripción limpia. ',
+    });
+    assert.equal(creada.titulo, `Aviso de prueba ${etiqueta}`);
+    assert.equal(creada.descripcion, 'Una descripción limpia.');
+    const respuesta = await app.inject({ method: 'GET', url: `/plantillas/${String(creada.id)}` });
+    assert.deepEqual(respuesta.json(), { plantilla: creada });
+    const guardada = await prisma.plantilla.findUnique({ where: { id: String(creada.id) } });
+    assert.equal(guardada?.titulo, `Aviso de prueba ${etiqueta}`);
+  });
+
+  test('3.1 a create without client texts stores null for both', async () => {
+    const creada = await crear({ nombre: `${marca} sin textos` });
+    assert.equal(creada.titulo, null);
+    assert.equal(creada.descripcion, null);
+  });
+
+  test('3.1 a blank text and a JSON null are stored as null', async () => {
+    const enBlanco = await crear({ nombre: `${marca} en blanco`, titulo: '   ', descripcion: '\t' });
+    assert.equal(enBlanco.titulo, null);
+    assert.equal(enBlanco.descripcion, null);
+    // Fastify's AJV coerces a JSON null to `''`, which is then stored as null.
+    const nulos = await crear({ nombre: `${marca} nulos`, titulo: null, descripcion: null });
+    assert.equal(nulos.titulo, null);
+    assert.equal(nulos.descripcion, null);
+  });
+
+  test('3.1 texts exactly at their caps are accepted, spaces around them do not count', async () => {
+    const titulo = `${'a'.repeat(80 - etiqueta.length - 1)} ${etiqueta}`;
+    assert.equal(titulo.length, 80);
+    const creada = await crear({
+      nombre: `${marca} tope textos`,
+      titulo: ` ${titulo} `,
+      descripcion: 'd'.repeat(200),
+    });
+    assert.equal(creada.titulo, titulo);
+    assert.equal(creada.descripcion, 'd'.repeat(200));
+  });
+
+  test('3.1 a rejected client text writes no row', async () => {
+    const nombre = `${marca} rechazada`;
+    const respuesta = await app.inject({
+      method: 'POST',
+      url: '/plantillas',
+      payload: { ...VALIDA, nombre, descripcion: 'Corre la consulta cada mañana' },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.equal(await prisma.plantilla.count({ where: { nombre } }), 0);
   });
 
   test('3.1 every AUTOMATIZACIONES value is accepted', async () => {
@@ -301,12 +397,38 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
     const respuesta = await app.inject({ method: 'PUT', url, payload: nueva });
     assert.equal(respuesta.statusCode, 200, respuesta.body);
     const { plantilla } = respuesta.json() as { plantilla: Record<string, unknown> };
-    assert.deepEqual(plantilla, { id: creada.id, ...nueva });
+    assert.deepEqual(plantilla, { id: creada.id, ...nueva, ...SIN_TEXTOS });
 
     // In place: the same row now holds the new fields, and no second row was written.
     assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: String(creada.id) } }), plantilla);
     assert.equal(await prisma.plantilla.count({ where: { nombre: { startsWith: prefijo } } }), 1);
     assert.deepEqual((await app.inject({ method: 'GET', url })).json(), { plantilla });
+  });
+
+  test('4.1 a PUT without the texts clears them; a PUT with a forbidden term changes nothing', async () => {
+    const creada = await crear({
+      nombre: `${marca} limpiar`,
+      titulo: `Aviso de prueba ${etiqueta}`,
+      descripcion: 'Una descripción limpia.',
+    });
+    const url = `/plantillas/${String(creada.id)}`;
+
+    const rechazada = await app.inject({
+      method: 'PUT',
+      url,
+      payload: { ...VALIDA, nombre: `${marca} limpiar`, titulo: 'Corre la consulta' },
+    });
+    assert.equal(rechazada.statusCode, 400, rechazada.body);
+    assert.deepEqual((await app.inject({ method: 'GET', url })).json(), { plantilla: creada });
+
+    const respuesta = await app.inject({ method: 'PUT', url, payload: { ...VALIDA, nombre: `${marca} limpiar` } });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const { plantilla } = respuesta.json() as { plantilla: Record<string, unknown> };
+    assert.equal(plantilla.titulo, null);
+    assert.equal(plantilla.descripcion, null);
+    const guardada = await prisma.plantilla.findUnique({ where: { id: String(creada.id) } });
+    assert.equal(guardada?.titulo, null);
+    assert.equal(guardada?.descripcion, null);
   });
 
   test('4.1 a PUT naming no row answers 404 and writes nothing', async () => {

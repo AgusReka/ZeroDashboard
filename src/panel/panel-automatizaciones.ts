@@ -18,38 +18,20 @@ export interface CopyNegocio {
   descripcion: string;
 }
 
-/**
- * Business wording keyed by the template's `automatizacion` slug (DEC-128), the `TEMAS`
- * precedent of `src/automatizaciones/correo.ts`. A `Map` lookup, so a slug such as `constructor` never
- * reaches `Object.prototype`. Insertion order is the order of `disponibles`.
- */
-export const COPY_NEGOCIO: ReadonlyMap<string, CopyNegocio> = new Map([
-  [
-    'stock-fisico',
-    {
-      titulo: 'Aviso de stock bajo',
-      descripcion: 'Te avisamos por correo cuando un producto se está quedando sin stock.',
-    },
-  ],
-  [
-    'stock-producible',
-    {
-      titulo: 'Aviso de productos que ya casi no podés armar',
-      descripcion:
-        'Te avisamos por correo cuando, con los insumos que tenés, ya casi no podés armar un producto.',
-    },
-  ],
-]);
-
-/** Any other slug on an existing automation: neutral text, never the template `nombre`. */
+/** Any template without client texts on an existing automation: neutral text, never the template `nombre`. */
 export const COPY_NEUTRO: CopyNegocio = {
   titulo: 'Automatización de tu negocio',
   descripcion: 'Una revisión automática que te mandamos por correo.',
 };
 
-/** The business copy of `slug`, or the neutral fallback. Never throws. */
-export function copyDe(slug: string): CopyNegocio {
-  return COPY_NEGOCIO.get(slug) ?? COPY_NEUTRO;
+/**
+ * The client texts a template carries (DEC-182, DEC-190), trimmed, or `null` unless both
+ * are non-blank: half a card is no card. Never throws.
+ */
+export function textoDe(p: { titulo: string | null; descripcion: string | null }): CopyNegocio | null {
+  const titulo = p.titulo?.trim() ?? '';
+  const descripcion = p.descripcion?.trim() ?? '';
+  return titulo === '' || descripcion === '' ? null : { titulo, descripcion };
 }
 
 // ---- frequency (DEC-129) ------------------------------------------------------------
@@ -127,7 +109,7 @@ export interface FilaAutomatizacion {
   id: string;
   activo: boolean;
   cron: string;
-  plantilla: { automatizacion: string };
+  plantilla: { titulo: string | null; descripcion: string | null };
 }
 
 /** The latest finished run of one automation (never `en-curso`), as stored. */
@@ -163,7 +145,7 @@ export function proyectarActiva(
   ahora: Date,
   zona: string,
 ): ItemActiva {
-  const copy = copyDe(fila.plantilla.automatizacion);
+  const copy = textoDe(fila.plantilla) ?? COPY_NEUTRO;
   const ultimaEjecucion: ItemActiva['ultimaEjecucion'] =
     ultima === null
       ? null
@@ -214,15 +196,21 @@ function proximaIso(cron: string, ahora: Date, zona: string): string | null {
 /** The columns of a global template this rule reads; `nombre`, `sql` and the rest never. */
 export interface PlantillaCatalogo {
   id: string;
-  automatizacion: string;
+  titulo: string | null;
+  descripcion: string | null;
 }
 
+/** Titles compare by their trimmed, lower-cased text, in Spanish collation order. */
+const COLACION = new Intl.Collator('es');
+
 /**
- * The templates the client could still turn on: those with business copy and without an
- * active automation of this tenant (a paused one does not hide it). Several templates
- * with the same slug are listed once, and none is listed if any of them is active. Order is the copy map's insertion order, then the
- * template `id`, so the same input always gives the same list. Output carries only
- * `titulo` and `descripcion`.
+ * The templates the client could still turn on: those with client texts and without an
+ * active automation of this tenant (a paused one does not hide it). Templates whose title
+ * is the same once trimmed and lower-cased are listed once, and none is listed if any of
+ * them is active. Order is the title key in Spanish collation, then the template `id`
+ * (so among equal keys the lowest `id` wins), and the same input always gives the same
+ * list. A template without texts can neither be listed nor hide another. Output carries
+ * only `titulo` and `descripcion`.
  *
  * `plantillaIdsActivas` must come from a tenant-scoped read: this function trusts it.
  */
@@ -230,25 +218,21 @@ export function proyectarDisponibles(
   plantillas: readonly PlantillaCatalogo[],
   plantillaIdsActivas: ReadonlySet<string>,
 ): CopyNegocio[] {
-  const orden = [...COPY_NEGOCIO.keys()];
-  const etiquetasActivas = new Set(
-    plantillas.filter((p) => plantillaIdsActivas.has(p.id)).map((p) => p.automatizacion),
-  );
-  const candidatas = plantillas
-    .filter((p) => COPY_NEGOCIO.has(p.automatizacion) && !etiquetasActivas.has(p.automatizacion))
-    .sort(
-      (a, b) =>
-        orden.indexOf(a.automatizacion) - orden.indexOf(b.automatizacion) ||
-        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    );
+  const conTexto = plantillas.flatMap((p) => {
+    const copy = textoDe(p);
+    return copy === null ? [] : [{ id: p.id, copy, clave: copy.titulo.toLocaleLowerCase('es') }];
+  });
+  const clavesActivas = new Set(conTexto.filter((p) => plantillaIdsActivas.has(p.id)).map((p) => p.clave));
+  const candidatas = conTexto
+    .filter((p) => !clavesActivas.has(p.clave))
+    .sort((a, b) => COLACION.compare(a.clave, b.clave) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const vistas = new Set<string>();
   const disponibles: CopyNegocio[] = [];
-  for (const { automatizacion } of candidatas) {
-    if (vistas.has(automatizacion)) {
+  for (const { clave, copy } of candidatas) {
+    if (vistas.has(clave)) {
       continue;
     }
-    vistas.add(automatizacion);
-    const copy = copyDe(automatizacion);
+    vistas.add(clave);
     disponibles.push({ titulo: copy.titulo, descripcion: copy.descripcion });
   }
   return disponibles;
@@ -267,11 +251,13 @@ interface EjecucionTerminada extends UltimaEjecucionFila {
  * once per request and shared by every item; `server.ts` leaves `ahora` at its default.
  *
  * Fixed query count (design section 3): Q1 automations, Q2 latest finished start per
- * automation, Q3 those runs, Q4 the template catalog bounded by the copy map, Q5 the
+ * automation, Q3 those runs, Q4 the template catalog with client texts, Q5 the
  * templates this tenant has active. Q1, Q2, Q3 and Q5 are scoped by the isolation
  * extension (`findMany` and `groupBy` are in its filter set); `Plantilla` is global, so
  * the "active" set is always subtracted in code from the scoped Q5, never filtered
- * through a relation. No raw SQL, no nested `ejecuciones`, no `distinct`.
+ * through a relation. Q4 is unbounded: the catalog is global and curated (a few dozen
+ * rows), and a bound could let a truncated active template stop hiding its twins.
+ * No raw SQL, no nested `ejecuciones`, no `distinct`.
  */
 export function registerPanelAutomatizacionesRoutes(
   app: FastifyInstance,
@@ -294,14 +280,14 @@ export function registerPanelAutomatizacionesRoutes(
                 id: true,
                 activo: true,
                 cron: true,
-                plantilla: { select: { automatizacion: true } },
+                plantilla: { select: { titulo: true, descripcion: true } },
               },
               orderBy: [{ creadaEn: 'desc' }, { id: 'asc' }],
               take: LIMITE_LISTADO + 1,
             }),
             prisma.plantilla.findMany({
-              where: { automatizacion: { in: [...COPY_NEGOCIO.keys()] } },
-              select: { id: true, automatizacion: true },
+              where: { titulo: { not: null }, descripcion: { not: null } },
+              select: { id: true, titulo: true, descripcion: true },
             }),
             prisma.automatizacion.groupBy({ by: ['plantillaId'], where: { activo: true } }),
           ]);

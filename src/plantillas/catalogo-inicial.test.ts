@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -8,10 +8,16 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
+import { terminosProhibidosEn } from '../compartido/glosario-panel.js';
 import { sentenciaPaginada } from '../ejecucion/consulta-ejecucion.js';
 import { prepararSentencia } from '../ejecucion/parametros.js';
 import { componerSentencia, evaluarVistas } from './plantillas.js';
-import { datosDePlantilla, PlantillaCompleta, registerPlantillaRoutes } from './plantillas-rutas.js';
+import {
+  datosDePlantilla,
+  LARGO_MAXIMO_TEXTO_CLIENTE,
+  PlantillaCompleta,
+  registerPlantillaRoutes,
+} from './plantillas-rutas.js';
 import {
   CATALOGO_INICIAL,
   ID_STOCK_FISICO,
@@ -29,6 +35,16 @@ import {
  */
 
 const [FISICO, PRODUCIBLE] = CATALOGO_INICIAL;
+
+/** The client texts of the CH-37 spec table (DEC-182, DEC-190), restated so a typo in the seed fails. */
+const TEXTO_FISICO = {
+  titulo: 'Aviso de stock bajo',
+  descripcion: 'Te avisamos por correo cuando un producto se está quedando sin stock.',
+};
+const TEXTO_PRODUCIBLE = {
+  titulo: 'Aviso de productos que ya casi no podés armar',
+  descripcion: 'Te avisamos por correo cuando, con los insumos que tenés, ya casi no podés armar un producto.',
+};
 const cuerpo = ({ id: _id, ...resto }: EntradaCatalogo) => resto;
 const con = (e: EntradaCatalogo, cambios: Record<string, unknown>) => ({ ...e, ...cambios }) as EntradaCatalogo;
 const fila = (e: EntradaCatalogo) => ({ id: e.id, ...datosDePlantilla(e) });
@@ -42,10 +58,10 @@ describe('initial catalog — content and save-time checks (CH-21b, no database)
   test('U1 a closed list of two entries, contract-only read SQL, strict key set', () => {
     assert.ok(Object.isFrozen(CATALOGO_INICIAL) && CATALOGO_INICIAL.every(Object.isFrozen));
     assert.deepEqual(
-      CATALOGO_INICIAL.map((e) => [e.id, e.nombre, e.automatizacion, e.entidades, e.toleranciaFrescuraMinutos]),
+      CATALOGO_INICIAL.map((e) => [e.id, e.nombre, e.automatizacion, e.entidades, e.toleranciaFrescuraMinutos, e.titulo, e.descripcion]),
       [
-        ['21b00000-0000-4000-8000-000000000001', 'Alerta de stock físico', 'stock-fisico', ['producto', 'receta_componente'], 60],
-        ['21b00000-0000-4000-8000-000000000002', 'Alerta de stock producible', 'stock-producible', ['producto', 'insumo', 'receta_componente'], 120],
+        ['21b00000-0000-4000-8000-000000000001', 'Alerta de stock físico', 'stock-fisico', ['producto', 'receta_componente'], 60, TEXTO_FISICO.titulo, TEXTO_FISICO.descripcion],
+        ['21b00000-0000-4000-8000-000000000002', 'Alerta de stock producible', 'stock-producible', ['producto', 'insumo', 'receta_componente'], 120, TEXTO_PRODUCIBLE.titulo, TEXTO_PRODUCIBLE.descripcion],
       ],
     );
     assert.deepEqual([ID_STOCK_FISICO, ID_STOCK_PRODUCIBLE], CATALOGO_INICIAL.map((e) => e.id));
@@ -68,6 +84,24 @@ describe('initial catalog — content and save-time checks (CH-21b, no database)
     assert.deepEqual(rechazoDeEntrada(con(FISICO, { tenantId: 'otro' }))?.campos, ['/tenantId']);
     const { nombre: _nombre, ...sinNombre } = FISICO;
     assert.deepEqual(rechazoDeEntrada(sinNombre as EntradaCatalogo)?.campos, ['/nombre']);
+  });
+
+  test('U1 the seeded client texts pass the glossary and the caps, and a bad one is rejected like the route', () => {
+    for (const e of CATALOGO_INICIAL) {
+      assert.ok(typeof e.titulo === 'string' && typeof e.descripcion === 'string', e.id);
+      assert.deepEqual(terminosProhibidosEn(e.titulo as string), [], e.id);
+      assert.deepEqual(terminosProhibidosEn(e.descripcion as string), [], e.id);
+      assert.ok((e.titulo as string).length <= LARGO_MAXIMO_TEXTO_CLIENTE.titulo, e.id);
+      assert.ok((e.descripcion as string).length <= LARGO_MAXIMO_TEXTO_CLIENTE.descripcion, e.id);
+    }
+    assert.deepEqual(rechazoDeEntrada(con(FISICO, { descripcion: 'Corre la consulta' })), {
+      error: 'solicitud-invalida',
+      campos: ['/descripcion'],
+      terminos: ['consulta'],
+    });
+    assert.deepEqual(rechazoDeEntrada(con(FISICO, { titulo: 'a'.repeat(81) }))?.campos, ['/titulo']);
+    assert.deepEqual(rechazoDeEntrada(con(FISICO, { titulo: 5 }))?.campos, ['/titulo']);
+    assert.equal(rechazoDeEntrada(con(FISICO, { titulo: null, descripcion: null })), null);
   });
 
   test('U2 parity with POST /plantillas: entries are 201, broken copies rejected alike and never written', async () => {
@@ -172,7 +206,15 @@ describe('initial catalog — create-if-absent seeding (CH-21b L1-L3)', { skip: 
   let app!: FastifyInstance;
   let prisma!: PrismaClient;
   const marca = `CH-21b test ${Date.now()}`;
-  const prueba = CATALOGO_INICIAL.map((e) => ({ ...e, id: randomUUID(), nombre: `${marca} ${e.nombre}` }));
+  // Per-file tag in the client titles: `Plantilla` is global and `test:db` runs every file at
+  // once, so these copies must not look like another file's. No glossary term in it.
+  const etiqueta = `ch37-catalogo-${randomBytes(3).toString('hex')}`;
+  const prueba = CATALOGO_INICIAL.map((e) => ({
+    ...e,
+    id: randomUUID(),
+    nombre: `${marca} ${e.nombre}`,
+    titulo: `${e.titulo} ${etiqueta}`,
+  }));
   const ids = prueba.map((e) => e.id);
   const limpiar: string[] = [...ids];
   const sembrar = () => sembrarCatalogoInicial(prisma.plantilla, prueba);
@@ -196,6 +238,12 @@ describe('initial catalog — create-if-absent seeding (CH-21b L1-L3)', { skip: 
   test('L1 the first seed creates both rows, the second creates none and modifies none', async () => {
     assert.equal(await sembrar(), 2);
     assert.deepEqual(await leer(), prueba.map(fila));
+    // The rows carry the seeded texts: the entry's title with only the file's tag appended.
+    const filas = await leer();
+    assert.deepEqual(
+      filas.map((f) => [f?.titulo, f?.descripcion]),
+      CATALOGO_INICIAL.map((e) => [`${e.titulo} ${etiqueta}`, e.descripcion]),
+    );
     assert.equal(await sembrar(), 0);
     assert.deepEqual(await leer(), prueba.map(fila));
   });

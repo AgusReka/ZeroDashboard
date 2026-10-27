@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -7,44 +8,59 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { generarTokenSesion } from '../compartido/crypto-auth.js';
+import { TERMINOS_PROHIBIDOS_PANEL } from '../compartido/glosario-panel.js';
 import { LIMITE_LISTADO } from '../compartido/listados.js';
 import {
-  COPY_NEGOCIO,
   COPY_NEUTRO,
-  copyDe,
   frecuenciaDeCron,
   proyectarActiva,
   proyectarDisponibles,
   registerPanelAutomatizacionesRoutes,
   resultadoDe,
+  textoDe,
   type FilaAutomatizacion,
+  type PlantillaCatalogo,
 } from './panel-automatizaciones.js';
 
 /**
  * Unit cases for CH-22b (DEC-137): the pure half of the panel's automations read. No
- * database, no network, no clock: only the copy map, the frequency text and the rules that
+ * database, no network, no clock: only the client texts, the frequency text and the rules that
  * build the allow-listed items.
  */
 
-// ---- 1.1 copy map and fallback ------------------------------------------------------
+// ---- 1.1 client texts and fallback ----------------------------------------------------
 
-describe('copyDe — business copy with a neutral fallback', () => {
-  test('1.1 a mapped slug returns its map entry', () => {
-    assert.deepEqual(copyDe('stock-fisico'), {
-      titulo: 'Aviso de stock bajo',
-      descripcion: 'Te avisamos por correo cuando un producto se está quedando sin stock.',
+/** The two texts the CH-37 backfill writes on the seeded templates. */
+const TEXTO_FISICO = {
+  titulo: 'Aviso de stock bajo',
+  descripcion: 'Te avisamos por correo cuando un producto se está quedando sin stock.',
+};
+const TEXTO_PRODUCIBLE = {
+  titulo: 'Aviso de productos que ya casi no podés armar',
+  descripcion: 'Te avisamos por correo cuando, con los insumos que tenés, ya casi no podés armar un producto.',
+};
+
+describe('textoDe — the template texts, or null', () => {
+  test('1.1 both texts present return the pair', () => {
+    assert.deepEqual(textoDe(TEXTO_FISICO), TEXTO_FISICO);
+  });
+
+  test('1.1 the texts come back trimmed', () => {
+    assert.deepEqual(textoDe({ titulo: '  Aviso  ', descripcion: '\tUn texto.\n' }), {
+      titulo: 'Aviso',
+      descripcion: 'Un texto.',
     });
-    assert.equal(copyDe('stock-producible'), COPY_NEGOCIO.get('stock-producible'));
   });
 
-  test('1.1 the map keeps the catalog order used by disponibles', () => {
-    assert.deepEqual([...COPY_NEGOCIO.keys()], ['stock-fisico', 'stock-producible']);
+  test('1.1 half a card is no card: a missing text gives null', () => {
+    assert.equal(textoDe({ titulo: 'Aviso', descripcion: null }), null);
+    assert.equal(textoDe({ titulo: null, descripcion: 'Un texto.' }), null);
+    assert.equal(textoDe({ titulo: null, descripcion: null }), null);
   });
 
-  test('1.1 an unmapped slug returns the fallback and never throws', () => {
-    for (const slug of ['reporte-semanal', '', 'constructor', '__proto__']) {
-      assert.equal(copyDe(slug), COPY_NEUTRO, slug);
-    }
+  test('1.1 a blank text gives null', () => {
+    assert.equal(textoDe({ titulo: '   ', descripcion: 'Un texto.' }), null);
+    assert.equal(textoDe({ titulo: 'Aviso', descripcion: '' }), null);
   });
 
   test('1.1 the fallback carries only a title and a description, no template name', () => {
@@ -123,7 +139,7 @@ const FILA_CRUDA = {
   destinatario: 'ana@empresa.com',
   activo: true,
   cron: '0 8 * * *',
-  plantilla: { automatizacion: 'stock-fisico', nombre: 'Console name', sql: 'SELECT 1' },
+  plantilla: { ...TEXTO_FISICO, automatizacion: 'stock-fisico', nombre: 'Console name', sql: 'SELECT 1' },
 };
 const EJECUCION_CRUDA = {
   id: 'eje-1',
@@ -136,7 +152,7 @@ const EJECUCION_CRUDA = {
 };
 
 function fila(parche: Partial<FilaAutomatizacion> = {}): FilaAutomatizacion {
-  return { id: 'aut-1', activo: true, cron: '0 8 * * *', plantilla: { automatizacion: 'stock-fisico' }, ...parche };
+  return { id: 'aut-1', activo: true, cron: '0 8 * * *', plantilla: TEXTO_FISICO, ...parche };
 }
 
 /** Every key at any depth of a parsed JSON value. */
@@ -178,16 +194,25 @@ describe('proyectarActiva — allow-list without technical fields', () => {
     assert.deepEqual(Object.keys(item.ultimaEjecucion ?? {}).sort(), ['fecha', 'resultado']);
   });
 
-  test('1.4 the copy comes from the slug map, and the fallback for an unmapped slug', () => {
-    const mapeada = proyectarActiva(fila(), null, AHORA, 'UTC');
-    assert.equal(mapeada.titulo, 'Aviso de stock bajo');
-    const otra = proyectarActiva(
-      fila({ plantilla: { automatizacion: 'reporte-semanal' } }),
+  test('1.4 the text comes from the row, and the fallback when it has no text or only half', () => {
+    const propio = proyectarActiva(
+      fila({ plantilla: { titulo: 'Aviso propio', descripcion: 'Una descripción propia.' } }),
       null,
       AHORA,
       'UTC',
     );
-    assert.equal(otra.titulo, 'Automatización de tu negocio');
+    assert.equal(propio.titulo, 'Aviso propio');
+    assert.equal(propio.descripcion, 'Una descripción propia.');
+    for (const plantilla of [
+      { titulo: null, descripcion: null },
+      { titulo: 'Aviso propio', descripcion: null },
+      { titulo: null, descripcion: 'Una descripción propia.' },
+      { titulo: '  ', descripcion: 'Una descripción propia.' },
+    ]) {
+      const otra = proyectarActiva(fila({ plantilla }), null, AHORA, 'UTC');
+      assert.equal(otra.titulo, COPY_NEUTRO.titulo);
+      assert.equal(otra.descripcion, COPY_NEUTRO.descripcion);
+    }
   });
 
   test('1.4 estado is activa/pausada/con_falla; con_falla when active and last finished run failed', () => {
@@ -249,12 +274,13 @@ describe('proyectarActiva — allow-list without technical fields', () => {
 // ---- 1.7 and 1.8 available automations --------------------------------------------
 
 describe('proyectarDisponibles — what the client can still turn on', () => {
-  const FISICO = { id: 'p-1', automatizacion: 'stock-fisico' };
-  const PRODUCIBLE = { id: 'p-2', automatizacion: 'stock-producible' };
+  const FISICO = { id: 'p-1', ...TEXTO_FISICO };
+  const PRODUCIBLE = { id: 'p-2', ...TEXTO_PRODUCIBLE };
+  const SIN_TEXTO: PlantillaCatalogo = { id: 'p-3', titulo: null, descripcion: null };
 
   test('1.7 a template with an active automation is not available', () => {
     const lista = proyectarDisponibles([FISICO, PRODUCIBLE], new Set(['p-1']));
-    assert.deepEqual(lista, [copyDe('stock-producible')]);
+    assert.deepEqual(lista, [TEXTO_PRODUCIBLE]);
   });
 
   test('1.7 a template with only a paused automation is available (its id is not active)', () => {
@@ -262,23 +288,38 @@ describe('proyectarDisponibles — what the client can still turn on', () => {
     assert.equal(proyectarDisponibles([FISICO], new Set(['p-9'])).length, 1);
   });
 
-  test('1.7 a tenant without automations sees every mapped template', () => {
+  test('1.7 a tenant without automations sees every template with texts', () => {
     assert.equal(proyectarDisponibles([FISICO, PRODUCIBLE], new Set()).length, 2);
   });
 
-  test('1.7 a template without business copy is hidden', () => {
+  test('1.7 a template without client texts is hidden, and a half-filled one too', () => {
     const lista = proyectarDisponibles(
-      [{ id: 'p-3', automatizacion: 'reporte-semanal' }, FISICO],
+      [SIN_TEXTO, { id: 'p-4', titulo: 'Solo título', descripcion: null }, FISICO],
       new Set(),
     );
-    assert.deepEqual(lista, [copyDe('stock-fisico')]);
+    assert.deepEqual(lista, [TEXTO_FISICO]);
   });
 
-  test('1.7 order is the copy map order, whatever the input order', () => {
-    const lista = proyectarDisponibles([PRODUCIBLE, FISICO], new Set());
+  test('1.7 a template without texts neither hides nor is hidden by an active one', () => {
+    assert.deepEqual(proyectarDisponibles([SIN_TEXTO, FISICO], new Set(['p-3'])), [TEXTO_FISICO]);
+  });
+
+  test('1.7 order is the title in Spanish collation, whatever the input order', () => {
+    const lista = proyectarDisponibles(
+      [
+        { id: 'p-a', titulo: 'Último aviso', descripcion: 'd' },
+        { id: 'p-b', titulo: 'ápice de stock', descripcion: 'd' },
+        { id: 'p-c', titulo: 'Beta', descripcion: 'd' },
+      ],
+      new Set(),
+    );
     assert.deepEqual(
       lista.map((i) => i.titulo),
-      ['Aviso de stock bajo', 'Aviso de productos que ya casi no podés armar'],
+      ['ápice de stock', 'Beta', 'Último aviso'],
+    );
+    assert.deepEqual(
+      proyectarDisponibles([PRODUCIBLE, FISICO], new Set()).map((i) => i.titulo),
+      ['Aviso de productos que ya casi no podés armar', 'Aviso de stock bajo'],
     );
   });
 
@@ -288,58 +329,61 @@ describe('proyectarDisponibles — what the client can still turn on', () => {
     }
   });
 
-  test('1.8 two templates with the same slug yield a single entry', () => {
+  test('1.8 two templates with the same title yield a single entry, the lowest id wins', () => {
     const lista = proyectarDisponibles(
       [
-        { id: 'p-8', automatizacion: 'stock-fisico' },
-        { id: 'p-7', automatizacion: 'stock-fisico' },
+        { id: 'p-8', titulo: 'Mismo aviso', descripcion: 'Texto de p-8' },
+        { id: 'p-7', titulo: 'Mismo aviso', descripcion: 'Texto de p-7' },
       ],
       new Set(),
     );
-    assert.deepEqual(lista, [copyDe('stock-fisico')]);
+    assert.deepEqual(lista, [{ titulo: 'Mismo aviso', descripcion: 'Texto de p-7' }]);
   });
 
-  test('1.8 a slug with an active template is hidden even if a twin template is not active', () => {
+  test('1.8 the title key ignores case and surrounding spaces, and the lowest id wins across them', () => {
     const lista = proyectarDisponibles(
       [
-        { id: 'p-7', automatizacion: 'stock-fisico' },
-        { id: 'p-8', automatizacion: 'stock-fisico' },
+        { id: 'p-5', titulo: 'aviso de stock bajo', descripcion: 'Texto de p-5' },
+        { id: 'p-4', titulo: '  AVISO de stock bajo ', descripcion: 'Texto de p-4' },
+      ],
+      new Set(),
+    );
+    assert.deepEqual(lista, [{ titulo: 'AVISO de stock bajo', descripcion: 'Texto de p-4' }]);
+  });
+
+  test('1.8 a title with an active template is hidden even if a twin template is not active', () => {
+    const lista = proyectarDisponibles(
+      [
+        { id: 'p-7', ...TEXTO_FISICO },
+        { id: 'p-8', titulo: 'AVISO DE STOCK BAJO', descripcion: 'Otro texto' },
         PRODUCIBLE,
       ],
       new Set(['p-7']),
     );
-    assert.deepEqual(lista, [copyDe('stock-producible')]);
+    assert.deepEqual(lista, [TEXTO_PRODUCIBLE]);
+  });
+
+  test('1.8 a new title beside an active template of the same slug is still offered', () => {
+    const lista = proyectarDisponibles(
+      [FISICO, { id: 'p-6', titulo: 'Otro aviso de stock', descripcion: 'Otro texto' }],
+      new Set(['p-1']),
+    );
+    assert.deepEqual(lista, [{ titulo: 'Otro aviso de stock', descripcion: 'Otro texto' }]);
   });
 });
 
 // ---- 1.9 glossary scan --------------------------------------------------------------
 
 describe('glosario — no technical term reaches the client copy', () => {
-  const PROHIBIDOS = [
-    'tenant',
-    'cron',
-    'sql',
-    'consulta',
-    'query',
-    'ejecución',
-    'réplica',
-    'parámetro',
-    'timeout',
-    'plantilla',
-  ];
-
-  test('1.9 the copy map, the fallback and every frequency text are clean', () => {
-    const textos: string[] = [];
-    for (const { titulo, descripcion } of [...COPY_NEGOCIO.values(), COPY_NEUTRO]) {
-      textos.push(titulo, descripcion);
-    }
+  test('1.9 the fallback and every frequency text are clean', () => {
+    const textos: string[] = [COPY_NEUTRO.titulo, COPY_NEUTRO.descripcion];
     for (const cron of ['30 8 * * *', '0 9 * * 1-5', '0 18 * * 1-6']) {
       textos.push(frecuenciaDeCron(cron) as string);
     }
-    assert.equal(textos.length, 9);
+    assert.equal(textos.length, 5);
     for (const texto of textos) {
-      for (const termino of PROHIBIDOS) {
-        assert.ok(!texto.toLowerCase().includes(termino), `"${termino}" en "${texto}"`);
+      for (const termino of TERMINOS_PROHIBIDOS_PANEL) {
+        assert.ok(!texto.toLocaleLowerCase('es').includes(termino), `"${termino}" en "${texto}"`);
       }
     }
   });
@@ -403,6 +447,11 @@ describe(
   { skip: alcanzable ? false : motivoSkip },
   () => {
     const marca = `CH-22b ${Date.now()}`;
+    // Per-file tag in the titles: `Plantilla` is global and `test:db` runs every file at once,
+    // so `disponibles` is compared on the items of this file alone. No glossary term in it.
+    const etiqueta = `ch37-panel-${randomBytes(3).toString('hex')}`;
+    const TEXTO_A = { titulo: `Aviso de prueba A ${etiqueta}`, descripcion: 'Descripción de prueba A.' };
+    const TEXTO_B = { titulo: `Aviso de prueba B ${etiqueta}`, descripcion: 'Descripción de prueba B.' };
     const SQL_SECRETO = `SELECT secreto_${Date.now()} FROM v_producto`;
     const NOMBRE_PLANTILLA = `${marca} plantilla interna`;
     const RELOJ = new Date('2026-10-07T10:00:00Z');
@@ -410,7 +459,7 @@ describe(
     let app!: FastifyInstance;
     let fisico!: string;
     let producible!: string;
-    let noMapeada!: string;
+    let sinTexto!: string;
     const tenantIds: string[] = [];
     const plantillaIds: string[] = [];
     const apps: FastifyInstance[] = [];
@@ -428,7 +477,10 @@ describe(
     before(async () => {
       db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
       app = await montarApp('UTC');
-      const plantilla = async (automatizacion: string): Promise<string> => {
+      const plantilla = async (
+        automatizacion: string,
+        texto: { titulo: string; descripcion: string } | null,
+      ): Promise<string> => {
         const fila = await db.plantilla.create({
           data: {
             nombre: NOMBRE_PLANTILLA,
@@ -437,14 +489,15 @@ describe(
             automatizacion,
             formato: 'correo-html',
             toleranciaFrescuraMinutos: 30,
+            ...(texto ?? {}),
           },
         });
         plantillaIds.push(fila.id);
         return fila.id;
       };
-      fisico = await plantilla('stock-fisico');
-      producible = await plantilla('stock-producible');
-      noMapeada = await plantilla(`ch22b-sin-copy-${Date.now()}`);
+      fisico = await plantilla('stock-fisico', TEXTO_A);
+      producible = await plantilla('stock-producible', TEXTO_B);
+      sinTexto = await plantilla(`ch22b-sin-texto-${Date.now()}`, null);
     });
 
     after(async () => {
@@ -542,6 +595,11 @@ describe(
       });
     }
 
+    /** The `disponibles` items of this file's own templates, in the order the route gave them. */
+    function propios(cuerpo: CuerpoAutomatizaciones): CuerpoAutomatizaciones['disponibles'] {
+      return cuerpo.disponibles.filter((d) => d.titulo.includes(etiqueta));
+    }
+
     async function leer(n: Negocio, instancia: FastifyInstance = app) {
       const respuesta = await instancia.inject({
         method: 'GET',
@@ -551,14 +609,14 @@ describe(
       return { respuesta, cuerpo: respuesta.json() as CuerpoAutomatizaciones };
     }
 
-    test('2.1 a tenant without automations answers 200, the exact keys and every mapped template', async () => {
+    test('2.1 a tenant without automations answers 200, the exact keys and every template with texts', async () => {
       const { respuesta, cuerpo } = await leer(await negocio('vacio'));
       assert.equal(respuesta.statusCode, 200, respuesta.body);
       assert.deepEqual(Object.keys(cuerpo).sort(), ['activas', 'disponibles', 'truncado', 'zonaHoraria']);
       assert.deepEqual(cuerpo.activas, []);
       assert.equal(cuerpo.truncado, false);
       assert.equal(cuerpo.zonaHoraria, 'UTC');
-      assert.deepEqual(cuerpo.disponibles, [...COPY_NEGOCIO.values()]);
+      assert.deepEqual(propios(cuerpo), [TEXTO_A, TEXTO_B]);
     });
 
     test('2.2 the session guard answers 401 without a cookie or with an unknown token', async () => {
@@ -607,7 +665,7 @@ describe(
       const n = await negocio('ultima');
       await automatizacion(n, fisico, { creadaEn: '2026-01-03T00:00:00Z' });
       const soloCurso = await automatizacion(n, producible, { creadaEn: '2026-01-02T00:00:00Z' });
-      const mixta = await automatizacion(n, noMapeada, { creadaEn: '2026-01-01T00:00:00Z' });
+      const mixta = await automatizacion(n, sinTexto, { creadaEn: '2026-01-01T00:00:00Z' });
       await ejecucion(n, soloCurso, 'en-curso', '2026-10-07T09:00:00Z');
       await ejecucion(n, mixta, 'ok', '2026-10-07T08:00:00Z');
       await ejecucion(n, mixta, 'en-curso', '2026-10-07T09:00:00Z');
@@ -664,21 +722,21 @@ describe(
     test('2.7 an active automation hides its template; a paused-only one does not', async () => {
       const activa = await negocio('oculta');
       await automatizacion(activa, fisico);
-      assert.deepEqual((await leer(activa)).cuerpo.disponibles, [COPY_NEGOCIO.get('stock-producible')]);
+      assert.deepEqual(propios((await leer(activa)).cuerpo), [TEXTO_B]);
 
       const pausada = await negocio('solo-pausada');
       await automatizacion(pausada, fisico, { activo: false });
-      assert.deepEqual((await leer(pausada)).cuerpo.disponibles, [...COPY_NEGOCIO.values()]);
+      assert.deepEqual(propios((await leer(pausada)).cuerpo), [TEXTO_A, TEXTO_B]);
     });
 
-    test('2.7 an unmapped slug is never offered, and an existing automation of it uses the fallback', async () => {
+    test('2.7 a template without texts is never offered, and an existing automation of it uses the fallback', async () => {
       const n = await negocio('sin-copy');
-      await automatizacion(n, noMapeada);
+      await automatizacion(n, sinTexto);
       const { respuesta, cuerpo } = await leer(n);
       assert.equal(cuerpo.activas[0]?.titulo, COPY_NEUTRO.titulo);
       assert.equal(cuerpo.activas[0]?.descripcion, COPY_NEUTRO.descripcion);
       assert.ok(!respuesta.body.includes(NOMBRE_PLANTILLA));
-      assert.equal(cuerpo.disponibles.length, COPY_NEGOCIO.size);
+      assert.deepEqual(propios(cuerpo), [TEXTO_A, TEXTO_B]);
     });
 
     test('2.8 the injected clock and zone fix proximaEjecucion', async () => {
@@ -721,7 +779,7 @@ describe(
         ['descripcion', 'estado', 'id', 'proximaEjecucion', 'titulo', 'ultimaEjecucion'],
       );
       assert.equal(cuerpo.activas[0]?.id, id);
-      assert.deepEqual(Object.keys(cuerpo.disponibles[0] ?? {}).sort(), ['descripcion', 'titulo']);
+      assert.deepEqual(Object.keys(propios(cuerpo)[0] ?? {}).sort(), ['descripcion', 'titulo']);
     });
 
     test('2.11 at the limit is not truncated; one over is cut to the limit and disponibles is unaffected', async () => {
@@ -729,7 +787,7 @@ describe(
       await db.automatizacion.createMany({
         data: Array.from({ length: LIMITE_LISTADO }, (_, i) => ({
           tenantId: n.tenantId,
-          plantillaId: noMapeada,
+          plantillaId: sinTexto,
           conexionId: n.conexionId,
           cron: '0 8 * * *',
           creadaEn: new Date(Date.UTC(2026, 0, 1, 0, 0, i)),
@@ -744,8 +802,8 @@ describe(
       assert.equal(exceso.cuerpo.activas.length, LIMITE_LISTADO);
       assert.equal(exceso.cuerpo.truncado, true);
       assert.deepEqual(
-        exceso.cuerpo.disponibles,
-        [COPY_NEGOCIO.get('stock-producible')],
+        propios(exceso.cuerpo),
+        [TEXTO_B],
         'the oldest (cut) automation still hides its template',
       );
     });

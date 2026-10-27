@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -9,7 +9,7 @@ import { extenderConAislamiento } from './aislamiento-prisma.js';
 import { conTenantActivo, registrarContextoTenant } from './contexto-tenant.js';
 import { hashearClave } from '../compartido/crypto-auth.js';
 import { registerPanelAuthRoutes } from '../panel/panel-auth.js';
-import { COPY_NEGOCIO, registerPanelAutomatizacionesRoutes } from '../panel/panel-automatizaciones.js';
+import { registerPanelAutomatizacionesRoutes } from '../panel/panel-automatizaciones.js';
 
 /**
  * CH-22a task 2.2 (DEC-135, T2): the two-tenant panel isolation proof. User A logs in
@@ -78,6 +78,9 @@ describe(
     let b!: FixtureAislamiento;
     const tenantIds: string[] = [];
     const plantillaIds: string[] = [];
+    // Per-file tag in the titles: `Plantilla` is global and `test:db` runs every file at once,
+    // so `disponibles` is compared on the items of this file alone. No glossary term in it.
+    const marcaTitulos = `ch37-aisl-${randomBytes(3).toString('hex')}`;
 
     before(async () => {
       db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -238,6 +241,8 @@ describe(
     const INSTANTE_A = '2026-10-04T08:00:00.000Z';
     const INSTANTE_B = '2026-10-05T09:30:00.000Z';
 
+    const titulo = (slug: string): string => `Aviso de prueba ${slug} ${marcaTitulos}`;
+
     /** Tenant `t` runs `slug` actively, with one finished run at `instante`. */
     async function montarAutomatizacion(t: FixtureAislamiento, slug: string, instante: string, estadoEjec?: string) {
       const plantilla = await db.plantilla.create({
@@ -248,6 +253,8 @@ describe(
           automatizacion: slug,
           formato: 'correo-html',
           toleranciaFrescuraMinutos: 30,
+          titulo: titulo(slug),
+          descripcion: 'Descripción de prueba.',
         },
       });
       plantillaIds.push(plantilla.id);
@@ -288,7 +295,8 @@ describe(
       });
     }
 
-    const titulo = (slug: string): string => COPY_NEGOCIO.get(slug)!.titulo;
+    /** The `disponibles` items of this file's own templates (the ones that carry its tag). */
+    const propios = <T extends { titulo: string }>(items: T[]): T[] => items.filter((i) => i.titulo.includes(marcaTitulos));
 
     test('2.14 two tenants each see only their own automations, and the other one never hides a template', async () => {
       await montarAutomatizacion(a, 'stock-fisico', INSTANTE_A);
@@ -301,9 +309,9 @@ describe(
       const cuerpoB = deB.json() as typeof cuerpoA;
 
       assert.deepEqual(cuerpoA.activas.map((i) => [i.titulo, i.ultimaEjecucion.fecha]), [[titulo('stock-fisico'), INSTANTE_A]]);
-      assert.deepEqual(cuerpoA.disponibles.map((i) => i.titulo), [titulo('stock-producible')]);
+      assert.deepEqual(propios(cuerpoA.disponibles).map((i) => i.titulo), [titulo('stock-producible')]);
       assert.deepEqual(cuerpoB.activas.map((i) => [i.titulo, i.ultimaEjecucion.fecha]), [[titulo('stock-producible'), INSTANTE_B]]);
-      assert.deepEqual(cuerpoB.disponibles.map((i) => i.titulo), [titulo('stock-fisico')]);
+      assert.deepEqual(propios(cuerpoB.disponibles).map((i) => i.titulo), [titulo('stock-fisico')]);
 
       for (const [cuerpo, ajeno, instanteAjeno] of [[deA.body, b, INSTANTE_B], [deB.body, a, INSTANTE_A]] as const) {
         assert.ok(!cuerpo.includes(ajeno.tenantId), 'no foreign tenant id');
@@ -311,7 +319,13 @@ describe(
       }
     });
 
-    test("2.15 a foreign X-Tenant-Id or tenant query parameter changes nothing: the body is byte-for-byte the same", async () => {
+    /** The body with `disponibles` cut to this file's own templates, so parallel files cannot move it. */
+    const normalizado = (cuerpo: string): string => {
+      const leido = JSON.parse(cuerpo) as { disponibles: Array<{ titulo: string }> };
+      return JSON.stringify({ ...leido, disponibles: propios(leido.disponibles) });
+    };
+
+    test("2.15 a foreign X-Tenant-Id or tenant query parameter changes nothing: the body is the same", async () => {
       const tokenA = tokenDe(await ingresar(a));
       const tokenB = tokenDe(await ingresar(b));
       for (const [token, propio, ajeno] of [[tokenA, a, b], [tokenB, b, a]] as const) {
@@ -319,8 +333,8 @@ describe(
         const conCabecera = await automatizacionesDe(token, { cabecera: ajeno.tenantId });
         const conConsulta = await automatizacionesDe(token, { consulta: `tenantId=${ajeno.tenantId}&tenant=${ajeno.tenantId}` });
         assert.equal(base.statusCode, 200, base.body);
-        assert.equal(conCabecera.body, base.body, 'the header is ignored');
-        assert.equal(conConsulta.body, base.body, 'the query parameter is ignored');
+        assert.equal(normalizado(conCabecera.body), normalizado(base.body), 'the header is ignored');
+        assert.equal(normalizado(conConsulta.body), normalizado(base.body), 'the query parameter is ignored');
         assert.ok(!conCabecera.body.includes(ajeno.tenantId) && !conCabecera.body.includes(propio.tenantId));
       }
     });
