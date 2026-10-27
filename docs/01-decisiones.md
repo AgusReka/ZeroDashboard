@@ -3787,9 +3787,10 @@ Qué copia «Duplicar y editar»:
 
 **Forma.**
 - **En uso** quiere decir al menos una `Automatizacion` con `activo = true` y esa `plantillaId`, en cualquier tenant.
-- **`PUT /plantillas/:id`** responde 409 `{error: 'plantilla-en-uso'}` si la plantilla está en uso. El conteo y la escritura van en la misma transacción.
+- **`PUT /plantillas/:id`** responde 409 `{error: 'plantilla-en-uso'}` si la plantilla está en uso. En una sola transacción, bloquea la fila de la plantilla (`SELECT … FOR UPDATE`), comprueba el uso y escribe.
 - **`GET /plantillas/:id`** devuelve `enUso` (booleano). La consola ofrece «Editar» o «Duplicar y editar» según ese valor. El resumen de `GET /plantillas` no cambia.
-- **`usosDePlantilla(id)`** es la única lectura de `Automatizacion` sin tenant. Devuelve un número, nunca filas ni ids de tenant, y la cubre una prueba de aislamiento.
+- **El uso se lee en la extensión de aislamiento.** Dos métodos tipados de `extenderConAislamiento`, sobre el cliente sin aislar que la extensión encierra, como `agente.buscarPorTokenHash` (DEC-121): uno responde si la plantilla está en uso (sí o no) y el otro hace el reemplazo con bloqueo de arriba. Son las únicas operaciones de `Automatizacion` sin tenant. No devuelven filas, cantidades ni ids de tenant, y las cubre una prueba de aislamiento.
+- **La ruta recibe una función, no un cliente.** `rutas.ts` arma con esos dos métodos el puerto que reciben las rutas del catálogo.
 - **`POST /plantillas/prueba`:**
   - Recibe el cuerpo de la plantilla más `{conexionId, valores}` y exige `X-Tenant-Id`.
   - Pasa por las mismas validaciones que `POST /plantillas` y por las mismas compuertas que la prueba de una plantilla guardada (conexión del tenant, vistas aprobadas, DEC-71).
@@ -3809,8 +3810,12 @@ Qué copia «Duplicar y editar»:
 - **Historial desactualizado.** Una automatización desactivada queda apuntando a una plantilla que puede decir otra cosa. La auditoría conserva la sentencia compuesta de cada ejecución (DEC-160), pero la pantalla de la automatización muestra la plantilla actual.
 - **Textos de tarjetas pausadas.** Una automatización pausada en el panel muestra los textos actuales de su plantilla. Si la plantilla se edita mientras está pausada, el cliente ve el texto nuevo.
 - **Reactivación.** Si algún día se agrega la reactivación de una automatización, esta regla se revisa: la (b) de «en uso» depende de DEC-79.
-- **Una carrera mínima.** Una automatización creada justo entre el conteo y la escritura. La transacción la achica, sin bloqueo de fila.
 - **Para crear una plantilla hace falta un tenant activo** con una conexión y vistas aprobadas, porque la prueba corre contra la réplica de un cliente.
+
+**Precisión del diseño** (2026-10-27, aprobada por el usuario antes de las tareas). El diseño de CH-38 precisa tres puntos de la «Forma» sin cambiar ninguna opción elegida:
+- **Dónde vive la lectura.** La opción (a) decía «armada en `rutas.ts` con el cliente sin aislar». `rutas.ts` no tiene ese cliente: `src/server.ts` conserva solo el cliente aislado, a propósito. La lectura vive en la extensión, como las otras lecturas sin tenant, y `rutas.ts` solo arma el puerto.
+- **Qué devuelve.** Un sí o no en lugar de un número: `enUso` no necesita más, y sale menos información del aislamiento.
+- **La carrera.** Dar de alta una automatización toma `FOR KEY SHARE` sobre su plantilla (el control de la clave foránea), y eso choca con el `FOR UPDATE` del reemplazo. La ventana entre la comprobación y la escritura queda cerrada, en lugar de aceptada.
 
 **Decidido por:** el usuario, 2026-10-27, en la exploración de CH-38. Eligió las opciones recomendadas en conteo, prueba y copia. En «en uso» eligió la (b) frente a la (a) recomendada. No inferido por el agente.
 
