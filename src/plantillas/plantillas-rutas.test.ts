@@ -331,7 +331,12 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
 
   test('3.3 the headerless list is a summary ordered by nombre, then id', async () => {
     const b = await crear({ nombre: `${marca} orden b`, sql: 'SELECT 1 AS marca_u3_b', parametros: [] });
-    const a = await crear({ nombre: `${marca} orden a` });
+    // `a` carries client texts, so the summary is shown to leave them out.
+    const a = await crear({
+      nombre: `${marca} orden a`,
+      titulo: `Aviso ${etiqueta}`,
+      descripcion: 'Texto para el cliente',
+    });
     const respuesta = await app.inject({ method: 'GET', url: '/plantillas' });
     assert.equal(respuesta.statusCode, 200, respuesta.body);
     const { plantillas, truncado } = respuesta.json() as {
