@@ -3748,6 +3748,76 @@ Orden de «disponibles»:
 
 ---
 
+### DEC-191 — CH-38: una plantilla con automatizaciones activas no se edita; conteo entre tenants y prueba antes de guardar
+
+**Contexto.**
+- DEC-182 (b) dice que una plantilla en uso no se edita: se duplica. No dice qué es «en uso», y hoy nada en el código lo calcula.
+- `PUT /plantillas/:id` no tiene contexto de tenant: es una ruta del catálogo global, exenta de `X-Tenant-Id`, y recibe solo el delegado `plantilla`. `Automatizacion` es un modelo aislado: cualquier lectura sin tenant activo falla (regla 2).
+- Una automatización nunca se borra. Se desactiva con `activo = false`, y nada vuelve a escribir `activo = true` (DEC-79); la pausa del panel es el mismo campo.
+- `POST /plantillas/:id/prueba` (DEC-62, DEC-177) carga la plantilla guardada por su id. Una plantilla que todavía no se guardó no se puede probar, y D4 pide la prueba antes de guardar.
+- El panel deduplica las plantillas por título y, entre títulos iguales, gana el `id` menor (DEC-190). Los `id` son uuid, así que cuál gana es azar.
+
+Quedan cuatro puntos que DEC-182 no resuelve.
+
+**Opciones.**
+
+Qué es una plantilla en uso:
+- (a) Cualquier automatización, activa o no.
+- (b) Solo una automatización activa.
+
+Cómo se cuenta entre tenants:
+- (a) La ruta recibe una sola función, `usosDePlantilla(id)`, armada en `rutas.ts` con el cliente sin aislar, que devuelve solo un número.
+- (b) Leer `_count.automatizaciones` desde el delegado `plantilla`, apoyándose en que las lecturas por relación no pasan por el aislamiento.
+
+Prueba antes de guardar:
+- (a) Ruta nueva `POST /plantillas/prueba` con el cuerpo completo de la plantilla, y guardado habilitado solo después de una prueba aprobada con la misma huella.
+- (b) La misma ruta, con la prueba opcional.
+- (c) Sin ruta nueva: se guarda primero y se prueba después.
+
+Qué copia «Duplicar y editar»:
+- (a) Todo, con «(copia)» en el nombre.
+- (b) Todo menos el título y la descripción para el cliente, que empiezan vacíos.
+- (c) Todo, y el pop-up avisa si el título coincide con el de otra plantilla.
+
+**Decisión.** En uso (b), conteo (a), prueba (a) y copia (b).
+- **En uso (b).** Una automatización desactivada no vuelve a correr (DEC-79), así que editar la plantilla no cambia nada de lo que corre en otro tenant, que es lo que protege DEC-182. Una plantilla cuyas automatizaciones están todas desactivadas se corrige en el lugar, sin sumar copias al catálogo.
+- **Conteo (a).** La lectura entre tenants queda explícita y se prueba sola, y no expone datos de ningún tenant: solo un número.
+- **Prueba (a).** Es lo que pide D4, y repite el patrón del pop-up de consultas guardadas (`huellaActual`, `guardadoHabilitado`).
+- **Copia (b).** La consecuencia para el cliente queda explícita: la copia no aparece en el panel hasta que P1 le escribe su propio título.
+
+**Forma.**
+- **En uso** quiere decir al menos una `Automatizacion` con `activo = true` y esa `plantillaId`, en cualquier tenant.
+- **`PUT /plantillas/:id`** responde 409 `{error: 'plantilla-en-uso'}` si la plantilla está en uso. El conteo y la escritura van en la misma transacción.
+- **`GET /plantillas/:id`** devuelve `enUso` (booleano). La consola ofrece «Editar» o «Duplicar y editar» según ese valor. El resumen de `GET /plantillas` no cambia.
+- **`usosDePlantilla(id)`** es la única lectura de `Automatizacion` sin tenant. Devuelve un número, nunca filas ni ids de tenant, y la cubre una prueba de aislamiento.
+- **`POST /plantillas/prueba`:**
+  - Recibe el cuerpo de la plantilla más `{conexionId, valores}` y exige `X-Tenant-Id`.
+  - Pasa por las mismas validaciones que `POST /plantillas` y por las mismas compuertas que la prueba de una plantilla guardada (conexión del tenant, vistas aprobadas, DEC-71).
+  - Se registra en la auditoría con `origen: 'plantilla-prueba'` y `plantillaId: null` (DEC-159, DEC-160).
+  - No guarda nada.
+- **Huella.** Es la consulta, la declaración de parámetros, las entidades y la conexión. Cambiar solo los textos para el cliente, el nombre o la tolerancia no obliga a volver a probar.
+- **Duplicar.**
+  - Es una acción de la consola. Abre el mismo pop-up de alta con los campos de la original, el título y la descripción vacíos y «(copia)» en el nombre.
+  - No se escribe nada hasta guardar, y la copia nace sin automatizaciones.
+  - La original no cambia.
+
+**Alcance que no cambia.** El motor (`componerSentencia`), las listas cerradas (DEC-63, DEC-65, DEC-67), la condición (DEC-64, DEC-84) y la ausencia de borrado de plantillas (DEC-68).
+
+**Por qué.** Cierra la regla de DEC-182 sin modelo de versiones y sin abrir el aislamiento más que para un número.
+
+**Se resigna.**
+- **Historial desactualizado.** Una automatización desactivada queda apuntando a una plantilla que puede decir otra cosa. La auditoría conserva la sentencia compuesta de cada ejecución (DEC-160), pero la pantalla de la automatización muestra la plantilla actual.
+- **Textos de tarjetas pausadas.** Una automatización pausada en el panel muestra los textos actuales de su plantilla. Si la plantilla se edita mientras está pausada, el cliente ve el texto nuevo.
+- **Reactivación.** Si algún día se agrega la reactivación de una automatización, esta regla se revisa: la (b) de «en uso» depende de DEC-79.
+- **Una carrera mínima.** Una automatización creada justo entre el conteo y la escritura. La transacción la achica, sin bloqueo de fila.
+- **Para crear una plantilla hace falta un tenant activo** con una conexión y vistas aprobadas, porque la prueba corre contra la réplica de un cliente.
+
+**Decidido por:** el usuario, 2026-10-27, en la exploración de CH-38. Eligió las opciones recomendadas en conteo, prueba y copia. En «en uso» eligió la (b) frente a la (a) recomendada. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
