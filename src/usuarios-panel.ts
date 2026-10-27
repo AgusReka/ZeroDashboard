@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
 import { conTenantInyectado, type PrismaAislado } from './aislamiento-prisma.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import { hashearClave } from './crypto-auth.js';
 import { LIMITE_LISTADO } from './listados.js';
 

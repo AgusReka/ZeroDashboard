@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from './generated/prisma/client.js';
 import type { PrismaAislado } from './aislamiento-prisma.js';
-import { camposInvalidos } from './conexiones.js';
+import { camposInvalidos } from './compartido/campos-invalidos.js';
 import { sanearSql } from './consulta-ejecucion.js';
 import { LIMITE_LISTADO } from './consultas-guardadas.js';
 import { TIPOS_PARAMETRO } from './parametros.js';
