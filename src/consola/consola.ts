@@ -131,7 +131,14 @@ function documentoConsola(nombreOperador: string): string {
   /* CH-32a PR2 (DEC-173): the query pop-up holds the whole form and the result, so it is wider than the
      shared dialog; every pop-up's unsaved-changes question sits in its actions row, level with the buttons. */
   #consulta-dialogo .zd-dialog { width: min(1100px, 100%); }
-  #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar, #aj-confirmar {
+  /* CH-38 (DEC-191): the template pop-up is wide like the query one; its entity boxes are built by the script. */
+  #plantilla-dialogo .zd-dialog { width: min(900px, 100%); }
+  .entidades-plantilla { margin: 0; padding: 0; border: 0; min-width: 0; }
+  .entidad-opcion { display: inline-flex; align-items: center; gap: var(--space-3); margin: 0 var(--space-6) var(--space-3) 0;
+    font-size: var(--text-body); color: var(--text-1); }
+  #plantilla-textos { white-space: pre-line; }
+  #plantilla-f-agregar-parametro { margin-top: var(--space-4); }
+  #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar, #aj-confirmar, #plantilla-confirmar {
     display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
   #guardadas { list-style: none; padding: 0; margin: var(--space-5) 0 0; }
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
@@ -462,8 +469,9 @@ function documentoConsola(nombreOperador: string): string {
 </section>
 
 <!--
-  CH-30d (DEC-61, screen C-03): the template catalog, global and read-only. Creating and
-  replacing a template stay API-only. A template's statement is written as text.
+  CH-30d (DEC-61, screen C-03): the template catalog, global. A template's statement is written as text.
+  CH-38 (DEC-191): no longer read-only. «Nueva plantilla» (header) and the drawer's «Editar» or
+  «Duplicar y editar» open one pop-up; a template with active automations is duplicated, not edited.
 -->
 <section id="pantalla-plantillas" aria-labelledby="titulo-plantillas" hidden>
 <header class="zd-pagehead">
@@ -471,6 +479,9 @@ function documentoConsola(nombreOperador: string): string {
     <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span></div>
     <h1 id="titulo-plantillas" class="zd-h1">Plantillas</h1>
     <p class="zd-pagehead__desc">El catálogo de automatizaciones que se pueden activar. Cada plantilla necesita ciertas entidades mapeadas.</p>
+  </div>
+  <div class="zd-pagehead__actions">
+    <button id="plantilla-nueva" class="zd-btn zd-btn--primary" type="button">Nueva plantilla</button>
   </div>
 </header>
 <p id="plantillas-aviso" class="ayuda" role="status"></p>
@@ -486,6 +497,13 @@ function documentoConsola(nombreOperador: string): string {
     <p id="plantilla-entidades"></p>
     <p id="plantilla-parametros"></p>
     <pre id="plantilla-sql"></pre>
+    <!-- CH-38 (DEC-182, DEC-191): the client texts, and the one action the template allows by its use. -->
+    <p id="plantilla-textos"></p>
+    <p id="plantilla-en-uso-aviso" class="ayuda" hidden>Tiene automatizaciones activas: se duplica en lugar de editarse.</p>
+    <div class="zd-form-actions">
+      <button id="plantilla-editar" class="zd-btn zd-btn--secondary" type="button" hidden>Editar</button>
+      <button id="plantilla-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
+    </div>
     <!-- CH-35 (DEC-177): the one tenant-scoped part of this screen. It runs the template on a connection of the active tenant; nothing is saved. -->
     <section id="plantilla-prueba" aria-labelledby="plantilla-prueba-titulo">
       <h3 id="plantilla-prueba-titulo" class="zd-h3">Probar en el tenant activo</h3>
@@ -499,6 +517,81 @@ function documentoConsola(nombreOperador: string): string {
     <button id="plantilla-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar</button>
   </div>
 </aside>
+<!--
+  CH-38 (DEC-173, DEC-191): one pop-up for «Nueva plantilla», «Editar» and «Duplicar y editar». «Guardar» opens
+  only after a passing test of exactly this SQL, declaration, entities and connection (POST /plantillas/prueba,
+  nothing is saved by it); the name, tag, format, tolerance and client texts do not need a new test. The
+  entity boxes and the parameter rows are built by the script; the options of both lists are static.
+  A refusal, and the reason «Guardar» is closed, are written in #plantilla-dialogo-estado.
+-->
+<div id="plantilla-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="plantilla-dialogo-titulo">
+    <h2 id="plantilla-dialogo-titulo" class="zd-dialog__title">Nueva plantilla</h2>
+    <p id="plantilla-f-aviso-copia" class="ayuda" hidden>Esta copia no aparece en el panel del cliente hasta que tenga su propio título y descripción.</p>
+    <form id="plantilla-form" class="zd-form">
+      <div><label for="plantilla-f-nombre" class="zd-label">Nombre</label><input id="plantilla-f-nombre" class="zd-input" type="text" autocomplete="off"></div>
+      <div>
+        <label for="plantilla-f-sql" class="zd-label">Sentencia SQL</label>
+        <textarea id="plantilla-f-sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false"></textarea>
+        <p class="ayuda">Leé las vistas canónicas por su nombre, por ejemplo v_producto. Cada :nombre que use la sentencia se declara abajo.</p>
+      </div>
+      <div>
+        <p class="zd-label">Parámetros</p>
+        <div id="plantilla-f-parametros"></div>
+        <button id="plantilla-f-agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
+      </div>
+      <fieldset id="plantilla-f-entidades" class="entidades-plantilla"><legend class="zd-label">Entidades que necesita</legend></fieldset>
+      <div>
+        <label for="plantilla-f-automatizacion" class="zd-label">Automatización</label>
+        <select id="plantilla-f-automatizacion" class="zd-select">
+          <option value="stock-fisico">stock-fisico</option>
+          <option value="stock-producible">stock-producible</option>
+          <option value="reporte-diario">reporte-diario</option>
+        </select>
+      </div>
+      <div>
+        <label for="plantilla-f-formato" class="zd-label">Formato</label>
+        <select id="plantilla-f-formato" class="zd-select">
+          <option value="correo-html">correo-html</option>
+        </select>
+      </div>
+      <div>
+        <label for="plantilla-f-tolerancia" class="zd-label">Tolerancia de frescura (minutos)</label>
+        <input id="plantilla-f-tolerancia" class="zd-input" type="number" min="0" step="1" value="60">
+      </div>
+      <div>
+        <label for="plantilla-f-titulo" class="zd-label">Título para el cliente</label>
+        <input id="plantilla-f-titulo" class="zd-input" type="text" maxlength="80" autocomplete="off">
+        <p class="ayuda">Hasta 80 caracteres. Es lo que ve el cliente en su panel; sin términos técnicos.</p>
+      </div>
+      <div>
+        <label for="plantilla-f-descripcion" class="zd-label">Descripción para el cliente</label>
+        <textarea id="plantilla-f-descripcion" class="zd-textarea" rows="3" maxlength="200"></textarea>
+        <p class="ayuda">Hasta 200 caracteres. Sin ambos textos, la plantilla no aparece en el panel del cliente.</p>
+      </div>
+      <div>
+        <h3 class="zd-h3">Probar antes de guardar</h3>
+        <label for="plantilla-f-conexion" class="zd-label">Conexión</label>
+        <select id="plantilla-f-conexion" class="zd-select"></select>
+        <div id="plantilla-f-valores"></div>
+        <button id="plantilla-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+        <p id="plantilla-f-resultado" class="ayuda" role="status"></p>
+        <div class="zd-table-wrap zd-table-scroll"><table id="plantilla-f-tabla" class="zd-table"></table></div>
+      </div>
+    </form>
+    <p id="plantilla-dialogo-estado" class="ayuda" role="status"></p>
+    <div class="zd-dialog__actions">
+      <span id="plantilla-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="plantilla-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="plantilla-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button id="plantilla-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
+      <button id="plantilla-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="plantilla-form" aria-describedby="plantilla-dialogo-estado" disabled>Guardar</button>
+      <button id="plantilla-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
 </section>
 
 <!--
@@ -1163,9 +1256,6 @@ var tenantActivo = null;
 // tenant's declaration without another request.
 var tenantsCargados = [];
 
-// The declaration rows, in the order they are sent: the server binds $k by that order.
-var filasParametros = [];
-
 // One alert region for the whole page, deliberately not one per section: a save
 // failure and an execution failure overwrite each other, which is simpler than two
 // competing alert regions and keeps a single place where the operator looks.
@@ -1523,75 +1613,98 @@ function controlDeValor(tipo) {
   return control;
 }
 
-function agregarFilaParametro(nombre, tipo) {
-  var fila = {
-    nodo: document.createElement('div'),
-    nombre: document.createElement('input'),
-    tipo: document.createElement('select'),
-    valor: controlDeValor(tipo)
-  };
-  fila.nodo.className = 'parametro';
-  fila.nombre.type = 'text';
-  fila.nombre.autocomplete = 'off';
-  fila.nombre.className = 'parametro-nombre';
-  fila.nombre.value = nombre;
-  TIPOS_PARAMETRO.forEach(function (opcionTipo) {
-    var opcion = document.createElement('option');
-    opcion.value = opcionTipo;
-    opcion.textContent = opcionTipo;
-    fila.tipo.appendChild(opcion);
-  });
-  fila.tipo.className = 'parametro-tipo';
-  fila.tipo.value = tipo;
+// CH-38: the editor of a declaration, one per container. The query pop-up builds its own below
+// (editorConsulta); the template pop-up builds a second one, without the per-row value control (its
+// test values are asked for in the test block). alCambiar runs after every change of the declaration.
+function crearEditorParametros(contenedor, alCambiar, conValor) {
+  var filas = [];
 
-  // The value control is labeled with the nombre it fills, and follows it as typed.
-  var rotuloValor = rotular(nombre === '' ? 'Valor' : nombre, fila.valor);
-  var leyenda = rotuloValor.firstChild;
-  leyenda.className = 'parametro-leyenda';
-  // CH-32a PR2: the declaration (names and tipos) is part of what a passing test covers, so each change
-  // of it re-evaluates the save controls. The values are not: they are never saved.
-  fila.nombre.addEventListener('input', function () {
-    var escrito = fila.nombre.value.trim();
-    leyenda.textContent = escrito === '' ? 'Valor' : escrito;
-    actualizarGuardado();
-  });
-  // A new tipo brings its own control; a value typed for the old one is dropped.
-  fila.tipo.addEventListener('change', function () {
-    rotuloValor.removeChild(fila.valor);
-    fila.valor = controlDeValor(fila.tipo.value);
-    rotuloValor.appendChild(fila.valor);
-    actualizarGuardado();
-  });
+  function agregar(nombre, tipo) {
+    var fila = {
+      nodo: document.createElement('div'),
+      nombre: document.createElement('input'),
+      tipo: document.createElement('select'),
+      valor: conValor ? controlDeValor(tipo) : null
+    };
+    fila.nodo.className = 'parametro';
+    fila.nombre.type = 'text';
+    fila.nombre.autocomplete = 'off';
+    fila.nombre.className = 'parametro-nombre';
+    fila.nombre.value = nombre;
+    TIPOS_PARAMETRO.forEach(function (opcionTipo) {
+      var opcion = document.createElement('option');
+      opcion.value = opcionTipo;
+      opcion.textContent = opcionTipo;
+      fila.tipo.appendChild(opcion);
+    });
+    fila.tipo.className = 'parametro-tipo';
+    fila.tipo.value = tipo;
 
-  var quitar = document.createElement('button');
-  quitar.type = 'button';
-  quitar.textContent = 'Quitar';
-  quitar.addEventListener('click', function () {
-    contenedorParametros.removeChild(fila.nodo);
-    filasParametros.splice(filasParametros.indexOf(fila), 1);
-    actualizarGuardado();
-  });
+    // The value control is labeled with the nombre it fills, and follows it as typed.
+    var rotuloValor = conValor ? rotular(nombre === '' ? 'Valor' : nombre, fila.valor) : null;
+    var leyenda = conValor ? rotuloValor.firstChild : null;
+    if (conValor) { leyenda.className = 'parametro-leyenda'; }
+    // CH-32a PR2: the declaration (names and tipos) is part of what a passing test covers, so each change
+    // of it re-evaluates the save controls. The values are not: they are never saved.
+    fila.nombre.addEventListener('input', function () {
+      if (conValor) {
+        var escrito = fila.nombre.value.trim();
+        leyenda.textContent = escrito === '' ? 'Valor' : escrito;
+      }
+      alCambiar();
+    });
+    // A new tipo brings its own control; a value typed for the old one is dropped.
+    fila.tipo.addEventListener('change', function () {
+      if (conValor) {
+        rotuloValor.removeChild(fila.valor);
+        fila.valor = controlDeValor(fila.tipo.value);
+        rotuloValor.appendChild(fila.valor);
+      }
+      alCambiar();
+    });
 
-  fila.nodo.appendChild(rotular('Nombre', fila.nombre));
-  fila.nodo.appendChild(rotular('Tipo', fila.tipo));
-  fila.nodo.appendChild(rotuloValor);
-  fila.nodo.appendChild(quitar);
-  contenedorParametros.appendChild(fila.nodo);
-  filasParametros.push(fila);
-  actualizarGuardado();
+    var quitar = document.createElement('button');
+    quitar.type = 'button';
+    quitar.textContent = 'Quitar';
+    quitar.addEventListener('click', function () {
+      contenedor.removeChild(fila.nodo);
+      filas.splice(filas.indexOf(fila), 1);
+      alCambiar();
+    });
+
+    fila.nodo.appendChild(rotular('Nombre', fila.nombre));
+    fila.nodo.appendChild(rotular('Tipo', fila.tipo));
+    if (conValor) { fila.nodo.appendChild(rotuloValor); }
+    fila.nodo.appendChild(quitar);
+    contenedor.appendChild(fila.nodo);
+    filas.push(fila);
+    alCambiar();
+  }
+
+  function limpiar() {
+    vaciar(contenedor);
+    filas = [];
+    alCambiar();
+  }
+
+  function declaracion() {
+    return filas.map(function (fila) {
+      return { nombre: fila.nombre.value.trim(), tipo: fila.tipo.value };
+    });
+  }
+
+  // {nombre, tipo, valor} per row, the shape valoresDe reads (only an editor built conValor has a control).
+  function entradas() {
+    return filas.map(function (fila) {
+      return { nombre: fila.nombre.value.trim(), tipo: fila.tipo.value, valor: fila.valor };
+    });
+  }
+
+  return { agregar: agregar, limpiar: limpiar, declaracion: declaracion, entradas: entradas };
 }
 
-function limpiarParametros() {
-  vaciar(contenedorParametros);
-  filasParametros = [];
-  actualizarGuardado();
-}
-
-function declaracionActual() {
-  return filasParametros.map(function (fila) {
-    return { nombre: fila.nombre.value.trim(), tipo: fila.tipo.value };
-  });
-}
+// The query pop-up's editor. Declared where the factory is, so the callers below read it as before.
+var editorConsulta = crearEditorParametros(contenedorParametros, actualizarGuardado, true);
 
 // A blank control sends no key at all, so the server answers valor-faltante naming the
 // parameter instead of receiving an empty string it would have to interpret. Shared by
@@ -1614,9 +1727,7 @@ function valoresDe(entradas) {
 }
 
 function valoresActuales() {
-  return valoresDe(filasParametros.map(function (fila) {
-    return { nombre: fila.nombre.value.trim(), tipo: fila.tipo.value, valor: fila.valor };
-  }));
+  return valoresDe(editorConsulta.entradas());
 }
 
 // A 400 on execute or save. A parameter problem becomes one line naming the parameter;
@@ -1755,7 +1866,7 @@ async function ejecutar(desplazamiento) {
   // second place for it to drift out of step.
   var limite = parseInt(entradaLimite.value, 10);
   if (!(limite >= 1)) { limite = 50; }
-  var declaracion = declaracionActual();
+  var declaracion = editorConsulta.declaracion();
 
   var respuesta;
   try {
@@ -1945,7 +2056,7 @@ async function guardar() {
   botonGuardar.disabled = true;
 
   var nombre = entradaNombre.value.trim();
-  var declaracion = declaracionActual();
+  var declaracion = editorConsulta.declaracion();
 
   var respuesta;
   try {
@@ -2040,10 +2151,10 @@ async function cargarGuardada(id) {
   // A plain value assignment on the textarea: the statement is data, not markup.
   entradaSql.value = cuerpo.consultaGuardada.sql;
   // The saved declaration replaces the rows, with empty values: values are never saved.
-  limpiarParametros();
+  editorConsulta.limpiar();
   var parametros = cuerpo.consultaGuardada.parametros;
   (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
-    agregarFilaParametro(String(parametro.nombre), String(parametro.tipo));
+    editorConsulta.agregar(String(parametro.nombre), String(parametro.tipo));
   });
   // #conexion is deliberately left as it is: nothing binds a saved query to a
   // connection, so the operator chooses which target to run it against.
@@ -3448,7 +3559,7 @@ function numeroDeVersionNueva() {
 // What the editor holds that a passing test has to cover. The note, the name, the description and
 // the parameter values are not part of it: none of them changes what the statement does.
 function huellaActual() {
-  return JSON.stringify({ conexion: entradaConexion.value, sql: entradaSql.value, parametros: declaracionActual() });
+  return JSON.stringify({ conexion: entradaConexion.value, sql: entradaSql.value, parametros: editorConsulta.declaracion() });
 }
 
 // True when a save may go: the last run answered ok for exactly this content, and there is a name.
@@ -3555,7 +3666,7 @@ function recordarConsultaCargada(consulta) {
     descripcion: consulta.descripcion === null || consulta.descripcion === undefined ? '' : String(consulta.descripcion),
     version: consulta.version,
     sql: String(consulta.sql),
-    // The declaration, in the shape declaracionActual() gives, so Cancelar can compare it.
+    // The declaration, in the shape editorConsulta.declaracion() gives, so Cancelar can compare it.
     parametros: JSON.stringify((Array.isArray(consulta.parametros) ? consulta.parametros : []).map(function (parametro) {
       return { nombre: String(parametro.nombre).trim(), tipo: String(parametro.tipo) };
     }))
@@ -3572,20 +3683,20 @@ function hayCambiosSinGuardar() {
     return entradaSql.value !== consultaCargada.sql
       || entradaNombre.value !== consultaCargada.nombre
       || entradaDescripcion.value !== consultaCargada.descripcion
-      || JSON.stringify(declaracionActual()) !== consultaCargada.parametros;
+      || JSON.stringify(editorConsulta.declaracion()) !== consultaCargada.parametros;
   }
   var sentencia = entradaSql.value.trim();
   return (sentencia !== '' && sentencia !== 'SELECT 1')
     || entradaNombre.value.trim() !== ''
     || entradaDescripcion.value.trim() !== ''
-    || declaracionActual().length > 0;
+    || editorConsulta.declaracion().length > 0;
 }
 
 // CH-32a (DEC-172): empties the editor, the parameters, the name and the description and forgets
 // the loaded query, so "Guardar consulta" is offered again. No request.
 function empezarConsultaNueva() {
   entradaSql.value = '';
-  limpiarParametros();
+  editorConsulta.limpiar();
   entradaNombre.value = '';
   entradaDescripcion.value = '';
   olvidarConsultaCargada();
@@ -3621,7 +3732,7 @@ async function guardarNuevaVersion() {
   if (guardando || !guardadoHabilitado()) { return; }
   ocultarBanner();
   var consulta = consultaCargada;
-  var declaracion = declaracionActual();
+  var declaracion = editorConsulta.declaracion();
   var nota = entradaNotaVersion.value.trim();
   var cuerpo = {
     nombre: entradaNombre.value.trim(),
@@ -3706,7 +3817,7 @@ function cambiarTenant(id) {
   ultimaPruebaOk = null;
   estadoPrueba = 'sin-probar';
   olvidarConsultaCargada();
-  limpiarParametros();
+  editorConsulta.limpiar();
   limpiarAutomatizaciones();
   // CH-35: a template test result belongs to the tenant it ran for; an open panel re-reads the new tenant's connections.
   limpiarPruebaPlantilla();
@@ -3837,7 +3948,7 @@ botonGuardar.addEventListener('click', function () {
 });
 
 botonAgregarParametro.addEventListener('click', function () {
-  agregarFilaParametro('', 'texto');
+  editorConsulta.agregar('', 'texto');
 });
 
 botonSiguiente.addEventListener('click', function () {
@@ -4688,6 +4799,41 @@ function mensajeDePruebaInvalida(cuerpo) {
   return 'Revisá estos parámetros: ' + (partes.length === 0 ? 'el cuerpo enviado' : partes.join('; ')) + '.';
 }
 
+// The answer of a template test, written as text in nodo ({aviso, tabla}). Shared by the side panel and, since
+// CH-38, the template pop-up. Returns true only for a 200 with resultado "ok". leido is what leerPrueba gave.
+function mostrarResultadoPrueba(nodo, leido) {
+  var aviso = nodo.aviso;
+  var cuerpo = leido.cuerpo;
+  if (leido.red) { aviso.textContent = 'No se pudo contactar con la aplicación.'; return false; }
+  if (cuerpo === null) {
+    aviso.textContent = 'La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + leido.status + ').';
+    return false;
+  }
+  if (leido.status === 409 && cuerpo.error === 'vista-canonica-no-aprobada') {
+    var entidades = Array.isArray(cuerpo.entidades) ? cuerpo.entidades.map(String).join(', ') : '';
+    aviso.textContent = entidades === ''
+      ? 'Las vistas de esta plantilla no están aprobadas en esta conexión. Mapealas y validalas en Mapeo y validación.'
+      : 'Las vistas de estas entidades no están aprobadas en esta conexión: ' + entidades + '. Mapealas y validalas en Mapeo y validación.';
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) { aviso.textContent = MENSAJES_ERROR[cuerpo.error]; return false; }
+  if (leido.status === 404) { aviso.textContent = 'La plantilla o la conexión ya no existen.'; return false; }
+  if (leido.status === 400) { aviso.textContent = mensajeDePruebaInvalida(cuerpo); return false; }
+  if (leido.status !== 200) { aviso.textContent = 'La aplicación respondió HTTP ' + leido.status + '.'; return false; }
+  if (cuerpo.resultado !== 'ok') { aviso.textContent = mensajeDeFallo(cuerpo); return false; }
+  var columnas = Array.isArray(cuerpo.columnas) ? cuerpo.columnas.map(String) : [];
+  var filas = (Array.isArray(cuerpo.filas) ? cuerpo.filas : []).map(function (fila) {
+    return (Array.isArray(fila) ? fila : []).map(textoDeCelda);
+  });
+  renderizarTabla(nodo.tabla, columnas, filas, '');
+  var texto = filas.length === 1 ? '1 fila.' : filas.length + ' filas.';
+  if (cuerpo.paginacion && cuerpo.paginacion.hayMas === true) {
+    texto += ' Hay más filas; la prueba muestra solo la primera página.';
+  }
+  aviso.textContent = texto;
+  return true;
+}
+
 async function probarPlantilla() {
   if (plantillaAbierta === null) { return; }
   if (tenantActivo === null) { avisoPrueba.textContent = AVISO_PRUEBA_SIN_TENANT; return; }
@@ -4706,34 +4852,18 @@ async function probarPlantilla() {
   botonProbar.disabled = false;
   // null: the banner already says why (tenant refusal), and the block has nothing to add.
   if (leido === null) { avisoPrueba.textContent = ''; return; }
-  var cuerpo = leido.cuerpo;
-  if (leido.red) { avisoPrueba.textContent = 'No se pudo contactar con la aplicación.'; return; }
-  if (cuerpo === null) {
-    avisoPrueba.textContent = 'La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + leido.status + ').';
-    return;
-  }
-  if (leido.status === 409 && cuerpo.error === 'vista-canonica-no-aprobada') {
-    var entidades = Array.isArray(cuerpo.entidades) ? cuerpo.entidades.map(String).join(', ') : '';
-    avisoPrueba.textContent = entidades === ''
-      ? 'Las vistas de esta plantilla no están aprobadas en esta conexión. Mapealas y validalas en Mapeo y validación.'
-      : 'Las vistas de estas entidades no están aprobadas en esta conexión: ' + entidades + '. Mapealas y validalas en Mapeo y validación.';
-    return;
-  }
-  if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) { avisoPrueba.textContent = MENSAJES_ERROR[cuerpo.error]; return; }
-  if (leido.status === 404) { avisoPrueba.textContent = 'La plantilla o la conexión ya no existen.'; return; }
-  if (leido.status === 400) { avisoPrueba.textContent = mensajeDePruebaInvalida(cuerpo); return; }
-  if (leido.status !== 200) { avisoPrueba.textContent = 'La aplicación respondió HTTP ' + leido.status + '.'; return; }
-  if (cuerpo.resultado !== 'ok') { avisoPrueba.textContent = mensajeDeFallo(cuerpo); return; }
-  var columnas = Array.isArray(cuerpo.columnas) ? cuerpo.columnas.map(String) : [];
-  var filas = (Array.isArray(cuerpo.filas) ? cuerpo.filas : []).map(function (fila) {
-    return (Array.isArray(fila) ? fila : []).map(textoDeCelda);
-  });
-  renderizarTabla(tablaPrueba, columnas, filas, '');
-  var texto = filas.length === 1 ? '1 fila.' : filas.length + ' filas.';
-  if (cuerpo.paginacion && cuerpo.paginacion.hayMas === true) {
-    texto += ' Hay más filas; la prueba muestra solo la primera página.';
-  }
-  avisoPrueba.textContent = texto;
+  mostrarResultadoPrueba({ aviso: avisoPrueba, tabla: tablaPrueba }, leido);
+}
+
+// The client title and description of a template as the drawer writes them, or that it has none.
+function textosClienteDe(plantilla) {
+  var titulo = typeof plantilla.titulo === 'string' ? plantilla.titulo : '';
+  var descripcion = typeof plantilla.descripcion === 'string' ? plantilla.descripcion : '';
+  if (titulo === '' && descripcion === '') { return 'Sin textos para el cliente: no aparece en el panel'; }
+  var lineas = [];
+  if (titulo !== '') { lineas.push('Título para el cliente: ' + titulo); }
+  if (descripcion !== '') { lineas.push('Descripción para el cliente: ' + descripcion); }
+  return lineas.join('\\n');
 }
 
 async function verPlantilla(id) {
@@ -4747,8 +4877,15 @@ async function verPlantilla(id) {
   document.getElementById('plantilla-parametros').textContent = 'Parámetros: ' + (parametros.length === 0 ? 'ninguno'
     : parametros.map(function (p) { return String(p.nombre) + ' (' + String(p.tipo) + ')'; }).join(', '));
   document.getElementById('plantilla-sql').textContent = String(plantilla.sql);
+  // CH-38 (DEC-182, DEC-191): the client texts, and «Editar» or «Duplicar y editar» by use, never both.
+  // A missing enUso reads as in use: duplicating loses nothing, editing would be refused anyway.
+  var enUso = plantilla.enUso !== false;
+  document.getElementById('plantilla-textos').textContent = textosClienteDe(plantilla);
+  document.getElementById('plantilla-en-uso-aviso').hidden = !enUso;
+  document.getElementById('plantilla-editar').hidden = enUso;
+  document.getElementById('plantilla-duplicar').hidden = !enUso;
   // CH-35: the test block starts empty for this template, with its own parameter inputs.
-  plantillaAbierta = { id: id, parametros: parametros };
+  plantillaAbierta = { id: id, parametros: parametros, datos: plantilla };
   limpiarPruebaPlantilla();
   vaciar(contenedorPrueba);
   entradasPrueba = construirValores(contenedorPrueba, parametros);
@@ -4779,6 +4916,421 @@ document.getElementById('plantilla-cerrar').addEventListener('click', function (
   limpiarPruebaPlantilla();
 });
 document.getElementById('plantilla-probar').addEventListener('click', probarPlantilla);
+
+// ---- CH-38 (DEC-173, DEC-191, screen C-03): create, edit and duplicate a template -------------
+// One pop-up, three modes. «Guardar» opens only for a passing test of the same SQL, declaration, entities and
+// connection (POST /plantillas/prueba, which saves nothing). The write goes to the global catalog with no
+// tenant header; the test needs the active tenant, so it goes through leerPrueba like the side panel's.
+
+// The canonical entities, in contract order. consola.test.ts pins this list against the contract.
+var ENTIDADES_PLANTILLA = ['producto', 'pedido', 'item_pedido', 'insumo', 'receta_componente'];
+var SUFIJO_COPIA = ' (copia)';
+var AUTOMATIZACION_INICIAL = 'stock-fisico';
+var FORMATO_INICIAL = 'correo-html';
+var TOLERANCIA_INICIAL = '60';
+
+var entradaNombrePlantilla = document.getElementById('plantilla-f-nombre');
+var entradaSqlPlantilla = document.getElementById('plantilla-f-sql');
+var contenedorEntidadesPlantilla = document.getElementById('plantilla-f-entidades');
+var selectorAutomatizacionPlantilla = document.getElementById('plantilla-f-automatizacion');
+var selectorFormatoPlantilla = document.getElementById('plantilla-f-formato');
+var entradaToleranciaPlantilla = document.getElementById('plantilla-f-tolerancia');
+var entradaTituloPlantilla = document.getElementById('plantilla-f-titulo');
+var entradaDescripcionPlantilla = document.getElementById('plantilla-f-descripcion');
+var selectorConexionPlantilla = document.getElementById('plantilla-f-conexion');
+var contenedorValoresPlantilla = document.getElementById('plantilla-f-valores');
+var botonProbarPlantilla = document.getElementById('plantilla-f-probar');
+var avisoResultadoPlantilla = document.getElementById('plantilla-f-resultado');
+var tablaResultadoPlantilla = document.getElementById('plantilla-f-tabla');
+var estadoDialogoPlantilla = document.getElementById('plantilla-dialogo-estado');
+var avisoCopiaPlantilla = document.getElementById('plantilla-f-aviso-copia');
+var botonGuardarPlantilla = document.getElementById('plantilla-dialogo-guardar');
+var botonDuplicarDialogo = document.getElementById('plantilla-dialogo-duplicar');
+var tituloDialogoPlantilla = document.getElementById('plantilla-dialogo-titulo');
+var formularioPlantilla = document.getElementById('plantilla-form');
+
+// 'nueva' | 'editar' | 'duplicar', and the id of the template being edited.
+var modoPlantilla = 'nueva';
+var plantillaEditadaId = '';
+// {huella, ok} of the last test answer; null before any, and while one is on its way.
+var ultimaPruebaPlantilla = null;
+var probandoPlantilla = false;
+var guardandoPlantilla = false;
+// The last refusal of a save or of the test, shown in the status line until the form changes.
+var rechazoPlantilla = '';
+// The form as it was when the pop-up opened, so Cancelar can tell whether anything was typed.
+var instantaneaPlantilla = '';
+// Drops an answer (connections, test) that arrives after the pop-up closed, reopened or tested again.
+var generacionFormPlantilla = 0;
+var entradasValoresPlantilla = [];
+var firmaDeclaracionPlantilla = '[]';
+var casillasEntidades = [];
+
+var editorPlantilla = crearEditorParametros(document.getElementById('plantilla-f-parametros'), alCambiarDeclaracionPlantilla, false);
+
+ENTIDADES_PLANTILLA.forEach(function (entidad) {
+  var rotulo = document.createElement('label');
+  rotulo.className = 'entidad-opcion';
+  var caja = document.createElement('input');
+  caja.type = 'checkbox';
+  var texto = document.createElement('span');
+  texto.textContent = entidad;
+  rotulo.appendChild(caja);
+  rotulo.appendChild(texto);
+  caja.addEventListener('change', alEditarPlantilla);
+  contenedorEntidadesPlantilla.appendChild(rotulo);
+  casillasEntidades.push({ valor: entidad, caja: caja });
+});
+
+function entidadesMarcadas() {
+  return casillasEntidades.filter(function (casilla) { return casilla.caja.checked; }).map(function (casilla) { return casilla.valor; });
+}
+
+// What a passing test covers: the SQL, the declaration, the entities and the connection. The name, the tag,
+// the format, the tolerance and the client texts do not change what the statement does.
+function huellaPlantilla() {
+  return JSON.stringify([entradaSqlPlantilla.value, editorPlantilla.declaracion(), entidadesMarcadas(), selectorConexionPlantilla.value]);
+}
+
+function instantaneaDeFormularioPlantilla() {
+  return JSON.stringify([entradaNombrePlantilla.value, entradaSqlPlantilla.value, editorPlantilla.declaracion(), entidadesMarcadas(),
+    selectorAutomatizacionPlantilla.value, selectorFormatoPlantilla.value, entradaToleranciaPlantilla.value,
+    entradaTituloPlantilla.value, entradaDescripcionPlantilla.value]);
+}
+
+// The body of POST /plantillas and PUT /plantillas/:id; the test route takes it plus conexionId and valores.
+// Both client texts go always: a blank one is stored as no text.
+function cuerpoPlantilla() {
+  var tolerancia = entradaToleranciaPlantilla.value.trim();
+  var numero = Number(tolerancia);
+  return {
+    nombre: entradaNombrePlantilla.value.trim(),
+    sql: entradaSqlPlantilla.value,
+    parametros: editorPlantilla.declaracion(),
+    entidades: entidadesMarcadas(),
+    automatizacion: selectorAutomatizacionPlantilla.value,
+    formato: selectorFormatoPlantilla.value,
+    toleranciaFrescuraMinutos: tolerancia !== '' && Number.isFinite(numero) ? numero : tolerancia,
+    titulo: entradaTituloPlantilla.value,
+    descripcion: entradaDescripcionPlantilla.value
+  };
+}
+
+// True when a save may go: the last test answered ok for exactly this content, and there is a name.
+function guardadoPlantillaHabilitado() {
+  return ultimaPruebaPlantilla !== null && ultimaPruebaPlantilla.ok && ultimaPruebaPlantilla.huella === huellaPlantilla()
+    && entradaNombrePlantilla.value.trim() !== '';
+}
+
+// The reason «Guardar» is closed, in the order the operator can act on it.
+function motivoGuardadoPlantilla() {
+  if (guardandoPlantilla) { return 'Guardando…'; }
+  if (probandoPlantilla) { return 'Probando la plantilla…'; }
+  if (tenantActivo === null) { return AVISO_PRUEBA_SIN_TENANT; }
+  if (ultimaPruebaPlantilla === null) { return 'Probá la plantilla antes de guardarla.'; }
+  if (ultimaPruebaPlantilla.huella !== huellaPlantilla()) { return 'Cambió la plantilla desde la última prueba. Probala de nuevo para poder guardarla.'; }
+  if (!ultimaPruebaPlantilla.ok) { return 'La última prueba falló. Corregí la plantilla y probala de nuevo para poder guardarla.'; }
+  return 'Escribí un nombre para poder guardarla.';
+}
+
+function actualizarGuardadoPlantilla() {
+  var cerrado = guardandoPlantilla || !guardadoPlantillaHabilitado();
+  botonGuardarPlantilla.disabled = cerrado;
+  estadoDialogoPlantilla.textContent = rechazoPlantilla !== '' ? rechazoPlantilla : (cerrado ? motivoGuardadoPlantilla() : '');
+}
+
+// The copy notice stays until the copy has both its own client texts.
+function reflejarAvisoCopiaPlantilla() {
+  avisoCopiaPlantilla.hidden = !(modoPlantilla === 'duplicar'
+    && (entradaTituloPlantilla.value.trim() === '' || entradaDescripcionPlantilla.value.trim() === ''));
+}
+
+// Any edit of the form: a refusal shown for the old content goes, and so does the offer to duplicate.
+function alEditarPlantilla() {
+  rechazoPlantilla = '';
+  botonDuplicarDialogo.hidden = true;
+  reflejarAvisoCopiaPlantilla();
+  actualizarGuardadoPlantilla();
+}
+
+// The test block asks for one value per declared parameter: rebuilt when the declaration changes, keeping
+// what was typed for a parameter that is still declared with the same name and tipo.
+function reconstruirValoresPlantilla() {
+  var declaracion = editorPlantilla.declaracion().filter(function (parametro) { return parametro.nombre !== ''; });
+  var firma = JSON.stringify(declaracion);
+  if (firma === firmaDeclaracionPlantilla) { return; }
+  firmaDeclaracionPlantilla = firma;
+  var previos = Object.create(null);
+  entradasValoresPlantilla.forEach(function (entrada) {
+    previos[JSON.stringify([entrada.nombre, entrada.tipo])] = entrada.valor.value;
+  });
+  vaciar(contenedorValoresPlantilla);
+  entradasValoresPlantilla = construirValores(contenedorValoresPlantilla, declaracion);
+  entradasValoresPlantilla.forEach(function (entrada) {
+    var clave = JSON.stringify([entrada.nombre, entrada.tipo]);
+    if (clave in previos) { entrada.valor.value = previos[clave]; }
+  });
+}
+
+function alCambiarDeclaracionPlantilla() {
+  reconstruirValoresPlantilla();
+  alEditarPlantilla();
+}
+
+function limpiarResultadoPlantilla() {
+  vaciar(tablaResultadoPlantilla);
+  avisoResultadoPlantilla.textContent = '';
+}
+
+// Back to a blank state: used when the pop-up closes (also at a tenant switch) and before it fills.
+function reiniciarDialogoPlantilla() {
+  generacionFormPlantilla += 1;
+  ultimaPruebaPlantilla = null;
+  probandoPlantilla = false;
+  botonProbarPlantilla.disabled = false;
+  rechazoPlantilla = '';
+  botonDuplicarDialogo.hidden = true;
+  limpiarResultadoPlantilla();
+}
+
+var ETIQUETAS_CAMPO_PLANTILLA = {
+  nombre: 'nombre',
+  sql: 'sentencia SQL',
+  parametros: 'parámetros',
+  entidades: 'entidades',
+  automatizacion: 'automatización',
+  formato: 'formato',
+  toleranciaFrescuraMinutos: 'tolerancia de frescura',
+  titulo: 'título para el cliente',
+  descripcion: 'descripción para el cliente',
+  conexionId: 'conexión',
+  valores: 'valores'
+};
+
+// '/entidades/1' is the field «entidades»; a path the form does not know is written as it came.
+function etiquetaDeCampoPlantilla(campo) {
+  var primero = String(campo).split('/')[1];
+  return Object.prototype.hasOwnProperty.call(ETIQUETAS_CAMPO_PLANTILLA, primero) ? ETIQUETAS_CAMPO_PLANTILLA[primero] : String(campo);
+}
+
+// A 400 from the catalog or from the test route: the offending fields, then the parameter problems and the
+// glossary terms the body carries. Only known keys of the body are read.
+function mensajeDeRechazoPlantilla(cuerpo) {
+  var etiquetas = [];
+  (Array.isArray(cuerpo.campos) ? cuerpo.campos : []).forEach(function (campo) {
+    var etiqueta = etiquetaDeCampoPlantilla(campo);
+    if (etiquetas.indexOf(etiqueta) === -1) { etiquetas.push(etiqueta); }
+  });
+  var texto = 'Revisá estos campos: ' + (etiquetas.length === 0 ? 'el cuerpo enviado' : etiquetas.join(', ')) + '.';
+  var problemas = [];
+  (Array.isArray(cuerpo.problemas) ? cuerpo.problemas : []).forEach(function (problema) {
+    if (problema === null || typeof problema !== 'object') { return; }
+    var motivo = Object.prototype.hasOwnProperty.call(MENSAJES_PARAMETRO, problema.motivo) ? MENSAJES_PARAMETRO[problema.motivo] : 'no es válido';
+    problemas.push((typeof problema.parametro === 'string' ? '«' + problema.parametro + '» ' : 'La declaración ') + motivo);
+  });
+  if (problemas.length > 0) { texto += ' ' + problemas.join('; ') + '.'; }
+  var terminos = (Array.isArray(cuerpo.terminos) ? cuerpo.terminos : []).map(function (termino) { return '«' + String(termino) + '»'; });
+  if (terminos.length > 0) { texto += ' Estos términos no se admiten en los textos para el cliente: ' + terminos.join(', ') + '.'; }
+  return texto;
+}
+
+async function cargarConexionesPlantilla() {
+  var g = generacionFormPlantilla;
+  vaciar(selectorConexionPlantilla);
+  if (tenantActivo === null) { avisoResultadoPlantilla.textContent = AVISO_PRUEBA_SIN_TENANT; return; }
+  selectorConexionPlantilla.appendChild(opcionDe('', 'Cargando conexiones…'));
+  var leido = await leerPrueba('/conexiones');
+  if (g !== generacionFormPlantilla) { return; }
+  vaciar(selectorConexionPlantilla);
+  if (leido === null || leido.red || leido.status !== 200 || leido.cuerpo === null || !Array.isArray(leido.cuerpo.conexiones)) {
+    selectorConexionPlantilla.appendChild(opcionDe('', 'Sin conexiones para elegir'));
+    avisoResultadoPlantilla.textContent = 'No se pudieron cargar las conexiones.';
+    return;
+  }
+  var filas = leido.cuerpo.conexiones;
+  selectorConexionPlantilla.appendChild(opcionDe('', filas.length === 0 ? 'No hay conexiones' : 'Elegí una conexión'));
+  filas.forEach(function (fila) {
+    var idConexion = String(fila.id);
+    selectorConexionPlantilla.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+  });
+  selectorConexionPlantilla.value = '';
+  if (filas.length === 0) { avisoResultadoPlantilla.textContent = 'Registrá una conexión de este tenant para probar la plantilla.'; }
+}
+
+// Fills the form for a mode. nueva: blank. editar: the loaded template. duplicar: the loaded template named
+// «… (copia)» and with no client texts, so the copy does not reach the client panel by accident.
+function llenarFormularioPlantilla(modo, plantilla) {
+  var cargada = plantilla !== null && plantilla !== undefined;
+  tituloDialogoPlantilla.textContent = modo === 'editar' ? 'Editar plantilla' : (modo === 'duplicar' ? 'Duplicar plantilla' : 'Nueva plantilla');
+  entradaNombrePlantilla.value = !cargada ? '' : (modo === 'duplicar' ? String(plantilla.nombre) + SUFIJO_COPIA : String(plantilla.nombre));
+  entradaSqlPlantilla.value = cargada ? String(plantilla.sql) : '';
+  editorPlantilla.limpiar();
+  (cargada && Array.isArray(plantilla.parametros) ? plantilla.parametros : []).forEach(function (parametro) {
+    editorPlantilla.agregar(String(parametro.nombre), String(parametro.tipo));
+  });
+  var marcadas = cargada && Array.isArray(plantilla.entidades) ? plantilla.entidades.map(String) : [];
+  casillasEntidades.forEach(function (casilla) { casilla.caja.checked = marcadas.indexOf(casilla.valor) !== -1; });
+  selectorAutomatizacionPlantilla.value = cargada ? String(plantilla.automatizacion) : AUTOMATIZACION_INICIAL;
+  selectorFormatoPlantilla.value = cargada ? String(plantilla.formato) : FORMATO_INICIAL;
+  entradaToleranciaPlantilla.value = cargada ? String(plantilla.toleranciaFrescuraMinutos) : TOLERANCIA_INICIAL;
+  var conTextos = cargada && modo === 'editar';
+  entradaTituloPlantilla.value = conTextos && typeof plantilla.titulo === 'string' ? plantilla.titulo : '';
+  entradaDescripcionPlantilla.value = conTextos && typeof plantilla.descripcion === 'string' ? plantilla.descripcion : '';
+}
+
+var dialogoPlantilla = crearDialogo({
+  fondo: document.getElementById('plantilla-dialogo'),
+  primerCampo: entradaNombrePlantilla,
+  cancelar: document.getElementById('plantilla-dialogo-cancelar'),
+  confirmar: document.getElementById('plantilla-confirmar'),
+  descartar: document.getElementById('plantilla-descartar'),
+  seguir: document.getElementById('plantilla-seguir'),
+  hayCambios: function () { return instantaneaDeFormularioPlantilla() !== instantaneaPlantilla; },
+  alCerrar: reiniciarDialogoPlantilla
+});
+
+function abrirDialogoPlantilla(modo, plantilla) {
+  reiniciarDialogoPlantilla();
+  modoPlantilla = modo;
+  plantillaEditadaId = modo === 'editar' && plantilla ? String(plantilla.id) : '';
+  llenarFormularioPlantilla(modo, plantilla);
+  instantaneaPlantilla = instantaneaDeFormularioPlantilla();
+  reflejarAvisoCopiaPlantilla();
+  actualizarGuardadoPlantilla();
+  dialogoPlantilla.abrir();
+  cargarConexionesPlantilla();
+}
+
+// The save found the template in use: the pop-up stays open and becomes a copy, with what is in the form now.
+// The client texts are cleared, as on any copy (DEC-191), so the copy does not reach the client panel by accident.
+function pasarAduplicarPlantilla() {
+  modoPlantilla = 'duplicar';
+  plantillaEditadaId = '';
+  tituloDialogoPlantilla.textContent = 'Duplicar plantilla';
+  var nombre = entradaNombrePlantilla.value;
+  if (nombre.slice(-SUFIJO_COPIA.length) !== SUFIJO_COPIA) { entradaNombrePlantilla.value = nombre + SUFIJO_COPIA; }
+  entradaTituloPlantilla.value = '';
+  entradaDescripcionPlantilla.value = '';
+  reflejarAvisoCopiaPlantilla();
+  alEditarPlantilla();
+}
+
+async function probarEnDialogoPlantilla() {
+  if (tenantActivo === null) { avisoResultadoPlantilla.textContent = AVISO_PRUEBA_SIN_TENANT; return; }
+  if (selectorConexionPlantilla.value === '') { avisoResultadoPlantilla.textContent = 'Elegí una conexión para probar la plantilla.'; return; }
+  // A new try starts from an empty block; the first page only.
+  limpiarResultadoPlantilla();
+  generacionFormPlantilla += 1;
+  var g = generacionFormPlantilla;
+  var huella = huellaPlantilla();
+  ultimaPruebaPlantilla = null;
+  probandoPlantilla = true;
+  rechazoPlantilla = '';
+  botonProbarPlantilla.disabled = true;
+  avisoResultadoPlantilla.textContent = AVISO_PROBANDO;
+  actualizarGuardadoPlantilla();
+  var cuerpo = cuerpoPlantilla();
+  cuerpo.conexionId = selectorConexionPlantilla.value;
+  cuerpo.valores = valoresDe(entradasValoresPlantilla);
+  var leido = await leerPrueba('/plantillas/prueba', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo)
+  });
+  if (g !== generacionFormPlantilla) { return; }
+  probandoPlantilla = false;
+  botonProbarPlantilla.disabled = false;
+  // null: the banner already says why (tenant refusal), and the block has nothing to add.
+  if (leido === null) { avisoResultadoPlantilla.textContent = ''; actualizarGuardadoPlantilla(); return; }
+  var ok = false;
+  if (!leido.red && leido.status === 400 && leido.cuerpo !== null && typeof leido.cuerpo === 'object') {
+    // The template itself or its values: the fields are named like a refused save names them.
+    avisoResultadoPlantilla.textContent = mensajeDeRechazoPlantilla(leido.cuerpo);
+  } else {
+    ok = mostrarResultadoPrueba({ aviso: avisoResultadoPlantilla, tabla: tablaResultadoPlantilla }, leido);
+  }
+  ultimaPruebaPlantilla = { huella: huella, ok: ok };
+  actualizarGuardadoPlantilla();
+}
+
+// A write to the global catalog: no tenant header, the 401 check of every read. {status, cuerpo, red}.
+async function enviarGlobal(url, metodo, cuerpo) {
+  var respuesta;
+  try {
+    respuesta = await fetch(url, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo)
+    }).then(siNoAutenticado);
+  } catch (fallaDeRed) {
+    return { status: 0, cuerpo: null, red: true };
+  }
+  var leido = null;
+  try { leido = await respuesta.json(); } catch (noEsJson) { leido = null; }
+  return { status: respuesta.status, cuerpo: leido, red: false };
+}
+
+// «Guardar»: POST for a new template or a copy, PUT for an edit. guardandoPlantilla keeps a second press from
+// saving twice. A refusal is written in the pop-up, which stays open; a success closes it, reloads the list and
+// opens the saved template in the side panel.
+formularioPlantilla.addEventListener('submit', async function (evento) {
+  evento.preventDefault();
+  if (guardandoPlantilla || !guardadoPlantillaHabilitado()) { return; }
+  var editando = modoPlantilla === 'editar';
+  var g = generacionFormPlantilla;
+  guardandoPlantilla = true;
+  rechazoPlantilla = '';
+  actualizarGuardadoPlantilla();
+  var resultado = editando
+    ? await enviarGlobal('/plantillas/' + encodeURIComponent(plantillaEditadaId), 'PUT', cuerpoPlantilla())
+    : await enviarGlobal('/plantillas', 'POST', cuerpoPlantilla());
+  guardandoPlantilla = false;
+  var cuerpo = resultado.cuerpo;
+  var guardada = !resultado.red && resultado.status === (editando ? 200 : 201) && cuerpo !== null && typeof cuerpo === 'object'
+    && cuerpo.plantilla !== null && typeof cuerpo.plantilla === 'object';
+  // The pop-up closed meanwhile (a tenant switch): it was saved all the same, so only the list is refreshed.
+  if (g !== generacionFormPlantilla) {
+    if (guardada) { cargarPantallaPlantillas(); }
+    return;
+  }
+  if (guardada) {
+    var idGuardada = String(cuerpo.plantilla.id);
+    dialogoPlantilla.cerrar();
+    await cargarPantallaPlantillas();
+    await verPlantilla(idGuardada);
+    return;
+  }
+  if (resultado.red) {
+    rechazoPlantilla = 'No se pudo contactar con la aplicación.';
+  } else if (resultado.status === 400 && cuerpo !== null && typeof cuerpo === 'object') {
+    rechazoPlantilla = mensajeDeRechazoPlantilla(cuerpo);
+  } else if (resultado.status === 409 && cuerpo !== null && cuerpo.error === 'plantilla-en-uso') {
+    rechazoPlantilla = 'Esta plantilla ahora tiene automatizaciones activas y no se puede editar. Duplicala para guardar tus cambios como una plantilla nueva.';
+    botonDuplicarDialogo.hidden = false;
+  } else if (resultado.status === 404 && editando) {
+    rechazoPlantilla = 'La plantilla ya no existe en el catálogo.';
+  } else {
+    rechazoPlantilla = 'No se pudo guardar la plantilla (HTTP ' + resultado.status + ').';
+  }
+  actualizarGuardadoPlantilla();
+});
+
+document.getElementById('plantilla-nueva').addEventListener('click', function () { abrirDialogoPlantilla('nueva', null); });
+document.getElementById('plantilla-editar').addEventListener('click', function () {
+  if (plantillaAbierta !== null) { abrirDialogoPlantilla('editar', plantillaAbierta.datos); }
+});
+document.getElementById('plantilla-duplicar').addEventListener('click', function () {
+  if (plantillaAbierta !== null) { abrirDialogoPlantilla('duplicar', plantillaAbierta.datos); }
+});
+botonDuplicarDialogo.addEventListener('click', pasarAduplicarPlantilla);
+botonProbarPlantilla.addEventListener('click', probarEnDialogoPlantilla);
+document.getElementById('plantilla-f-agregar-parametro').addEventListener('click', function () { editorPlantilla.agregar('', 'texto'); });
+[entradaNombrePlantilla, entradaSqlPlantilla, entradaToleranciaPlantilla, entradaTituloPlantilla, entradaDescripcionPlantilla].forEach(function (control) {
+  control.addEventListener('input', alEditarPlantilla);
+});
+[selectorAutomatizacionPlantilla, selectorFormatoPlantilla, selectorConexionPlantilla].forEach(function (control) {
+  control.addEventListener('change', alEditarPlantilla);
+});
 
 // ---- CH-30d (DEC-21, screen C-04): Contrato -----------------------------------------------
 

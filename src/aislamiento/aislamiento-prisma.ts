@@ -1,4 +1,5 @@
-import type { PrismaClient } from '../generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
+import { PlantillaCompleta, type PlantillaCompletaFila } from '../plantillas/plantillas.js';
 import { exigirTenantActivo } from './contexto-tenant.js';
 
 /**
@@ -36,6 +37,15 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  * `tenantId` and both are tenant data; the panel's session resolution (DEC-135) runs
  * before any tenant context exists and gets the same treatment the agent token got —
  * an explicit audited lookup, added with the routes, never a pass-through here.
+ *
+ * CH-38 adds the second and third unscoped operations on a scoped model, both on
+ * `Automatizacion` (DEC-191): `automatizacion.plantillaEnUso` and
+ * `automatizacion.reemplazarPlantillaLibre`. The template catalog is global and its routes
+ * have no tenant context, but "is this template in use" is a property of every tenant's
+ * automations. Both run on the raw client, take a template id and never a tenant id, and
+ * answer a boolean or the replaced template: no row, count, tenant id or automation id of
+ * `Automatizacion` leaves this module. Every other `Automatizacion` operation still fails
+ * closed without a context.
  */
 const MODELOS_AISLADOS = new Set([
   'Conexion',
@@ -170,6 +180,45 @@ export function extenderConAislamiento(prisma: PrismaClient) {
           return fila === null
             ? null
             : { id: fila.id, tenantId: fila.tenantId, tenantActivo: fila.tenant.activo };
+        },
+      },
+      automatizacion: {
+        /**
+         * CH-38 (DEC-191): whether any tenant has an active automation on the template. It is
+         * unscoped on purpose (the catalog routes are global and exempt, and use is a
+         * cross-tenant property) and returns a boolean, so nothing of another tenant leaves
+         * the boundary. It runs on the raw client this function closes over: through the
+         * extended one it would reach `$allOperations` and fail closed for want of a context.
+         */
+        async plantillaEnUso(plantillaId: string): Promise<boolean> {
+          const fila = await prisma.automatizacion.findFirst({
+            where: { plantillaId, activo: true },
+            select: { id: true },
+          });
+          return fila !== null;
+        },
+        /**
+         * CH-38 (DEC-191): replace a template only if no tenant has an active automation on it.
+         * The row lock conflicts with the FOR KEY SHARE that an automation insert takes on its
+         * template (foreign key check), so no automation can commit between the check and the
+         * write. The lock is a tagged `$queryRaw`: `id` is a driver parameter, never text (rule 4),
+         * and it touches `Plantilla`, which is not a scoped model.
+         */
+        async reemplazarPlantillaLibre(
+          id: string,
+          datos: Prisma.PlantillaUpdateInput,
+        ): Promise<'no-encontrada' | 'en-uso' | PlantillaCompletaFila> {
+          return prisma.$transaction(async (tx) => {
+            const bloqueada = await tx.$queryRaw<{ id: string }[]>`
+              SELECT "id" FROM "Plantilla" WHERE "id" = ${id} FOR UPDATE`;
+            if (bloqueada.length === 0) return 'no-encontrada';
+            const activa = await tx.automatizacion.findFirst({
+              where: { plantillaId: id, activo: true },
+              select: { id: true },
+            });
+            if (activa !== null) return 'en-uso';
+            return tx.plantilla.update({ where: { id }, data: datos, select: PlantillaCompleta });
+          });
         },
       },
       usuario: {

@@ -2,6 +2,7 @@ import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { AUTOMATIZACIONES, CONTRATO_CANONICO } from '../contrato/contrato.js';
 import { analizarSentencia, validarDeclaracion, type ProblemaParametro } from '../ejecucion/parametros.js';
 import type { EstadoValidacion } from '../mapeo/validacion-mapeo.js';
+import type { Prisma } from '../generated/prisma/client.js';
 
 /**
  * CH-12: the pure half of automation templates (D1). Three things live here and nothing
@@ -15,6 +16,36 @@ import type { EstadoValidacion } from '../mapeo/validacion-mapeo.js';
  * the closed contract. No request value is ever passed to this module; values travel
  * only in `SentenciaPreparada.valores` after `prepararSentencia` scans the whole text.
  */
+
+/**
+ * The list projection. `sql`, `parametros` and `entidades` stay out for the reason
+ * `ConsultaGuardadaResumen` leaves `sql` out: a list renders names, and loading a
+ * template is a second, explicit get-by-id call.
+ *
+ * CH-38: the two selects live here, not in `plantillas-rutas.ts`, so the isolation extension
+ * can import them without a cycle (`plantillas-rutas.ts` reaches `aislamiento-prisma.ts`
+ * through `consultas-guardadas.ts`). `plantillas-rutas.ts` re-exports them.
+ */
+export const PlantillaResumen = {
+  id: true,
+  nombre: true,
+  automatizacion: true,
+  formato: true,
+  toleranciaFrescuraMinutos: true,
+} as const;
+
+/** Every column: create, get-by-id and replace. */
+export const PlantillaCompleta = {
+  ...PlantillaResumen,
+  sql: true,
+  parametros: true,
+  entidades: true,
+  titulo: true,
+  descripcion: true,
+} as const;
+
+/** The row `PlantillaCompleta` selects (type only: this module still imports no Prisma at runtime). */
+export type PlantillaCompletaFila = Prisma.PlantillaGetPayload<{ select: typeof PlantillaCompleta }>;
 
 /** The only delivery format today (DEC-65). N3/CH-21 is what would widen it. */
 export const FORMATOS = ['correo-html'] as const;
