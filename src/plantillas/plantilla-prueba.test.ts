@@ -18,6 +18,19 @@ import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
  */
 
 const RUTA = '/plantillas/:id/prueba';
+/** CH-38 (DEC-191): the sibling route that tests a template that is not saved yet. */
+const RUTA_SIN_GUARDAR = '/plantillas/prueba';
+
+/** A template body that passes every save-time check; each case overrides one field. */
+const PLANTILLA_VALIDA = {
+  nombre: 'CH-38 sin guardar',
+  sql: 'SELECT * FROM v_producto',
+  parametros: [],
+  entidades: ['producto'],
+  automatizacion: 'stock-fisico',
+  formato: 'correo-html',
+  toleranciaFrescuraMinutos: 30,
+};
 
 /**
  * A client on which every model method throws, except the tenant lookup the hooks make.
@@ -86,6 +99,75 @@ describe('plantilla test route — tenant header and body shape (CH-12 5.1, 5.6)
       assert.equal(respuesta.statusCode, 400, `${JSON.stringify(payload)}: ${respuesta.body}`);
       assert.deepEqual(respuesta.json(), { error: 'solicitud-invalida', campos });
     }
+  });
+});
+
+describe('unsaved template test route — tenant header and body shape (CH-38, DEC-191)', () => {
+  let sinLecturas!: FastifyInstance;
+
+  before(async () => {
+    sinLecturas = Fastify({ logger: false });
+    const cliente = clienteSoloTenant({ id: 't-activo', nombre: 'Activo', activo: true });
+    registrarContextoTenant(sinLecturas, cliente);
+    registerPlantillaPruebaRoute(sinLecturas, cliente);
+    await sinLecturas.ready();
+  });
+
+  after(async () => {
+    await sinLecturas.close();
+  });
+
+  test('the static route exists beside the parametric one, which still needs an id', async () => {
+    assert.equal(sinLecturas.hasRoute({ method: 'POST', url: RUTA_SIN_GUARDAR }), true);
+    assert.equal(sinLecturas.hasRoute({ method: 'POST', url: RUTA }), true);
+    // `/plantillas/prueba` is the unsaved test, never the stored one with the id "prueba".
+    const sinCabecera = await sinLecturas.inject({ method: 'POST', url: RUTA_SIN_GUARDAR, payload: {} });
+    assert.equal(sinCabecera.statusCode, 400);
+    assert.deepEqual(sinCabecera.json(), { error: 'tenant-no-indicado' });
+  });
+
+  test('with no x-tenant-id it answers 400 tenant-no-indicado and nothing is read', async () => {
+    const respuesta = await sinLecturas.inject({
+      method: 'POST',
+      url: RUTA_SIN_GUARDAR,
+      payload: { ...PLANTILLA_VALIDA, conexionId: 'cualquiera' },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+  });
+
+  test('an invalid template is refused with the body of POST /plantillas, before any read', async () => {
+    const casos: [Record<string, unknown>, string[]][] = [
+      [{ sql: 'SELECT * FROM v_producto WHERE id = $1' }, ['/sql']],
+      [{ sql: '   ' }, ['/sql']],
+      [{ entidades: [] }, ['/entidades']],
+      [{ automatizacion: 'envio-abandonado' }, ['/automatizacion']],
+      [{ titulo: 'Corre la consulta' }, ['/titulo']],
+      [{ tenantId: 'otro' }, ['/tenantId']],
+      [{ limite: 10 }, ['/limite']],
+      [{ conexionId: '' }, ['/conexionId']],
+      [{ valores: [] }, ['/valores']],
+    ];
+    for (const [cambios, campos] of casos) {
+      const respuesta = await sinLecturas.inject({
+        method: 'POST',
+        url: RUTA_SIN_GUARDAR,
+        headers: { 'x-tenant-id': 't-activo' },
+        payload: { ...PLANTILLA_VALIDA, conexionId: 'c', ...cambios },
+      });
+      assert.equal(respuesta.statusCode, 400, `${JSON.stringify(cambios)}: ${respuesta.body}`);
+      const cuerpo = respuesta.json() as { error: string; campos: string[]; problemas?: unknown[] };
+      assert.equal(cuerpo.error, 'solicitud-invalida');
+      assert.deepEqual(cuerpo.campos, campos, JSON.stringify(cambios));
+    }
+    // Missing `conexionId` is named, too.
+    const sinConexion = await sinLecturas.inject({
+      method: 'POST',
+      url: RUTA_SIN_GUARDAR,
+      headers: { 'x-tenant-id': 't-activo' },
+      payload: PLANTILLA_VALIDA,
+    });
+    assert.deepEqual(sinConexion.json(), { error: 'solicitud-invalida', campos: ['/conexionId'] });
   });
 });
 
@@ -295,6 +377,63 @@ describe('plantilla test route — lookups, view gate and pre-dial checks (CH-12
     assert.deepEqual(await rechazoDeLaCompuerta(id, propia), [{ entidad: 'receta_componente', estado: 'invalida' }]);
   });
 
+  function probarSinGuardar(cambios: Record<string, unknown>, tenantId = tenantA) {
+    return app.inject({
+      method: 'POST',
+      url: RUTA_SIN_GUARDAR,
+      headers: { 'x-tenant-id': tenantId },
+      payload: { ...PLANTILLA_VALIDA, ...cambios },
+    });
+  }
+
+  test("CH-38 an unsaved test on another tenant's connection answers 404 and reads no view", async () => {
+    const deB = await conexion(tenantB);
+    await prisma.vistaCanonica.create({
+      data: { tenantId: tenantB, conexionId: deB, entidad: 'producto', sql: 'SELECT 1', estadoValidacion: 'valida' },
+    });
+    const respuesta = await probarSinGuardar({ conexionId: deB });
+    assert.equal(respuesta.statusCode, 404, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'conexion-no-encontrada' });
+  });
+
+  test('CH-38 an unsaved test with unapproved views answers 409 naming the entities, writing no template', async () => {
+    const propia = await conexion(tenantA);
+    await vista(propia, 'producto', 'no-validado');
+    const nombre = `${marca} no se guarda`;
+    const respuesta = await probarSinGuardar({ conexionId: propia, nombre, entidades: ['producto', 'insumo'] });
+    assert.equal(respuesta.statusCode, 409, respuesta.body);
+    assert.deepEqual(respuesta.json(), {
+      error: 'vista-canonica-no-aprobada',
+      entidades: [
+        { entidad: 'producto', estado: 'no-validado' },
+        { entidad: 'insumo', estado: 'no-mapeada' },
+      ],
+    });
+    assert.equal(await prisma.plantilla.count({ where: { nombre } }), 0);
+  });
+
+  test('CH-38 an unsaved test checks its values against the form declaration, before the credential', async () => {
+    const propia = await conexion(tenantA);
+    await vista(propia, 'producto', 'valida');
+    const respuesta = await probarSinGuardar({
+      conexionId: propia,
+      sql: 'SELECT *, :eco AS eco FROM v_producto',
+      parametros: [{ nombre: 'eco', tipo: 'texto' }],
+      valores: { eco: 7 },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual((respuesta.json() as { campos: string[] }).campos, ['/valores/eco']);
+    // With valid values the next gate is the credential, which this fixture cannot open.
+    const ilegible = await probarSinGuardar({
+      conexionId: propia,
+      sql: 'SELECT *, :eco AS eco FROM v_producto',
+      parametros: [{ nombre: 'eco', tipo: 'texto' }],
+      valores: { eco: 'x' },
+    });
+    assert.equal(ilegible.statusCode, 409, ilegible.body);
+    assert.deepEqual(ilegible.json(), { error: 'credencial-ilegible' });
+  });
+
   test('5.6 a value the stored declaration rejects answers 400 naming it, before the credential', async () => {
     // The gate passes, but this connection's credential cannot be opened and its port is
     // closed: a 400 proves the values were checked before `destinoDeConexion` and a dial.
@@ -455,6 +594,57 @@ describe('plantilla test route — execution over the composed views (CH-12 5.4)
       ]);
     }
     assert.equal(await prisma.plantilla.count({ where: { id } }), 1, 'the catalog must be intact');
+  });
+
+  test('CH-38 an unsaved template returns rows over the composed views, first page only, and writes no template', async () => {
+    const nombre = `${marca} sin guardar`;
+    const cuerpo = {
+      nombre,
+      sql: 'SELECT p.id, p.nombre, :eco AS eco FROM v_producto p ORDER BY p.id',
+      parametros: [{ nombre: 'eco', tipo: 'texto' }],
+      entidades: ['producto'],
+      automatizacion: 'stock-fisico',
+      formato: 'correo-html',
+      toleranciaFrescuraMinutos: 0,
+      conexionId,
+      valores: { eco: "O'Brien" },
+    };
+    const antes = await prisma.plantilla.count({ where: { nombre } });
+    const respuesta = await app.inject({
+      method: 'POST',
+      url: RUTA_SIN_GUARDAR,
+      headers: { 'x-tenant-id': tenantId },
+      payload: cuerpo,
+    });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const veredicto = respuesta.json() as Veredicto;
+    assert.ok(veredicto.resultado === 'ok', JSON.stringify(veredicto));
+    assert.deepEqual(veredicto.columnas, ['id', 'nombre', 'eco']);
+    assert.deepEqual(veredicto.filas, [
+      [1, 'uno', "O'Brien"],
+      [2, 'dos', "O'Brien"],
+    ]);
+    assert.equal(await prisma.plantilla.count({ where: { nombre } }), antes, 'no Plantilla row may be written');
+  });
+
+  test('CH-38 an unsaved template that is not a read is a 200 fallo from the engine, never an execution', async () => {
+    const respuesta = await app.inject({
+      method: 'POST',
+      url: RUTA_SIN_GUARDAR,
+      headers: { 'x-tenant-id': tenantId },
+      payload: {
+        nombre: `${marca} escritura`,
+        sql: 'DELETE FROM "Plantilla"',
+        parametros: [],
+        entidades: ['producto'],
+        automatizacion: 'stock-fisico',
+        formato: 'correo-html',
+        toleranciaFrescuraMinutos: 0,
+        conexionId,
+      },
+    });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    assert.equal((respuesta.json() as Veredicto).resultado, 'fallo');
   });
 
   test('5.4 a template reading a view it did not declare runs and answers 200 fallo 42P01', async () => {

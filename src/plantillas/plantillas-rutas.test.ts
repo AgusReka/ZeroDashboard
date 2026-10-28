@@ -8,7 +8,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
-import { registerPlantillaRoutes } from './plantillas-rutas.js';
+import { registerPlantillaRoutes, type UsoDePlantillas } from './plantillas-rutas.js';
 
 /**
  * CH-12 units 3 and 4: the template catalog's create, list, get (tasks 3.1–3.3) and
@@ -41,12 +41,36 @@ interface CuerpoRechazo {
 
 /**
  * Signature pin (Threat Matrix "an exempt handler reaching a scoped model"): the
- * registrar takes the `plantilla` delegate, never the client. Checked by `tsc --noEmit`;
- * never called.
+ * registrar takes the `plantilla` delegate and the use port (CH-38, DEC-191), never the
+ * client. Checked by `tsc --noEmit`; never called.
  */
-export function firmaSoloDelegado(app: FastifyInstance, cliente: PrismaAislado): void {
+export function firmaSoloDelegado(
+  app: FastifyInstance,
+  cliente: PrismaAislado,
+  uso: UsoDePlantillas,
+): void {
   // @ts-expect-error — the full client is not a `plantilla` delegate.
-  registerPlantillaRoutes(app, cliente);
+  registerPlantillaRoutes(app, cliente, uso);
+  // The shape the catalog routes are wired with: (app, delegate, uso).
+  registerPlantillaRoutes(app, cliente.plantilla, uso);
+}
+
+/** Port stand-in for suites where no request may reach the use rule. */
+const usoQueNuncaDebeConsultarse: UsoDePlantillas = {
+  enUso: async () => {
+    throw new Error('un cuerpo rechazado consultó el uso');
+  },
+  reemplazarSiLibre: async () => {
+    throw new Error('un cuerpo rechazado llegó a reemplazarSiLibre');
+  },
+};
+
+/** The port as `src/app/rutas.ts` builds it, over the extended client. */
+export function usoDePlantillas(aislado: PrismaAislado): UsoDePlantillas {
+  return {
+    enUso: (id) => aislado.automatizacion.plantillaEnUso(id),
+    reemplazarSiLibre: (id, datos) => aislado.automatizacion.reemplazarPlantillaLibre(id, datos),
+  };
 }
 
 // ---- 3.1/3.2/4.1 every rejection happens before any write, with no database at all
@@ -65,7 +89,7 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () 
     app = Fastify({ logger: false });
     // The hooks get a client that throws too: an exempt route must not resolve a tenant.
     registrarContextoTenant(app, plantillasQueNuncaDebenEscribirse as unknown as PrismaAislado);
-    registerPlantillaRoutes(app, plantillasQueNuncaDebenEscribirse);
+    registerPlantillaRoutes(app, plantillasQueNuncaDebenEscribirse, usoQueNuncaDebeConsultarse);
     await app.ready();
   });
 
@@ -187,6 +211,90 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () 
   });
 });
 
+// ---- CH-38 the use rule's HTTP mapping, with a fake port and no database -----------
+
+describe('plantilla catalog — use rule over a fake port (CH-38, DEC-191)', () => {
+  const FILA = {
+    id: 'p-1',
+    nombre: 'Plantilla',
+    sql: 'SELECT 1',
+    parametros: [],
+    entidades: ['producto'],
+    automatizacion: 'stock-fisico',
+    formato: 'correo-html',
+    toleranciaFrescuraMinutos: 30,
+    titulo: null,
+    descripcion: null,
+  };
+  let app!: FastifyInstance;
+  let enUso = false;
+  let resultadoReemplazo: 'no-encontrada' | 'en-uso' | typeof FILA = FILA;
+  const llamadas: string[] = [];
+
+  before(async () => {
+    const plantillas = {
+      findUnique: async () => FILA,
+      create: async () => FILA,
+    } as unknown as PrismaAislado['plantilla'];
+    app = Fastify({ logger: false });
+    registerPlantillaRoutes(app, plantillas, {
+      enUso: async (id) => (llamadas.push(`enUso:${id}`), enUso),
+      reemplazarSiLibre: async (id) => (llamadas.push(`reemplazar:${id}`), resultadoReemplazo),
+    });
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  test('GET /:id carries enUso from the port, and nothing else about use', async () => {
+    for (const valor of [true, false]) {
+      enUso = valor;
+      const respuesta = await app.inject({ method: 'GET', url: '/plantillas/p-1' });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.deepEqual(respuesta.json(), { plantilla: { ...FILA, enUso: valor } });
+    }
+  });
+
+  test('POST answers 201 with enUso false and never asks the port', async () => {
+    llamadas.length = 0;
+    const respuesta = await app.inject({ method: 'POST', url: '/plantillas', payload: VALIDA });
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    assert.equal((respuesta.json() as { plantilla: { enUso: boolean } }).plantilla.enUso, false);
+    assert.deepEqual(llamadas, []);
+  });
+
+  test('PUT maps the three outcomes of the port to 404, 409 and 200', async () => {
+    resultadoReemplazo = 'no-encontrada';
+    const noEncontrada = await app.inject({ method: 'PUT', url: '/plantillas/p-1', payload: VALIDA });
+    assert.equal(noEncontrada.statusCode, 404, noEncontrada.body);
+    assert.deepEqual(noEncontrada.json(), { error: 'plantilla-no-encontrada' });
+
+    resultadoReemplazo = 'en-uso';
+    const ocupada = await app.inject({ method: 'PUT', url: '/plantillas/p-1', payload: VALIDA });
+    assert.equal(ocupada.statusCode, 409, ocupada.body);
+    assert.deepEqual(ocupada.json(), { error: 'plantilla-en-uso' });
+
+    resultadoReemplazo = FILA;
+    const libre = await app.inject({ method: 'PUT', url: '/plantillas/p-1', payload: VALIDA });
+    assert.equal(libre.statusCode, 200, libre.body);
+    assert.deepEqual(libre.json(), { plantilla: { ...FILA, enUso: false } });
+  });
+
+  test('a 400 body never reaches the port, even for a template in use', async () => {
+    llamadas.length = 0;
+    resultadoReemplazo = 'en-uso';
+    const respuesta = await app.inject({
+      method: 'PUT',
+      url: '/plantillas/p-1',
+      payload: { ...VALIDA, sql: 'SELECT * FROM v_producto WHERE id = $1' },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(llamadas, []);
+  });
+});
+
 // ---- 3.1/3.3/4.1 create, list, get and replace against a live PostgreSQL -----------
 
 const objetivo = {
@@ -233,7 +341,7 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
     const aislado = extenderConAislamiento(prisma);
     app = Fastify({ logger: false });
     registrarContextoTenant(app, aislado);
-    registerPlantillaRoutes(app, aislado.plantilla);
+    registerPlantillaRoutes(app, aislado.plantilla, usoDePlantillas(aislado));
     await app.ready();
   });
 
@@ -252,15 +360,16 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
 
   test('3.1 a headerless create persists every field it echoes back', async () => {
     const creada = await crear({ nombre: `${marca} alta`, entidades: ['insumo', 'producto'] });
-    const { id, ...campos } = creada;
+    const { id, enUso, ...campos } = creada;
     assert.ok(typeof id === 'string' && id.length > 0);
+    assert.equal(enUso, false);
     assert.deepEqual(campos, {
       ...VALIDA,
       ...SIN_TEXTOS,
       nombre: `${marca} alta`,
       entidades: ['insumo', 'producto'],
     });
-    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id } }), creada);
+    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id } }), { id, ...campos });
   });
 
   test('3.1 a create with client texts echoes them trimmed, and get-by-id returns the same', async () => {
@@ -402,10 +511,11 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
     const respuesta = await app.inject({ method: 'PUT', url, payload: nueva });
     assert.equal(respuesta.statusCode, 200, respuesta.body);
     const { plantilla } = respuesta.json() as { plantilla: Record<string, unknown> };
-    assert.deepEqual(plantilla, { id: creada.id, ...nueva, ...SIN_TEXTOS });
+    assert.deepEqual(plantilla, { id: creada.id, ...nueva, ...SIN_TEXTOS, enUso: false });
 
     // In place: the same row now holds the new fields, and no second row was written.
-    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: String(creada.id) } }), plantilla);
+    const { enUso: _enUso, ...columnas } = plantilla;
+    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: String(creada.id) } }), columnas);
     assert.equal(await prisma.plantilla.count({ where: { nombre: { startsWith: prefijo } } }), 1);
     assert.deepEqual((await app.inject({ method: 'GET', url })).json(), { plantilla });
   });
@@ -448,5 +558,104 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
       assert.deepEqual(respuesta.json(), { error: 'plantilla-no-encontrada' });
     }
     assert.equal(await prisma.plantilla.count({ where: { nombre: { startsWith: prefijo } } }), 0);
+  });
+
+  /**
+   * CH-38 (DEC-191): a tenant B with a connection and automations on a template. Everything it
+   * creates is removed in the same case, children first (every foreign key is RESTRICT).
+   */
+  async function conTenantConAutomaciones(
+    plantillaId: string,
+    activos: boolean[],
+    cuerpo: () => Promise<void>,
+  ): Promise<void> {
+    const tenant = await prisma.tenant.create({ data: { nombre: `${marca} tenant B ${randomBytes(3).toString('hex')}` } });
+    try {
+      const conexion = await prisma.conexion.create({
+        data: {
+          tenantId: tenant.id,
+          nombre: 'CH-38 uso',
+          motor: 'postgres',
+          host: 'localhost',
+          puerto: 5432,
+          baseDeDatos: 'ninguna',
+          usuarioDb: 'nadie',
+          credencial: 'no-es-un-sobre',
+        },
+      });
+      for (const activo of activos) {
+        await prisma.automatizacion.create({
+          data: { tenantId: tenant.id, plantillaId, conexionId: conexion.id, cron: '0 9 * * *', activo },
+        });
+      }
+      await cuerpo();
+    } finally {
+      await prisma.automatizacion.deleteMany({ where: { tenantId: tenant.id } });
+      await prisma.conexion.deleteMany({ where: { tenantId: tenant.id } });
+      await prisma.tenant.delete({ where: { id: tenant.id } });
+    }
+  }
+
+  test('CH-38 an active automation in another tenant refuses a headerless PUT with 409 and writes nothing', async () => {
+    const creada = await crear({ nombre: `${marca} en uso` });
+    const url = `/plantillas/${String(creada.id)}`;
+    await conTenantConAutomaciones(String(creada.id), [true], async () => {
+      const respuesta = await app.inject({
+        method: 'PUT',
+        url,
+        payload: { ...VALIDA, nombre: `${marca} en uso cambiada`, sql: 'SELECT 1 AS cambiada', parametros: [] },
+      });
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'plantilla-en-uso' });
+      const { enUso: _enUso, ...columnas } = creada;
+      assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: String(creada.id) } }), columnas);
+    });
+  });
+
+  test('CH-38 an invalid body on a template in use is 400, not 409', async () => {
+    const creada = await crear({ nombre: `${marca} en uso invalida` });
+    await conTenantConAutomaciones(String(creada.id), [true], async () => {
+      const respuesta = await app.inject({
+        method: 'PUT',
+        url: `/plantillas/${String(creada.id)}`,
+        payload: { ...VALIDA, sql: 'SELECT * FROM v_producto WHERE id = $1' },
+      });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+    });
+  });
+
+  test('CH-38 only deactivated automations leave the template replaceable', async () => {
+    const creada = await crear({ nombre: `${marca} desactivadas` });
+    await conTenantConAutomaciones(String(creada.id), [false, false], async () => {
+      const respuesta = await app.inject({
+        method: 'PUT',
+        url: `/plantillas/${String(creada.id)}`,
+        payload: { ...VALIDA, nombre: `${marca} desactivadas v2` },
+      });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const { plantilla } = respuesta.json() as { plantilla: Record<string, unknown> };
+      assert.equal(plantilla.nombre, `${marca} desactivadas v2`);
+      assert.equal(plantilla.enUso, false);
+    });
+  });
+
+  test('CH-38 GET /:id reports enUso as a boolean, with no count, tenant or automation id', async () => {
+    const creada = await crear({ nombre: `${marca} lectura uso` });
+    const url = `/plantillas/${String(creada.id)}`;
+    const libre = (await app.inject({ method: 'GET', url })).json() as { plantilla: Record<string, unknown> };
+    assert.equal(libre.plantilla.enUso, false);
+    await conTenantConAutomaciones(String(creada.id), [true, true, false], async () => {
+      const respuesta = await app.inject({ method: 'GET', url });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const { plantilla } = respuesta.json() as { plantilla: Record<string, unknown> };
+      assert.equal(plantilla.enUso, true);
+      assert.deepEqual(Object.keys(plantilla).sort(), [...Object.keys(creada)].sort());
+      assert.ok(!respuesta.body.includes('tenantId'), 'no tenant id may reach the body');
+    });
+    // With the automations gone the template is free again.
+    assert.equal(
+      ((await app.inject({ method: 'GET', url })).json() as { plantilla: { enUso: boolean } }).plantilla.enUso,
+      false,
+    );
   });
 });

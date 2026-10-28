@@ -222,6 +222,30 @@ describe(
       assert.equal(fila.resultado, r.json().resultado);
     });
 
+    test('the unsaved template test records the composed statement and a null template id', async () => {
+            const r = await post('/plantillas/prueba', {
+        nombre: 'CH-38 sin guardar',
+        sql: 'SELECT count(*) AS n FROM v_producto WHERE nombre <> :excluido',
+        parametros: [{ nombre: 'excluido', tipo: 'texto' }],
+        entidades: ['producto'],
+        automatizacion: 'stock-fisico',
+        formato: 'correo-html',
+        toleranciaFrescuraMinutos: 60,
+        conexionId,
+        valores: { excluido: 'valor-que-no-se-guarda' },
+      });
+      assert.equal(r.statusCode, 200, r.body);
+      const fila = (await registros()).at(-1)!;
+      assert.equal(fila.origen, 'plantilla-prueba');
+      assert.equal(fila.plantillaId, null);
+      assert.equal(fila.conexionId, conexionId);
+      assert.match(fila.sql, /^WITH v_producto AS/);
+      assert.match(fila.sql, /SELECT count\(\*\) AS n FROM v_producto WHERE nombre <> :excluido/);
+      assert.ok(!JSON.stringify(fila).includes('valor-que-no-se-guarda'), 'no parameter value may reach the row');
+      assert.equal(fila.resultado, r.json().resultado);
+      assert.equal(await db.plantilla.count({ where: { nombre: 'CH-38 sin guardar' } }), 0, 'no Plantilla row may be written');
+    });
+
     test('the mapping validation records every probe statement', async () => {
       const r = await post(`/conexiones/${conexionId}/validacion-mapeo`, {});
       assert.equal(r.statusCode, 200, r.body);
