@@ -77,9 +77,15 @@ Formato: historia · change · estado. Contenedor con `data-change` y `data-esta
 - **Acciones**: Nuevo tenant (diálogo: nombre) · Elegir como activo · Dar de baja (diálogo: «Dar de baja {nombre}»; texto: congela conexiones, consultas y automatizaciones; no se borra nada).
 - **Estados**: vacío ("Todavía no hay tenants") · baja hecha (Banner ok) · el activo dado de baja (la barra pasa a estado congelado).
 
-### C-03 Plantillas — CH-21, CH-24 · API (solo lectura)
+### C-03 Plantillas — CH-21, CH-24, CH-38 · API
 - **Datos**: `id` · `nombre` · `descripcion` · `campos_requeridos` (lista de entidad.campo) · `tolerancia_frescura` (texto, "1 h").
-- Global. Tabla; clic abre un panel lateral con los campos requeridos.
+- Global. Tabla; clic abre un panel lateral con los campos requeridos, el SQL, los parámetros y los textos para el cliente.
+- **Ya no es de solo lectura (CH-38, DEC-191).** Un solo pop-up sirve a las tres acciones (DEC-173):
+  - **Encabezado**: acción primaria «Nueva plantilla».
+  - **Panel lateral**: «Editar» si la plantilla no está en uso; «Duplicar y editar» con el aviso «Tiene automatizaciones activas: se duplica en lugar de editarse» si lo está. Nunca las dos.
+  - **Pop-up** (nueva, editar, duplicar): nombre, SQL (mono), parámetros (mismo editor que Consultas), entidades (una casilla por entidad), automatización, formato, tolerancia (minutos), título y descripción para el cliente (con su tope visible) y un bloque «Probar» con conexión del tenant activo, un valor por parámetro y resultado pegado al botón.
+  - **Guardar** solo tras una prueba exitosa del mismo SQL, parámetros, entidades y conexión; mientras está cerrado, el pop-up dice por qué. Una copia avisa que no aparece en el panel del cliente hasta tener título y descripción propios.
+  - **Estados**: sin tenant (el bloque de prueba dice «Elegí un tenant para probar la plantilla»; Guardar cerrado) · `400` (campos y términos) · `409 plantilla-en-uso` (aviso y «Duplicar y editar»).
 
 ### C-04 Contrato canónico — M1 · CH-08 · API (solo lectura)
 - **Datos**: `entidad` · `campo` · `tipo` · `requerido` (sí/no) · `depende_de` (lista) · `usado_por` (plantillas).
@@ -168,6 +174,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | — | C-02 Tenants | API, sin change de UI |
 | CH-30e1 | C-12 Auditoría | EXISTE |
 | CH-30e2 | C-07 Tiempos de alta | EXISTE |
+| CH-38 | C-03 Plantillas: nueva, editar, duplicar | EXISTE |
 
 ---
 

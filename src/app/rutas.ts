@@ -73,8 +73,13 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // reach (DEC-21) — which is exactly what makes its header exemption safe (DEC-24).
   registerContratoRoutes(app);
   // The template catalog is global (DEC-61) and exempt by exact row, so it receives the
-  // `plantilla` delegate alone: no scoped model is within reach of an exempt handler.
-  registerPlantillaRoutes(app, prisma.plantilla);
+  // `plantilla` delegate alone: no scoped model is within reach of an exempt handler. CH-38
+  // (DEC-191): it still gets two answers about use, as a port built from the isolation
+  // extension's audited unscoped operations (a boolean and an atomic replace), never a client.
+  registerPlantillaRoutes(app, prisma.plantilla, {
+    enUso: (id) => prisma.automatizacion.plantillaEnUso(id),
+    reemplazarSiLibre: (id, datos) => prisma.automatizacion.reemplazarPlantillaLibre(id, datos),
+  });
   // The template test route is NOT exempt (DEC-62): it resolves a tenant-owned connection,
   // so it gets the full scoped client, like the tenant-scoped registrars above.
   registerPlantillaPruebaRoute(app, prisma, registro);
