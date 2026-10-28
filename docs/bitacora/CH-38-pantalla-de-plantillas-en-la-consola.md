@@ -14,7 +14,7 @@
 | Implementación de las 15 tareas | 18,9 min de agente, en un escritor delegado |
 | Verificación independiente | 3,6 min de agente |
 | Código, tests y reporte | Commits `a461b4a`, `14ad58e` y `42bf930`, 21:23; PR #214 abierto a las 21:24 |
-| Archivo y specs principales | Este commit |
+| Archivo y specs principales | Commit `cec579d`, 21:35 |
 
 **Completar con el tiempo real percibido antes de citar este dato en la tesis**: las marcas acotan los commits y las corridas del agente, no la conversación ni la revisión.
 
