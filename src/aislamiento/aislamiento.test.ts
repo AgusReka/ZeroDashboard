@@ -1536,3 +1536,176 @@ describe('aislamiento — agente.buscarPorTokenHash on a live PostgreSQL target 
     assert.equal(await db.agente.count({ where: { id: agentes.a } }), 1, 'RESTRICT kept the agent');
   });
 });
+
+// ---- CH-38 the template-use operations, the audited unscoped reads of Automatizacion (DEC-191) ----
+
+describe('aislamiento — automatizacion.plantillaEnUso and reemplazarPlantillaLibre on a live PostgreSQL target (CH-38)', {
+  skip: alcanzable ? false : motivoSkip,
+}, () => {
+  let db!: PrismaClient;
+  const sufijo = `${Date.now()}-${randomBytes(3).toString('hex')}`;
+  const tenantIds: string[] = [];
+  const conexionIds: string[] = [];
+  const plantillaIds: string[] = [];
+
+  const BASE = {
+    sql: 'SELECT 1',
+    parametros: [],
+    entidades: ['producto'],
+    automatizacion: 'stock-fisico',
+    formato: 'correo-html',
+    toleranciaFrescuraMinutos: 0,
+  };
+
+  async function plantilla(etiqueta: string): Promise<string> {
+    const fila = await db.plantilla.create({ data: { ...BASE, nombre: `CH-38 aislamiento ${etiqueta} ${sufijo}` } });
+    plantillaIds.push(fila.id);
+    return fila.id;
+  }
+
+  async function automatizar(tenantId: string, plantillaId: string, activo: boolean) {
+    return db.automatizacion.create({
+      data: { tenantId, plantillaId, conexionId: conexionIds[tenantIds.indexOf(tenantId)], cron: '0 9 * * *', activo },
+    });
+  }
+
+  before(async () => {
+    db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    for (const clave of ['A', 'B']) {
+      const tenant = await db.tenant.create({ data: { nombre: `CH-38 ${clave} ${sufijo}` } });
+      tenantIds.push(tenant.id);
+      const conexion = await db.conexion.create({
+        data: {
+          tenantId: tenant.id,
+          nombre: `CH-38 ${clave}`,
+          motor: 'postgres',
+          host: 'localhost',
+          puerto: 5432,
+          baseDeDatos: 'ninguna',
+          usuarioDb: 'nadie',
+          credencial: 'no-es-un-sobre',
+        },
+      });
+      conexionIds.push(conexion.id);
+    }
+  });
+
+  after(async () => {
+    // RESTRICT everywhere: automations, then connections, tenants and templates.
+    await db.automatizacion.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.conexion.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+    await db.plantilla.deleteMany({ where: { id: { in: plantillaIds } } });
+    await db.$disconnect();
+  });
+
+  test('1.2 with no context the use read answers a bare boolean, and deactivated automations do not count', async () => {
+    const aislado = extenderConAislamiento(db);
+    const libre = await plantilla('libre');
+    const enUso = await plantilla('en uso');
+    const desactivada = await plantilla('desactivada');
+    await automatizar(tenantIds[1], enUso, true);
+    await automatizar(tenantIds[1], desactivada, false);
+    assert.strictEqual(await aislado.automatizacion.plantillaEnUso(enUso), true);
+    assert.strictEqual(await aislado.automatizacion.plantillaEnUso(libre), false);
+    assert.strictEqual(await aislado.automatizacion.plantillaEnUso(desactivada), false);
+    assert.strictEqual(await aislado.automatizacion.plantillaEnUso('no-existe'), false);
+  });
+
+  test("1.2 inside tenant A's context the answer reflects B's automation, and only as a boolean", async () => {
+    const aislado = extenderConAislamiento(db);
+    const compartida = await plantilla('de B');
+    await automatizar(tenantIds[1], compartida, true);
+    const desdeA = await conTenantActivo({ id: tenantIds[0], nombre: 'A' }, async () => {
+      return {
+        uso: await aislado.automatizacion.plantillaEnUso(compartida),
+        // The scoped view of the same table still shows A none of B's rows.
+        propias: await aislado.automatizacion.count({ where: { plantillaId: compartida } }),
+      };
+    });
+    assert.deepEqual(desdeA, { uso: true, propias: 0 });
+  });
+
+  test('1.2 every other unscoped Automatizacion operation still rejects', async () => {
+    const aislado = extenderConAislamiento(db);
+    await assert.rejects(() => aislado.automatizacion.count({}), ErrorSinTenantActivo);
+    await assert.rejects(() => aislado.automatizacion.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(() => aislado.automatizacion.findFirst({}), ErrorSinTenantActivo);
+  });
+
+  test("1.2 reemplazarPlantillaLibre answers 'no-encontrada', 'en-uso' or the replaced row", async () => {
+    const aislado = extenderConAislamiento(db);
+    const datos = { ...BASE, nombre: `CH-38 reemplazada ${sufijo}`, sql: 'SELECT 2' };
+
+    assert.equal(await aislado.automatizacion.reemplazarPlantillaLibre('no-existe', datos), 'no-encontrada');
+
+    const ocupada = await plantilla('ocupada');
+    await automatizar(tenantIds[1], ocupada, true);
+    assert.equal(await aislado.automatizacion.reemplazarPlantillaLibre(ocupada, datos), 'en-uso');
+    assert.equal((await db.plantilla.findUnique({ where: { id: ocupada } }))?.sql, 'SELECT 1', 'nothing was written');
+
+    const soloInactivas = await plantilla('solo inactivas');
+    await automatizar(tenantIds[0], soloInactivas, false);
+    await automatizar(tenantIds[1], soloInactivas, false);
+    const reemplazada = await aislado.automatizacion.reemplazarPlantillaLibre(soloInactivas, datos);
+    assert.notEqual(reemplazada, 'en-uso');
+    assert.notEqual(reemplazada, 'no-encontrada');
+    assert.deepEqual(
+      typeof reemplazada === 'string' ? null : { id: reemplazada.id, sql: reemplazada.sql, nombre: reemplazada.nombre },
+      { id: soloInactivas, sql: 'SELECT 2', nombre: datos.nombre },
+    );
+  });
+
+  test('1.3 an automation being created on the template makes a concurrent replacement wait, then answer en-uso', async () => {
+    const aislado = extenderConAislamiento(db);
+    const objetivoId = await plantilla('carrera');
+    let liberar!: () => void;
+    const compuerta = new Promise<void>((resolver) => {
+      liberar = resolver;
+    });
+    let insertada!: () => void;
+    const yaInsertada = new Promise<void>((resolver) => {
+      insertada = resolver;
+    });
+    // The open transaction inserts an automation on the template and holds it: the foreign
+    // key check takes FOR KEY SHARE on the `Plantilla` row, which FOR UPDATE must wait for.
+    const transaccion = db.$transaction(
+      async (tx) => {
+        await tx.automatizacion.create({
+          data: {
+            tenantId: tenantIds[1],
+            plantillaId: objetivoId,
+            conexionId: conexionIds[1],
+            cron: '0 9 * * *',
+            activo: true,
+          },
+        });
+        insertada();
+        await compuerta;
+      },
+      { timeout: 30_000 },
+    );
+    const limite = (ms: number, mensaje: string) =>
+      new Promise<never>((_resolver, rechazar) => setTimeout(() => rechazar(new Error(mensaje)), ms).unref());
+    try {
+      await Promise.race([yaInsertada, transaccion, limite(10_000, 'the insert never ran')]);
+      const reemplazo = aislado.automatizacion.reemplazarPlantillaLibre(objetivoId, {
+        ...BASE,
+        nombre: `CH-38 carrera ${sufijo}`,
+        sql: 'SELECT 3',
+      });
+      const mientrasTanto = await Promise.race([
+        reemplazo.then(() => 'resuelto'),
+        new Promise<string>((resolver) => setTimeout(() => resolver('espera'), 750)),
+      ]);
+      assert.equal(mientrasTanto, 'espera', 'the replacement must wait on the row lock');
+      liberar();
+      await transaccion;
+      assert.equal(await Promise.race([reemplazo, limite(10_000, 'the replacement hung')]), 'en-uso');
+      assert.equal((await db.plantilla.findUnique({ where: { id: objetivoId } }))?.sql, 'SELECT 1');
+    } finally {
+      liberar();
+      await transaccion.catch(() => undefined);
+    }
+  });
+});
