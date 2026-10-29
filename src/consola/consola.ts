@@ -136,7 +136,7 @@ function documentoConsola(nombreOperador: string): string {
   .entidades-plantilla { margin: 0; padding: 0; border: 0; min-width: 0; }
   .entidad-opcion { display: inline-flex; align-items: center; gap: var(--space-3); margin: 0 var(--space-6) var(--space-3) 0;
     font-size: var(--text-body); color: var(--text-1); }
-  #plantilla-textos { white-space: pre-line; }
+  #plantilla-textos, #plantilla-mensaje { white-space: pre-line; }
   #plantilla-f-agregar-parametro { margin-top: var(--space-4); }
   #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar, #aj-confirmar, #plantilla-confirmar {
     display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
@@ -499,6 +499,8 @@ function documentoConsola(nombreOperador: string): string {
     <pre id="plantilla-sql"></pre>
     <!-- CH-38 (DEC-182, DEC-191): the client texts, and the one action the template allows by its use. -->
     <p id="plantilla-textos"></p>
+    <!-- CH-39 (DEC-188, DEC-192): the message header and line, or that the email shows the table. -->
+    <p id="plantilla-mensaje"></p>
     <p id="plantilla-en-uso-aviso" class="ayuda" hidden>Tiene automatizaciones activas: se duplica en lugar de editarse.</p>
     <div class="zd-form-actions">
       <button id="plantilla-editar" class="zd-btn zd-btn--secondary" type="button" hidden>Editar</button>
@@ -568,6 +570,17 @@ function documentoConsola(nombreOperador: string): string {
         <label for="plantilla-f-descripcion" class="zd-label">Descripción para el cliente</label>
         <textarea id="plantilla-f-descripcion" class="zd-textarea" rows="3" maxlength="200"></textarea>
         <p class="ayuda">Hasta 200 caracteres. Sin ambos textos, la plantilla no aparece en el panel del cliente.</p>
+      </div>
+      <!-- CH-39 (DEC-188, DEC-192): the text of the email. Not part of the test: editing it keeps «Guardar» open. -->
+      <div>
+        <label for="plantilla-f-encabezado" class="zd-label">Encabezado del mensaje</label>
+        <input id="plantilla-f-encabezado" class="zd-input" type="text" maxlength="200" autocomplete="off">
+        <p class="ayuda">Hasta 200 caracteres. Va una sola vez, arriba de las líneas, y no admite columnas.</p>
+      </div>
+      <div>
+        <label for="plantilla-f-linea" class="zd-label">Línea por fila</label>
+        <textarea id="plantilla-f-linea" class="zd-textarea" rows="3" maxlength="300"></textarea>
+        <p class="ayuda">Hasta 300 caracteres. {columna} se reemplaza por el valor de esa columna en cada fila. Los dos textos van juntos; sin ellos, el correo muestra la tabla.</p>
       </div>
       <div>
         <h3 class="zd-h3">Probar antes de guardar</h3>
@@ -3082,6 +3095,19 @@ function etiquetaEstado(valor) {
   return Object.prototype.hasOwnProperty.call(ETIQUETAS_ESTADO, valor) ? ETIQUETAS_ESTADO[valor] : String(valor);
 }
 
+// CH-39 (DEC-188, DEC-192): the Notificación cell, plus the columns a message text asked for that the result lacked.
+// A null or empty list adds nothing.
+function notificacionDeCorrida(fila) {
+  var texto = etiquetaNotificacion(fila.notificacion);
+  var faltantes = Array.isArray(fila.mensajeRespaldo) ? fila.mensajeRespaldo.map(String) : [];
+  if (faltantes.length === 0) { return texto; }
+  // A send that failed after the fallback did not send anything: it says what the email carried.
+  var inicio = fila.notificacion === 'fallo-envio' ? 'Iba a enviarse la tabla' : 'Se envió la tabla';
+  var aviso = faltantes.length === 1 ? inicio + ': falta la columna ' + faltantes[0]
+    : inicio + ': faltan las columnas ' + faltantes.join(', ');
+  return texto === '—' ? aviso : texto + '. ' + aviso;
+}
+
 async function verEjecuciones(id) {
   ocultarBanner();
   var resultado = await pedirAutomatizacion('/automatizaciones/' + encodeURIComponent(id) + '/ejecuciones');
@@ -3095,7 +3121,7 @@ async function verEjecuciones(id) {
     filas.map(function (fila) {
       var cantidad = textoOpcional(fila.filas) + (fila.corte === 'tope-de-filas' ? ' (cortado en el tope)' : '');
       return [String(fila.iniciadaEn), textoOpcional(fila.finalizadaEn), textoOpcional(fila.duracionMs),
-        cantidad, etiquetaEstado(fila.estado), etiquetaNotificacion(fila.notificacion), errorDeCorrida(fila),
+        cantidad, etiquetaEstado(fila.estado), notificacionDeCorrida(fila), errorDeCorrida(fila),
         textoOpcional(fila.intentos)];
     }),
     'ejecucion',
@@ -4866,6 +4892,17 @@ function textosClienteDe(plantilla) {
   return lineas.join('\\n');
 }
 
+// CH-39: the message header and line of a template as the drawer writes them, or that the email shows the table.
+function textoMensajeDe(plantilla) {
+  var encabezado = typeof plantilla.encabezadoMensaje === 'string' ? plantilla.encabezadoMensaje : '';
+  var linea = typeof plantilla.lineaMensaje === 'string' ? plantilla.lineaMensaje : '';
+  if (encabezado === '' && linea === '') { return 'Sin texto propio: el correo muestra la tabla.'; }
+  var lineas = [];
+  if (encabezado !== '') { lineas.push('Encabezado del mensaje: ' + encabezado); }
+  if (linea !== '') { lineas.push('Línea por fila: ' + linea); }
+  return lineas.join('\\n');
+}
+
 async function verPlantilla(id) {
   var cuerpo = await leerGlobal('/plantillas/' + encodeURIComponent(id), avisoPlantillas);
   if (cuerpo === null || cuerpo.plantilla === undefined) { return; }
@@ -4881,6 +4918,7 @@ async function verPlantilla(id) {
   // A missing enUso reads as in use: duplicating loses nothing, editing would be refused anyway.
   var enUso = plantilla.enUso !== false;
   document.getElementById('plantilla-textos').textContent = textosClienteDe(plantilla);
+  document.getElementById('plantilla-mensaje').textContent = textoMensajeDe(plantilla);
   document.getElementById('plantilla-en-uso-aviso').hidden = !enUso;
   document.getElementById('plantilla-editar').hidden = enUso;
   document.getElementById('plantilla-duplicar').hidden = !enUso;
@@ -4937,6 +4975,8 @@ var selectorFormatoPlantilla = document.getElementById('plantilla-f-formato');
 var entradaToleranciaPlantilla = document.getElementById('plantilla-f-tolerancia');
 var entradaTituloPlantilla = document.getElementById('plantilla-f-titulo');
 var entradaDescripcionPlantilla = document.getElementById('plantilla-f-descripcion');
+var entradaEncabezadoPlantilla = document.getElementById('plantilla-f-encabezado');
+var entradaLineaPlantilla = document.getElementById('plantilla-f-linea');
 var selectorConexionPlantilla = document.getElementById('plantilla-f-conexion');
 var contenedorValoresPlantilla = document.getElementById('plantilla-f-valores');
 var botonProbarPlantilla = document.getElementById('plantilla-f-probar');
@@ -4952,7 +4992,8 @@ var formularioPlantilla = document.getElementById('plantilla-form');
 // 'nueva' | 'editar' | 'duplicar', and the id of the template being edited.
 var modoPlantilla = 'nueva';
 var plantillaEditadaId = '';
-// {huella, ok} of the last test answer; null before any, and while one is on its way.
+// {huella, ok, columnas} of the last test answer (columnas: the result's columns when it passed); null before any,
+// and while one is on its way. The message texts are not in the fingerprint: they are checked against columnas.
 var ultimaPruebaPlantilla = null;
 var probandoPlantilla = false;
 var guardandoPlantilla = false;
@@ -4995,11 +5036,11 @@ function huellaPlantilla() {
 function instantaneaDeFormularioPlantilla() {
   return JSON.stringify([entradaNombrePlantilla.value, entradaSqlPlantilla.value, editorPlantilla.declaracion(), entidadesMarcadas(),
     selectorAutomatizacionPlantilla.value, selectorFormatoPlantilla.value, entradaToleranciaPlantilla.value,
-    entradaTituloPlantilla.value, entradaDescripcionPlantilla.value]);
+    entradaTituloPlantilla.value, entradaDescripcionPlantilla.value, entradaEncabezadoPlantilla.value, entradaLineaPlantilla.value]);
 }
 
 // The body of POST /plantillas and PUT /plantillas/:id; the test route takes it plus conexionId and valores.
-// Both client texts go always: a blank one is stored as no text.
+// Both client texts and both message texts go always: a blank one is stored as no text.
 function cuerpoPlantilla() {
   var tolerancia = entradaToleranciaPlantilla.value.trim();
   var numero = Number(tolerancia);
@@ -5012,7 +5053,9 @@ function cuerpoPlantilla() {
     formato: selectorFormatoPlantilla.value,
     toleranciaFrescuraMinutos: tolerancia !== '' && Number.isFinite(numero) ? numero : tolerancia,
     titulo: entradaTituloPlantilla.value,
-    descripcion: entradaDescripcionPlantilla.value
+    descripcion: entradaDescripcionPlantilla.value,
+    encabezadoMensaje: entradaEncabezadoPlantilla.value,
+    lineaMensaje: entradaLineaPlantilla.value
   };
 }
 
@@ -5103,6 +5146,8 @@ var ETIQUETAS_CAMPO_PLANTILLA = {
   toleranciaFrescuraMinutos: 'tolerancia de frescura',
   titulo: 'título para el cliente',
   descripcion: 'descripción para el cliente',
+  encabezadoMensaje: 'encabezado del mensaje',
+  lineaMensaje: 'línea por fila',
   conexionId: 'conexión',
   valores: 'valores'
 };
@@ -5131,6 +5176,12 @@ function mensajeDeRechazoPlantilla(cuerpo) {
   if (problemas.length > 0) { texto += ' ' + problemas.join('; ') + '.'; }
   var terminos = (Array.isArray(cuerpo.terminos) ? cuerpo.terminos : []).map(function (termino) { return '«' + String(termino) + '»'; });
   if (terminos.length > 0) { texto += ' Estos términos no se admiten en los textos para el cliente: ' + terminos.join(', ') + '.'; }
+  // CH-39: columns named in a message text. In the line they are not among those of the last test; the header takes none.
+  var marcadores = (Array.isArray(cuerpo.marcadores) ? cuerpo.marcadores : []).map(function (marcador) { return String(marcador); });
+  if (marcadores.length > 0) {
+    var enLinea = (Array.isArray(cuerpo.campos) ? cuerpo.campos : []).indexOf('/lineaMensaje') !== -1;
+    texto += (enLinea ? ' No están entre las columnas de la última prueba: ' : ' El encabezado no admite columnas: ') + marcadores.join(', ') + '.';
+  }
   return texto;
 }
 
@@ -5158,7 +5209,8 @@ async function cargarConexionesPlantilla() {
 }
 
 // Fills the form for a mode. nueva: blank. editar: the loaded template. duplicar: the loaded template named
-// «… (copia)» and with no client texts, so the copy does not reach the client panel by accident.
+// «… (copia)» and with no client texts, so the copy does not reach the client panel by accident. The message
+// texts are filled in every mode.
 function llenarFormularioPlantilla(modo, plantilla) {
   var cargada = plantilla !== null && plantilla !== undefined;
   tituloDialogoPlantilla.textContent = modo === 'editar' ? 'Editar plantilla' : (modo === 'duplicar' ? 'Duplicar plantilla' : 'Nueva plantilla');
@@ -5176,6 +5228,9 @@ function llenarFormularioPlantilla(modo, plantilla) {
   var conTextos = cargada && modo === 'editar';
   entradaTituloPlantilla.value = conTextos && typeof plantilla.titulo === 'string' ? plantilla.titulo : '';
   entradaDescripcionPlantilla.value = conTextos && typeof plantilla.descripcion === 'string' ? plantilla.descripcion : '';
+  // CH-39: the message texts are the template's own content, so a copy keeps them.
+  entradaEncabezadoPlantilla.value = cargada && typeof plantilla.encabezadoMensaje === 'string' ? plantilla.encabezadoMensaje : '';
+  entradaLineaPlantilla.value = cargada && typeof plantilla.lineaMensaje === 'string' ? plantilla.lineaMensaje : '';
 }
 
 var dialogoPlantilla = crearDialogo({
@@ -5249,7 +5304,8 @@ async function probarEnDialogoPlantilla() {
   } else {
     ok = mostrarResultadoPrueba({ aviso: avisoResultadoPlantilla, tabla: tablaResultadoPlantilla }, leido);
   }
-  ultimaPruebaPlantilla = { huella: huella, ok: ok };
+  var columnas = ok && leido.cuerpo !== null && Array.isArray(leido.cuerpo.columnas) ? leido.cuerpo.columnas.map(String) : [];
+  ultimaPruebaPlantilla = { huella: huella, ok: ok, columnas: columnas };
   actualizarGuardadoPlantilla();
 }
 
@@ -5276,14 +5332,17 @@ async function enviarGlobal(url, metodo, cuerpo) {
 formularioPlantilla.addEventListener('submit', async function (evento) {
   evento.preventDefault();
   if (guardandoPlantilla || !guardadoPlantillaHabilitado()) { return; }
+  // The save carries the columns of the last passing test; the test request does not.
+  var cuerpoGuardado = cuerpoPlantilla();
+  cuerpoGuardado.columnasPrueba = ultimaPruebaPlantilla.columnas;
   var editando = modoPlantilla === 'editar';
   var g = generacionFormPlantilla;
   guardandoPlantilla = true;
   rechazoPlantilla = '';
   actualizarGuardadoPlantilla();
   var resultado = editando
-    ? await enviarGlobal('/plantillas/' + encodeURIComponent(plantillaEditadaId), 'PUT', cuerpoPlantilla())
-    : await enviarGlobal('/plantillas', 'POST', cuerpoPlantilla());
+    ? await enviarGlobal('/plantillas/' + encodeURIComponent(plantillaEditadaId), 'PUT', cuerpoGuardado)
+    : await enviarGlobal('/plantillas', 'POST', cuerpoGuardado);
   guardandoPlantilla = false;
   var cuerpo = resultado.cuerpo;
   var guardada = !resultado.red && resultado.status === (editando ? 200 : 201) && cuerpo !== null && typeof cuerpo === 'object'
@@ -5325,7 +5384,8 @@ document.getElementById('plantilla-duplicar').addEventListener('click', function
 botonDuplicarDialogo.addEventListener('click', pasarAduplicarPlantilla);
 botonProbarPlantilla.addEventListener('click', probarEnDialogoPlantilla);
 document.getElementById('plantilla-f-agregar-parametro').addEventListener('click', function () { editorPlantilla.agregar('', 'texto'); });
-[entradaNombrePlantilla, entradaSqlPlantilla, entradaToleranciaPlantilla, entradaTituloPlantilla, entradaDescripcionPlantilla].forEach(function (control) {
+[entradaNombrePlantilla, entradaSqlPlantilla, entradaToleranciaPlantilla, entradaTituloPlantilla, entradaDescripcionPlantilla,
+  entradaEncabezadoPlantilla, entradaLineaPlantilla].forEach(function (control) {
   control.addEventListener('input', alEditarPlantilla);
 });
 [selectorAutomatizacionPlantilla, selectorFormatoPlantilla, selectorConexionPlantilla].forEach(function (control) {

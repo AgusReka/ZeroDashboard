@@ -77,15 +77,23 @@ Formato: historia · change · estado. Contenedor con `data-change` y `data-esta
 - **Acciones**: Nuevo tenant (diálogo: nombre) · Elegir como activo · Dar de baja (diálogo: «Dar de baja {nombre}»; texto: congela conexiones, consultas y automatizaciones; no se borra nada).
 - **Estados**: vacío ("Todavía no hay tenants") · baja hecha (Banner ok) · el activo dado de baja (la barra pasa a estado congelado).
 
-### C-03 Plantillas — CH-21, CH-24, CH-38 · API
+### C-03 Plantillas — CH-21, CH-24, CH-38, CH-39 · API
 - **Datos**: `id` · `nombre` · `descripcion` · `campos_requeridos` (lista de entidad.campo) · `tolerancia_frescura` (texto, "1 h").
 - Global. Tabla; clic abre un panel lateral con los campos requeridos, el SQL, los parámetros y los textos para el cliente.
 - **Ya no es de solo lectura (CH-38, DEC-191).** Un solo pop-up sirve a las tres acciones (DEC-173):
   - **Encabezado**: acción primaria «Nueva plantilla».
   - **Panel lateral**: «Editar» si la plantilla no está en uso; «Duplicar y editar» con el aviso «Tiene automatizaciones activas: se duplica en lugar de editarse» si lo está. Nunca las dos.
-  - **Pop-up** (nueva, editar, duplicar): nombre, SQL (mono), parámetros (mismo editor que Consultas), entidades (una casilla por entidad), automatización, formato, tolerancia (minutos), título y descripción para el cliente (con su tope visible) y un bloque «Probar» con conexión del tenant activo, un valor por parámetro y resultado pegado al botón.
+  - **Pop-up** (nueva, editar, duplicar): nombre, SQL (mono), parámetros (mismo editor que Consultas), entidades (una casilla por entidad), automatización, formato, tolerancia (minutos), título y descripción para el cliente (con su tope visible), el texto del mensaje (CH-39, abajo) y un bloque «Probar» con conexión del tenant activo, un valor por parámetro y resultado pegado al botón.
   - **Guardar** solo tras una prueba exitosa del mismo SQL, parámetros, entidades y conexión; mientras está cerrado, el pop-up dice por qué. Una copia avisa que no aparece en el panel del cliente hasta tener título y descripción propios.
   - **Estados**: sin tenant (el bloque de prueba dice «Elegí un tenant para probar la plantilla»; Guardar cerrado) · `400` (campos y términos) · `409 plantilla-en-uso` (aviso y «Duplicar y editar»).
+- **Texto del mensaje (CH-39, DEC-188, DEC-192).** Dos campos más en el pop-up, después de los textos para el cliente, cada uno con su rótulo, su tope visible y una ayuda:
+  - **«Encabezado del mensaje»**: una línea, hasta 200 caracteres. Va una sola vez, arriba de las líneas; no admite columnas.
+  - **«Línea por fila»**: texto de varias líneas, hasta 300 caracteres. `{columna}` se reemplaza por el valor de esa columna en cada fila.
+  - **Ayuda** (bajo cada campo): «Hasta 200 caracteres. Va una sola vez, arriba de las líneas, y no admite columnas.» y «Hasta 300 caracteres. {columna} se reemplaza por el valor de esa columna en cada fila. Los dos textos van juntos; sin ellos, el correo muestra la tabla.»
+  - **No entran en la prueba**: editarlos no cierra «Guardar». Al guardar se envían los dos textos y las columnas de la última prueba exitosa; un `400` con `marcadores` nombra el campo y dice qué columnas no están en esa prueba.
+  - **Panel lateral**: «Encabezado del mensaje» y «Línea por fila» como texto; sin ellos, «Sin texto propio: el correo muestra la tabla.»
+  - **Copia**: «Duplicar y editar» conserva los dos textos del mensaje (no los del cliente).
+  - **Ejecuciones**: una corrida que cayó a la tabla lo dice en la columna Notificación («Se envió la tabla: faltan las columnas a, b»); sin caída no se muestra nada.
 
 ### C-04 Contrato canónico — M1 · CH-08 · API (solo lectura)
 - **Datos**: `entidad` · `campo` · `tipo` · `requerido` (sí/no) · `depende_de` (lista) · `usado_por` (plantillas).
@@ -175,6 +183,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-30e1 | C-12 Auditoría | EXISTE |
 | CH-30e2 | C-07 Tiempos de alta | EXISTE |
 | CH-38 | C-03 Plantillas: nueva, editar, duplicar | EXISTE |
+| CH-39 | C-03 Plantillas: texto del mensaje (encabezado y línea por fila) | EXISTE |
 
 ---
 

@@ -83,7 +83,7 @@ export function sustituir(linea: string, valorDe: (nombre: string) => string, li
 ## 6. Console (`src/consola/consola.ts`) — CH-39b
 
 - **Markup.**
-  - After the client texts in `#plantilla-form`, add an `<input id="plantilla-f-encabezado" maxlength="200">` and a `<textarea id="plantilla-f-linea" maxlength="300">`, each with a label and a `.zd-field__hint`.
+  - After the client texts in `#plantilla-form`, add an `<input id="plantilla-f-encabezado" maxlength="200">` and a `<textarea id="plantilla-f-linea" maxlength="300">`, each with a label and a hint in `<p class="ayuda">`, like the neighbouring fields (verify S4).
   - In the drawer, add `#plantilla-mensaje`, a text node filled by the script.
   - Static markup carries the `zd-*` classes, so G3' stays at its three tokens.
 - **Script.**

@@ -70,11 +70,11 @@ DEC-192 goes on `v2/dec-192` from `v2/dec-191` (PR #213).
 - [x] 5.1 `docs/guia/05-plantillas.md`: the message texts, the placeholder rule, the static header, `columnasPrueba`, the fallback and `mensajeRespaldo`, with a `stock-fisico` example (design §8).
 
 ## 6. Console (CH-39b)
-- [ ] 6.1 `src/consola/consola.ts`, markup:
+- [x] 6.1 `src/consola/consola.ts`, markup:
   - `#plantilla-f-encabezado` (`maxlength` 200) and `#plantilla-f-linea` (`maxlength` 300), with labels and the hint.
   - `#plantilla-mensaje` in the drawer.
   - `zd-*` classes only in static markup (design §6).
-- [ ] 6.2 `src/consola/consola.ts`, script:
+- [x] 6.2 `src/consola/consola.ts`, script:
   - `ultimaPruebaPlantilla.columnas`.
   - `cuerpoPlantilla` with the texts, and `columnasPrueba` on save only.
   - The dirty snapshot.
@@ -82,7 +82,7 @@ DEC-192 goes on `v2/dec-192` from `v2/dec-191` (PR #213).
   - The labels, and the `marcadores` message.
   - `textoMensajeDe` for the drawer.
   - The `mensajeRespaldo` line in `verEjecuciones`, with no backtick in the copy.
-- [ ] 6.3 `src/consola/consola.test.ts`:
+- [x] 6.3 `src/consola/consola.test.ts`:
   - New ids in `IDS`; G3' unchanged.
   - The `maxlength` regexes.
   - Exact save and test bodies.
@@ -91,7 +91,7 @@ DEC-192 goes on `v2/dec-192` from `v2/dec-191` (PR #213).
   - Duplicate keeps the message texts.
   - The drawer without texts.
   - The runs view with and without `mensajeRespaldo`.
-- [ ] 6.4 `guidelines/consola.md` C-03 entry in `.claude/skills/zerodashboard-design/` and `.agents/skills/zerodashboard-design/`: the two fields and the hint.
+- [x] 6.4 `guidelines/consola.md` C-03 entry in `.claude/skills/zerodashboard-design/` and `.agents/skills/zerodashboard-design/`: the two fields and the hint.
 
 ## Verification
 - `npx tsc --noEmit`
