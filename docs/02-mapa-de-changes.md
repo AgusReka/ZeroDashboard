@@ -18,7 +18,7 @@ La versión 1.0 está cerrada: tag `v1.0.0`. Su mapa, con CH-01 a CH-35 y la sec
 
 **Después de cada change:** entrada en la bitácora con fecha, fricciones encontradas y tiempo invertido.
 
-**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-50 y la próxima decisión, DEC-192. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
+**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-50 y la próxima decisión, DEC-193. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
 
 ---
 
@@ -52,7 +52,7 @@ Orden de ejecución pensado para grabar el video cuanto antes: primero las autom
 | 0 | CH-36 | Reorganización de `src/` en carpetas por dominio, sin cambiar el comportamiento | — | — | DEC-181. PRs #199 a #202 |
 | 1 | CH-37 | Textos para el cliente en la plantilla: título y descripción en la base, con una migración. Los dos textos fijos de DEC-137 pasan a la semilla, y el panel los lee de la base | D4 | CH-36 | DEC-182, DEC-190. Requisito de CH-38: sin estos textos, una plantilla nueva no aparece en el panel |
 | 2 | CH-38 | Pantalla de plantillas en la consola: crear, probar contra una conexión, guardar y «Duplicar y editar» una plantilla en uso | D4, D5 | CH-37 | ⚠ DEC-182, DEC-191. Bloquea el `PUT` sobre una plantilla con automatizaciones activas y suma `POST /plantillas/prueba` para probar antes de guardar |
-| 3 | CH-39 | Texto del mensaje: encabezado y línea por fila con marcadores `{columna}`, validados contra la última prueba, en el correo | N7 | CH-38 | DEC-188. Los campos se cargan en la pantalla de CH-38 |
+| 3 | CH-39 | Texto del mensaje: encabezado y línea por fila con marcadores `{columna}`, validados contra la última prueba, en el correo | N7 | CH-38 | DEC-188, DEC-192. Los campos se cargan en la pantalla de CH-38; la ejecución registra el respaldo a la tabla en `Ejecucion.mensajeRespaldo` |
 | 4 | CH-40 | Mínimo de filas por automatización y resultado `omitida-bajo-minimo` | X9 | CH-36 | DEC-186. Se carga en el alta de la consola |
 | 5 | CH-41 | Varios destinatarios: lista de hasta 5 direcciones en un solo mensaje, en el alta de la consola y en el ajuste del panel (P-04) | N6 | CH-36 | DEC-187. La migración conserva la dirección actual |
 | 6 | CH-42 | Vista previa del mensaje en el detalle de la automatización, en la consola, sin enviar | X10 | CH-39, CH-40 | DEC-189. Queda en la auditoría como la prueba de plantilla. CH-44 le suma la vista de Telegram |

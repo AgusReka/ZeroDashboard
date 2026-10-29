@@ -3823,6 +3823,79 @@ Qué copia «Duplicar y editar»:
 
 ---
 
+### DEC-192 — CH-39: el texto del mensaje se valida contra las columnas de la prueba y la ejecución registra el respaldo a la tabla
+
+**Contexto.**
+- DEC-188 (b) suma a la plantilla un encabezado y una línea por fila con marcadores `{columna}`. Al guardar, un marcador que no está entre las columnas de la última prueba se rechaza. En la ejecución, si falta una columna, el correo usa la tabla y la ejecución lo registra.
+- Las columnas de una prueba no se guardan en ningún lado. Las dos rutas de prueba las devuelven en la respuesta y solo registran la auditoría con la cantidad de filas, y la prueba de una plantilla sin guardar no tiene `id`.
+- `Ejecucion` no tiene dónde registrar que el mensaje usó la tabla. `notificacion` guarda el resultado del envío, con un orden de precedencia propio (DEC-83).
+- El glosario del panel (DEC-137) se aplica a los textos para el cliente (DEC-190), y el correo también lo lee el cliente.
+
+Quedan cinco puntos que DEC-188 no resuelve.
+
+**Opciones.**
+
+De dónde salen las columnas de la última prueba:
+- (a) El cuerpo del guardado trae `columnasPrueba`, las columnas de la prueba aprobada, y no se guarda.
+- (b) Una columna nueva en `Plantilla` con las columnas de la prueba.
+- (c) La ruta de guardado vuelve a correr la consulta.
+
+Cómo registra la ejecución el respaldo:
+- (a) Una columna nueva en `Ejecucion` con los nombres de las columnas que faltaron.
+- (b) Un valor nuevo de `notificacion`.
+
+Un texto sin el otro:
+- (a) Los dos o ninguno.
+- (b) Cada uno por separado.
+
+Glosario y largos:
+- (a) El glosario sobre el texto sin los marcadores; encabezado hasta 200 caracteres y línea hasta 300.
+- (b) Solo los largos.
+
+Qué hace «Duplicar y editar» con el texto del mensaje:
+- (a) Lo copia.
+- (b) Lo deja vacío, como los textos para el cliente.
+
+**Decisión.** Columnas (a), respaldo (a), textos (a), glosario (a) y copia (a).
+- **Columnas (a).** La compuerta de CH-38 ya exige una prueba aprobada de la misma consulta antes de guardar, así que la lista está fresca. Es el camino de datos más chico, y el respaldo de DEC-188 en la ejecución es la garantía real.
+- **Respaldo (a).** El resultado del envío sigue siendo uno solo, y los nombres le dicen a P1 qué corregir.
+- **Textos (a).** Es la lectura literal de DEC-188, y una sola regla para el correo y para Telegram (CH-44).
+- **Glosario (a).** El texto lo escribe P1 y lo lee el cliente, la misma razón de DEC-190. Sacar los marcadores deja pasar una columna que se llama `consulta`.
+- **Copia (a).** El texto del mensaje no identifica a la plantilla en el panel, y la copia suele existir para ajustar la consulta.
+
+**Forma.**
+- **Campos.** `Plantilla.encabezadoMensaje` y `Plantilla.lineaMensaje`, opcionales. `Ejecucion.mensajeRespaldo`, un arreglo JSON con nombres de columna, nunca valores.
+- **Marcador.** `{`, uno o más caracteres que no sean llaves, y `}`. El nombre es exacto: sin recortar y distinguiendo mayúsculas. Cualquier otra llave es texto.
+- **Al guardar**, en este orden, con `400 solicitud-invalida` y el campo en `campos`:
+  1. los dos textos o ninguno;
+  2. los largos;
+  3. el encabezado no lleva marcadores (los nombres van en `marcadores`);
+  4. la línea lleva al menos un marcador;
+  5. el glosario, sobre el encabezado y sobre la línea sin marcadores (los términos van en `terminos`);
+  6. con textos, `columnasPrueba` es obligatorio y todo marcador de la línea tiene que estar ahí (los que faltan van en `marcadores`).
+- **`POST /plantillas/prueba`** aplica las mismas validaciones menos la 6: la prueba es la que produce esas columnas.
+- **En el correo**, con los dos textos y todas las columnas presentes, el cuerpo es el encabezado y una línea por fila. Cada valor pasa por `textoDeCelda` y se escapa solo, nunca la línea entera. Sin textos, el correo es igual al de antes. Si falta una columna, va la tabla y `mensajeRespaldo` guarda los nombres que faltaron, aunque después el envío falle.
+- **En la consola**, los textos quedan fuera de la huella de la prueba. «Guardar» manda `columnasPrueba` con las columnas de la última prueba aprobada. La vista de ejecuciones muestra el respaldo dentro de la celda de la notificación.
+
+**Precisiones del diseño** (2026-10-29, confirmadas por el usuario después de la verificación). El diseño de CH-39 suma dos reglas que DEC-188 no dice:
+- **El encabezado es fijo.** Un marcador es el valor de una celda, y el encabezado no tiene fila. Un marcador en el encabezado se rechaza en lugar de tomar el valor de una fila cualquiera.
+- **La línea lleva al menos un marcador.** Sin marcadores, repetiría la misma frase en cada fila.
+
+**Alcance que no cambia.** El asunto, los temas, el tope de filas y su aviso (N2), la regla de cero filas, el resumen de `GET /plantillas` y el panel del cliente.
+
+**Por qué.** Cierra DEC-188 sin guardar resultados de pruebas (DEC-93) y sin mezclar el formato del mensaje con el resultado del envío.
+
+**Se resigna.**
+- **`columnasPrueba` viene del cliente.** Alguien que llame a la API puede mandar una lista equivocada. Es una comprobación de coherencia, no una garantía: la garantía es el respaldo a la tabla en la ejecución.
+- **Sin encabezado con datos.** Un encabezado con un dato de la ejecución (por ejemplo, la cantidad de filas) queda para más adelante, como un nombre reservado.
+- **Sin mensaje con un solo texto.** La (b) de «un texto sin el otro» se puede sumar después sin migración.
+
+**Decidido por:** el usuario, 2026-10-27, en la exploración de CH-39: eligió las cinco opciones recomendadas. Las dos precisiones del diseño las confirmó el 2026-10-29. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
