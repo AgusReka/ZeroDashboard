@@ -158,7 +158,9 @@ model VistaCanonica {
 // second source of truth. `toleranciaFrescuraMinutos` is stored and not yet enforced
 // (DEC-66). A template is replaced in place by id and never deleted (DEC-68). `titulo` and
 // `descripcion` are the client panel's texts (DEC-182, DEC-190), optional, checked in the
-// application.
+// application. `encabezadoMensaje` and `lineaMensaje` are the message texts (DEC-188, DEC-192):
+// both or neither, the line's `{columna}` placeholders checked on save against the columns of
+// the test that preceded it; without them the email shows the table.
 model Plantilla {
   id                        String           @id @default(uuid())
   nombre                    String
@@ -170,6 +172,8 @@ model Plantilla {
   toleranciaFrescuraMinutos Int
   titulo                    String?
   descripcion               String?
+  encabezadoMensaje         String?
+  lineaMensaje              String?
   automatizaciones          Automatizacion[]
 }
 
@@ -232,6 +236,9 @@ model Automatizacion {
 // made: 1 when it connected, or failed, on the first attempt (even with retry off), N
 // after N attempts. It is null when the run never dialled (`omitida`, `interrumpida`, a
 // refusal before connecting) and for rows written before CH-17b; null never means one.
+// `mensajeRespaldo` (CH-39, DEC-188) is the JSON array of the column names the template's
+// line needed and the result lacked, when the message fell back to the table; null
+// otherwise. Column names only, never a cell value.
 model Ejecucion {
   id               String         @id @default(uuid())
   tenantId         String
@@ -249,6 +256,7 @@ model Ejecucion {
   codigoError      String?
   notificacion     String?
   intentos         Int?
+  mensajeRespaldo  Json?
 
   @@index([tenantId])
   @@index([automatizacionId, iniciadaEn])

@@ -15,7 +15,7 @@ import { loadConfig } from '../compartido/config.js';
 import { camposDeDestino, destinoDeConexion } from '../conexiones/conexion-destino.js';
 import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from '../ejecucion/consulta-ejecucion.js';
 import { conTenantActivo, type TenantActivo } from '../aislamiento/contexto-tenant.js';
-import { componerCorreo } from './correo.js';
+import { componerCorreo, respaldoDe } from './correo.js';
 import { ErrorCredencialIlegible } from '../compartido/cripto-credencial.js';
 import type { Notificador } from './notificador.js';
 import { prepararSentencia } from '../ejecucion/parametros.js';
@@ -197,6 +197,9 @@ interface PlantillaACorrer {
   entidades: unknown;
   nombre: string;
   automatizacion: string;
+  /** The message texts (CH-39): both set, or the email shows the table. */
+  encabezadoMensaje: string | null;
+  lineaMensaje: string | null;
 }
 
 export function crearPlanificador({
@@ -336,6 +339,11 @@ export function crearPlanificador({
    * client (rule 2). A marker write that throws is an `excepcion` like any other here: no
    * send, and the row closes `error-interno`. The close overwrites the marker; a row the
    * process left marked is closed `incierta` by the next boot sweep.
+   *
+   * CH-39 (DEC-188, DEC-192): besides the outcome it returns `respaldo`, the column names the
+   * template's line needed and the result lacked when the message fell back to the table. It
+   * is null on every path that composes nothing and when the texts were used. It is set once
+   * the message is composed, so a failed send keeps it.
    */
   async function notificar(
     automatizacion: AutomatizacionACorrer,
@@ -343,16 +351,21 @@ export function crearPlanificador({
     resultado: ResultadoCorrida,
     iniciadaEn: Date,
     id: string,
-  ): Promise<SalidaNotificacion> {
+  ): Promise<{ salida: SalidaNotificacion; respaldo: string[] | null }> {
     const decision = decidirNotificacion(resultado, automatizacion.destinatario, notificador !== null);
     if (!decision.enviar) {
-      return decision.notificacion;
+      return { salida: decision.notificacion, respaldo: null };
     }
+    let respaldo: string[] | null = null;
     try {
       if (resultado.resultado !== 'ok' || plantilla === null || notificador === null) {
         // Unreachable: a send is only decided for a successful query with a notifier.
         throw new Error('notificar: envío decidido sin resultado, plantilla o notificador');
       }
+      const mensaje =
+        plantilla.encabezadoMensaje !== null && plantilla.lineaMensaje !== null
+          ? { encabezado: plantilla.encabezadoMensaje, linea: plantilla.lineaMensaje }
+          : null;
       const correo = componerCorreo({
         nombre: plantilla.nombre,
         automatizacion: plantilla.automatizacion,
@@ -361,11 +374,13 @@ export function crearPlanificador({
         hayMas: resultado.paginacion.hayMas,
         fecha: iniciadaEn,
         zona: zonaHoraria,
+        mensaje,
       });
+      respaldo = respaldoDe(mensaje, resultado.columnas);
       await prisma.ejecucion.update({ where: { id }, data: { notificacion: 'enviando' }, select: { id: true } });
-      return await notificador.enviar({ para: decision.para, ...correo });
+      return { salida: await notificador.enviar({ para: decision.para, ...correo }), respaldo };
     } catch (error) {
-      return { resultado: 'excepcion', error };
+      return { salida: { resultado: 'excepcion', error }, respaldo };
     }
   }
 
@@ -419,14 +434,22 @@ export function crearPlanificador({
         // RESTRICT and templates are never deleted (DEC-68), so a missing row is corruption.
         plantilla = await prisma.plantilla.findUniqueOrThrow({
           where: { id: automatizacion.plantillaId },
-          select: { sql: true, parametros: true, entidades: true, nombre: true, automatizacion: true },
+          select: {
+            sql: true,
+            parametros: true,
+            entidades: true,
+            nombre: true,
+            automatizacion: true,
+            encabezadoMensaje: true,
+            lineaMensaje: true,
+          },
         });
         resultado = await resultadoDeCorrida(automatizacion, plantilla, conteo);
       } catch (error) {
         resultado = { resultado: 'excepcion', error };
       }
     }
-    const salida = await notificar(automatizacion, plantilla, resultado, iniciadaEn, id);
+    const { salida, respaldo } = await notificar(automatizacion, plantilla, resultado, iniciadaEn, id);
     const cierre = cierreConNotificacion(cierreDeResultado(resultado), salida);
     // Read after the send, so the duration includes it; then the row's only close.
     const finalizadaEn = reloj.ahora();
@@ -435,6 +458,9 @@ export function crearPlanificador({
       data: {
         ...cierre,
         intentos: conteo.intentos,
+        // Written only when set, in this same close (CH-39): the row is created without it, so
+        // null is the default and `Prisma.DbNull` is never needed.
+        ...(respaldo !== null ? { mensajeRespaldo: respaldo } : {}),
         finalizadaEn,
         duracionMs: finalizadaEn.getTime() - iniciadaEn.getTime(),
       },

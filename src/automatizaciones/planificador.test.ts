@@ -127,10 +127,11 @@ $limpieza$;`;
  * Every column an `Ejecucion` row has: metadata only, no place for the rows a run read.
  * CH-14 adds `notificacion` (DEC-83), which holds an outcome label, never a body or row.
  * CH-17b adds `intentos` (DEC-103), a count of connection attempts.
+ * CH-39 adds `mensajeRespaldo` (DEC-188), the column names a message lacked: names only.
  */
 const COLUMNAS_EJECUCION = [
   'automatizacionId', 'codigoError', 'corte', 'duracionMs', 'error', 'estado',
-  'fase', 'filas', 'finalizadaEn', 'id', 'iniciadaEn', 'intentos', 'notificacion', 'tenantId',
+  'fase', 'filas', 'finalizadaEn', 'id', 'iniciadaEn', 'intentos', 'mensajeRespaldo', 'notificacion', 'tenantId',
 ];
 
 describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1–4.6)', { skip: motivoSkip }, () => {
@@ -760,6 +761,119 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     for (const secreto of ['ch14-54-falla@example.com', 'fila-secreta', 'secreto-smtp']) {
       assert.ok(!lineas.join('\n').includes(secreto), secreto);
     }
+  });
+
+  /** CH-39: a template over the `producto` view whose message line is `linea` (header `Aviso`). */
+  function plantillaConMensaje(sufijo: string, linea: string) {
+    return prisma.plantilla.create({
+      data: {
+        nombre: `${marca} mensaje ${sufijo}`,
+        sql: 'SELECT * FROM v_producto',
+        parametros: [],
+        entidades: ['producto'],
+        automatizacion: 'stock-fisico',
+        formato: 'correo-html',
+        toleranciaFrescuraMinutos: 30,
+        encabezadoMensaje: 'Aviso de prueba',
+        lineaMensaje: linea,
+      },
+    });
+  }
+
+  test('CH-39 4.4 a run whose line names a missing column sends the table: enviada plus mensajeRespaldo [stock]', async () => {
+    const { id: plantillaId } = await plantillaConMensaje('respaldo', '{id}: {stock}');
+    const tenantId = await tenant();
+    const corrida = await automatizacion(tenantId, {
+      lector: true,
+      plantillaId,
+      vistaSql: "SELECT 'fila-ch39' AS id",
+      destinatario: 'ch39-respaldo@example.com',
+    });
+    const falso = notificadorFalso();
+
+    await tick(EN('23:10:30'), EN('23:11:30'), undefined, { notificador: falso.notificador });
+
+    const [enviado] = falso.a('ch39-respaldo@example.com');
+    // The table went out: its header cell is there, the line is not.
+    assert.match(enviado.html, /<th[^>]*>id<\/th>/);
+    assert.ok(!enviado.texto.includes('Aviso de prueba'));
+    const [fila] = await ejecuciones(corrida);
+    assert.deepEqual(columnas(fila, 'estado', 'notificacion', 'mensajeRespaldo'), {
+      estado: 'ok',
+      notificacion: 'enviada',
+      mensajeRespaldo: ['stock'],
+    });
+  });
+
+  test('CH-39 4.4 a run that uses the texts, and one without texts, leave mensajeRespaldo null', async () => {
+    const { id: plantillaId } = await plantillaConMensaje('textos', '{id} sin novedades');
+    const tenantId = await tenant();
+    const conTextos = await automatizacion(tenantId, {
+      lector: true,
+      plantillaId,
+      vistaSql: "SELECT 'fila-ch39b' AS id",
+      destinatario: 'ch39-textos@example.com',
+      creadaEn: '2020-01-01T00:00:00Z',
+    });
+    const sinTextos = await automatizacion(tenantId, {
+      lector: true,
+      vistaSql: "SELECT 'fila-ch39c' AS id",
+      destinatario: 'ch39-sin-textos@example.com',
+      creadaEn: '2020-01-02T00:00:00Z',
+    });
+    const falso = notificadorFalso();
+
+    await tick(EN('23:20:30'), EN('23:21:30'), undefined, { notificador: falso.notificador });
+
+    const [conMensaje] = falso.a('ch39-textos@example.com');
+    assert.ok(conMensaje.texto.split('\n').includes('fila-ch39b sin novedades'), conMensaje.texto);
+    const [filaConTextos] = await ejecuciones(conTextos);
+    const [filaSinTextos] = await ejecuciones(sinTextos);
+    assert.deepEqual(columnas(filaConTextos, 'notificacion', 'mensajeRespaldo'), {
+      notificacion: 'enviada',
+      mensajeRespaldo: null,
+    });
+    assert.deepEqual(columnas(filaSinTextos, 'notificacion', 'mensajeRespaldo'), {
+      notificacion: 'enviada',
+      mensajeRespaldo: null,
+    });
+  });
+
+  test('CH-39 4.4 a send that fails after a fallback keeps fallo-envio and the names', async () => {
+    const { id: plantillaId } = await plantillaConMensaje('fallo', '{stock} y {existencia}');
+    const tenantId = await tenant();
+    const corrida = await automatizacion(tenantId, {
+      lector: true,
+      plantillaId,
+      destinatario: 'ch39-fallo@example.com',
+    });
+    const falso = notificadorFalso(async () => ({ resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550' }));
+
+    await tick(EN('23:30:30'), EN('23:31:30'), undefined, { notificador: falso.notificador });
+
+    const [fila] = await ejecuciones(corrida);
+    assert.deepEqual(columnas(fila, 'estado', 'fase', 'notificacion', 'mensajeRespaldo'), {
+      estado: 'fallo',
+      fase: 'notificacion',
+      notificacion: 'fallo-envio',
+      mensajeRespaldo: ['stock', 'existencia'],
+    });
+  });
+
+  test('CH-39 4.4 a run that composes nothing never writes mensajeRespaldo, even with a fallback template', async () => {
+    const { id: plantillaId } = await plantillaConMensaje('sin-envio', '{stock}');
+    const tenantId = await tenant();
+    // No recipient: the omission is the outcome and no message is composed.
+    const corrida = await automatizacion(tenantId, { lector: true, plantillaId });
+    const falso = notificadorFalso();
+
+    await tick(EN('23:40:30'), EN('23:41:30'), undefined, { notificador: falso.notificador });
+
+    const [fila] = await ejecuciones(corrida);
+    assert.deepEqual(columnas(fila, 'notificacion', 'mensajeRespaldo'), {
+      notificacion: 'sin-destinatario',
+      mensajeRespaldo: null,
+    });
   });
 
   test('CH-14 5.5 a notifier that throws closes the row as error-interno and logs only the error name', async () => {

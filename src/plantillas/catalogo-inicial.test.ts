@@ -104,6 +104,20 @@ describe('initial catalog — content and save-time checks (CH-21b, no database)
     assert.equal(rechazoDeEntrada(con(FISICO, { titulo: null, descripcion: null })), null);
   });
 
+  test('U1 CH-39 both entries declare no message texts, and a non-string text is rejected like the route', () => {
+    for (const e of CATALOGO_INICIAL) {
+      assert.equal(e.encabezadoMensaje, null, e.id);
+      assert.equal(e.lineaMensaje, null, e.id);
+      assert.deepEqual(
+        [datosDePlantilla(e).encabezadoMensaje, datosDePlantilla(e).lineaMensaje],
+        [null, null],
+        e.id,
+      );
+    }
+    assert.deepEqual(rechazoDeEntrada(con(FISICO, { encabezadoMensaje: 5 }))?.campos, ['/encabezadoMensaje']);
+    assert.deepEqual(rechazoDeEntrada(con(FISICO, { lineaMensaje: {} }))?.campos, ['/lineaMensaje']);
+  });
+
   test('U2 parity with POST /plantillas: entries are 201, broken copies rejected alike and never written', async () => {
     const creados: unknown[] = [];
     const plantillas = { create: async ({ data }: { data: unknown }) => (creados.push(data), {}) };
