@@ -42,6 +42,8 @@ export const PlantillaCompleta = {
   entidades: true,
   titulo: true,
   descripcion: true,
+  encabezadoMensaje: true,
+  lineaMensaje: true,
 } as const;
 
 /** The row `PlantillaCompleta` selects (type only: this module still imports no Prisma at runtime). */
