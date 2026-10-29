@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Recording every run of an `Automatizacion` (X2): start, end, duration, row count, status, and a classified error when one occurs — metadata only, never the rows a run read — and a tenant-scoped route to list an automation's runs (DEC-80).
+Recording every run of an `Automatizacion` (X2): start, end, duration, row count, status, and a classified error when one occurs — metadata only, never the rows a run read — and a tenant-scoped route to list an automation's runs (DEC-80), and, since CH-39, the columns that made a message fall back to the table (`mensajeRespaldo`, DEC-188, DEC-192).
 
 ## Requirements
 
@@ -124,6 +124,28 @@ The system SHALL expose `GET /automatizaciones/:id/ejecuciones`, scoped to the a
 - WHEN `GET /automatizaciones/:id/ejecuciones` is called
 - THEN both rows SHALL be listed with those values
 
+### Requirement: Ejecucion Records the Fallback to the Table (DEC-188, DEC-192)
+
+`Ejecucion` SHALL have a nullable `mensajeRespaldo` column holding an array of strings. It SHALL be set, in the same write that sets `notificacion`, to the names the renderer reported missing when a message was composed and fell back to the table. It SHALL be null when no message was composed, when the message was built from the template's texts, when the template has no texts, and for rows written before this change. It MUST hold column names only, never cell values. `notificacion` SHALL follow its own precedence regardless of `mensajeRespaldo`.
+
+#### Scenario: A run falls back
+
+- GIVEN an automation whose template line names `{stock}` and whose query returns no `stock` column
+- WHEN the run sends its message
+- THEN its `Ejecucion` row SHALL have `notificacion: "enviada"` and `mensajeRespaldo: ["stock"]`
+
+#### Scenario: A run uses the texts
+
+- GIVEN an automation whose template line names only returned columns
+- WHEN the run sends its message
+- THEN its `Ejecucion` row SHALL have `mensajeRespaldo` null
+
+#### Scenario: A send failure after a fallback
+
+- GIVEN a run that falls back to the table and whose send fails
+- WHEN its row is inspected
+- THEN it SHALL have `notificacion: "fallo-envio"` and `mensajeRespaldo` set
+
 ### Requirement: A Send Failure Marks the Run Failed in Phase notificacion (DEC-83)
 
 The set of permitted `fase` values SHALL include `notificacion`. WHEN a send fails, the run SHALL be recorded with `estado='fallo'`, `fase='notificacion'`, and `notificacion='fallo-envio'`, while its row count SHALL still reflect the rows the query returned. `estado='fallo'` therefore no longer implies the query failed; `fase` identifies what failed. WHEN the query succeeds and the send is accepted or not attempted, `fase` SHALL remain unchanged (`ejecucion`).
@@ -142,13 +164,20 @@ The set of permitted `fase` values SHALL include `notificacion`. WHEN a send fai
 
 ### Requirement: Runs Listing Exposes the Notification Outcome (DEC-80, DEC-83)
 
-`GET /automatizaciones/:id/ejecuciones` SHALL include each run's `notificacion` value, remaining scoped to the active tenant's automation.
+`GET /automatizaciones/:id/ejecuciones` SHALL include each run's `notificacion` value and its `mensajeRespaldo` (array or null), remaining scoped to the active tenant's automation.
+(Previously: the listing had no `mensajeRespaldo`.)
 
 #### Scenario: Listing shows notificacion
 
 - GIVEN an automation of the active tenant with runs of differing outcomes
 - WHEN its runs are listed
 - THEN each entry SHALL include its `notificacion` value
+
+#### Scenario: Listing shows the fallback
+
+- GIVEN a run with `mensajeRespaldo: ["stock"]` and a run with it null
+- WHEN the runs are listed
+- THEN the entries SHALL carry `["stock"]` and `null`
 ### Requirement: Estado Set Includes omitida (DEC-96)
 
 The permitted `Ejecucion.estado` values SHALL be `en-curso`, `ok`, `fallo`, and `omitida`. `omitida` SHALL mean the run was never started because a previous run of the same automation was still `en-curso`. An `omitida` row MUST carry `error='solapamiento'`, MUST have `notificacion` null, and MUST NOT have been preceded by any query against the tenant's connection.
