@@ -68,7 +68,7 @@ La aplicación compone `WITH v_<entidad> AS (<vista canónica>), … SELECT * FR
 
 ## Alta y cambio de plantillas
 
-Por la consola (ver arriba) o por la API de la aplicación, con sesión de operador: `POST /plantillas` crea y `PUT /plantillas/:id` reemplaza en el lugar, sin versiones (DEC-68), salvo que la plantilla esté en uso (`409`). El cuerpo lleva `nombre`, `sql`, `parametros`, `entidades`, `automatizacion`, `formato` y `toleranciaFrescuraMinutos`. Las rutas del catálogo no piden `X-Tenant-Id`; las de prueba sí, porque usan una conexión de un tenant:
+Por la consola (ver arriba) o por la API de la aplicación, con sesión de operador: `POST /plantillas` crea y `PUT /plantillas/:id` reemplaza en el lugar, sin versiones (DEC-68), salvo que la plantilla esté en uso (`409`). El cuerpo lleva `nombre`, `sql`, `parametros`, `entidades`, `automatizacion`, `formato` y `toleranciaFrescuraMinutos`, más los textos opcionales descritos abajo. Las rutas del catálogo no piden `X-Tenant-Id`; las de prueba sí, porque usan una conexión de un tenant:
 
 - `POST /plantillas/:id/prueba` prueba una plantilla guardada.
 - `POST /plantillas/prueba` (CH-38) prueba una que no está guardada: lleva el cuerpo de `POST /plantillas` más `conexionId` (obligatorio) y `valores` (opcional). Rechaza el cuerpo igual que `POST /plantillas` (`400`, mismo cuerpo) y después aplica las mismas compuertas que la ruta anterior: conexión del tenant (`404`), vistas aprobadas (`409`), valores (`400`) y credencial legible (`409`). Devuelve solo la primera página, no escribe ninguna plantilla y queda en Auditoría con origen «Prueba de plantilla», la sentencia compuesta y sin id de plantilla.
@@ -82,8 +82,54 @@ El cuerpo admite además dos campos opcionales, `titulo` (hasta 80 caracteres) y
 - **Dos plantillas con el mismo título** (sin distinguir mayúsculas) se ofrecen como una sola, y si una de ellas está activa para el tenant, ninguna se ofrece.
 - **`PUT` reemplaza todo el cuerpo.** Un `PUT` que omite `titulo` o `descripcion` los deja en `null`; para conservarlos hay que reenviarlos.
 
+### Texto del mensaje (CH-39)
+
+El cuerpo admite también `encabezadoMensaje` (hasta 200 caracteres) y `lineaMensaje` (hasta 300). Con ellos el correo deja de ser una tabla: lleva el encabezado y, debajo, **una línea por fila** del resultado (DEC-188, DEC-192). Sin ellos, el correo muestra la tabla de siempre; el asunto, el tema de color, los avisos y el pie no cambian.
+
+- **Marcadores.** En la línea, `{columna}` se reemplaza por el valor de esa columna en cada fila. Un marcador es una `{`, uno o más caracteres que no sean `{` ni `}`, y una `}`; el nombre es lo que hay entre las llaves, tal cual: distingue mayúsculas y conserva los espacios. Cualquier otra llave es texto literal. Los valores vacíos se muestran como «—», con el mismo tope de largo que una celda de la tabla.
+- **El encabezado es fijo.** No admite marcadores: no tiene una fila de la cual tomar el valor. Uno en el encabezado se rechaza.
+- **La línea necesita al menos un marcador.** Sin ninguno repetiría la misma frase una vez por fila.
+- **Van juntos.** Se guardan los dos o ninguno. Un valor vacío tras recortar los espacios cuenta como ausente y se guarda como `null`.
+- **Glosario.** Se aplica al encabezado y al texto literal de la línea; los nombres de los marcadores no cuentan, porque son columnas.
+- **Se validan contra la última prueba.** Al guardar, el cuerpo lleva `columnasPrueba`: los nombres de las columnas de la prueba exitosa (hasta 200). Cada marcador de la línea tiene que ser uno de ellos. `columnasPrueba` no se guarda ni se devuelve, y se ignora si no hay textos. `POST /plantillas/prueba` no la pide, porque esa prueba es la que produce las columnas.
+
+El rechazo es `400 solicitud-invalida` y no escribe nada. Se aplican en este orden y gana el primero que falla:
+
+| Paso | Rechazo | `campos` | Extra |
+|---|---|---|---|
+| 1 | Hay uno solo de los dos textos | el que falta | |
+| 2 | Un texto pasa su tope | el que lo pasa | |
+| 3 | Marcador en el encabezado | `/encabezadoMensaje` | `marcadores` |
+| 4 | Línea sin marcadores | `/lineaMensaje` | |
+| 5 | Término del glosario | el texto que lo contiene | `terminos` |
+| 6 | Sin `columnasPrueba`, o marcador fuera de ellas | `/columnasPrueba`, o `/lineaMensaje` | `marcadores` con los nombres desconocidos, cada uno una vez |
+
+Ambos textos vienen siempre en `GET /plantillas/:id` y en las respuestas de `POST` y `PUT` (`null` si no hay). El listado `GET /plantillas` no los trae. Como `PUT` reemplaza todo el cuerpo, un `PUT` que los omite los deja en `null`.
+
+Ejemplo sobre `stock-fisico`, cuya consulta devuelve las columnas `Producto` y `Stock disponible`:
+
+```json
+{
+  "encabezadoMensaje": "Productos con poco stock",
+  "lineaMensaje": "{Producto}: quedan {Stock disponible} unidades",
+  "columnasPrueba": ["Producto", "Stock disponible"]
+}
+```
+
+El correo dice «Productos con poco stock» y, debajo, «Harina 000: quedan 3 unidades», «Azúcar: quedan 0 unidades», una por fila. Con `{producto}` en lugar de `{Producto}`, el guardado se rechaza: `/lineaMensaje` con `marcadores: ["producto"]`.
+
+#### Si falta una columna: vuelve la tabla
+
+Una plantilla se reemplaza en el lugar y su consulta puede cambiar después de guardados los textos. Si al correr, la línea nombra una columna que el resultado ya no trae, el correo se envía **como tabla** (nunca con un marcador sin reemplazar ni con un hueco) y la corrida lo registra aparte del envío:
+
+- `mensajeRespaldo` en la ejecución es la lista de nombres que faltaban, cada uno una vez y en orden de aparición. Guarda solo nombres de columnas, nunca valores.
+- Es `null` cuando el mensaje se armó con los textos, cuando la plantilla no tiene textos, cuando no se llegó a armar un mensaje (sin destinatario, sin filas, consulta fallida) y en las ejecuciones anteriores a este cambio.
+- `notificacion` sigue su propia precedencia: una corrida que cae a la tabla y se envía queda `enviada`, y si el envío falla queda `fallo-envio`, en ambos casos con `mensajeRespaldo` cargado.
+- `GET /automatizaciones/:id/ejecuciones` lo incluye en cada ejecución (arreglo o `null`).
+
 ## Límites
 
+- **Límite.** El encabezado del mensaje no admite marcadores; un dato por corrida, como una cuenta de filas, queda para más adelante.
 - **Límite.** No existe un borrado de plantillas en ninguna superficie (DEC-68).
 - **Límite.** El único formato de entrega es el correo HTML (DEC-65).
 - **Límite.** `reporte-diario` figura en el contrato como etiqueta de automatización, pero el catálogo inicial no la trae: el motor ejecuta una consulta por corrida y no envía con cero filas (DEC-126).

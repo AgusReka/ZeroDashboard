@@ -14,6 +14,7 @@ import {
   type PlantillaCompletaFila,
 } from './plantillas.js';
 import { ENTIDADES_CANONICAS } from '../mapeo/vistas-canonicas.js';
+import { faltantesEn, marcadoresDe, textoSinMarcadores } from './marcadores-mensaje.js';
 
 // CH-38: the selects moved to `plantillas.ts` (no import cycle with the isolation extension);
 // re-exported so every existing importer keeps working.
@@ -38,6 +39,14 @@ export interface RegistroPlantillaBody {
   /** The client panel's texts (DEC-182, DEC-190); `null` or absent means "no client text". */
   titulo?: string | null;
   descripcion?: string | null;
+  /** The message texts (DEC-188, DEC-192); both or neither. */
+  encabezadoMensaje?: string | null;
+  lineaMensaje?: string | null;
+  /**
+   * The column names of the passing test that preceded the save (CH-39). Only read to check
+   * the line's placeholders: never stored and never returned.
+   */
+  columnasPrueba?: string[];
 }
 
 interface PlantillaParams {
@@ -64,6 +73,9 @@ export const registroPlantillaSchema = {
       'toleranciaFrescuraMinutos',
       'titulo',
       'descripcion',
+      'encabezadoMensaje',
+      'lineaMensaje',
+      'columnasPrueba',
     ],
   },
   required: ['nombre', 'sql', 'entidades', 'automatizacion', 'formato', 'toleranciaFrescuraMinutos'],
@@ -96,6 +108,11 @@ export const registroPlantillaSchema = {
     // `null` is coerced to `''` by Fastify's AJV and stored as `null`.
     titulo: { type: 'string' },
     descripcion: { type: 'string' },
+    // Message texts (CH-39): same treatment as the client texts, caps and pairing checked in
+    // code. `columnasPrueba` is a check input only, never a column of `Plantilla`.
+    encabezadoMensaje: { type: 'string' },
+    lineaMensaje: { type: 'string' },
+    columnasPrueba: { type: 'array', maxItems: 200, items: { type: 'string' } },
   },
 } as const;
 
@@ -119,6 +136,9 @@ function valoresRechazados(validation: unknown, cuerpo: unknown): unknown[] {
 
 /** Character caps of the client texts, measured after trimming. */
 export const LARGO_MAXIMO_TEXTO_CLIENTE = { titulo: 80, descripcion: 200 } as const;
+
+/** Character caps of the message texts, measured after trimming. */
+export const LARGO_MAXIMO_MENSAJE = { encabezadoMensaje: 200, lineaMensaje: 300 } as const;
 
 /** Trimmed text, or `null` when absent, null or blank. */
 export function textoCliente(valor: string | null | undefined): string | null {
@@ -146,14 +166,67 @@ function rechazoDeTextos(cuerpo: RegistroPlantillaBody): { campos: string[]; ter
 }
 
 /**
+ * The message texts' refusal (CH-39), or `null` when they are acceptable. Six steps in spec
+ * order; the first that refuses wins, so one answer names one reason. With neither text
+ * present every step is a no-op.
+ */
+function rechazoDeMensaje(
+  cuerpo: RegistroPlantillaBody,
+  exigirColumnas: boolean,
+): Record<string, unknown> | null {
+  const encabezado = textoCliente(cuerpo.encabezadoMensaje);
+  const linea = textoCliente(cuerpo.lineaMensaje);
+  const rechazo = (campos: string[], extra: Record<string, unknown> = {}) => ({
+    error: 'solicitud-invalida',
+    campos,
+    ...extra,
+  });
+  // 1. Pairing: both or neither; the refusal names the absent one.
+  if (encabezado === null && linea === null) return null;
+  if (encabezado === null) return rechazo(['/encabezadoMensaje']);
+  if (linea === null) return rechazo(['/lineaMensaje']);
+  // 2. Caps.
+  const excedidos = (['encabezadoMensaje', 'lineaMensaje'] as const)
+    .filter((campo) => (campo === 'encabezadoMensaje' ? encabezado : linea).length > LARGO_MAXIMO_MENSAJE[campo])
+    .map((campo) => `/${campo}`);
+  if (excedidos.length > 0) return rechazo(excedidos);
+  // 3. The header is static: a placeholder has no row to take its value from.
+  const enEncabezado = marcadoresDe(encabezado);
+  if (enEncabezado.length > 0) return rechazo(['/encabezadoMensaje'], { marcadores: enEncabezado });
+  // 4. The line needs data, or it would repeat one sentence per row.
+  if (marcadoresDe(linea).length === 0) return rechazo(['/lineaMensaje']);
+  // 5. Glossary over the literal text only: a placeholder name is a column, not wording.
+  const terminosEncabezado = terminosProhibidosEn(encabezado);
+  const terminosLinea = terminosProhibidosEn(textoSinMarcadores(linea));
+  if (terminosEncabezado.length > 0 || terminosLinea.length > 0) {
+    return rechazo(
+      [
+        ...(terminosEncabezado.length > 0 ? ['/encabezadoMensaje'] : []),
+        ...(terminosLinea.length > 0 ? ['/lineaMensaje'] : []),
+      ],
+      { terminos: [...new Set([...terminosEncabezado, ...terminosLinea])] },
+    );
+  }
+  // 6. Test columns: the texts are checked against the last passing test. The unsaved-template
+  // test route skips it, because that test is what produces the columns.
+  if (!exigirColumnas) return null;
+  if (cuerpo.columnasPrueba === undefined) return rechazo(['/columnasPrueba']);
+  const faltantes = faltantesEn(linea, cuerpo.columnasPrueba);
+  if (faltantes.length > 0) return rechazo(['/lineaMensaje'], { marcadores: faltantes });
+  return null;
+}
+
+/**
  * The save-time checks shared by create and replace: AJV, then the client texts (length
- * and glossary), then a statement that is blank once trimmed, then the CH-11 parameter
- * rules (DEC-56/57/59). Returns the
- * `400` envelope, or `null` when the body may be written.
+ * and glossary), then the message texts (CH-39), then a statement that is blank once
+ * trimmed, then the CH-11 parameter rules (DEC-56/57/59). Returns the `400` envelope, or
+ * `null` when the body may be written. `exigirColumnas` is false only for the unsaved-template
+ * test, which has no previous test to take the columns from.
  */
 export function rechazoDePlantilla(
   validationError: { validation?: unknown } | undefined,
   cuerpo: RegistroPlantillaBody,
+  opciones: { exigirColumnas: boolean } = { exigirColumnas: true },
 ): Record<string, unknown> | null {
   if (validationError) {
     const rechazados = valoresRechazados(validationError.validation, cuerpo);
@@ -171,6 +244,8 @@ export function rechazoDePlantilla(
       ...(textos.terminos.length > 0 ? { terminos: textos.terminos } : {}),
     };
   }
+  const mensaje = rechazoDeMensaje(cuerpo, opciones.exigirColumnas);
+  if (mensaje !== null) return mensaje;
   // `sanearSql` as a predicate only, as `/consultas-guardadas` uses it: the statement is
   // stored verbatim, because `componerSentencia` sanitizes each stored piece exactly once.
   const sql = sanearSql(cuerpo.sql);
@@ -200,6 +275,8 @@ export function datosDePlantilla(cuerpo: RegistroPlantillaBody) {
     toleranciaFrescuraMinutos: cuerpo.toleranciaFrescuraMinutos,
     titulo: textoCliente(cuerpo.titulo),
     descripcion: textoCliente(cuerpo.descripcion),
+    encabezadoMensaje: textoCliente(cuerpo.encabezadoMensaje),
+    lineaMensaje: textoCliente(cuerpo.lineaMensaje),
   };
 }
 

@@ -28,13 +28,21 @@ const VALIDA = {
   toleranciaFrescuraMinutos: 30,
 };
 
-/** What a body without client texts echoes back for them (DEC-182). */
-const SIN_TEXTOS = { titulo: null, descripcion: null };
+/** What a body without client or message texts echoes back for them (DEC-182, DEC-188). */
+const SIN_TEXTOS = { titulo: null, descripcion: null, encabezadoMensaje: null, lineaMensaje: null };
+
+/** A valid pair of message texts and the test columns that cover its placeholders (CH-39). */
+const MENSAJE = {
+  encabezadoMensaje: 'Productos con poco stock',
+  lineaMensaje: '{producto}: quedan {cantidad} unidades',
+  columnasPrueba: ['producto', 'cantidad'],
+};
 
 interface CuerpoRechazo {
   error: string;
   campos: string[];
   terminos?: string[];
+  marcadores?: string[];
   rechazados?: unknown[];
   problemas?: { parametro: string | null; motivo: string }[];
 }
@@ -192,6 +200,134 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () 
     assert.deepEqual((await rechazar({ titulo: { uno: 1 } })).campos, ['/titulo']);
   });
 
+  test('3.1 CH-39 a placeholder outside the test columns is refused naming each unknown name once', async () => {
+    const cuerpo = await rechazar({ ...MENSAJE, lineaMensaje: '{producto}: {stock} ({stock})' });
+    assert.deepEqual(cuerpo.campos, ['/lineaMensaje']);
+    assert.deepEqual(cuerpo.marcadores, ['stock']);
+    // The same answer on a replace, before any write.
+    const respuesta = await app.inject({
+      method: 'PUT',
+      url: '/plantillas/cualquiera',
+      payload: { ...VALIDA, ...MENSAJE, lineaMensaje: '{producto}: {stock} ({stock})' },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual((respuesta.json() as CuerpoRechazo).marcadores, ['stock']);
+    // Order of first appearance, not alphabetical.
+    assert.deepEqual((await rechazar({ ...MENSAJE, lineaMensaje: '{z} {a} {z}' })).marcadores, ['z', 'a']);
+  });
+
+  test('3.1 CH-39 placeholder names are exact: case and spaces count', async () => {
+    const cuerpo = await rechazar({ ...MENSAJE, lineaMensaje: '{Producto}', columnasPrueba: ['producto'] });
+    assert.deepEqual(cuerpo.marcadores, ['Producto']);
+    assert.deepEqual(
+      (await rechazar({ ...MENSAJE, lineaMensaje: '{ producto }', columnasPrueba: ['producto'] })).marcadores,
+      [' producto '],
+    );
+  });
+
+  test('3.1 CH-39 only one text is refused naming the absent one', async () => {
+    assert.deepEqual((await rechazar({ ...MENSAJE }, 'encabezadoMensaje')).campos, ['/encabezadoMensaje']);
+    assert.deepEqual((await rechazar({ ...MENSAJE }, 'lineaMensaje')).campos, ['/lineaMensaje']);
+    // A blank text is absent, so a blank header beside a line is the same refusal.
+    assert.deepEqual((await rechazar({ ...MENSAJE, encabezadoMensaje: '   ' })).campos, ['/encabezadoMensaje']);
+  });
+
+  test('3.1 CH-39 texts without test columns are refused naming /columnasPrueba', async () => {
+    assert.deepEqual((await rechazar({ ...MENSAJE }, 'columnasPrueba')).campos, ['/columnasPrueba']);
+    // An empty list is present, so every placeholder is unknown instead.
+    const vacia = await rechazar({ ...MENSAJE, columnasPrueba: [] });
+    assert.deepEqual(vacia.campos, ['/lineaMensaje']);
+    assert.deepEqual(vacia.marcadores, ['producto', 'cantidad']);
+  });
+
+  test('3.1 CH-39 columnasPrueba is a bounded array of strings', async () => {
+    const larga = Array.from({ length: 201 }, (_, i) => `c${i}`);
+    assert.deepEqual((await rechazar({ ...MENSAJE, columnasPrueba: larga })).campos, ['/columnasPrueba']);
+    assert.deepEqual((await rechazar({ ...MENSAJE, columnasPrueba: [{ a: 1 }] })).campos, ['/columnasPrueba/0']);
+  });
+
+  test('3.1 CH-39 a placeholder in the header is refused with its names', async () => {
+    const cuerpo = await rechazar({ ...MENSAJE, encabezadoMensaje: 'Stock de {deposito} y {zona} {deposito}' });
+    assert.deepEqual(cuerpo.campos, ['/encabezadoMensaje']);
+    assert.deepEqual(cuerpo.marcadores, ['deposito', 'zona']);
+  });
+
+  test('3.1 CH-39 a line without placeholders is refused, and lone or empty braces are literal text', async () => {
+    assert.deepEqual((await rechazar({ ...MENSAJE, lineaMensaje: 'Revisá el stock' })).campos, ['/lineaMensaje']);
+    assert.deepEqual((await rechazar({ ...MENSAJE, lineaMensaje: 'abre { y cierra } {}' })).campos, ['/lineaMensaje']);
+  });
+
+  test('3.1 CH-39 the glossary reads the literal text only, header and line', async () => {
+    const linea = await rechazar({
+      ...MENSAJE,
+      lineaMensaje: '{producto} según la consulta',
+      columnasPrueba: ['producto'],
+    });
+    assert.deepEqual(linea.campos, ['/lineaMensaje']);
+    assert.deepEqual(linea.terminos, ['consulta']);
+    const encabezado = await rechazar({ ...MENSAJE, encabezadoMensaje: 'Una consulta' });
+    assert.deepEqual(encabezado.campos, ['/encabezadoMensaje']);
+    const ambos = await rechazar({ ...MENSAJE, encabezadoMensaje: 'Un SQL', lineaMensaje: '{producto} timeout' });
+    assert.deepEqual(ambos.campos, ['/encabezadoMensaje', '/lineaMensaje']);
+    assert.deepEqual(ambos.terminos, ['sql', 'timeout']);
+  });
+
+  test('3.1 CH-39 a text over its cap is refused after trimming', async () => {
+    const sobrante = `{producto}${'a'.repeat(291)}`;
+    assert.equal(sobrante.length, 301);
+    assert.deepEqual((await rechazar({ ...MENSAJE, lineaMensaje: sobrante })).campos, ['/lineaMensaje']);
+    assert.deepEqual((await rechazar({ ...MENSAJE, encabezadoMensaje: 'a'.repeat(201) })).campos, [
+      '/encabezadoMensaje',
+    ]);
+    assert.deepEqual(
+      (await rechazar({ ...MENSAJE, encabezadoMensaje: 'a'.repeat(201), lineaMensaje: sobrante })).campos,
+      ['/encabezadoMensaje', '/lineaMensaje'],
+    );
+    // Spaces around a text at its cap do not count: it passes the cap and fails only the next
+    // step that applies (here the missing test columns).
+    const alTope = `{producto}${'a'.repeat(290)}`;
+    assert.equal(alTope.length, 300);
+    assert.deepEqual((await rechazar({ ...MENSAJE, lineaMensaje: `  ${alTope}  ` }, 'columnasPrueba')).campos, [
+      '/columnasPrueba',
+    ]);
+  });
+
+  test('3.1 CH-39 the steps run in spec order and the first refusal wins', async () => {
+    // 1 pairing beats 2 caps, 3 static header and 6 columns.
+    assert.deepEqual(
+      (await rechazar({ encabezadoMensaje: `{x}${'a'.repeat(300)}`, columnasPrueba: [] }, 'lineaMensaje')).campos,
+      ['/lineaMensaje'],
+    );
+    // 2 caps beat 3 static header.
+    const largo = await rechazar({ ...MENSAJE, encabezadoMensaje: `{x}${'a'.repeat(200)}` });
+    assert.equal(largo.marcadores, undefined);
+    // 3 static header beats 4 line without placeholders and 5 glossary.
+    const estatico = await rechazar({ ...MENSAJE, encabezadoMensaje: '{x} consulta', lineaMensaje: 'sin marcadores' });
+    assert.deepEqual(estatico.campos, ['/encabezadoMensaje']);
+    assert.equal(estatico.terminos, undefined);
+    // 4 line without placeholders beats 5 glossary.
+    const sinDatos = await rechazar({ ...MENSAJE, lineaMensaje: 'la consulta', columnasPrueba: [] });
+    assert.equal(sinDatos.terminos, undefined);
+    // 5 glossary beats 6 columns.
+    const glosario = await rechazar({ ...MENSAJE, lineaMensaje: '{nada} consulta', columnasPrueba: [] });
+    assert.deepEqual(glosario.terminos, ['consulta']);
+    assert.equal(glosario.marcadores, undefined);
+  });
+
+  test('3.1 CH-39 a client-text refusal wins over a message-text one, and a message one over the SQL checks', async () => {
+    const cliente = await rechazar({ ...MENSAJE, titulo: 'a'.repeat(81), lineaMensaje: 'sin marcadores' });
+    assert.deepEqual(cliente.campos, ['/titulo']);
+    assert.equal(cliente.marcadores, undefined);
+    const mensaje = await rechazar({ ...MENSAJE, sql: '   ', lineaMensaje: 'sin marcadores' });
+    assert.deepEqual(mensaje.campos, ['/lineaMensaje']);
+  });
+
+  test('3.1 CH-39 the message keys are schema keys, not stripped as unknown ones', async () => {
+    // A key missing from `propertyNames.enum` would be removed and the body accepted.
+    const cuerpo = await rechazar({ encabezadoMensaje: 'x', lineaMensaje: '{a}', columnasPrueba: [] });
+    assert.deepEqual(cuerpo.marcadores, ['a']);
+  });
+
   test('4.1 a replace runs the same save-time checks before any write', async () => {
     const reemplazar = async (payload: Record<string, unknown>): Promise<CuerpoRechazo> => {
       const respuesta = await app.inject({ method: 'PUT', url: '/plantillas/cualquiera', payload });
@@ -225,6 +361,8 @@ describe('plantilla catalog — use rule over a fake port (CH-38, DEC-191)', () 
     toleranciaFrescuraMinutos: 30,
     titulo: null,
     descripcion: null,
+    encabezadoMensaje: null,
+    lineaMensaje: null,
   };
   let app!: FastifyInstance;
   let enUso = false;
@@ -544,6 +682,118 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
     const guardada = await prisma.plantilla.findUnique({ where: { id: String(creada.id) } });
     assert.equal(guardada?.titulo, null);
     assert.equal(guardada?.descripcion, null);
+  });
+
+  test('3.1 CH-39 a create with message texts echoes both, without columnasPrueba, and get-by-id agrees', async () => {
+    const creada = await crear({
+      nombre: `${marca} mensaje`,
+      ...MENSAJE,
+      encabezadoMensaje: '  Productos con poco stock  ',
+    });
+    assert.equal(creada.encabezadoMensaje, MENSAJE.encabezadoMensaje);
+    assert.equal(creada.lineaMensaje, MENSAJE.lineaMensaje);
+    assert.equal('columnasPrueba' in creada, false);
+    const leida = await app.inject({ method: 'GET', url: `/plantillas/${String(creada.id)}` });
+    assert.deepEqual(leida.json(), { plantilla: creada });
+    const guardada = await prisma.plantilla.findUnique({ where: { id: String(creada.id) } });
+    assert.deepEqual(
+      [guardada?.encabezadoMensaje, guardada?.lineaMensaje],
+      [MENSAJE.encabezadoMensaje, MENSAJE.lineaMensaje],
+    );
+    assert.equal(guardada !== null && 'columnasPrueba' in guardada, false);
+  });
+
+  test('3.1 CH-39 a create without message texts stores null for both, and the list summary has neither', async () => {
+    const creada = await crear({ nombre: `${marca} sin mensaje` });
+    assert.equal(creada.encabezadoMensaje, null);
+    assert.equal(creada.lineaMensaje, null);
+    const lista = await app.inject({ method: 'GET', url: '/plantillas' });
+    const resumen = (lista.json() as { plantillas: Record<string, unknown>[] }).plantillas;
+    assert.ok(resumen.length > 0);
+    assert.ok(resumen.every((p) => !('encabezadoMensaje' in p) && !('lineaMensaje' in p)));
+  });
+
+  test('3.1 CH-39 columnasPrueba without texts is accepted, ignored, and never stored or echoed', async () => {
+    const creada = await crear({ nombre: `${marca} columnas sueltas`, columnasPrueba: ['a', 'b'] });
+    assert.equal('columnasPrueba' in creada, false);
+    assert.equal(creada.encabezadoMensaje, null);
+    assert.equal(creada.lineaMensaje, null);
+  });
+
+  test('3.1 CH-39 blank texts are absent, and the glossary ignores placeholder names', async () => {
+    const enBlanco = await crear({
+      nombre: `${marca} mensaje en blanco`,
+      encabezadoMensaje: '  ',
+      lineaMensaje: '\t',
+    });
+    assert.equal(enBlanco.encabezadoMensaje, null);
+    assert.equal(enBlanco.lineaMensaje, null);
+    const glosario = await crear({
+      nombre: `${marca} marcador de glosario`,
+      encabezadoMensaje: 'Aviso',
+      lineaMensaje: '{consulta}: revisar',
+      columnasPrueba: ['consulta'],
+    });
+    assert.equal(glosario.lineaMensaje, '{consulta}: revisar');
+  });
+
+  test('3.1 CH-39 texts exactly at their caps are accepted', async () => {
+    const linea = `{producto}${'l'.repeat(290)}`;
+    const creada = await crear({
+      nombre: `${marca} tope mensaje`,
+      encabezadoMensaje: ` ${'h'.repeat(200)} `,
+      lineaMensaje: ` ${linea} `,
+      columnasPrueba: ['producto'],
+    });
+    assert.equal(creada.encabezadoMensaje, 'h'.repeat(200));
+    assert.equal(creada.lineaMensaje, linea);
+  });
+
+  test('3.1 CH-39 a rejected message writes no row, on create and on replace', async () => {
+    const nombre = `${marca} mensaje rechazado`;
+    const rechazada = await app.inject({
+      method: 'POST',
+      url: '/plantillas',
+      payload: { ...VALIDA, nombre, ...MENSAJE, lineaMensaje: '{stock}' },
+    });
+    assert.equal(rechazada.statusCode, 400, rechazada.body);
+    assert.equal(await prisma.plantilla.count({ where: { nombre } }), 0);
+    const creada = await crear({ nombre: `${marca} mensaje intacto`, ...MENSAJE });
+    const url = `/plantillas/${String(creada.id)}`;
+    const reemplazo = await app.inject({
+      method: 'PUT',
+      url,
+      payload: { ...VALIDA, nombre: `${marca} mensaje intacto`, ...MENSAJE, lineaMensaje: '{stock}' },
+    });
+    assert.equal(reemplazo.statusCode, 400, reemplazo.body);
+    assert.deepEqual((reemplazo.json() as CuerpoRechazo).marcadores, ['stock']);
+    assert.deepEqual((await app.inject({ method: 'GET', url })).json(), { plantilla: creada });
+  });
+
+  test('4.1 CH-39 a PUT replaces the texts, and a PUT without them stores both as null', async () => {
+    const creada = await crear({ nombre: `${marca} mensaje reemplazo`, ...MENSAJE });
+    const url = `/plantillas/${String(creada.id)}`;
+    const nuevo = await app.inject({
+      method: 'PUT',
+      url,
+      payload: {
+        ...VALIDA,
+        nombre: `${marca} mensaje reemplazo`,
+        encabezadoMensaje: 'Otro encabezado',
+        lineaMensaje: '{cantidad} de {producto}',
+        columnasPrueba: ['producto', 'cantidad'],
+      },
+    });
+    assert.equal(nuevo.statusCode, 200, nuevo.body);
+    const { plantilla } = nuevo.json() as { plantilla: Record<string, unknown> };
+    assert.equal(plantilla.encabezadoMensaje, 'Otro encabezado');
+    assert.equal(plantilla.lineaMensaje, '{cantidad} de {producto}');
+    assert.equal('columnasPrueba' in plantilla, false);
+    const sin = await app.inject({ method: 'PUT', url, payload: { ...VALIDA, nombre: `${marca} mensaje reemplazo` } });
+    assert.equal(sin.statusCode, 200, sin.body);
+    const guardada = await prisma.plantilla.findUnique({ where: { id: String(creada.id) } });
+    assert.equal(guardada?.encabezadoMensaje, null);
+    assert.equal(guardada?.lineaMensaje, null);
   });
 
   test('4.1 a PUT naming no row answers 404 and writes nothing', async () => {

@@ -57,7 +57,16 @@ export const EjecucionListada = {
   notificacion: true,
   /** CH-17b (DEC-103): real connection attempts; null when the run never dialled. */
   intentos: true,
+  /** CH-39 (DEC-188): the column names the message lacked when it fell back to the table; null otherwise. */
+  mensajeRespaldo: true,
 } as const;
+
+/** The stored fallback names, or null when the column holds anything but an array of strings. */
+function respaldoLeido(valor: unknown): string[] | null {
+  return Array.isArray(valor) && valor.every((nombre) => typeof nombre === 'string')
+    ? (valor as string[])
+    : null;
+}
 
 interface RegistroAutomatizacionBody {
   plantillaId: string;
@@ -453,10 +462,11 @@ export function registerAutomatizacionRoutes(
         take: LIMITE_LISTADO + 1,
       });
       const truncado = filas.length > LIMITE_LISTADO;
-      return reply.code(200).send({
-        ejecuciones: truncado ? filas.slice(0, LIMITE_LISTADO) : filas,
-        truncado,
-      });
+      const pagina = (truncado ? filas.slice(0, LIMITE_LISTADO) : filas).map((fila) => ({
+        ...fila,
+        mensajeRespaldo: respaldoLeido(fila.mensajeRespaldo),
+      }));
+      return reply.code(200).send({ ejecuciones: pagina, truncado });
     },
   );
 }

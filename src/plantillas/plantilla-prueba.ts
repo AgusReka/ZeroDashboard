@@ -61,7 +61,7 @@ const pruebaSchema = {
  * CH-38 (DEC-191): the body of `POST /plantillas/prueba`. The template's own properties come
  * from `registroPlantillaSchema` so the two can never drift, plus `conexionId` and `valores`
  * with the shape of `pruebaSchema`. `limite` and `desplazamiento` are not accepted: the console
- * asks for the first page only. `propertyNames.enum` lists every key (eleven), and `required`
+ * asks for the first page only. `propertyNames.enum` lists every key (fourteen), and `required`
  * is the union of both schemas: an unlisted key would be stripped by `removeAdditional`.
  */
 const pruebaSinGuardarSchema = {
@@ -234,10 +234,11 @@ export function registerPlantillaPruebaRoute(
     '/plantillas/prueba',
     { schema: { body: pruebaSinGuardarSchema }, attachValidation: true },
     async (request, reply) => {
-      // The same refusal, with the same body, as `POST /plantillas`. A violation on
+      // The same refusal, with the same body, as `POST /plantillas`, except the test-columns
+      // check (CH-39): this test is what produces the columns. A violation on
       // `conexionId` or `valores` is reported by the same AJV path (`campos` names it), and
       // nothing executes before every check has passed.
-      const rechazo = rechazoDePlantilla(request.validationError, request.body);
+      const rechazo = rechazoDePlantilla(request.validationError, request.body, { exigirColumnas: false });
       if (rechazo !== null) {
         return reply.code(400).send(rechazo);
       }
