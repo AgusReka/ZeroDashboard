@@ -3896,6 +3896,49 @@ Qué hace «Duplicar y editar» con el texto del mensaje:
 
 ---
 
+### DEC-193 — CH-40: el ajuste de la consola también edita el mínimo de filas, y un resultado cortado por el tope lo alcanza
+
+**Contexto.**
+- DEC-186 (b) suma `minimoFilas` a la automatización. Se valida como entero entre 1 y el tope de filas del motor, se carga en el alta de la consola y deja afuera el ajuste desde el panel.
+- DEC-174 dice que el operador ajusta en el lugar «lo mismo que carga en el alta». DEC-186 no nombra el ajuste de la consola, así que las dos decisiones no coinciden para esa pantalla.
+- El planificador lee una sola página de `maxFilasPorConsulta` filas (DEC-19). La cantidad de filas leídas nunca supera el tope, y cuando hay más filas es igual al tope con `hayMas`.
+- El tope sale de `MAX_FILAS_CONSULTA` y se puede bajar después de crear una automatización. En ese caso, un mínimo mayor que el tope nuevo no se alcanzaría nunca.
+
+Quedan dos puntos que DEC-186 no resuelve.
+
+**Opciones.**
+
+Ajuste de la consola:
+- (a) El ajuste del operador también edita `minimoFilas`, con la misma validación y en la misma fila.
+- (b) Solo el alta: para cambiar el mínimo hay que desactivar la automatización y crear otra.
+
+Resultado cortado por el tope:
+- (a) Un resultado cortado por el tope (`hayMas`) cuenta como que alcanzó el mínimo.
+- (b) Se compara solo contra las filas leídas, y se documenta que bajar el tope puede silenciar automatizaciones.
+
+**Decisión.** Ajuste (a) y corte (a).
+- **Ajuste (a).** Mantiene la paridad entre alta y ajuste de DEC-174. Con (b), cambiar el mínimo pierde el historial de ejecuciones, que es justo lo que DEC-174 protege. El costo es una clave más en una ruta y un formulario que ya existen.
+- **Corte (a).** El resultado tenía más filas que las leídas, y el correo ya lo dice con el «+». Es una condición más, y ningún cambio de configuración silencia una automatización sin aviso.
+
+**Forma.**
+- **Precedencia.** La fila nueva va después de «cero filas» y antes de «sin destinatario»: una ejecución correcta con `0 < filas < minimoFilas` y sin corte por el tope termina `omitida-bajo-minimo`. Con el valor por defecto en 1 esa fila nunca se cumple, así que las automatizaciones existentes no cambian (DEC-84).
+- **Validación.** Un entero desde 1 hasta `maxFilasPorConsulta`, leído al atender la petición. Vale para `POST /automatizaciones` y para `PUT /automatizaciones/:id/ajustes`, con `400` y `/minimoFilas` en `campos`. Un número escrito como texto se acepta como su entero, igual que en los otros campos enteros. La regla de DEC-60 contra la conversión es para `valores`, donde el tipo cambia el parámetro de la consulta.
+- **Panel.** La ruta de ajuste del panel (P-04) sigue sin aceptar `minimoFilas`, como dice DEC-186.
+
+**Alcance que no cambia.** El tope de filas, la regla de cero filas, el correo, las plantillas y el panel del cliente.
+
+**Por qué.** Cierra DEC-186 sin agregarle capacidad al motor: sigue siendo la condición del patrón consulta → condición → notificación (regla 6).
+
+**Se resigna.**
+- **El panel no ve el mínimo.** El cliente no lo puede ajustar hasta que una historia lo pida.
+- **Con corte, el mínimo es aproximado.** Si el tope bajó por debajo del mínimo, alcanza con llenar una página para avisar.
+
+**Decidido por:** el usuario, 2026-11-03, en la exploración de CH-40: eligió las dos opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
