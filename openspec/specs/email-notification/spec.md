@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Delivering an automation run's result rows to one recipient by email (N1), only when rows exist (X3), rendered legibly even when the data is incomplete (N2). Transport is SMTP via nodemailer behind an injectable notifier (DEC-81); the recipient is one validated address on the automation (DEC-82); the body is produced by a generic columns-driven renderer (DEC-85). Since CH-39, a template that declares its message texts gets a body of the header and one line per row instead of the table (DEC-188, DEC-192). A run sends at most one message (X6, DEC-107). Retries of the send (DEC-97), content or cooldown duplicate suppression, "send when empty", per-template HTML, and multi-section reports are out of scope (documented artifact limits, rule 6).
+Delivering an automation run's result rows to one recipient by email (N1), only when rows exist (X3) and reach the automation's minimum (X9, DEC-186, DEC-193), rendered legibly even when the data is incomplete (N2). Transport is SMTP via nodemailer behind an injectable notifier (DEC-81); the recipient is one validated address on the automation (DEC-82); the body is produced by a generic columns-driven renderer (DEC-85). Since CH-39, a template that declares its message texts gets a body of the header and one line per row instead of the table (DEC-188, DEC-192). A run sends at most one message (X6, DEC-107). Retries of the send (DEC-97), content or cooldown duplicate suppression, "send when empty", per-template HTML, and multi-section reports are out of scope (documented artifact limits, rule 6).
 
 ## Requirements
 
-### Requirement: Notification Outcome Precedence Is Deterministic (DEC-83, DEC-84, DEC-86)
+### Requirement: Notification Outcome Precedence Is Deterministic (DEC-83, DEC-84, DEC-86, DEC-186)
 
 After a run's query finishes, the system SHALL compute exactly one `notificacion` value by evaluating these conditions in order, the first that holds winning:
 
@@ -14,12 +14,14 @@ After a run's query finishes, the system SHALL compute exactly one `notificacion
 |---|-----------|----------------|
 | 1 | The run's query failed | `null` (no notification attempted) |
 | 2 | The query succeeded with zero rows | `omitida-sin-filas` |
-| 3 | The automation's `destinatario` is null | `sin-destinatario` |
-| 4 | SMTP is not configured | `no-configurada` |
-| 5 | Send accepted by the transport | `enviada` |
-| 6 | Send rejected, failed, or timed out | `fallo-envio` |
+| 3 | The query succeeded with fewer rows than the automation's `minimoFilas` and the result was not cut by the row cap | `omitida-bajo-minimo` |
+| 4 | The automation's `destinatario` is null | `sin-destinatario` |
+| 5 | SMTP is not configured | `no-configurada` |
+| 6 | Send accepted by the transport | `enviada` |
+| 7 | Send rejected, failed, or timed out | `fallo-envio` |
 
-The system SHALL attempt a send only when the outcome reaches step 5 or 6. Exactly one send attempt SHALL be made per run; there SHALL be no retry.
+A result is cut by the row cap when the query had more rows than the run read (`paginacion.hayMas`); such a result SHALL count as reaching the minimum. The system SHALL attempt a send only when the outcome reaches step 6 or 7. Exactly one send attempt SHALL be made per run; there SHALL be no retry.
+(Previously: there was no minimum row; today's rows 4 to 7 were rows 3 to 6.)
 
 #### Scenario: Query failed records null and sends nothing
 
@@ -33,21 +35,57 @@ The system SHALL attempt a send only when the outcome reaches step 5 or 6. Exact
 - WHEN the run closes
 - THEN `notificacion` SHALL be `omitida-sin-filas`, `estado` SHALL be `ok`, and the notifier SHALL NOT be called
 
+#### Scenario: Zero rows wins over the minimum
+
+- GIVEN an automation with `minimoFilas` 5 whose run returns zero rows
+- WHEN the run closes
+- THEN `notificacion` SHALL be `omitida-sin-filas`
+
+#### Scenario: Rows below the minimum never send
+
+- GIVEN an automation with `minimoFilas` 5, a recipient and SMTP configured, whose run returns 3 rows
+- WHEN the run closes
+- THEN `notificacion` SHALL be `omitida-bajo-minimo`, `estado` SHALL be `ok`, `filas` SHALL be 3, and the notifier SHALL NOT be called
+
+#### Scenario: Reaching the minimum sends
+
+- GIVEN an automation with `minimoFilas` 5, a recipient and SMTP configured, whose run returns exactly 5 rows
+- WHEN the run closes
+- THEN the notifier SHALL be called exactly once and `notificacion` SHALL be `enviada`
+
+#### Scenario: A result cut by the row cap reaches the minimum
+
+- GIVEN an automation with `minimoFilas` 50 and a row cap lowered to 20 after its creation, whose query has more than 20 rows
+- WHEN the run closes
+- THEN the run SHALL read 20 rows with `hayMas` true and the notifier SHALL be called
+
+#### Scenario: The minimum wins over a missing recipient
+
+- GIVEN an automation with `minimoFilas` 5 and null `destinatario`, whose run returns 3 rows
+- WHEN the run closes
+- THEN `notificacion` SHALL be `omitida-bajo-minimo`
+
+#### Scenario: Default minimum keeps today's behavior
+
+- GIVEN an automation with `minimoFilas` 1 whose run returns 1 row, with a recipient and SMTP configured
+- WHEN the run closes
+- THEN `notificacion` SHALL be `enviada`
+
 #### Scenario: Precedence between missing recipient and unset SMTP
 
-- GIVEN a successful run with rows, a null `destinatario`, and SMTP unset
+- GIVEN a successful run with rows reaching the minimum, a null `destinatario`, and SMTP unset
 - WHEN the run closes
 - THEN `notificacion` SHALL be `sin-destinatario`
 
 #### Scenario: SMTP unset with a recipient
 
-- GIVEN a successful run with rows, a recipient, and SMTP unset
+- GIVEN a successful run with rows reaching the minimum, a recipient, and SMTP unset
 - WHEN the run closes
 - THEN `notificacion` SHALL be `no-configurada`, `estado` SHALL be `ok`, and the notifier SHALL NOT be called
 
 #### Scenario: Rows with recipient and SMTP configured send exactly once
 
-- GIVEN a successful run with rows, a recipient, SMTP configured, and `formato` `correo-html`
+- GIVEN a successful run with rows reaching the minimum, a recipient, SMTP configured, and `formato` `correo-html`
 - WHEN the run closes
 - THEN the notifier SHALL be called exactly once with that recipient and `notificacion` SHALL be `enviada`
 

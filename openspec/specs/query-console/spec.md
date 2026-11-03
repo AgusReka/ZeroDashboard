@@ -208,9 +208,9 @@ WHEN an execution or save request fails because of a parameter validation error 
 - AND the console SHALL NOT display a raw driver error object or a stack trace
 ### Requirement: Console Displays Automations and Supports Creating One (DEC-78)
 
-The console SHALL display the active tenant's list of `Automatizacion` rows and SHALL provide a way to create one, submitting to the tenant-scoped create route. Creation SHALL be a two-step wizard in a wide pop-up (DEC-173) opened by «Nueva automatización» in the screen's page header, with a stepper showing the current step. Step 1 SHALL present a connection dropdown, filled from `GET /conexiones` when the wizard opens, above a template picker of cards. Step 2 SHALL present the template's parameters, the schedule presets, one optional recipient email input submitted as `destinatario`, a read-only email preview, a Volver control and a "Crear automatización" control. «Cancelar» and Escape SHALL behave as in every create pop-up. The create request body MUST keep its existing keys (`plantillaId`, `conexionId`, `valores`, `cron`, optional `destinatario`). On a 201 the console SHALL close the pop-up, show a success banner stating the first scheduled run and the time zone from the response, and reload the list. A rejected value SHALL be shown inside the pop-up as a legible error naming that field, without a raw error object or stack trace, and the pop-up SHALL stay open.
+The console SHALL display the active tenant's list of `Automatizacion` rows and SHALL provide a way to create one, submitting to the tenant-scoped create route. Creation SHALL be a two-step wizard in a wide pop-up (DEC-173) opened by «Nueva automatización» in the screen's page header, with a stepper showing the current step. Step 1 SHALL present a connection dropdown, filled from `GET /conexiones` when the wizard opens, above a template picker of cards. Step 2 SHALL present the template's parameters, the schedule presets, one optional recipient email input submitted as `destinatario`, one number input «Mínimo de filas para avisar» holding 1 by default and submitted as `minimoFilas`, a read-only email preview that states the minimum the email needs, a Volver control and a "Crear automatización" control. «Cancelar» and Escape SHALL behave as in every create pop-up. The create request body MUST keep its existing keys (`plantillaId`, `conexionId`, `valores`, `cron`, optional `destinatario`) and MAY add `minimoFilas`. On a 201 the console SHALL close the pop-up, show a success banner stating the first scheduled run and the time zone from the response, and reload the list. A rejected value SHALL be shown inside the pop-up as a legible error naming that field, without a raw error object or stack trace, and the pop-up SHALL stay open.
 In the list, the connection SHALL be shown by its name, from `GET /conexiones` loaded with the list, or by its short id when it is not among the tenant's connections. The schedule SHALL be shown in words followed by the cron expression in monospace when it matches one of the DEC-129 presets (for example «Todos los días a las 06:00» and `0 6 * * *`), and as the cron expression alone otherwise.
-(Previously: the wizard was revealed inline in the screen's body, and the list showed the raw `conexionId` and the raw cron. Before that: one flat form with a template select, a free-text connection UUID, a raw cron field and an optional recipient; the banner only confirmed creation.)
+(Previously: step 2 had no minimum input and the body had no `minimoFilas`.)
 
 #### Scenario: Viewing the automations list
 
@@ -243,12 +243,32 @@ In the list, the connection SHALL be shown by its name, from `GET /conexiones` l
 - **WHEN** a recipient is entered and the form is submitted
 - **THEN** the create request SHALL carry it as `destinatario`
 
+#### Scenario: Creating with a minimum
+
+- **GIVEN** the wizard is on step 2
+- **WHEN** the minimum is set to 5 and the form is submitted
+- **THEN** the create request SHALL carry `"minimoFilas": 5` as a number
+- **AND** the email preview SHALL state that the email is sent with 5 rows or more
+
+#### Scenario: Default minimum
+
+- **GIVEN** the wizard is on step 2 and the minimum is left at 1
+- **WHEN** the form is submitted
+- **THEN** the create request SHALL carry `"minimoFilas": 1`
+
 #### Scenario: Invalid recipient shown legibly
 
 - **GIVEN** the create form is submitted with an invalid recipient
 - **WHEN** the `400` response is received
 - **THEN** the console SHALL display a legible message naming the recipient field inside the pop-up
 - **AND** SHALL NOT display a raw error object or stack trace
+
+#### Scenario: Invalid minimum shown legibly
+
+- **GIVEN** the create request returns `400` naming `/minimoFilas`
+- **WHEN** the response is received
+- **THEN** the pop-up SHALL show a legible message naming the minimum field and saying it is a whole number from 1 up to the row cap
+- **AND** the pop-up SHALL stay open on step 2 with its values kept
 
 #### Scenario: Wizard opens on step 1
 
@@ -269,11 +289,11 @@ In the list, the connection SHALL be shown by its name, from `GET /conexiones` l
 - **WHEN** step 2 is shown
 - **THEN** one control per declared parameter SHALL be rendered, as before this change
 
-#### Scenario: POST body is unchanged
+#### Scenario: POST body keys
 
 - **GIVEN** a completed wizard
 - **WHEN** Crear automatización is used
-- **THEN** the POST body keys SHALL be a subset of `plantillaId`, `conexionId`, `valores`, `cron`, `destinatario`
+- **THEN** the POST body keys SHALL be a subset of `plantillaId`, `conexionId`, `valores`, `cron`, `destinatario`, `minimoFilas`
 - **AND** no tenant identifier SHALL appear in the body
 
 #### Scenario: Success banner shows first run and zone
@@ -317,14 +337,15 @@ The console SHALL provide a control to deactivate a listed active automation, an
 
 ### Requirement: Console Adjusts an Automation in Place (DEC-174)
 
-Each active automation in the list SHALL offer «Ajustar», next to «Desactivar»; a deactivated one SHALL NOT. «Ajustar» SHALL read `GET /automatizaciones/:id` and open a pop-up (DEC-173) titled «Ajustar automatización», showing the template's and the connection's names as read-only text, and prefilled with the stored values: one control per parameter the template currently declares, the schedule (a preset cron opens on its preset and hour; any other on «Personalizado» with the cron as stored) and the recipient. «Guardar ajustes» SHALL send `PUT /automatizaciones/:id/ajustes` with only the fields that changed: `valores` as the whole map of every declared parameter when any of them changed, `cron` when the schedule changed, and `destinatario` when the recipient changed, as `null` when it was emptied. With nothing changed, «Guardar ajustes» SHALL send nothing and say so inside the pop-up. On a `200` the pop-up SHALL close, the page notice SHALL state the next scheduled run and the zone, and the list SHALL reload. A `400` SHALL be shown inside the pop-up naming the offending field, and a `404` or `409` as a legible message inside it; the pop-up SHALL stay open with the typed values. A failed read SHALL open nothing and show a legible notice. The body SHALL NOT carry `plantillaId`, `conexionId`, `activo` or a tenant identifier.
+Each active automation in the list SHALL offer «Ajustar», next to «Desactivar»; a deactivated one SHALL NOT. «Ajustar» SHALL read `GET /automatizaciones/:id` and open a pop-up (DEC-173) titled «Ajustar automatización», showing the template's and the connection's names as read-only text, and prefilled with the stored values: one control per parameter the template currently declares, the schedule (a preset cron opens on its preset and hour; any other on «Personalizado» with the cron as stored), the recipient, and the minimum rows. «Guardar ajustes» SHALL send `PUT /automatizaciones/:id/ajustes` with only the fields that changed: `valores` as the whole map of every declared parameter when any of them changed, `cron` when the schedule changed, `destinatario` when the recipient changed, as `null` when it was emptied, and `minimoFilas` as a number when the minimum changed. With nothing changed, «Guardar ajustes» SHALL send nothing and say so inside the pop-up. On a `200` the pop-up SHALL close, the page notice SHALL state the next scheduled run and the zone, and the list SHALL reload. A `400` SHALL be shown inside the pop-up naming the offending field, and a `404` or `409` as a legible message inside it; the pop-up SHALL stay open with the typed values. A failed read SHALL open nothing and show a legible notice. The body SHALL NOT carry `plantillaId`, `conexionId`, `activo` or a tenant identifier.
+(Previously: the adjust had no minimum.)
 
 #### Scenario: Adjust opens prefilled
 
-- GIVEN an active automation on connection "food-store", template "Stock físico", cron `0 6 * * 1-5`, `valores` `{ "umbral": 5 }` and recipient `a@empresa.com`
+- GIVEN an active automation on connection "food-store", template "Stock físico", cron `0 6 * * 1-5`, `valores` `{ "umbral": 5 }`, recipient `a@empresa.com` and `minimoFilas` 3
 - WHEN «Ajustar» is used on its row
 - THEN one `GET /automatizaciones/:id` SHALL be sent with the active tenant
-- AND the pop-up SHALL show "Stock físico" and "food-store" as text, `umbral` 5, «De lunes a viernes» at 06:00, and `a@empresa.com`
+- AND the pop-up SHALL show "Stock físico" and "food-store" as text, `umbral` 5, «De lunes a viernes» at 06:00, `a@empresa.com`, and a minimum of 3
 
 #### Scenario: Only the changed fields are sent
 
@@ -332,6 +353,12 @@ Each active automation in the list SHALL offer «Ajustar», next to «Desactivar
 - WHEN only the hour is changed to 07:30 and «Guardar ajustes» is used
 - THEN the `PUT` body SHALL be exactly `{ "cron": "30 7 * * 1-5" }`
 - AND on `200` the pop-up SHALL close, the notice SHALL state the next run and the zone, and the list SHALL reload
+
+#### Scenario: Changing only the minimum
+
+- GIVEN the adjust pop-up is open as above
+- WHEN only the minimum is changed to 10 and «Guardar ajustes» is used
+- THEN the `PUT` body SHALL be exactly `{ "minimoFilas": 10 }`
 
 #### Scenario: Emptying the recipient clears it
 
@@ -347,7 +374,7 @@ Each active automation in the list SHALL offer «Ajustar», next to «Desactivar
 
 #### Scenario: A refusal stays inside the pop-up
 
-- GIVEN the adjust is answered `400` naming `destinatario`, or `409 automatizacion-desactivada`
+- GIVEN the adjust is answered `400` naming `destinatario` or `/minimoFilas`, or `409 automatizacion-desactivada`
 - WHEN the console handles it
 - THEN a legible message SHALL be shown inside the pop-up, which stays open with the typed values
 
@@ -358,8 +385,8 @@ Each active automation in the list SHALL offer «Ajustar», next to «Desactivar
 
 ### Requirement: Console Displays an Automation's Runs (DEC-80)
 
-The console SHALL provide a way to view a selected automation's `Ejecucion` rows, showing at least start, end, duration, row count, status, notification outcome (`notificacion`), attempts (`intentos`), and error when present. A null `notificacion` or null `intentos` SHALL render as a visible placeholder, never as the text `null`.
-(Previously: did not show `intentos`.)
+The console SHALL provide a way to view a selected automation's `Ejecucion` rows, showing at least start, end, duration, row count, status, notification outcome (`notificacion`), attempts (`intentos`), and error when present. Every closed `notificacion` value, `omitida-bajo-minimo` included, SHALL have a legible label. A null `notificacion` or null `intentos` SHALL render as a visible placeholder, never as the text `null`.
+(Previously: `omitida-bajo-minimo` had no label.)
 
 #### Scenario: Viewing an automation's runs
 
@@ -370,9 +397,9 @@ The console SHALL provide a way to view a selected automation's `Ejecucion` rows
 
 #### Scenario: Notification outcomes are legible
 
-- GIVEN runs with `notificacion` values `enviada`, `omitida-sin-filas`, and null
+- GIVEN runs with `notificacion` values `enviada`, `omitida-sin-filas`, `omitida-bajo-minimo`, and null
 - WHEN the runs view is opened
-- THEN each run SHALL show a legible label for its outcome and the null run SHALL show a placeholder
+- THEN each run SHALL show a legible label for its outcome, `omitida-bajo-minimo` reading «No enviada: menos filas que el mínimo», and the null run SHALL show a placeholder
 
 #### Scenario: Send failure visible as failure
 
@@ -385,6 +412,7 @@ The console SHALL provide a way to view a selected automation's `Ejecucion` rows
 - GIVEN a run with `intentos=3` and an `omitida` run with null `intentos`
 - WHEN the runs view is opened
 - THEN the first SHALL show 3 and the second SHALL show a placeholder, not the text `null`
+
 ### Requirement: Automation Views Respect the Active-Tenant Indicator (T4, DEC-15)
 
 The automations and runs views SHALL forward the currently selected active tenant explicitly on every call, per the existing active-tenant indicator and forwarding requirements. The wizard's calls (`GET /conexiones`, template detail, validation-mapping reads, create) MUST carry the tenant header. WHEN the active tenant changes, the console SHALL discard all wizard state (step, connection, chosen template, parameter values, schedule, recipient, validation results, preview), close the wizard pop-up, and SHALL ignore any response that started before the switch, including the connection names of the automations list. The tenant load SHALL issue, in order: the saved queries, the query pop-up's connections (CH-32a), the templates, the automations list's connection names and the automations.
