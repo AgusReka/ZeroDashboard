@@ -3383,6 +3383,519 @@ Sobre el origen del ejemplo: (1) fijo, las vistas de la réplica de demo `food_s
 
 ---
 
+### DEC-182 — Plantillas creadas y editadas desde la consola
+
+**Contexto.**
+- DEC-61 dejó la plantilla como un catálogo global persistido, que P1 escribe por API. El backend ya existe: `POST /plantillas` y `PUT /plantillas/:id` validan el cuerpo con `problemasDePlantilla`, y `POST /plantillas/:id/prueba` la ejecuta contra una conexión de un tenant (DEC-62).
+- La consola solo muestra las plantillas, sin poder modificarlas: hoy no hay forma de crear una sin usar la API a mano.
+- La v2 busca que P1 escriba sus propias automatizaciones contra las vistas canónicas `v_*`, en lugar de usar SQL crudo del tenant. La decisión del 2026-10-23 mantiene el contrato canónico como único camino de las automatizaciones.
+
+Hay dos huecos de diseño.
+1. **Editar una plantilla en uso.** `PUT` reemplaza la plantilla, y esa plantilla es global. Una edición cambia en silencio, desde la próxima ejecución, las automatizaciones de todos los tenants que la usan.
+2. **El texto de negocio.** El panel muestra solo las plantillas que tienen un texto de negocio, y esos textos están fijos en el código por id (DEC-137). Una plantilla creada desde la consola nunca aparecería en el panel.
+
+**Opciones.**
+
+Edición de una plantilla en uso:
+- (a) Se puede editar siempre. Rige desde la próxima ejecución en todos los tenants, como hoy lo hace la API, y queda registrada en la auditoría.
+- (b) Mientras alguna automatización la use, no se edita: se duplica. La consola ofrece «Duplicar y editar», y la copia no tiene automatizaciones.
+- (c) Versionarla como las consultas guardadas (CH-25), con cada automatización atada a una versión.
+
+Texto de negocio:
+- (a) Campos nuevos en `Plantilla` (título y descripción para el cliente), con una migración. Los dos textos de DEC-137 pasan a la semilla.
+- (b) Se mantiene el mapa en el código. Una plantilla nueva no aparece en el panel hasta que se agregue su texto en el código.
+
+**Decisión.** Edición (b) y texto de negocio (a).
+- **Edición (b).** La edición nunca cambia lo que corre en otro tenant, y no hace falta el modelo de versiones de (c).
+- **Texto de negocio (a).** Sin ese campo, «crear plantillas desde la consola» no llega al cliente.
+
+**Alcance que no cambia.**
+- La plantilla sigue escribiéndose contra `v_*` y ejecutándose con `componerSentencia`.
+- Sigue validándose con las listas cerradas del código (DEC-63, DEC-65, DEC-67).
+- La condición sigue siendo el `WHERE` parametrizado más «sin filas no se envía» (DEC-64, DEC-84).
+- No se agrega ningún modo de automatización sobre SQL del tenant.
+
+**Por qué.** Hace usable algo que el backend ya permite, y cada plantilla nueva es una prueba más de que el contrato canónico alcanza para escribir automatizaciones genéricas.
+
+**Se resigna.**
+- Con (b), el catálogo puede acumular copias parecidas, y una corrección no se propaga a las automatizaciones existentes: hay que recrearlas.
+- Con (a) en el texto de negocio, se suma una migración a un modelo que hasta ahora no la tuvo desde CH-12.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-183 — Reportes para el cliente: consultas sobre vistas canónicas, visualización fija y tablero en el panel
+
+**Contexto.**
+- La v2 quiere sumar reportería para P2, al estilo de los tableros de herramientas de BI: una consulta, una forma de mostrarla (gráfico, tabla o número) y una vista que agrupe varios reportes.
+- Hay tres restricciones vigentes:
+  - **Regla 1 y DEC-04:** P2 no escribe consultas. El diferencial frente a las herramientas de BI es justamente que el cliente no opera la herramienta.
+  - **DEC-93:** no se persisten las filas devueltas. Por eso CH-27 (P4h) quedó fuera de alcance.
+  - **Anti-alcance:** excluye el «constructor visual de consultas sin código».
+- Ninguna excluye que P1 escriba la consulta y el panel muestre su resultado en vivo.
+
+**Opciones.**
+
+Fuente del reporte:
+- (a) Catálogo global de reportes escritos por P1 contra las vistas canónicas `v_*`, como las plantillas (DEC-61). Cada tenant los ejecuta a través de su mapeo.
+- (b) Reportes por tenant, escritos por P1 sobre el SQL crudo de su réplica (como una consulta guardada, DEC-11).
+- (c) Dejar la reportería fuera, como límite del artefacto.
+
+Parámetros que puede elegir P2:
+- (a) Ninguno: el reporte se ve tal como lo definió P1.
+- (b) Solo un período (por ejemplo, últimos 7, 30 o 90 días), declarado por P1 en el reporte como un parámetro de tipo fecha.
+
+**Decisión.** Fuente (a) y parámetros (b).
+- **Fuente (a).** Un mismo reporte sirve para todos los tenants sin reescribirse, que es el argumento de la tesis. (b) sería una herramienta de BI más chica.
+- **Parámetros (b).** Sin elegir el período, un tablero de ventas es casi decorativo. El período es un valor validado contra la declaración, no SQL (regla 1).
+
+**Forma.**
+- **Reporte.** Tiene nombre, texto para el cliente, una consulta contra `v_*` con parámetros declarados, entidades que usa y un tipo de visualización de una lista cerrada en el código: número, tabla, barras o línea. El tipo fija qué columnas espera; por ejemplo, barras espera una etiqueta y un valor.
+- **Tablero.** P1 elige, por tenant, qué reportes ve el cliente y en qué orden. El tablero se guarda como configuración del tenant, sin filas.
+- **Ejecución en vivo.** Cada vista del tablero ejecuta las consultas contra la réplica (por agente o directo, como cualquier otra ejecución) y no guarda el resultado (DEC-93).
+- **Tope de filas.** La salida tiene un tope fijo en el código. El panel solo recibe las columnas que el tipo de visualización declara (regla 5).
+- **Tenant.** Sale solo de la sesión del panel (DEC-135, regla 2).
+- **Frescura.** El tablero muestra la frescura de la réplica (CH-24), como información.
+
+**Fuera de esta decisión.** Cómo se dibujan los gráficos en el navegador (biblioteca propia en SVG o una biblioteca externa servida desde `public/`) queda para una DEC separada, porque cruza la forma de servir la interfaz.
+
+**Por qué.** Suma el valor de la reportería sin que P2 escriba consultas y sin custodiar filas. Además, apoyado en el contrato canónico, agrega una segunda clase de artefacto genérico (reportes, además de automatizaciones) para el capítulo de resultados.
+
+**Se resigna.**
+- Cada vista del tablero carga la réplica del cliente, porque no hay caché por DEC-93. Un tablero con muchos reportes es lento si el agente o la réplica lo son.
+- No hay exploración libre, filtros arbitrarios ni descarga de datos.
+- Un reporte que no se puede expresar sobre `v_*` no entra; se documenta como límite del artefacto.
+- Requiere historias nuevas en `docs/mapa-historias.md` (R4) y la aclaración en el anti-alcance de que reporte = SQL escrito por P1 más una visualización fija, no un constructor.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-184 — Los gráficos de los reportes usan una biblioteca externa copiada en `public/ui/`
+
+**Contexto.**
+- DEC-183 fija cuatro tipos de visualización para los reportes del panel: número, tabla, barras y línea.
+- Las páginas son strings de TypeScript. Solo la hoja de estilos se sirve como archivos fijos desde `public/ui/`, con una lista cerrada de rutas exactas (DEC-124). No hay plugin de archivos estáticos, CSP ni scripts de terceros.
+- Todo dato que llega de la API se asigna con `textContent`, nunca con `innerHTML`, porque las filas vienen de la réplica del cliente (comentario de cabecera de `src/consola/consola.ts`).
+
+**Opciones.**
+- (a) Un dibujante propio en el script del panel: arma SVG con `createElementNS` y pone los textos con `textContent`, sin dependencias.
+- (b) Una biblioteca externa de gráficos, copiada en `public/ui/` y servida con el mecanismo de DEC-124.
+- (c) Una biblioteca desde un CDN.
+- (d) SVG armado en el servidor y enviado ya dibujado al panel.
+
+**Decisión.** (b).
+- **Biblioteca:** Chart.js 4, con licencia MIT, en su build UMD. Se copia en forma literal en `public/ui/vendor/` y se fija una versión exacta. Copiarla es una nueva fila en la lista fija de DEC-124, con su prueba.
+- **Dibujo en `<canvas>`.** Chart.js dibuja etiquetas y tooltips sobre el `<canvas>`, sin insertar HTML. Así se mantiene el criterio de que ningún dato del cliente llega al DOM como marcado. Los textos fuera del gráfico (título y estados) siguen yendo con `textContent`.
+- **Colores.** Salen de los tokens de la skill de diseño, leídos con `getComputedStyle` y pasados a la configuración. No se usa la paleta propia de la biblioteca.
+- **Número y tabla.** No usan la biblioteca: el número es el componente de tarjeta de la skill, y la tabla, la tabla del sistema.
+- **Accesibilidad.** Cada gráfico tiene una tabla equivalente accesible, porque un `<canvas>` no lo es.
+- **Columnas faltantes.** Si el resultado no trae las columnas que el tipo declara, se ve un estado de error del reporte, no un gráfico roto.
+
+**Por qué.**
+- Da tooltips, leyendas y animaciones sin escribirlas, que es lo que se ve en el video y en el uso diario.
+- Copiarla en `public/ui/` reutiliza un mecanismo ya decidido y no agrega un origen de terceros que ejecute código en la sesión del cliente, que es lo que descarta (c).
+- (a) obligaba a escribir y mantener un dibujante por tipo.
+- (d) obligaba a escapar en el servidor el texto que va adentro del SVG.
+
+**Se resigna.**
+- Es un archivo de terceros grande, cargado en la página del panel, que se actualiza a mano, con su propia superficie de fallas. El PR que lo copia necesita una excepción de tamaño, como la copia de la skill en CH-21a.
+- La paleta y la tipografía de los gráficos dependen de la configuración que se le pase, no del CSS del sistema.
+- Es la primera dependencia del front.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo la opción (b) sobre la recomendada (a). La biblioteca, Chart.js, la propuso el agente y la confirmó el usuario el mismo día. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-185 — Telegram como segundo canal: bot global de la plataforma, avisos al administrador de la PYME y vínculo por código
+
+**Contexto.**
+- `docs/00-contexto.md` nombra Telegram como canal del catálogo inicial (§7) y al cliente final (P3) como persona con superficie Telegram (§3). No hay código ni historias para ninguno de los dos.
+- Hoy la notificación es un único correo HTML por ejecución, a una sola dirección guardada en la automatización (DEC-65, DEC-81, DEC-82). Sin SMTP configurado, la ejecución corre igual y registra `no-configurada` (DEC-86).
+- El anti-alcance excluye los disparadores por webhook y la ejecución por ítems: una ejecución produce una notificación.
+
+**Opciones.**
+
+A quién le llega:
+- (a) Al administrador de la PYME (P2), como el correo.
+- (b) Además, un bot para el cliente final (P3) que responda por su propio pedido.
+
+Bot:
+- (a) Un bot global de la plataforma, con el token en la variable de entorno `TELEGRAM_BOT_TOKEN` (regla 7), opcional con el mismo criterio que DEC-86.
+- (b) Un bot por tenant, con el token guardado cifrado como las credenciales de conexión.
+
+Cómo se obtiene el `chat_id` del destinatario:
+- (a) Vínculo por código: el panel muestra «Vincular Telegram» con un código de un solo uso y vencimiento corto. P2 le manda `/start <código>` al bot, y la plataforma lo recibe consultando `getUpdates` hacia afuera, sin webhook ni puertos entrantes.
+- (b) Carga manual: P1 escribe el `chat_id` en la consola, y P2 tiene que averiguarlo por su cuenta.
+
+**Decisión.** Destinatario (a), bot (a) y vínculo (a).
+- **Destinatario (a).** (b) es un producto aparte: un bot conversacional con consultas por cliente final, que exige datos personales que hoy el contrato no expone (regla 5) y una ejecución por ítem. P3 se registra como límite del artefacto y se corrige el contexto.
+- **Bot (a).** Un solo secreto, sin entidades nuevas. El bot se presenta como la plataforma.
+- **Vínculo (a).** El cliente no tiene que saber qué es un `chat_id`. La consulta saliente mantiene el argumento de no abrir puertos entrantes, igual que el agente.
+
+**Forma.**
+- La automatización elige un canal, `correo` o `telegram`.
+- Con `telegram`, el destino es el chat vinculado del tenant. Si no hay vínculo, el resultado es `sin-vinculo`, visible como cualquier otro resultado.
+- El mensaje es texto, armado por un renderizador genérico a partir de las mismas filas que el correo (como DEC-85). Recorta al límite de un mensaje de Telegram y avisa el corte, como el correo.
+- Sigue siendo un mensaje por ejecución, sin reintento del envío (como el correo).
+
+**Se resigna.**
+- El contenido del mensaje pasa por los servidores de Telegram. Es una segunda salida de datos del tenant hacia un tercero, igual que el relay SMTP de DEC-81, y se anota en las consideraciones éticas y legales.
+- La consulta a `getUpdates` es un ciclo nuevo en segundo plano, solo para vincular; no dispara automatizaciones.
+- Un solo chat vinculado por tenant.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-186 — Condición explícita: mínimo de filas para notificar, por automatización
+
+**Contexto.**
+- La condición es el `WHERE` parametrizado de la plantilla más la regla «sin filas no se envía» (DEC-64, DEC-84). La auditoría del 2026-10-13 dejó las condiciones explícitas como trabajo futuro.
+- «El valor supera X» ya se expresa hoy: el umbral es un parámetro dentro del SQL, como en `stock-fisico`, y el cliente lo ajusta desde el panel (CH-23).
+- Lo que el SQL no expresa sin deformar el resultado es «avisar solo si hay al menos N filas»: un `HAVING` sobre el conteo cambia las filas que llegan al mensaje.
+
+**Opciones.**
+- (a) Sin cambios: toda condición queda en el SQL.
+- (b) Un mínimo de filas en la automatización (`minimoFilas`, entero, por defecto 1), evaluado por el motor después de la consulta y antes de notificar.
+- (c) El mismo mínimo, declarado en la plantilla.
+- (d) Una condición sobre una columna del resultado (suma, máximo o mínimo comparado contra un valor).
+
+**Decisión.** (b).
+- **(b).** Cubre lo único que el SQL no expresa bien. Con el valor por defecto en 1, el comportamiento actual no cambia (DEC-84). Es la condición del patrón consulta → condición → notificación, no una capacidad nueva del motor (regla 6).
+- (c) haría que el mismo aviso con distinto mínimo exija otra plantilla.
+- (d) es un pequeño lenguaje de expresiones dentro del motor, que es justo lo que el anti-alcance defiende que no se construya.
+
+**Forma.**
+- Hay una columna nueva con una migración, y se valida como entero entre 1 y el tope de filas del motor.
+- Cuando hay filas pero no llegan al mínimo, la ejecución registra `omitida-bajo-minimo`, distinto de `omitida-sin-filas`.
+- Se carga en el alta de la consola, y su ajuste desde el panel queda fuera hasta que una historia lo pida.
+
+**Se resigna.**
+- No hay condiciones sobre valores agregados fuera del SQL, ni combinaciones (Y, O).
+- Una condición más rica se sigue escribiendo en la consulta de la plantilla.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-187 — N6: varias direcciones por automatización, en un solo mensaje
+
+**Contexto.**
+- La automatización guarda una única dirección (DEC-82). DEC-130 y DEC-140 dejaron la lista de destinatarios como límite del artefacto, y la pantalla P-04 del panel edita un solo destinatario.
+- N6 (R4) pide que un aviso le llegue a más de una persona.
+- El límite se había fijado para no ampliar el motor (regla 6). Pero un mensaje a varias direcciones sigue siendo una notificación por ejecución: no cambia el patrón ni el control de X6.
+
+**Opciones.**
+
+Dónde vive la lista:
+- (a) En la automatización: `destinatarios`, una lista de direcciones validadas con un tope fijo en el código, que reemplaza a `destinatario` con una migración que conserva el valor existente.
+- (b) En el tenant: una lista de distribución que comparten todas sus automatizaciones.
+- (c) Mantener una sola dirección y el límite de DEC-130.
+
+Cómo se envía:
+- (i) Un solo mensaje con todas las direcciones en «Para».
+- (ii) Un solo mensaje con las direcciones en copia oculta.
+- (iii) Un mensaje por dirección.
+
+**Decisión.** (a), con (i) y un tope de 5.
+- **Por qué (a) con (i).** Cada aviso puede ir a gente distinta (stock a depósito, ventas a la dueña), y P-04 ya edita el destinatario por automatización. Con (i) se mantiene un mensaje por ejecución y un solo resultado de envío. Los destinatarios son del mismo negocio, así que verse entre ellos no expone a terceros.
+- (iii) contradice «una ejecución produce una notificación».
+
+**Forma.**
+- Cada dirección se valida con `direccionValida`, se recorta y se deduplica. Una lista vacía se registra como `sin-destinatario`, como hoy.
+- El alta de la consola y P-04 del panel editan la lista.
+- El resultado del envío no cambia: si el servidor SMTP acepta el mensaje, es `enviada`. Un rechazo de todas las direcciones es `fallo-envio` con la categoría de DEC-83.
+- Telegram no cambia: sigue siendo un chat vinculado por tenant (DEC-185).
+
+**Se resigna.**
+- Una dirección rechazada entre varias aceptadas no queda registrada por separado.
+- La migración toca una columna en uso por el motor y por el panel.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-188 — N7: la plantilla puede declarar el texto del mensaje con las columnas del resultado
+
+**Contexto.**
+- El renderizador genérico de DEC-85 arma una tabla con todas las columnas que devuelve la consulta. Las columnas y sus nombres ya se eligen en el `SELECT`, con alias.
+- Esa tabla funciona en el correo pero no en Telegram (DEC-185), que no muestra tablas. Y el cliente lee mejor una frase por fila que una grilla («Harina 000: quedan 3 unidades»).
+- N7 (R4) pide que el mensaje muestre los datos que importan del resultado, con un mensaje por ejecución y no uno por fila.
+
+**Opciones.**
+- (a) Sin cambios: la tabla de todas las columnas, y la selección se hace en el `SELECT`.
+- (b) Dos textos opcionales en la plantilla: un encabezado y una línea por fila con marcadores `{columna}`. Los marcadores se reemplazan por el valor de la celda (`textoDeCelda`), escapado según el canal. Sin los dos textos, se usa la tabla de hoy.
+- (c) Un lenguaje de plantillas completo: condiciones, formatos de número y fecha, bucles.
+
+**Decisión.** (b).
+- **Por qué (b).** Es lo mínimo que hace legible un aviso en Telegram y en el correo, y deja el contenido en manos de P1 sin tocar el motor. Los marcadores solo sustituyen valores, y la repetición por fila es siempre la misma, así que no hay expresiones.
+- (c) es un lenguaje dentro de la notificación, que es el tipo de crecimiento que el anti-alcance busca evitar.
+
+**Forma.**
+- Hay dos campos opcionales en `Plantilla`, con una migración que se puede sumar a la de DEC-182.
+- Al guardar, un marcador que no aparece entre las columnas de la última prueba de la plantilla se rechaza con su nombre.
+- En la ejecución, si falta una columna, el mensaje usa la tabla de hoy y la ejecución lo registra, en lugar de mandar un texto con huecos.
+- El corte por cantidad de filas y el aviso de corte siguen como en el correo (N2).
+
+**Se resigna.**
+- No hay formatos por columna (moneda, fecha): el valor se muestra como lo devuelve la consulta, y el formato se resuelve en el SQL.
+- Hay un tipo nuevo de error de plantilla, el de los marcadores, que hay que mostrar en la pantalla de DEC-182.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-189 — X10: vista previa del mensaje en la consola, sin envío manual
+
+**Contexto.**
+- Hoy una automatización solo corre en su horario: no hay ruta de ejecución manual. El anti-alcance del motor dice «todo es programado».
+- Ya existe la prueba de plantilla (`POST /plantillas/:id/prueba`, DEC-62): ejecuta la consulta contra una conexión, devuelve las filas y queda en la auditoría (`registrarEjecucion`).
+- X10 (R4) pide ver qué mensaje saldría sin esperar al horario. Para el video, además, se quiere mostrar el aviso llegando.
+
+**Opciones.**
+- (a) Vista previa en la consola: ejecuta la consulta de la automatización con su conexión y sus valores, y muestra las filas y el mensaje armado de su canal. No envía nada, no crea una `Ejecucion` y queda en la auditoría como la prueba de plantilla.
+- (b) La vista previa más un botón «Enviar ahora», que dispara la ejecución completa por el mismo camino del planificador y la registra con origen `manual`.
+- (c) Nada: para ver un aviso hay que esperar al horario.
+
+**Decisión.** (a).
+- **Por qué (a).** Da todo lo que X10 pide sin agregar un disparador. Para el video alcanza con una automatización de demo con horario de cada minuto (`* * * * *`), y el aviso llega por el camino real.
+- (b) no es un webhook, pero es un segundo origen de ejecuciones. Exige reescribir el motivo del anti-alcance («todo es programado») y revisar el control de solapamiento (X4) y el de duplicados (X6) para el disparo manual.
+
+**Forma.**
+- La vista previa vive en el detalle de la automatización, en la consola. El panel no la tiene (regla 1: P2 no ejecuta consultas a pedido).
+- Reutiliza `componerSentencia`, la ejecución de solo lectura y los mismos renderizadores del correo y de Telegram, y aplica `minimoFilas` (DEC-186) para mostrar si el aviso saldría.
+- El mensaje se muestra como texto o HTML en un marco aislado, armado con los mismos escapes que el envío real.
+
+**Se resigna.**
+- La vista previa carga la réplica del cliente cada vez que se usa, como la prueba de plantilla.
+- Ver un envío real sigue dependiendo del horario.
+
+**Decidido por:** el usuario, 2026-10-23, en la planificación de la v2, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-190 — CH-37: textos para el cliente en la base; enmienda DEC-137 en la regla de disponibles
+
+**Contexto.**
+- DEC-182 (a) suma a `Plantilla` un título y una descripción para el cliente, con una migración, y pasa los dos textos fijos de DEC-137 a la semilla.
+- Hoy esos textos viven en `COPY_NEGOCIO` (`src/panel/panel-automatizaciones.ts`), indexados por la etiqueta `automatizacion` y no por el id de la plantilla. La etiqueta es una lista cerrada de tres valores (`AUTOMATIZACIONES`, DEC-67), así que toda plantilla nueva comparte la etiqueta con alguna de la semilla.
+- DEC-137 deduplica «disponibles» por etiqueta, y una automatización activa oculta su etiqueta. Con esa regla, una plantilla creada en CH-38 nunca aparecería en el panel.
+- La semilla solo crea las filas que faltan y nunca actualiza una existente (DEC-125, DEC-68). Una base ya instalada no recibiría los textos desde la semilla.
+- El orden de «disponibles» sale del orden del mapa en el código, que desaparece.
+
+Quedan cuatro puntos que DEC-182 no resuelve.
+
+**Opciones.**
+
+Carga de los textos en bases instaladas:
+- (a) La migración los carga por etiqueta, en toda plantilla con `stock-fisico` o `stock-producible`.
+- (b) La migración los carga solo en las dos plantillas de la semilla, por su id fijo.
+
+Clave de la deduplicación y de «una activa oculta a su gemela»:
+- (a) El título para el cliente.
+- (b) La etiqueta, como en DEC-137.
+- (c) Ninguna: una tarjeta por plantilla con textos.
+
+Rutas de escritura:
+- (a) `POST` y `PUT /plantillas` aceptan los dos campos en CH-37.
+- (b) Los aceptan recién en CH-38.
+
+Orden de «disponibles»:
+- (a) Por título y después por `id`.
+- (b) Por `id`.
+
+**Decisión.** (a) en los cuatro puntos.
+- **Carga (a).** El panel muestra exactamente lo mismo que hoy, incluidas las copias creadas por API, y la semilla sigue sin actualizar filas (DEC-125 no cambia).
+- **Deduplicación (a).** Dos plantillas con el mismo título son, para el cliente, la misma oferta. Una plantilla nueva con su propio título aparece en el panel. Una automatización activa oculta las plantillas con su mismo título.
+- **Rutas (a).** Sin eso no hay forma de darle sus textos a una plantilla nueva, y CH-38 queda solo de front.
+- **Orden (a).** Es predecible para el cliente.
+
+**Forma.**
+- Dos columnas opcionales en `Plantilla`, `titulo` y `descripcion`. Las filas que ya existen y las que crean los tests quedan válidas.
+- Una plantilla aparece en «disponibles» solo si tiene los dos textos, sin estar vacíos. Una automatización activa cuya plantilla no tiene textos sigue mostrando el texto neutro de DEC-137, nunca el `nombre`.
+- En `POST` y `PUT`, los dos campos son opcionales, tienen un tope de largo y se rechazan si contienen un término prohibido del glosario del panel (DEC-04). El tope lo fija la especificación. `PUT` reemplaza la plantilla entera, así que si no trae los campos, los borra, como pasa con cualquier otro campo.
+- `GET /plantillas/:id` devuelve los dos campos. El resumen de `GET /plantillas` no cambia.
+- La entrada de la consola (`DESCRIPCIONES_PLANTILLA`, DEC-131) es texto para el operador y no cambia. El correo tampoco cambia.
+
+**Por qué.** Es lo mínimo para que una plantilla creada desde la consola llegue al cliente. El panel no cambia para quien ya lo usa, salvo el orden de las tarjetas.
+
+**Se resigna.**
+- Las dos tarjetas de la semilla cambian de lugar.
+- El control del glosario deja de ser una prueba sobre una constante y pasa a ser una validación al guardar. Un texto cargado por SQL directo en la base no pasa por ese control.
+- Dos plantillas con títulos distintos y la misma consulta se muestran como dos ofertas.
+
+**Decidido por:** el usuario, 2026-10-24, en la exploración de CH-37, eligiendo las opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-191 — CH-38: una plantilla con automatizaciones activas no se edita; conteo entre tenants y prueba antes de guardar
+
+**Contexto.**
+- DEC-182 (b) dice que una plantilla en uso no se edita: se duplica. No dice qué es «en uso», y hoy nada en el código lo calcula.
+- `PUT /plantillas/:id` no tiene contexto de tenant: es una ruta del catálogo global, exenta de `X-Tenant-Id`, y recibe solo el delegado `plantilla`. `Automatizacion` es un modelo aislado: cualquier lectura sin tenant activo falla (regla 2).
+- Una automatización nunca se borra. Se desactiva con `activo = false`, y nada vuelve a escribir `activo = true` (DEC-79); la pausa del panel es el mismo campo.
+- `POST /plantillas/:id/prueba` (DEC-62, DEC-177) carga la plantilla guardada por su id. Una plantilla que todavía no se guardó no se puede probar, y D4 pide la prueba antes de guardar.
+- El panel deduplica las plantillas por título y, entre títulos iguales, gana el `id` menor (DEC-190). Los `id` son uuid, así que cuál gana es azar.
+
+Quedan cuatro puntos que DEC-182 no resuelve.
+
+**Opciones.**
+
+Qué es una plantilla en uso:
+- (a) Cualquier automatización, activa o no.
+- (b) Solo una automatización activa.
+
+Cómo se cuenta entre tenants:
+- (a) La ruta recibe una sola función, `usosDePlantilla(id)`, armada en `rutas.ts` con el cliente sin aislar, que devuelve solo un número.
+- (b) Leer `_count.automatizaciones` desde el delegado `plantilla`, apoyándose en que las lecturas por relación no pasan por el aislamiento.
+
+Prueba antes de guardar:
+- (a) Ruta nueva `POST /plantillas/prueba` con el cuerpo completo de la plantilla, y guardado habilitado solo después de una prueba aprobada con la misma huella.
+- (b) La misma ruta, con la prueba opcional.
+- (c) Sin ruta nueva: se guarda primero y se prueba después.
+
+Qué copia «Duplicar y editar»:
+- (a) Todo, con «(copia)» en el nombre.
+- (b) Todo menos el título y la descripción para el cliente, que empiezan vacíos.
+- (c) Todo, y el pop-up avisa si el título coincide con el de otra plantilla.
+
+**Decisión.** En uso (b), conteo (a), prueba (a) y copia (b).
+- **En uso (b).** Una automatización desactivada no vuelve a correr (DEC-79), así que editar la plantilla no cambia nada de lo que corre en otro tenant, que es lo que protege DEC-182. Una plantilla cuyas automatizaciones están todas desactivadas se corrige en el lugar, sin sumar copias al catálogo.
+- **Conteo (a).** La lectura entre tenants queda explícita y se prueba sola, y no expone datos de ningún tenant: solo un número.
+- **Prueba (a).** Es lo que pide D4, y repite el patrón del pop-up de consultas guardadas (`huellaActual`, `guardadoHabilitado`).
+- **Copia (b).** La consecuencia para el cliente queda explícita: la copia no aparece en el panel hasta que P1 le escribe su propio título.
+
+**Forma.**
+- **En uso** quiere decir al menos una `Automatizacion` con `activo = true` y esa `plantillaId`, en cualquier tenant.
+- **`PUT /plantillas/:id`** responde 409 `{error: 'plantilla-en-uso'}` si la plantilla está en uso. En una sola transacción, bloquea la fila de la plantilla (`SELECT … FOR UPDATE`), comprueba el uso y escribe.
+- **`GET /plantillas/:id`** devuelve `enUso` (booleano). La consola ofrece «Editar» o «Duplicar y editar» según ese valor. El resumen de `GET /plantillas` no cambia.
+- **El uso se lee en la extensión de aislamiento.** Dos métodos tipados de `extenderConAislamiento`, sobre el cliente sin aislar que la extensión encierra, como `agente.buscarPorTokenHash` (DEC-121): uno responde si la plantilla está en uso (sí o no) y el otro hace el reemplazo con bloqueo de arriba. Son las únicas operaciones de `Automatizacion` sin tenant. No devuelven filas, cantidades ni ids de tenant, y las cubre una prueba de aislamiento.
+- **La ruta recibe una función, no un cliente.** `rutas.ts` arma con esos dos métodos el puerto que reciben las rutas del catálogo.
+- **`POST /plantillas/prueba`:**
+  - Recibe el cuerpo de la plantilla más `{conexionId, valores}` y exige `X-Tenant-Id`.
+  - Pasa por las mismas validaciones que `POST /plantillas` y por las mismas compuertas que la prueba de una plantilla guardada (conexión del tenant, vistas aprobadas, DEC-71).
+  - Se registra en la auditoría con `origen: 'plantilla-prueba'` y `plantillaId: null` (DEC-159, DEC-160).
+  - No guarda nada.
+- **Huella.** Es la consulta, la declaración de parámetros, las entidades y la conexión. Cambiar solo los textos para el cliente, el nombre o la tolerancia no obliga a volver a probar.
+- **Duplicar.**
+  - Es una acción de la consola. Abre el mismo pop-up de alta con los campos de la original, el título y la descripción vacíos y «(copia)» en el nombre.
+  - No se escribe nada hasta guardar, y la copia nace sin automatizaciones.
+  - La original no cambia.
+
+**Alcance que no cambia.** El motor (`componerSentencia`), las listas cerradas (DEC-63, DEC-65, DEC-67), la condición (DEC-64, DEC-84) y la ausencia de borrado de plantillas (DEC-68).
+
+**Por qué.** Cierra la regla de DEC-182 sin modelo de versiones y sin abrir el aislamiento más que para un número.
+
+**Se resigna.**
+- **Historial desactualizado.** Una automatización desactivada queda apuntando a una plantilla que puede decir otra cosa. La auditoría conserva la sentencia compuesta de cada ejecución (DEC-160), pero la pantalla de la automatización muestra la plantilla actual.
+- **Textos de tarjetas pausadas.** Una automatización pausada en el panel muestra los textos actuales de su plantilla. Si la plantilla se edita mientras está pausada, el cliente ve el texto nuevo.
+- **Reactivación.** Si algún día se agrega la reactivación de una automatización, esta regla se revisa: la (b) de «en uso» depende de DEC-79.
+- **Para crear una plantilla hace falta un tenant activo** con una conexión y vistas aprobadas, porque la prueba corre contra la réplica de un cliente.
+
+**Precisión del diseño** (2026-10-27, aprobada por el usuario antes de las tareas). El diseño de CH-38 precisa tres puntos de la «Forma» sin cambiar ninguna opción elegida:
+- **Dónde vive la lectura.** La opción (a) decía «armada en `rutas.ts` con el cliente sin aislar». `rutas.ts` no tiene ese cliente: `src/server.ts` conserva solo el cliente aislado, a propósito. La lectura vive en la extensión, como las otras lecturas sin tenant, y `rutas.ts` solo arma el puerto.
+- **Qué devuelve.** Un sí o no en lugar de un número: `enUso` no necesita más, y sale menos información del aislamiento.
+- **La carrera.** Dar de alta una automatización toma `FOR KEY SHARE` sobre su plantilla (el control de la clave foránea), y eso choca con el `FOR UPDATE` del reemplazo. La ventana entre la comprobación y la escritura queda cerrada, en lugar de aceptada.
+
+**Decidido por:** el usuario, 2026-10-27, en la exploración de CH-38. Eligió las opciones recomendadas en conteo, prueba y copia. En «en uso» eligió la (b) frente a la (a) recomendada. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-192 — CH-39: el texto del mensaje se valida contra las columnas de la prueba y la ejecución registra el respaldo a la tabla
+
+**Contexto.**
+- DEC-188 (b) suma a la plantilla un encabezado y una línea por fila con marcadores `{columna}`. Al guardar, un marcador que no está entre las columnas de la última prueba se rechaza. En la ejecución, si falta una columna, el correo usa la tabla y la ejecución lo registra.
+- Las columnas de una prueba no se guardan en ningún lado. Las dos rutas de prueba las devuelven en la respuesta y solo registran la auditoría con la cantidad de filas, y la prueba de una plantilla sin guardar no tiene `id`.
+- `Ejecucion` no tiene dónde registrar que el mensaje usó la tabla. `notificacion` guarda el resultado del envío, con un orden de precedencia propio (DEC-83).
+- El glosario del panel (DEC-137) se aplica a los textos para el cliente (DEC-190), y el correo también lo lee el cliente.
+
+Quedan cinco puntos que DEC-188 no resuelve.
+
+**Opciones.**
+
+De dónde salen las columnas de la última prueba:
+- (a) El cuerpo del guardado trae `columnasPrueba`, las columnas de la prueba aprobada, y no se guarda.
+- (b) Una columna nueva en `Plantilla` con las columnas de la prueba.
+- (c) La ruta de guardado vuelve a correr la consulta.
+
+Cómo registra la ejecución el respaldo:
+- (a) Una columna nueva en `Ejecucion` con los nombres de las columnas que faltaron.
+- (b) Un valor nuevo de `notificacion`.
+
+Un texto sin el otro:
+- (a) Los dos o ninguno.
+- (b) Cada uno por separado.
+
+Glosario y largos:
+- (a) El glosario sobre el texto sin los marcadores; encabezado hasta 200 caracteres y línea hasta 300.
+- (b) Solo los largos.
+
+Qué hace «Duplicar y editar» con el texto del mensaje:
+- (a) Lo copia.
+- (b) Lo deja vacío, como los textos para el cliente.
+
+**Decisión.** Columnas (a), respaldo (a), textos (a), glosario (a) y copia (a).
+- **Columnas (a).** La compuerta de CH-38 ya exige una prueba aprobada de la misma consulta antes de guardar, así que la lista está fresca. Es el camino de datos más chico, y el respaldo de DEC-188 en la ejecución es la garantía real.
+- **Respaldo (a).** El resultado del envío sigue siendo uno solo, y los nombres le dicen a P1 qué corregir.
+- **Textos (a).** Es la lectura literal de DEC-188, y una sola regla para el correo y para Telegram (CH-44).
+- **Glosario (a).** El texto lo escribe P1 y lo lee el cliente, la misma razón de DEC-190. Sacar los marcadores deja pasar una columna que se llama `consulta`.
+- **Copia (a).** El texto del mensaje no identifica a la plantilla en el panel, y la copia suele existir para ajustar la consulta.
+
+**Forma.**
+- **Campos.** `Plantilla.encabezadoMensaje` y `Plantilla.lineaMensaje`, opcionales. `Ejecucion.mensajeRespaldo`, un arreglo JSON con nombres de columna, nunca valores.
+- **Marcador.** `{`, uno o más caracteres que no sean llaves, y `}`. El nombre es exacto: sin recortar y distinguiendo mayúsculas. Cualquier otra llave es texto.
+- **Al guardar**, en este orden, con `400 solicitud-invalida` y el campo en `campos`:
+  1. los dos textos o ninguno;
+  2. los largos;
+  3. el encabezado no lleva marcadores (los nombres van en `marcadores`);
+  4. la línea lleva al menos un marcador;
+  5. el glosario, sobre el encabezado y sobre la línea sin marcadores (los términos van en `terminos`);
+  6. con textos, `columnasPrueba` es obligatorio y todo marcador de la línea tiene que estar ahí (los que faltan van en `marcadores`).
+- **`POST /plantillas/prueba`** aplica las mismas validaciones menos la 6: la prueba es la que produce esas columnas.
+- **En el correo**, con los dos textos y todas las columnas presentes, el cuerpo es el encabezado y una línea por fila. Cada valor pasa por `textoDeCelda` y se escapa solo, nunca la línea entera. Sin textos, el correo es igual al de antes. Si falta una columna, va la tabla y `mensajeRespaldo` guarda los nombres que faltaron, aunque después el envío falle.
+- **En la consola**, los textos quedan fuera de la huella de la prueba. «Guardar» manda `columnasPrueba` con las columnas de la última prueba aprobada. La vista de ejecuciones muestra el respaldo dentro de la celda de la notificación.
+
+**Precisiones del diseño** (2026-10-29, confirmadas por el usuario después de la verificación). El diseño de CH-39 suma dos reglas que DEC-188 no dice:
+- **El encabezado es fijo.** Un marcador es el valor de una celda, y el encabezado no tiene fila. Un marcador en el encabezado se rechaza en lugar de tomar el valor de una fila cualquiera.
+- **La línea lleva al menos un marcador.** Sin marcadores, repetiría la misma frase en cada fila.
+
+**Alcance que no cambia.** El asunto, los temas, el tope de filas y su aviso (N2), la regla de cero filas, el resumen de `GET /plantillas` y el panel del cliente.
+
+**Por qué.** Cierra DEC-188 sin guardar resultados de pruebas (DEC-93) y sin mezclar el formato del mensaje con el resultado del envío.
+
+**Se resigna.**
+- **`columnasPrueba` viene del cliente.** Alguien que llame a la API puede mandar una lista equivocada. Es una comprobación de coherencia, no una garantía: la garantía es el respaldo a la tabla en la ejecución.
+- **Sin encabezado con datos.** Un encabezado con un dato de la ejecución (por ejemplo, la cantidad de filas) queda para más adelante, como un nombre reservado.
+- **Sin mensaje con un solo texto.** La (b) de «un texto sin el otro» se puede sumar después sin migración.
+
+**Decidido por:** el usuario, 2026-10-27, en la exploración de CH-39: eligió las cinco opciones recomendadas. Las dos precisiones del diseño las confirmó el 2026-10-29. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.

@@ -24,10 +24,16 @@ Procesos operativos que permanecen manuales aunque la plataforma de venta funcio
 |---|---|---|---|
 | P1 | Implementador (autor, consultor) | Consola | Todos los tenants |
 | P2 | Administrador de la PYME | Panel | Su tenant únicamente |
-| P3 | Cliente final | Telegram | Su propio pedido |
+| P3 | Cliente final | Ninguna (límite del artefacto, DEC-185) | — |
 | P4 | Investigador (autor, tesista) | Registro | Tiempos y fricciones |
 
 El usuario principal del sistema es **P1**. P2 consume valor, no opera la herramienta.
+
+**P3 no tiene superficie.** Un bot para que el cliente final consulte su pedido exigiría:
+- Datos personales que el contrato canónico no expone (regla 5).
+- Una notificación por cliente, que es la ejecución por ítems que el anti-alcance excluye.
+
+Queda como límite del artefacto (DEC-185). Telegram existe como canal, pero le llega a P2, igual que el correo.
 
 ## 4. Arquitectura
 
@@ -68,7 +74,7 @@ El anti-alcance del motor es el más frágil: cada límite va a parecer arbitrar
 - Base del cliente: relacional. Motores admitidos, ver D-4.
 - Acceso: réplica de solo lectura. Nunca la base primaria.
 - Despliegue: Docker Compose.
-- Canales de notificación del catálogo inicial: correo y Telegram.
+- Canales de notificación: correo (DEC-81) y Telegram (DEC-185), los dos dirigidos a P2.
 
 ## 8. Entidades del dominio
 
