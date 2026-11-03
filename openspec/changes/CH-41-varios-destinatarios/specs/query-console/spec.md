@@ -39,9 +39,9 @@ In the list, the connection SHALL be shown by its name, from `GET /conexiones` l
 #### Scenario: Creating with several recipients
 
 - **GIVEN** the wizard is on step 2
-- **WHEN** «ops@empresa.com, dueña@empresa.com;
+- **WHEN** «ops@empresa.com, duena@empresa.com;
 ventas@empresa.com» is typed in the recipients field and the form is submitted
-- **THEN** the create request SHALL carry `"destinatarios": ["ops@empresa.com", "dueña@empresa.com", "ventas@empresa.com"]`
+- **THEN** the create request SHALL carry `"destinatarios": ["ops@empresa.com", "duena@empresa.com", "ventas@empresa.com"]`
 - **AND** the preview «Para» SHALL list the three addresses
 
 #### Scenario: Creating without recipients

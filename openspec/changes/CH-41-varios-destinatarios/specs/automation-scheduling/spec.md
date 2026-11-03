@@ -30,9 +30,9 @@ The own database SHALL have an `Automatizacion` table. Every row MUST reference 
 
 #### Scenario: Creating with several recipients
 
-- GIVEN valid creation values and `destinatarios` `[" ops@example.com", "dueña@example.com "]` (trimmed by the server)
+- GIVEN valid creation values and `destinatarios` `[" ops@example.com", "duena@example.com "]` (trimmed by the server)
 - WHEN the automation is created
-- THEN the row SHALL persist with `destinatarios` `["ops@example.com", "dueña@example.com"]` in that order
+- THEN the row SHALL persist with `destinatarios` `["ops@example.com", "duena@example.com"]` in that order
 - AND the create and get responses SHALL include it
 
 #### Scenario: Creating without recipients
