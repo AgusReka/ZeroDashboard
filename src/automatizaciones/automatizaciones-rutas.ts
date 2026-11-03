@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '../generated/prisma/client.js';
 import { conTenantInyectado, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
-import { cronValido, proximaEjecucion } from './automatizaciones.js';
+import { cronValido, MINIMO_FILAS_POR_DEFECTO, proximaEjecucion } from './automatizaciones.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
@@ -13,7 +13,8 @@ import { prepararSentencia, type ProblemaParametro } from '../ejecucion/parametr
  * DEC-78, DEC-79) — and the runs listing (DEC-80). None is exempt from `x-tenant-id`: `Automatizacion` is a scoped model,
  * so every read and write below is filtered by the tenant the hooks resolved from the
  * header (DEC-13), and the body never names one (rule 2). CH-33 (DEC-174) adds the
- * adjust: values, schedule and recipient change in place, on the same row. There is no
+ * adjust: values, schedule and recipient change in place, on the same row; CH-40 (DEC-193)
+ * adds the minimum rows to both. There is no
  * delete and no reactivation route, and the template and the connection never change: for
  * those, the automation is deactivated and created again.
  */
@@ -33,9 +34,14 @@ export const AutomatizacionResumen = {
 
 /**
  * Every column except `tenantId`, which the caller already knows: create, get, deactivate.
- * CH-14: `destinatario` is here only, never on the list (DEC-82).
+ * CH-14: `destinatario` is here only, never on the list (DEC-82). CH-40: so is `minimoFilas`.
  */
-export const AutomatizacionCompleta = { ...AutomatizacionResumen, valores: true, destinatario: true } as const;
+export const AutomatizacionCompleta = {
+  ...AutomatizacionResumen,
+  valores: true,
+  destinatario: true,
+  minimoFilas: true,
+} as const;
 
 /**
  * One run as the runs listing shows it (X2): every column except `tenantId` and
@@ -76,6 +82,8 @@ interface RegistroAutomatizacionBody {
   cron: string;
   /** CH-14 (DEC-82): one address, settable only here. Absent means no notification. */
   destinatario?: string;
+  /** CH-40 (DEC-186): absent means `MINIMO_FILAS_POR_DEFECTO`. */
+  minimoFilas?: number;
 }
 
 interface AutomatizacionParams {
@@ -92,7 +100,7 @@ interface AutomatizacionParams {
 const registroAutomatizacionSchema = {
   type: 'object',
   additionalProperties: false,
-  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron', 'destinatario'] },
+  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron', 'destinatario', 'minimoFilas'] },
   required: ['plantillaId', 'conexionId', 'cron'],
   properties: {
     plantillaId: { type: 'string', minLength: 1 },
@@ -100,6 +108,7 @@ const registroAutomatizacionSchema = {
     valores: { type: 'object', default: {} },
     cron: { type: 'string', minLength: 1 },
     destinatario: { type: 'string', minLength: 1, maxLength: 254 },
+    minimoFilas: { type: 'integer', minimum: 1 },
   },
 } as const;
 
@@ -112,6 +121,16 @@ export function destinatarioDe(valor: string | undefined): string | null {
   return valor === undefined ? null : valor.replace(/^[ \t]+|[ \t]+$/g, '');
 }
 
+/**
+ * CH-40 (DEC-186, DEC-193): an integer from 1 to the engine's row cap. The schemas already
+ * refuse a non-integer and anything below 1, coercing `"5"` like every integer body field
+ * (DEC-60's no-coercion rule is for `valores`); the cap is configuration, so it is checked
+ * here, against the `topeFilas` the route registrar receives.
+ */
+export function minimoFilasValido(valor: number, tope: number): boolean {
+  return Number.isInteger(valor) && valor >= 1 && valor <= tope;
+}
+
 // ---- CH-33 (DEC-174): the operator's adjust ------------------------------------------
 
 /** The adjust body as the route hands it over: only the three keys, values still untrusted. */
@@ -120,6 +139,8 @@ export interface CuerpoAjusteOperador {
   cron?: string;
   /** `null` clears it: the automation stops sending email (DEC-174, CH-33 D2). */
   destinatario?: string | null;
+  /** CH-40 (DEC-193): same rule as the alta. */
+  minimoFilas?: number;
 }
 
 /** Columns to write: only the ones the body sent. */
@@ -127,6 +148,7 @@ export interface DatosAjusteOperador {
   valores?: Record<string, unknown>;
   cron?: string;
   destinatario?: string | null;
+  minimoFilas?: number;
 }
 
 export type ResolucionAjusteOperador =
@@ -145,6 +167,7 @@ export function resolverAjusteOperador(
   cuerpo: CuerpoAjusteOperador,
   plantilla: { sql: string; parametros: unknown },
   zona: string,
+  tope: number,
 ): ResolucionAjusteOperador {
   const campos: string[] = [];
   const datos: DatosAjusteOperador = {};
@@ -166,6 +189,14 @@ export function resolverAjusteOperador(
       datos.destinatario = limpio;
     } else {
       campos.push('/destinatario');
+    }
+  }
+
+  if (cuerpo.minimoFilas !== undefined) {
+    if (minimoFilasValido(cuerpo.minimoFilas, tope)) {
+      datos.minimoFilas = cuerpo.minimoFilas;
+    } else {
+      campos.push('/minimoFilas');
     }
   }
 
@@ -199,11 +230,12 @@ const ajusteOperadorSchema = {
   type: 'object',
   additionalProperties: false,
   minProperties: 1,
-  propertyNames: { enum: ['valores', 'cron', 'destinatario'] },
+  propertyNames: { enum: ['valores', 'cron', 'destinatario', 'minimoFilas'] },
   properties: {
     valores: { type: 'object' },
     cron: { type: 'string', minLength: 1 },
     destinatario: { type: ['string', 'null'], maxLength: 254 },
+    minimoFilas: { type: 'integer', minimum: 1 },
   },
 } as const;
 
@@ -227,12 +259,15 @@ function proximaIso(cron: string, ahora: Date, zona: string): string | null {
 /**
  * `zonaHoraria` is the deployment-wide zone (DEC-77), passed in by `src/server.ts` from
  * its one `loadConfig()`, so a schedule is accepted only if it resolves in the zone the
- * scheduler will read it in.
+ * scheduler will read it in. CH-40: `topeFilas` is the engine's row cap from the same
+ * `loadConfig()` (`maxFilasPorConsulta`, DEC-19), the one the scheduler reads its page with,
+ * so a minimum is accepted only if a run can reach it.
  */
 export function registerAutomatizacionRoutes(
   app: FastifyInstance,
   prisma: PrismaAislado,
   zonaHoraria: string,
+  topeFilas: number,
 ): void {
   app.post<{ Body: RegistroAutomatizacionBody }>(
     '/automatizaciones',
@@ -254,6 +289,11 @@ export function registerAutomatizacionRoutes(
       const destinatario = destinatarioDe(request.body.destinatario);
       if (destinatario !== null && !direccionValida(destinatario)) {
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/destinatario'] });
+      }
+      // CH-40: pure too, against the cap the scheduler will read (DEC-186, DEC-193).
+      const minimoFilas = request.body.minimoFilas ?? MINIMO_FILAS_POR_DEFECTO;
+      if (!minimoFilasValido(minimoFilas, topeFilas)) {
+        return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/minimoFilas'] });
       }
 
       // `Plantilla` is global (DEC-61): this read is not scoped, and `id` is `text`, so a
@@ -300,6 +340,7 @@ export function registerAutomatizacionRoutes(
           valores: valores as Prisma.InputJsonObject,
           cron,
           destinatario,
+          minimoFilas,
         }),
         select: AutomatizacionCompleta,
       });
@@ -404,7 +445,7 @@ export function registerAutomatizacionRoutes(
         return reply.code(404).send({ error: 'plantilla-no-encontrada' });
       }
 
-      const resolucion = resolverAjusteOperador(request.body, plantilla, zonaHoraria);
+      const resolucion = resolverAjusteOperador(request.body, plantilla, zonaHoraria, topeFilas);
       if (!resolucion.ok) {
         return reply.code(400).send({
           error: 'solicitud-invalida',
@@ -412,7 +453,7 @@ export function registerAutomatizacionRoutes(
           ...(resolucion.problemas === undefined ? {} : { problemas: resolucion.problemas }),
         });
       }
-      const { valores, cron, destinatario } = resolucion.datos;
+      const { valores, cron, destinatario, minimoFilas } = resolucion.datos;
       try {
         const automatizacion = await prisma.automatizacion.update({
           where: { id: request.params.id },
@@ -422,6 +463,7 @@ export function registerAutomatizacionRoutes(
             ...(valores === undefined ? {} : { valores: valores as Prisma.InputJsonObject }),
             ...(cron === undefined ? {} : { cron }),
             ...(destinatario === undefined ? {} : { destinatario }),
+            ...(minimoFilas === undefined ? {} : { minimoFilas }),
           },
           select: AutomatizacionCompleta,
         });

@@ -155,7 +155,7 @@ describe(
     async function fila(id: string) {
       return await db.automatizacion.findUniqueOrThrow({
         where: { id },
-        select: { cron: true, valores: true, destinatario: true, activo: true },
+        select: { cron: true, valores: true, destinatario: true, activo: true, minimoFilas: true },
       });
     }
 
@@ -242,6 +242,9 @@ describe(
         { valores: { umbral: 1 } },
         { activo: false },
         { desconocida: 1 },
+        // CH-40 (DEC-186): the minimum rows is the operator's to set, never the panel's.
+        { minimoFilas: 5 },
+        { umbral: 1, minimoFilas: 5 },
         { hora: '08:00', cron: '* * * * *' },
         {},
       ]) {

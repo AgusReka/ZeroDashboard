@@ -308,11 +308,13 @@ export function esFalloReintentable(r: ResultadoCorrida): boolean {
 
 /**
  * `Ejecucion.notificacion`: the outcome only, never a body, recipient, or row content.
- * CH-18 (DEC-108) adds the two marks in `MarcaNotificacion`.
+ * CH-18 (DEC-108) adds the two marks in `MarcaNotificacion`. CH-40 (DEC-186) adds
+ * `omitida-bajo-minimo`.
  */
 export type EstadoNotificacion =
   | 'enviada'
   | 'omitida-sin-filas'
+  | 'omitida-bajo-minimo'
   | 'fallo-envio'
   | 'sin-destinatario'
   | 'no-configurada'
@@ -329,8 +331,14 @@ export type MarcaNotificacion = Extract<EstadoNotificacion, 'enviando' | 'incier
 /** The outcomes that end the notify step before any send is attempted. */
 export type OmisionNotificacion = Extract<
   EstadoNotificacion,
-  'omitida-sin-filas' | 'sin-destinatario' | 'no-configurada'
+  'omitida-sin-filas' | 'omitida-bajo-minimo' | 'sin-destinatario' | 'no-configurada'
 >;
+
+/**
+ * CH-40 (DEC-186): the minimum an automation gets when its create body names none. The
+ * migration's `DEFAULT 1` is the same value, so rows created before CH-40 read it too.
+ */
+export const MINIMO_FILAS_POR_DEFECTO = 1;
 
 /**
  * Whether the notify step sends, and to whom. `notificacion: null` means the query did
@@ -345,17 +353,27 @@ export type DecisionNotificacion =
  * (design "Outcome precedence"). `configurado` is whether a `Notificador` exists, which
  * is exactly whether `SMTP_HOST` is set. A missing recipient wins over unset SMTP because
  * it is the more specific reason the operator can fix. Zero rows never send (DEC-84).
+ *
+ * CH-40 (DEC-186, DEC-193): fewer rows than `minimoFilas` is the condition not holding, so
+ * it comes right after zero rows and before any delivery reason. With the default 1 it can
+ * never match: zero rows already won. A result cut by the row cap (`hayMas`) had more rows
+ * than were read, so it counts as reaching the minimum even when the cap was lowered below
+ * it after the automation was created.
  */
 export function decidirNotificacion(
   r: ResultadoCorrida,
   destinatario: string | null,
   configurado: boolean,
+  minimoFilas: number,
 ): DecisionNotificacion {
   if (r.resultado !== 'ok') {
     return { enviar: false, notificacion: null };
   }
   if (r.filas.length === 0) {
     return { enviar: false, notificacion: 'omitida-sin-filas' };
+  }
+  if (r.filas.length < minimoFilas && !r.paginacion.hayMas) {
+    return { enviar: false, notificacion: 'omitida-bajo-minimo' };
   }
   if (destinatario === null) {
     return { enviar: false, notificacion: 'sin-destinatario' };

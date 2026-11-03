@@ -188,6 +188,8 @@ interface AutomatizacionACorrer {
   creadaEn: Date;
   /** Read from the run's own scoped row: never a global fallback (rule 2, DEC-82). */
   destinatario: string | null;
+  /** CH-40 (DEC-186): the fewest rows a successful run needs before it notifies. */
+  minimoFilas: number;
 }
 
 /** The template columns a run reads: its statement, and the name and label its email shows. */
@@ -352,7 +354,12 @@ export function crearPlanificador({
     iniciadaEn: Date,
     id: string,
   ): Promise<{ salida: SalidaNotificacion; respaldo: string[] | null }> {
-    const decision = decidirNotificacion(resultado, automatizacion.destinatario, notificador !== null);
+    const decision = decidirNotificacion(
+      resultado,
+      automatizacion.destinatario,
+      notificador !== null,
+      automatizacion.minimoFilas,
+    );
     if (!decision.enviar) {
       return { salida: decision.notificacion, respaldo: null };
     }
@@ -500,6 +507,7 @@ export function crearPlanificador({
         cron: true,
         creadaEn: true,
         destinatario: true,
+        minimoFilas: true,
       },
       orderBy: [{ creadaEn: 'asc' }, { id: 'asc' }],
     });

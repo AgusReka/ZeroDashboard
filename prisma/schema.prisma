@@ -193,6 +193,11 @@ model Plantilla {
 // CH-14 (DEC-82): `destinatario` is the one email address a run's rows are sent to. It
 // is nullable so pre-CH-14 automations keep running (they record `sin-destinatario`),
 // is validated in the application at creation, and there is no global fallback.
+//
+// CH-40 (DEC-186, DEC-193): `minimoFilas` is the fewest rows a successful run needs before
+// it notifies; below it the run records `omitida-bajo-minimo`. The default 1 is the
+// behaviour before CH-40. It is an integer from 1 to the engine's row cap, validated in the
+// application, set at creation and in the operator's adjust, never from the panel.
 model Automatizacion {
   id           String      @id @default(uuid())
   tenantId     String
@@ -206,6 +211,7 @@ model Automatizacion {
   activo       Boolean     @default(true)
   creadaEn     DateTime    @default(now())
   destinatario String?
+  minimoFilas  Int         @default(1)
   ejecuciones  Ejecucion[]
 
   @@index([tenantId])
@@ -231,6 +237,9 @@ model Automatizacion {
 // `en-curso` row just before the send and overwritten by the close. 'incierta' is written
 // only by the boot sweep, for a row it finds still 'enviando': the email may have left.
 // A sweep that finds no marker still writes null. No close writes either value.
+//
+// CH-40 (DEC-186): one more value, with no migration. 'omitida-bajo-minimo' closes a
+// successful run whose rows did not reach the automation's `minimoFilas`.
 //
 // CH-17b (DEC-98, DEC-103): `intentos` is the number of real connection attempts the run
 // made: 1 when it connected, or failed, on the first attempt (even with retry off), N

@@ -8,7 +8,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { ErrorSinTenantActivo, tenantActivoOpcional } from '../aislamiento/contexto-tenant.js';
 import { cifrarCredencial } from '../compartido/cripto-credencial.js';
-import type { ResultadoEnvio } from './automatizaciones.js';
+import { MINIMO_FILAS_POR_DEFECTO, type ResultadoEnvio } from './automatizaciones.js';
 import type { Correo } from './correo.js';
 import { notificadorDesdeTransporte, type Notificador } from './notificador.js';
 import { crearPlanificador, type PoliticaReintentos, type Reloj } from './planificador.js';
@@ -196,6 +196,8 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     /** CH-14: the `producto` view's body, so a run can return 0 rows or a marker cell. */
     vistaSql?: string;
     destinatario?: string;
+    /** CH-40: absent leaves the column to its database default. */
+    minimoFilas?: number;
     /** CH-17b: see `conexion`. */
     puerto?: number;
     clave?: string;
@@ -215,6 +217,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
         activo: opciones.activo ?? true,
         creadaEn: new Date(opciones.creadaEn ?? '2020-01-01T00:00:00Z'),
         destinatario: opciones.destinatario ?? null,
+        ...(opciones.minimoFilas === undefined ? {} : { minimoFilas: opciones.minimoFilas }),
       },
     });
     return fila.id;
@@ -665,6 +668,43 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
       columnas(filas[0], 'estado', 'fase', 'filas', 'notificacion'),
       { estado: 'ok', fase: 'ejecucion', filas: 1, notificacion: 'enviada' },
     );
+  });
+
+  test('CH-40 4.2 rows below the minimum close ok/omitida-bajo-minimo and never call the notifier', async () => {
+    const tenantId = await tenant();
+    const bajo = await automatizacion(tenantId, {
+      lector: true,
+      vistaSql: 'SELECT 1 AS id UNION ALL SELECT 2',
+      destinatario: 'ch40-42-bajo@example.com',
+      minimoFilas: 5,
+      creadaEn: '2020-01-01T00:00:00Z',
+    });
+    const alcanza = await automatizacion(tenantId, {
+      lector: true,
+      vistaSql: 'SELECT 1 AS id UNION ALL SELECT 2',
+      destinatario: 'ch40-42-alcanza@example.com',
+      minimoFilas: 2,
+      creadaEn: '2020-01-02T00:00:00Z',
+    });
+    const falso = notificadorFalso();
+
+    await tick(EN('16:00:30'), EN('16:01:30'), undefined, { notificador: falso.notificador });
+
+    assert.equal(falso.a('ch40-42-bajo@example.com').length, 0);
+    const [bajoFila] = await ejecuciones(bajo);
+    assert.deepEqual(
+      columnas(bajoFila, 'estado', 'fase', 'filas', 'notificacion'),
+      { estado: 'ok', fase: 'ejecucion', filas: 2, notificacion: 'omitida-bajo-minimo' },
+    );
+    assert.equal(falso.a('ch40-42-alcanza@example.com').length, 1);
+    const [alcanzaFila] = await ejecuciones(alcanza);
+    assert.equal(alcanzaFila.notificacion, 'enviada');
+  });
+
+  test('CH-40 4.2 a row written without the column reads the code default', async () => {
+    const id = await automatizacion(await tenant());
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id }, select: { minimoFilas: true } });
+    assert.equal(fila.minimoFilas, MINIMO_FILAS_POR_DEFECTO);
   });
 
   test('CH-14 5.2 no recipient records sin-destinatario; an absent or null notifier records no-configurada', async () => {

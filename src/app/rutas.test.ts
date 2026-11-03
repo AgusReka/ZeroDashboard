@@ -46,6 +46,7 @@ describe('CH-29 route table — every registered route is guarded or listed (DEC
       registro: crearRegistroAgentes(),
       estilos: cargarEstilos(),
       zonaHoraria: 'America/Argentina/Buenos_Aires',
+      topeFilas: 200,
     });
     // Registered after the guard, so it only runs for a request the guard let through;
     // the response header is how the test tells a guard refusal from a handler's own 401

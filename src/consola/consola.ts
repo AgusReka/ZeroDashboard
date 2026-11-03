@@ -907,11 +907,17 @@ function documentoConsola(nombreOperador: string): string {
       <label for="auto-destinatario" class="zd-label">Correo del destinatario (opcional)</label>
       <input id="auto-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
 
+      <!-- CH-40 (DEC-186): no max attribute; the row cap is the server's configuration, and its 400 names the field. -->
+      <label for="auto-minimo" class="zd-label">Mínimo de filas para avisar</label>
+      <input id="auto-minimo" class="zd-input" type="number" min="1" step="1" value="1" inputmode="numeric" aria-describedby="auto-minimo-ayuda">
+      <p id="auto-minimo-ayuda" class="ayuda">El correo sale solo si la consulta devuelve al menos esta cantidad de filas.</p>
+
       <!-- CH-21c (DEC-131): a schematic of the notification email. Text nodes only, filled by the
            script; it never shows a row of any result. -->
       <div class="zd-card" role="group" aria-label="Vista previa del correo">
         <p class="ayuda">Asunto: <span id="auto-vista-asunto"></span></p>
         <p class="ayuda">Para: <span id="auto-vista-para"></span></p>
+        <p class="ayuda">Se envía con: <span id="auto-vista-minimo"></span></p>
         <p id="auto-vista-titulo" class="vista-correo__titulo"></p>
         <p class="ayuda">Debajo del título va una tabla cuyas columnas son los alias de la consulta de la plantilla. Si la consulta no devuelve filas, no se envía correo. n es la cantidad de filas; lleva + cuando el resultado se cortó en el tope.</p>
         <p class="ayuda">Enviado automáticamente por ZeroDashboard.</p>
@@ -966,6 +972,9 @@ function documentoConsola(nombreOperador: string): string {
 
     <label for="aj-destinatario" class="zd-label">Correo del destinatario (opcional; vacío: no se envía correo)</label>
     <input id="aj-destinatario" class="zd-input" type="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com">
+
+    <label for="aj-minimo" class="zd-label">Mínimo de filas para avisar</label>
+    <input id="aj-minimo" class="zd-input" type="number" min="1" step="1" inputmode="numeric">
 
     <p id="aj-aviso" class="ayuda" role="status"></p>
     <div class="zd-dialog__actions">
@@ -1164,6 +1173,7 @@ var ETIQUETAS_ESTADO = {
 var ETIQUETAS_NOTIFICACION = {
   'enviada': 'Enviada',
   'omitida-sin-filas': 'No enviada: sin filas',
+  'omitida-bajo-minimo': 'No enviada: menos filas que el mínimo',
   'sin-destinatario': 'Sin destinatario',
   'no-configurada': 'Correo no configurado',
   'fallo-envio': 'Falló el envío',
@@ -1202,6 +1212,7 @@ var contenedorValoresAuto = document.getElementById('auto-valores');
 var selectorConexionAuto = document.getElementById('auto-conexion');
 var entradaCron = document.getElementById('auto-cron');
 var entradaDestinatario = document.getElementById('auto-destinatario');
+var entradaMinimo = document.getElementById('auto-minimo');
 var botonCrearAuto = document.getElementById('auto-crear');
 var tablaAutomatizaciones = document.getElementById('auto-lista');
 var tablaEjecuciones = document.getElementById('auto-ejecuciones');
@@ -1214,6 +1225,7 @@ var avisoAlta = document.getElementById('auto-aviso');
 var botonSiguienteAuto = document.getElementById('auto-siguiente');
 var vistaAsunto = document.getElementById('auto-vista-asunto');
 var vistaPara = document.getElementById('auto-vista-para');
+var vistaMinimo = document.getElementById('auto-vista-minimo');
 var vistaTitulo = document.getElementById('auto-vista-titulo');
 var botonCancelarAuto = document.getElementById('auto-cancelar');
 var botonCancelarAuto2 = document.getElementById('auto-cancelar-2');
@@ -2409,8 +2421,10 @@ function reiniciarAlta() {
   entradaHora.value = '08:00';
   actualizarHorario();
   entradaDestinatario.value = '';
+  entradaMinimo.value = '1';
   vistaAsunto.textContent = '';
   vistaPara.textContent = '';
+  vistaMinimo.textContent = '';
   vistaTitulo.textContent = '';
   resumenAlta.textContent = '';
   avisoAlta.textContent = '';
@@ -2420,10 +2434,10 @@ function reiniciarAlta() {
 }
 
 // What Cancelar and Escape would throw away: a connection or a template chosen, a parameter value or a
-// recipient typed. The schedule alone is not counted: it always holds a value.
+// recipient typed, or a minimum other than 1. The schedule alone is not counted: it always holds a value.
 function hayCambiosEnAlta() {
   return selectorConexionAuto.value !== '' || plantillaElegida !== '' || entradaDestinatario.value.trim() !== ''
-    || Object.keys(valoresDe(filasValoresAuto)).length > 0;
+    || entradaMinimo.value.trim() !== '1' || Object.keys(valoresDe(filasValoresAuto)).length > 0;
 }
 
 // CH-32b (DEC-173): opening resets the wizard and asks for the connections; closing, however it happens,
@@ -2846,6 +2860,8 @@ async function crearAutomatizacion() {
   // CH-14: the recipient is optional; a blank one is not sent at all.
   var destinatario = entradaDestinatario.value.trim();
   if (destinatario !== '') { alta.destinatario = destinatario; }
+  // CH-40 (DEC-186): always sent, 1 included, so the body states the condition the automation runs with.
+  alta.minimoFilas = numeroDeMinimo(entradaMinimo.value);
   var avisoFrescura = avisoFrescuraPlantilla(toleranciaDePlantilla(plantillaElegida));
   var resultado = await pedirAutomatizacion('/automatizaciones', {
     method: 'POST',
@@ -2868,15 +2884,24 @@ async function crearAutomatizacion() {
   await listarAutomatizaciones();
 }
 
-// A 400 of the create or the adjust (CH-33): the schedule and the recipient have their own sentence; anything
-// else, a value problem included, is read as on every other route.
+// A 400 of the create or the adjust (CH-33): the schedule, the recipient and the minimum (CH-40) have their own
+// sentence; anything else, a value problem included, is read as on every other route.
 function mensajeDe400DeAutomatizacion(cuerpo) {
   var campos = Array.isArray(cuerpo.campos) ? cuerpo.campos : [];
   return campos.indexOf('/cron') !== -1
     ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
     : campos.indexOf('/destinatario') !== -1
       ? 'El correo del destinatario no es válido. Escriba una sola dirección, por ejemplo operaciones@empresa.com, sin espacios, comas ni punto y coma.'
-      : mensajeDeSolicitudInvalida(cuerpo, []);
+      : campos.indexOf('/minimoFilas') !== -1
+        ? 'El mínimo de filas no es válido: tiene que ser un número entero desde 1 hasta el tope de filas del motor.'
+        : mensajeDeSolicitudInvalida(cuerpo, []);
+}
+
+// CH-40: the minimum as typed. Digits become a number; anything else is sent as text, so the server refuses
+// it naming the field instead of a second rule living here.
+function numeroDeMinimo(texto) {
+  var limpio = String(texto).trim();
+  return /^[0-9]+$/.test(limpio) ? Number(limpio) : limpio;
 }
 
 async function desactivar(id) {
@@ -2909,6 +2934,7 @@ var HORARIO_AJUSTE = {
   momento: 'al guardar'
 };
 var entradaDestinatarioAjuste = document.getElementById('aj-destinatario');
+var entradaMinimoAjuste = document.getElementById('aj-minimo');
 var avisoAjuste = document.getElementById('aj-aviso');
 var botonGuardarAjuste = document.getElementById('aj-guardar');
 var filasValoresAjuste = [];
@@ -2917,19 +2943,21 @@ var baseAjuste = null;
 var generacionAjuste = 0;
 
 // What the form says now, comparable with what was loaded: the values as JSON (declaration order), the
-// cron the schedule controls describe and the trimmed recipient.
+// cron the schedule controls describe, the trimmed recipient and the trimmed minimum (CH-40).
 function estadoAjuste() {
   return {
     valores: JSON.stringify(valoresDe(filasValoresAjuste)),
     cron: cronDeControles(HORARIO_AJUSTE),
-    destinatario: entradaDestinatarioAjuste.value.trim()
+    destinatario: entradaDestinatarioAjuste.value.trim(),
+    minimo: entradaMinimoAjuste.value.trim()
   };
 }
 
 function hayCambiosEnAjuste() {
   if (baseAjuste === null) { return false; }
   var ahora = estadoAjuste();
-  return ahora.valores !== baseAjuste.valores || ahora.cron !== baseAjuste.cron || ahora.destinatario !== baseAjuste.destinatario;
+  return ahora.valores !== baseAjuste.valores || ahora.cron !== baseAjuste.cron || ahora.destinatario !== baseAjuste.destinatario
+    || ahora.minimo !== baseAjuste.minimo;
 }
 
 // Emptied however the pop-up closed, and the token moves so an answer still in flight lands nowhere.
@@ -2941,6 +2969,7 @@ function limpiarAjuste() {
   filasValoresAjuste = [];
   resumenAjuste.textContent = '';
   entradaDestinatarioAjuste.value = '';
+  entradaMinimoAjuste.value = '';
   avisoAjuste.textContent = '';
   HORARIO_AJUSTE.frecuencia.value = 'diaria';
   HORARIO_AJUSTE.hora.value = '08:00';
@@ -2983,6 +3012,8 @@ function llenarAjuste(guardada, plantilla) {
   }
   actualizarHorarioDe(HORARIO_AJUSTE);
   entradaDestinatarioAjuste.value = typeof guardada.destinatario === 'string' ? guardada.destinatario : '';
+  // CH-40: 1 when the server predates the minimum and the field is absent.
+  entradaMinimoAjuste.value = typeof guardada.minimoFilas === 'number' ? String(guardada.minimoFilas) : '1';
   baseAjuste = estadoAjuste();
 }
 
@@ -3035,6 +3066,7 @@ async function guardarAjuste() {
   if (ahora.valores !== baseAjuste.valores) { cambios.valores = valoresDe(filasValoresAjuste); }
   if (ahora.cron !== baseAjuste.cron) { cambios.cron = ahora.cron; }
   if (ahora.destinatario !== baseAjuste.destinatario) { cambios.destinatario = ahora.destinatario === '' ? null : ahora.destinatario; }
+  if (ahora.minimo !== baseAjuste.minimo) { cambios.minimoFilas = numeroDeMinimo(ahora.minimo); }
   if (Object.keys(cambios).length === 0) {
     avisoAjuste.textContent = 'No hay cambios para guardar.';
     return;
@@ -3915,9 +3947,21 @@ function actualizarVistaPrevia() {
   vistaTitulo.style.backgroundColor = temaCorreo(etiqueta).acento;
   var destinatario = entradaDestinatario.value.trim();
   vistaPara.textContent = destinatario === '' ? SIN_DESTINATARIO : destinatario;
+  vistaMinimo.textContent = textoDeMinimo(entradaMinimo.value);
+}
+
+// CH-40: the condition the email goes out with, as the operator typed it.
+function textoDeMinimo(texto) {
+  var minimo = numeroDeMinimo(texto);
+  if (typeof minimo !== 'number' || minimo < 1) { return 'un mínimo de filas no válido'; }
+  return minimo === 1 ? '1 fila o más' : minimo + ' filas o más';
 }
 
 entradaDestinatario.addEventListener('input', function () {
+  actualizarVistaPrevia();
+});
+
+entradaMinimo.addEventListener('input', function () {
   actualizarVistaPrevia();
 });
 
