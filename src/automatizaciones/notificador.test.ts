@@ -23,7 +23,7 @@ import {
 const REMITENTE = 'avisos@empresa-demo.com';
 
 const CORREO: Correo = {
-  para: 'destino@empresa-demo.com',
+  para: ['destino@empresa-demo.com'],
   asunto: '📦 Stock bajo (3)',
   html: '<table><tr><td>Tornillo</td></tr></table>',
   texto: 'Tornillo',
@@ -154,11 +154,67 @@ describe('notificadorDesdeTransporte — one message, fixed sender, no attachmen
     const t = transporteJson();
     const de = 'otro@remitente.test';
     const notificador = notificadorDesdeTransporte(t, { de, timeoutMs: 1000 });
-    await notificador.enviar({ para: 'b@tenant-b.test', asunto: 'B', html: '<p>B</p>', texto: 'B' });
+    await notificador.enviar({ para: ['b@tenant-b.test'], asunto: 'B', html: '<p>B</p>', texto: 'B' });
 
     assert.deepEqual(t.mensajes[0].from, { name: 'ZeroDashboard', address: 'otro@remitente.test' });
     assert.deepEqual(t.mensajes[0].to, [{ address: 'b@tenant-b.test', name: '' }]);
     assert.equal(t.mensajes[0].html, '<p>B</p>');
+  });
+});
+
+describe('notificadorDesdeTransporte — several recipients in one message (CH-41, DEC-187)', () => {
+  test('4.3 CH-41 the whole list reaches sendMail once, in order, all in To', async () => {
+    const t = transporteJson();
+    const enviados: SendMailOptions[] = [];
+    const registrador: Transporte = {
+      sendMail: (m: SendMailOptions) => {
+        enviados.push(m);
+        return t.sendMail(m);
+      },
+      close: () => t.close(),
+    };
+    const notificador = notificadorDesdeTransporte(registrador, { de: REMITENTE, timeoutMs: 1000 });
+    const para = ['uno@empresa-demo.com', 'dos@empresa-demo.com'];
+
+    assert.deepEqual(await notificador.enviar({ ...CORREO, para }), { resultado: 'enviada' });
+
+    assert.equal(enviados.length, 1, 'one message, not one per address');
+    assert.deepEqual(enviados[0].to, para);
+    assert.equal(enviados[0].cc, undefined);
+    assert.equal(enviados[0].bcc, undefined);
+    assert.deepEqual(t.mensajes[0].to, [
+      { address: 'uno@empresa-demo.com', name: '' },
+      { address: 'dos@empresa-demo.com', name: '' },
+    ]);
+  });
+
+  test('4.3 CH-41 an address the server rejects among accepted ones still reports enviada', async () => {
+    // nodemailer resolves a partial rejection with the rejected list; only a total one throws.
+    const parcial: Transporte = {
+      sendMail: async () => ({ accepted: ['uno@empresa-demo.com'], rejected: ['dos@empresa-demo.com'] }),
+      close: () => undefined,
+    };
+    const notificador = notificadorDesdeTransporte(parcial, { de: REMITENTE, timeoutMs: 1000 });
+
+    assert.deepEqual(
+      await notificador.enviar({ ...CORREO, para: ['uno@empresa-demo.com', 'dos@empresa-demo.com'] }),
+      { resultado: 'enviada' },
+    );
+  });
+
+  test('4.4 CH-41 every address rejected is envio-rechazado', async () => {
+    const total: Transporte = {
+      sendMail: async () => {
+        throw Object.assign(new Error('No recipients defined'), { code: 'EENVELOPE' });
+      },
+      close: () => undefined,
+    };
+    const notificador = notificadorDesdeTransporte(total, { de: REMITENTE, timeoutMs: 1000 });
+
+    assert.deepEqual(
+      await notificador.enviar({ ...CORREO, para: ['uno@empresa-demo.com', 'dos@empresa-demo.com'] }),
+      { resultado: 'fallo', categoria: 'envio-rechazado', codigo: null },
+    );
   });
 });
 
@@ -298,7 +354,7 @@ describe('opcionesTransporte — hardened nodemailer options with the send budge
     // The production options, with only the delivery swapped for JSON output.
     const json = createTransport({ ...opcionesTransporte(CONFIG, 1000), jsonTransport: true });
     const html = '<img src="file:///etc/passwd"><img src="http://127.0.0.1:9/x">';
-    const base = { from: REMITENTE, to: CORREO.para };
+    const base = { from: REMITENTE, to: [...CORREO.para] };
     const info = await json.sendMail({ ...base, html, text: 'file:///etc/passwd' });
     const m = JSON.parse(info.message) as Record<string, unknown>;
     assert.equal(m.html, html);

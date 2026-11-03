@@ -304,7 +304,7 @@ var ERRORES_CAMPO = {
   umbral: 'Ingresá un número válido.',
   hora: 'Elegí una hora válida.',
   dias: 'Elegí los días de envío.',
-  destinatario: 'Ingresá un correo válido.'
+  destinatarios: 'Revisá los correos: escribí entre 1 y 5, separados por comas.'
 };
 var OPCIONES_DIAS = [['todos', 'Todos los días'], ['lun-vie', 'De lunes a viernes'], ['lun-sab', 'De lunes a sábado']];
 var ICONO_OK = [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm9 12 2 2 4-4' }]];
@@ -394,9 +394,15 @@ function cuerpoDeCambios(campos, ajustes) {
   }
   if (campos.hora && campos.hora.control.value !== ajustes.hora) { cuerpo.hora = campos.hora.control.value; }
   if (campos.dias && campos.dias.control.value !== ajustes.dias) { cuerpo.dias = campos.dias.control.value; }
-  var correo = campos.destinatario.control.value.trim();
-  if (correo !== (ajustes.destinatario || '')) { cuerpo.destinatario = correo; }
+  // CH-41 (DEC-187): the whole list is sent, and only when it differs from the stored one (compared as JSON).
+  var correos = direccionesDe(campos.destinatarios.control.value);
+  if (JSON.stringify(correos) !== JSON.stringify(ajustes.destinatarios)) { cuerpo.destinatarios = correos; }
   return cuerpo;
+}
+// CH-41 (DEC-194 1(a)): the text of the field as a list: its pieces between commas, semicolons and any whitespace.
+// No validation here: the server decides, and the screen names the field.
+function direccionesDe(texto) {
+  return String(texto).split(/[,;\\s]+/).filter(function (pieza) { return pieza !== ''; });
 }
 function respuestaDeGuardado(resultado, item, forma, campos) {
   var estado = resultado.estado;
@@ -466,11 +472,13 @@ function formularioDeAjustes(item, ajustes, tarjeta, boton) {
     forma.appendChild(fila);
   }
   var correo = nodo('input', 'zd-input');
-  correo.type = 'email';
-  correo.value = ajustes.destinatario || '';
+  // A text input, not an email one: that kind can refuse the separators before the script reads them.
+  correo.type = 'text';
+  correo.setAttribute('inputmode', 'email');
+  correo.value = ajustes.destinatarios.join(', ');
   correo.setAttribute('autocomplete', 'off');
-  campos.destinatario = campoDeFormulario(prefijo, 'destinatario', 'Enviar a', correo, null, null);
-  forma.appendChild(campos.destinatario.caja);
+  campos.destinatarios = campoDeFormulario(prefijo, 'destinatarios', 'Enviar a', correo, 'Hasta 5 correos, separados por comas.', null);
+  forma.appendChild(campos.destinatarios.caja);
   var acciones = nodo('div', 'zd-form-actions');
   var guardar = nodo('button', 'zd-btn zd-btn--primary', 'Guardar cambios');
   guardar.type = 'submit';

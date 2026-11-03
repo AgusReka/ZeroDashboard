@@ -2,11 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { Prisma } from '../generated/prisma/client.js';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { cronValido, proximaEjecucion } from '../automatizaciones/automatizaciones.js';
-import { destinatarioDe } from '../automatizaciones/automatizaciones-rutas.js';
+import { destinatariosDe } from '../automatizaciones/automatizaciones-rutas.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { conTenantActivo } from '../aislamiento/contexto-tenant.js';
 import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
-import { direccionValida } from '../automatizaciones/correo.js';
 import { prepararSentencia, validarDeclaracion } from '../ejecucion/parametros.js';
 import { levantarSesionPanel } from './panel-auth.js';
 import { DIAS_PRESET, horarioPresetDeCron, type Dias } from './panel-automatizaciones.js';
@@ -24,7 +23,7 @@ export interface FilaAjustes {
   activo: boolean;
   cron: string;
   valores: unknown;
-  destinatario: string | null;
+  destinatarios: string[];
 }
 
 /** The template columns the value rules read: the statement and its declaration. */
@@ -38,7 +37,7 @@ export interface AjustesLeidos {
   umbral?: number;
   hora?: string;
   dias?: Dias;
-  destinatario: string | null;
+  destinatarios: string[];
   zonaHoraria: string;
 }
 
@@ -47,14 +46,14 @@ export interface CuerpoAjustes {
   umbral?: unknown;
   hora?: unknown;
   dias?: unknown;
-  destinatario?: unknown;
+  destinatarios?: unknown;
 }
 
 /** Columns to write: only the ones the body changed. `valores` is always the merged map. */
 export interface DatosAjustes {
   cron?: string;
   valores?: Record<string, unknown>;
-  destinatario?: string;
+  destinatarios?: string[];
 }
 
 export type ResolucionAjustes =
@@ -102,7 +101,7 @@ export function proyectarAjustes(
   plantilla: PlantillaAjustes,
   zona: string,
 ): AjustesLeidos {
-  const ajustes: AjustesLeidos = { destinatario: fila.destinatario, zonaHoraria: zona };
+  const ajustes: AjustesLeidos = { destinatarios: fila.destinatarios, zonaHoraria: zona };
   const umbral = valoresComoMapa(fila.valores).umbral;
   if (declaraUmbral(plantilla.parametros) && typeof umbral === 'number' && Number.isFinite(umbral)) {
     ajustes.umbral = umbral;
@@ -120,7 +119,7 @@ export function proyectarAjustes(
  * returns the columns to write. Order: no key at all is a 400 with no field; a schedule
  * change over a non-preset cron is a 409, never a silent overwrite; then every field is
  * checked and all offenders are named together, in business names (`umbral`, `hora`,
- * `dias`, `destinatario`), never as JSON pointers or `cron`.
+ * `dias`, `destinatarios`), never as JSON pointers or `cron`.
  *
  * `umbral` is merged into the stored `valores` and the result goes through the same
  * `prepararSentencia` the alta uses, so the DEC-60 shape rules apply unchanged. When only
@@ -132,8 +131,8 @@ export function resolverAjustes(
   plantilla: PlantillaAjustes,
   zona: string,
 ): ResolucionAjustes {
-  const { umbral, hora, dias, destinatario } = cuerpo;
-  if ([umbral, hora, dias, destinatario].every((valor) => valor === undefined)) {
+  const { umbral, hora, dias, destinatarios } = cuerpo;
+  if ([umbral, hora, dias, destinatarios].every((valor) => valor === undefined)) {
     return { ok: false, estado: 400, campos: [] };
   }
   const base = horarioPresetDeCron(fila.cron);
@@ -175,12 +174,14 @@ export function resolverAjustes(
     }
   }
 
-  if (destinatario !== undefined) {
-    const limpio = typeof destinatario === 'string' ? destinatarioDe(destinatario) : null;
-    if (limpio === null || !direccionValida(limpio)) {
-      campos.push('destinatario');
+  // CH-41 (DEC-187, DEC-194 2(a)): the list rule of the operator's routes, but the panel
+  // names the field, not the position, and cannot empty the list: at least one address.
+  if (destinatarios !== undefined) {
+    const lista = Array.isArray(destinatarios) ? destinatariosDe(destinatarios) : null;
+    if (lista === null || !lista.ok || lista.lista.length === 0) {
+      campos.push('destinatarios');
     } else {
-      datos.destinatario = limpio;
+      datos.destinatarios = lista.lista;
     }
   }
 
@@ -201,12 +202,12 @@ const ajustesSchema = {
   type: 'object',
   additionalProperties: false,
   minProperties: 1,
-  propertyNames: { enum: ['umbral', 'hora', 'dias', 'destinatario'] },
+  propertyNames: { enum: ['umbral', 'hora', 'dias', 'destinatarios'] },
   properties: {
     umbral: {},
     hora: { type: 'string', maxLength: 5 },
     dias: { type: 'string', maxLength: 16 },
-    destinatario: { type: 'string', maxLength: 254 },
+    destinatarios: { type: 'array', maxItems: 50, items: {} },
   },
 } as const;
 
@@ -259,7 +260,7 @@ export function registerPanelAjustesRoutes(
   async function leer(id: string) {
     const fila = await prisma.automatizacion.findUnique({
       where: { id },
-      select: { activo: true, cron: true, valores: true, destinatario: true, plantillaId: true },
+      select: { activo: true, cron: true, valores: true, destinatarios: true, plantillaId: true },
     });
     if (fila === null) {
       return null;
@@ -321,7 +322,7 @@ export function registerPanelAjustesRoutes(
               ? { estado: 409, cuerpo: { error: resolucion.error } }
               : { estado: 400, cuerpo: { error: 'solicitud-invalida', campos: resolucion.campos } };
           }
-          const { cron, valores, destinatario } = resolucion.datos;
+          const { cron, valores, destinatarios } = resolucion.datos;
           try {
             const guardada = await prisma.automatizacion.update({
               where: { id: request.params.id },
@@ -330,9 +331,9 @@ export function registerPanelAjustesRoutes(
                 // Sound cast: `prepararSentencia` accepted every key as declared and every
                 // value as a string, finite number or boolean (as in the alta route).
                 ...(valores === undefined ? {} : { valores: valores as Prisma.InputJsonObject }),
-                ...(destinatario === undefined ? {} : { destinatario }),
+                ...(destinatarios === undefined ? {} : { destinatarios }),
               },
-              select: { activo: true, cron: true, valores: true, destinatario: true },
+              select: { activo: true, cron: true, valores: true, destinatarios: true },
             });
             return {
               estado: 200,

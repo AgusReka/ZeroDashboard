@@ -9,7 +9,7 @@ Una automatización ejecuta una plantilla del catálogo contra una conexión de 
 | Disparador | Expresión cron estándar de cinco campos, interpretada en la zona horaria del despliegue (`ZONA_HORARIA_AUTOMATIZACIONES`, `UTC` si no se define; DEC-76, DEC-77). |
 | Fuente | Siempre una plantilla, más una conexión y los valores de sus parámetros. Nunca una consulta guardada. |
 | Condición | Con cero filas no se envía nada (DEC-84), y tampoco con menos filas que el «Mínimo de filas para avisar» de la automatización: 1 por defecto, hasta el tope de filas del motor (DEC-186, DEC-193). El umbral de un valor es un parámetro dentro del SQL. |
-| Acción | Un correo HTML a un solo destinatario, opcional (DEC-82). |
+| Acción | Un correo HTML, a hasta 5 destinatarios en un solo mensaje, opcional (DEC-82, DEC-187). |
 | Registro | Una ejecución por corrida, con metadatos y sin filas (DEC-93). |
 
 ## Camino rápido
@@ -17,7 +17,7 @@ Una automatización ejecuta una plantilla del catálogo contra una conexión de 
 1. Comprobar en **Mapeo y validación** que las entidades de la plantilla están «Válida».
 2. **Automatizaciones** → «Nueva automatización».
 3. Paso «Conexión y plantilla»: elegir la conexión y una tarjeta de plantilla → «Siguiente».
-4. Paso «Parámetros y horario»: valores, «Frecuencia», «Hora (24 horas)» y, si se quiere correo, «Correo del destinatario (opcional)» y «Mínimo de filas para avisar» (1 si no se cambia) → «Crear automatización».
+4. Paso «Parámetros y horario»: valores, «Frecuencia», «Hora (24 horas)» y, si se quiere correo, «Correos de los destinatarios (opcional)» (hasta 5, separados por comas, punto y coma o espacios) y «Mínimo de filas para avisar» (1 si no se cambia) → «Crear automatización».
 5. El aviso informa la primera ejecución programada y la zona horaria.
 
 Si la conexión elegida no puede correr una plantilla, su tarjeta aparece deshabilitada con el motivo: «No disponible con esta conexión: producto (vista sin validar), … Cada ejecución se frenaría antes de conectar.» (DEC-127).
@@ -49,10 +49,10 @@ El correo necesita SMTP: sin `SMTP_HOST`, cada corrida registra «Correo no conf
 
 ## Ajustar en el lugar
 
-En una automatización activa, «Ajustar» abre un pop-up con cuatro cosas editables: los valores de los parámetros, el horario, el destinatario (DEC-174) y el mínimo de filas (DEC-193). «Guardar ajustes» envía solo lo que cambió y rige desde la próxima ejecución; un destinatario vacío deja de enviar correo. La plantilla y la conexión se muestran y no se cambian: para eso se desactiva y se crea otra.
+En una automatización activa, «Ajustar» abre un pop-up con cuatro cosas editables: los valores de los parámetros, el horario, los destinatarios (DEC-174, DEC-187) y el mínimo de filas (DEC-193). «Guardar ajustes» envía solo lo que cambió y rige desde la próxima ejecución; la lista se compara dirección por dirección, así que cambiar solo el separador no cuenta como cambio, y una lista vacía deja de enviar correo. La plantilla y la conexión se muestran y no se cambian: para eso se desactiva y se crea otra.
 
 - «Desactivar» detiene la automatización; no se puede reactivar. Sus ejecuciones pasadas siguen disponibles (DEC-79).
-- El panel del cliente ajusta lo mismo, con menos opciones: «Cantidad mínima», «Hora de envío», días y correo (DEC-138).
+- El panel del cliente ajusta lo mismo, con menos opciones: «Cantidad mínima», «Hora de envío», días y correos, de 1 a 5: el panel no puede dejar la lista vacía (DEC-138, DEC-187, DEC-194).
 
 ## Frescura de datos
 
@@ -69,7 +69,8 @@ Estado por plantilla: «Al día» (ventana menor o igual que la tolerancia), «D
 
 ## Límites
 
-- **Límite.** Un solo destinatario y un solo formato (correo HTML); sin otras acciones. La única condición fuera del SQL es el mínimo de filas: no hay condiciones sobre sumas, máximos ni combinaciones (DEC-186).
+- **Límite.** Hasta 5 destinatarios y un solo formato (correo HTML); sin otras acciones. Las direcciones repetidas, sin distinguir mayúsculas, cuentan una vez, y el tope se mide después de quitarlas (DEC-194). La única condición fuera del SQL es el mínimo de filas: no hay condiciones sobre sumas, máximos ni combinaciones (DEC-186).
+- **Límite.** Todas las direcciones van en «Para» de un mismo mensaje y se ven entre sí. Si el servidor de correo acepta al menos una, la ejecución figura «Enviada»; si las rechaza todas, «Falló el envío» (DEC-187).
 - **Límite.** El mínimo de filas se ajusta solo desde la consola; el panel del cliente no lo muestra (DEC-186). Si el resultado se cortó en el tope de filas, cuenta como alcanzado (DEC-193).
 - **Límite.** Las filas de una corrida se cuentan y se descartan: no hay vista de resultados anteriores (DEC-93).
 

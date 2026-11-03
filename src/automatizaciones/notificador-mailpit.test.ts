@@ -76,7 +76,7 @@ describe('notificador — live delivery to the correo-profile Mailpit', { skip: 
       { SMTP_HOST: HOST, SMTP_PORT: String(PUERTO_SMTP), SMTP_FROM: 'avisos@ejemplo.test' },
     );
 
-    assert.deepEqual(await notificador?.enviar({ para, ...correo }), { resultado: 'enviada' });
+    assert.deepEqual(await notificador?.enviar({ para: [para], ...correo }), { resultado: 'enviada' });
 
     const resumen = await buscar(correo.asunto);
     assert.ok(resumen, 'the message reached Mailpit');

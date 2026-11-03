@@ -133,7 +133,7 @@ Más aire (`data-surface="panel"`: cuerpo 16 px, controles 44 px), móvil primer
 - Banner error inline dentro de la tarjeta. Nunca códigos, nombres de tablas ni "réplica".
 
 ### P-04 Ajuste de umbrales y horarios — P2h · CH-23 · PENDIENTE
-- **Datos**: `umbral` (entero, 20, sufijo "unidades") · `hora` (08:00) · `dias` (enum) · `destinatarios`. **Sin campos de SQL.**
+- **Datos**: `umbral` (entero, 20, sufijo "unidades") · `hora` (08:00) · `dias` (enum) · `destinatarios` (un solo campo de texto, «Enviar a», de 1 a 5 correos separados por comas, con la ayuda «Hasta 5 correos, separados por comas.»; el panel no puede dejarlo vacío). **Sin campos de SQL.**
 - **Estados**: validación por campo · guardado (Banner ok "Se aplican desde la próxima revisión").
 
 ### P-05 Advertencia de frescura al activar — F3 · CH-26 · PENDIENTE

@@ -126,7 +126,7 @@ describe(
 
     async function automatizacion(
       n: Negocio,
-      extra: { cron?: string; activo?: boolean; destinatario?: string } = {},
+      extra: { cron?: string; activo?: boolean; destinatarios?: string[] } = {},
     ): Promise<string> {
       const fila = await db.automatizacion.create({
         data: {
@@ -136,7 +136,7 @@ describe(
           cron: extra.cron ?? '30 8 * * 1-5',
           valores: { umbral: 20 },
           activo: extra.activo ?? true,
-          destinatario: extra.destinatario ?? 'ana@empresa.com',
+          destinatarios: extra.destinatarios ?? ['ana@empresa.com'],
         },
       });
       return fila.id;
@@ -155,13 +155,13 @@ describe(
     async function fila(id: string) {
       return await db.automatizacion.findUniqueOrThrow({
         where: { id },
-        select: { cron: true, valores: true, destinatario: true, activo: true, minimoFilas: true },
+        select: { cron: true, valores: true, destinatarios: true, activo: true, minimoFilas: true },
       });
     }
 
     // ---- read ------------------------------------------------------------------------
 
-    test('GET returns the preset schedule, the umbral and the recipient, with nothing technical', async () => {
+    test('GET returns the preset schedule, the umbral and the recipients, with nothing technical', async () => {
       const n = await negocio('lee');
       const id = await automatizacion(n);
       const respuesta = await leer(n, id);
@@ -170,7 +170,7 @@ describe(
         umbral: 20,
         hora: '08:30',
         dias: 'lun-vie',
-        destinatario: 'ana@empresa.com',
+        destinatarios: ['ana@empresa.com'],
         zonaHoraria: 'UTC',
       });
       for (const texto of ['cron', 'valores', 'sql', 'tenantId', 'conexionId', n.tenantId, n.conexionId]) {
@@ -182,35 +182,48 @@ describe(
       const n = await negocio('personalizado');
       const id = await automatizacion(n, { cron: '0 */6 * * *' });
       const cuerpo = (await leer(n, id)).json() as Record<string, unknown>;
-      assert.deepEqual(Object.keys(cuerpo).sort(), ['destinatario', 'umbral', 'zonaHoraria']);
+      assert.deepEqual(Object.keys(cuerpo).sort(), ['destinatarios', 'umbral', 'zonaHoraria']);
+    });
+
+    test('CH-41 GET returns the stored list in order, and [] when none is stored', async () => {
+      const n = await negocio('lista');
+      const dos = await automatizacion(n, { destinatarios: ['b@empresa.com', 'a@empresa.com'] });
+      assert.deepEqual(((await leer(n, dos)).json() as { destinatarios: string[] }).destinatarios, ['b@empresa.com', 'a@empresa.com']);
+      const ninguno = await automatizacion(n, { destinatarios: [] });
+      assert.deepEqual(((await leer(n, ninguno)).json() as { destinatarios: string[] }).destinatarios, []);
     });
 
     // ---- write -----------------------------------------------------------------------
 
-    test('PUT stores the cron built on the server, the merged valores and the recipient', async () => {
+    test('PUT stores the cron built on the server, the merged valores and the recipients', async () => {
       const n = await negocio('guarda');
       const id = await automatizacion(n);
-      const respuesta = await guardar(n, id, { umbral: 5, hora: '09:15', dias: 'lun-sab', destinatario: '  nuevo@empresa.com ' });
+      const respuesta = await guardar(n, id, {
+        umbral: 5,
+        hora: '09:15',
+        dias: 'lun-sab',
+        destinatarios: ['  nuevo@empresa.com ', 'otro@empresa.com'],
+      });
       assert.equal(respuesta.statusCode, 200, respuesta.body);
       assert.deepEqual(respuesta.json(), {
         umbral: 5,
         hora: '09:15',
         dias: 'lun-sab',
-        destinatario: 'nuevo@empresa.com',
+        destinatarios: ['nuevo@empresa.com', 'otro@empresa.com'],
         zonaHoraria: 'UTC',
         proximaEjecucion: '2026-10-08T09:15:00.000Z',
       });
       assert.deepEqual(await fila(id), {
         cron: '15 9 * * 1-6',
         valores: { umbral: 5 },
-        destinatario: 'nuevo@empresa.com',
+        destinatarios: ['nuevo@empresa.com', 'otro@empresa.com'],
         activo: true,
         // CH-40: the panel adjust never touches the minimum (DEC-186).
         minimoFilas: 1,
       });
     });
 
-    test('PUT with only hora keeps the days, the umbral and the recipient', async () => {
+    test('PUT with only hora keeps the days, the umbral and the recipients', async () => {
       const n = await negocio('parcial');
       const id = await automatizacion(n);
       const respuesta = await guardar(n, id, { hora: '10:00' });
@@ -218,19 +231,46 @@ describe(
       assert.deepEqual(await fila(id), {
         cron: '0 10 * * 1-5',
         valores: { umbral: 20 },
-        destinatario: 'ana@empresa.com',
+        destinatarios: ['ana@empresa.com'],
         activo: true,
         minimoFilas: 1,
       });
+    });
+
+    test('CH-41 PUT with only the list replaces it and leaves the schedule and the umbral alone', async () => {
+      const n = await negocio('solo-lista');
+      const id = await automatizacion(n);
+      const respuesta = await guardar(n, id, { destinatarios: ['Uno@empresa.com', 'dos@empresa.com', 'uno@empresa.com'] });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.deepEqual((respuesta.json() as { destinatarios: string[] }).destinatarios, ['Uno@empresa.com', 'dos@empresa.com']);
+      assert.deepEqual(await fila(id), {
+        cron: '30 8 * * 1-5',
+        valores: { umbral: 20 },
+        destinatarios: ['Uno@empresa.com', 'dos@empresa.com'],
+        activo: true,
+        minimoFilas: 1,
+      });
+    });
+
+    test('CH-41 PUT refuses [] and a list of blanks, and more than five addresses; the stored list stays', async () => {
+      const n = await negocio('no-vacia');
+      const id = await automatizacion(n);
+      const antes = await fila(id);
+      for (const destinatarios of [[], ['', '  '], ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com']]) {
+        const respuesta = await guardar(n, id, { destinatarios });
+        assert.equal(respuesta.statusCode, 400, JSON.stringify(destinatarios) + respuesta.body);
+        assert.deepEqual(respuesta.json(), { error: 'solicitud-invalida', campos: ['destinatarios'] });
+      }
+      assert.deepEqual(await fila(id), antes);
     });
 
     test('PUT with an invalid value is a 400 that names the business fields and stores nothing', async () => {
       const n = await negocio('invalido');
       const id = await automatizacion(n);
       const antes = await fila(id);
-      const respuesta = await guardar(n, id, { umbral: 'x', hora: '25:00', destinatario: 'no-es-un-correo' });
+      const respuesta = await guardar(n, id, { umbral: 'x', hora: '25:00', destinatarios: ['a@b.com', 'no-es-un-correo'] });
       assert.equal(respuesta.statusCode, 400, respuesta.body);
-      assert.deepEqual(respuesta.json(), { error: 'solicitud-invalida', campos: ['umbral', 'hora', 'destinatario'] });
+      assert.deepEqual(respuesta.json(), { error: 'solicitud-invalida', campos: ['umbral', 'hora', 'destinatarios'] });
       assert.deepEqual(await fila(id), antes);
     });
 
@@ -245,6 +285,9 @@ describe(
         { valores: { umbral: 1 } },
         { activo: false },
         { desconocida: 1 },
+        // CH-41 (DEC-194): the former single key is no longer a key, never silently dropped.
+        { destinatario: 'ana@empresa.com' },
+        { hora: '08:00', destinatario: 'ana@empresa.com' },
         // CH-40 (DEC-186): the minimum rows is the operator's to set, never the panel's.
         { minimoFilas: 5 },
         { umbral: 1, minimoFilas: 5 },

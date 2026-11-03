@@ -305,6 +305,7 @@ const IDS = [
   'auto-conexion',
   'auto-cron',
   'auto-destinatario',
+  'auto-destinatario-ayuda',
   'auto-minimo',
   'auto-minimo-ayuda',
   'auto-crear',
@@ -377,6 +378,7 @@ const IDS = [
   'aj-horario-texto',
   'aj-cron',
   'aj-destinatario',
+  'aj-destinatario-ayuda',
   'aj-minimo',
   'aj-aviso',
   'aj-confirmar',
@@ -1348,7 +1350,7 @@ describe('the console document, served by the real route', () => {
   const AJUSTABLE = {
     ...automatizacion({ cron: '0 6 * * 1-5' }),
     valores: { umbral: 5, activo: true, viejo: 'ya no se declara' },
-    destinatario: 'a@empresa.com',
+    destinatarios: ['a@empresa.com', 'b@empresa.com'],
   };
 
   const ajusteAbierto = (escenario: Escenario): boolean => !nodo(escenario, 'auto-ajuste').hidden;
@@ -1403,13 +1405,14 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'aj-hora').value, '06:00');
     assert.equal(nodo(escenario, 'aj-cron').value, '0 6 * * 1-5');
     assert.equal(nodo(escenario, 'aj-cron').readOnly, true);
-    assert.equal(nodo(escenario, 'aj-destinatario').value, 'a@empresa.com');
+    // CH-41: the stored list joined by «, ».
+    assert.equal(nodo(escenario, 'aj-destinatario').value, 'a@empresa.com, b@empresa.com');
     assert.equal(nodo(escenario, 'aj-confirmar').hidden, true);
   });
 
   test('CH-33 a custom cron opens on Personalizado, editable, and a recipient-less row opens blank', async () => {
     const escenario = await arrancar();
-    await abrirAjuste(escenario, { ...AJUSTABLE, cron: '*/30 8-18 * * *', destinatario: null });
+    await abrirAjuste(escenario, { ...AJUSTABLE, cron: '*/30 8-18 * * *', destinatarios: [] });
     assert.equal(nodo(escenario, 'aj-frecuencia').value, 'personalizado');
     assert.equal(nodo(escenario, 'aj-cron').value, '*/30 8-18 * * *');
     assert.equal(nodo(escenario, 'aj-cron').readOnly, false);
@@ -1458,7 +1461,7 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { cron: '30 7 * * 1-5' });
   });
 
-  test('CH-33 a changed value sends the whole map of declared values; an emptied recipient is sent as null', async () => {
+  test('CH-33 a changed value sends the whole map of declared values; an emptied recipients field is sent as []', async () => {
     const escenario = await arrancar();
     await abrirAjuste(escenario);
     controlesAjuste(escenario)[0].value = '7';
@@ -1466,7 +1469,7 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'aj-destinatario').value = '  ';
     nodo(escenario, 'aj-destinatario').disparar('input');
     await guardarAjuste(escenario, { status: 200, cuerpo: { automatizacion: AJUSTABLE } });
-    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { valores: { umbral: 7, activo: true }, destinatario: null });
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { valores: { umbral: 7, activo: true }, destinatarios: [] });
     // A 200 without the next run keeps the first sentence only.
     assert.equal(nodo(escenario, 'banner').textContent, 'Se guardaron los ajustes.');
   });
@@ -1482,14 +1485,62 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'aj-aviso').textContent, 'No hay cambios para guardar.');
   });
 
-  test('CH-33 a 400 is told inside the pop-up naming the field, and it stays open with what was typed', async () => {
+  test('CH-33 a 400 is told inside the pop-up naming the address, and it stays open with what was typed', async () => {
     const escenario = await arrancar();
     await abrirAjuste(escenario);
-    nodo(escenario, 'aj-destinatario').value = 'a@b.com, c@d.com';
-    await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/destinatario'] } });
+    nodo(escenario, 'aj-destinatario').value = 'a@b.com, no-es-un-correo';
+    await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/destinatarios/1'] } });
     assert.equal(ajusteAbierto(escenario), true);
-    assert.match(nodo(escenario, 'aj-aviso').textContent, /El correo del destinatario no es válido/);
-    assert.equal(nodo(escenario, 'aj-destinatario').value, 'a@b.com, c@d.com');
+    assert.match(nodo(escenario, 'aj-aviso').textContent, /El correo «no-es-un-correo» no es válido/);
+    assert.match(nodo(escenario, 'aj-aviso').textContent, /separadas por comas/);
+    assert.equal(nodo(escenario, 'aj-destinatario').value, 'a@b.com, no-es-un-correo');
+  });
+
+  test('CH-41 an adjust 400 over the cap says there are more than 5, and sends the list as typed', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-destinatario').value = 'a@x.com, b@x.com, c@x.com, d@x.com, e@x.com, f@x.com';
+    await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/destinatarios'] } });
+    assert.equal(ajusteAbierto(escenario), true);
+    assert.match(nodo(escenario, 'aj-aviso').textContent, /Hay más de 5 destinatarios\. Escriba hasta 5 direcciones distintas\./);
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { destinatarios: ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com'] });
+  });
+
+  test('CH-41 a 400 for the minimum keeps its own sentence next to the recipients one', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-minimo').value = '0';
+    await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/minimoFilas'] } });
+    assert.match(nodo(escenario, 'aj-aviso').textContent, /El mínimo de filas no es válido/);
+  });
+
+  /** Spec "Only a changed list is sent": the list is compared as a list, so the separator does not count. */
+  test('CH-41 only a changed list is sent: another separator is no change, a new address is', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'aj-destinatario').value = 'a@empresa.com;b@empresa.com';
+    nodo(escenario, 'aj-destinatario').disparar('input');
+    nodo(escenario, 'aj-guardar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'nothing was sent');
+    assert.equal(nodo(escenario, 'aj-aviso').textContent, 'No hay cambios para guardar.');
+    // The pop-up reads as unchanged too: Cancelar would close it without asking.
+    nodo(escenario, 'aj-cancelar').disparar('click');
+    assert.equal(ajusteAbierto(escenario), false);
+
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-destinatario').value = 'a@empresa.com,  b@empresa.com\nc@empresa.com';
+    await guardarAjuste(escenario, { status: 200, cuerpo: { automatizacion: AJUSTABLE } });
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { destinatarios: ['a@empresa.com', 'b@empresa.com', 'c@empresa.com'] });
+  });
+
+  test('CH-41 only the recipients are sent when only they changed, as the list in the order typed', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    nodo(escenario, 'aj-destinatario').value = 'b@empresa.com, a@empresa.com';
+    await guardarAjuste(escenario, { status: 200, cuerpo: { automatizacion: AJUSTABLE } });
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { destinatarios: ['b@empresa.com', 'a@empresa.com'] });
   });
 
   test('CH-33 a 409 for an automation deactivated meanwhile is told inside and the list is reloaded', async () => {
@@ -1629,14 +1680,17 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-14: recipient and notification outcome (spec `query-console`) -------------
 
-  /** Spec "Creating with a recipient": sent trimmed, and only when not empty. CH-21c RW2: through the wizard. */
-  test('CH-14 6.4 the recipient is sent as destinatario only when one is entered', async () => {
+  /**
+   * Spec "Creating with several recipients" and "Creating without recipients": split on commas, semicolons
+   * and any whitespace, and sent only when there is at least one piece. CH-21c RW2: through the wizard.
+   */
+  test('CH-41 the recipients are sent as the list destinatarios only when at least one is entered', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
     await abrirAlta(escenario);
     await avanzar(escenario);
     fijarHorario(escenario, 'diaria', '06:00');
-    (escenario.nodos.get('auto-destinatario') as Nodo).value = ' ops@example.com ';
+    (escenario.nodos.get('auto-destinatario') as Nodo).value = ' ops@example.com, otro@example.com;ventas@example.com\nextra@example.com ';
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
     await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
     assert.equal(escenario.peticiones[escenario.peticiones.length - 2].url, '/automatizaciones');
@@ -1645,19 +1699,23 @@ describe('the console document, served by the real route', () => {
       conexionId: 'c-1',
       valores: {},
       cron: '0 6 * * *',
-      destinatario: 'ops@example.com',
+      destinatarios: ['ops@example.com', 'otro@example.com', 'ventas@example.com', 'extra@example.com'],
       minimoFilas: 1,
     });
 
-    // Blank (spaces only): no destinatario key at all, so the automation is created without one.
-    // The 201 closed the wizard, so the second one is opened and walked again.
-    await abrirAlta(escenario);
-    await avanzar(escenario);
-    fijarHorario(escenario, 'diaria', '06:00');
-    (escenario.nodos.get('auto-destinatario') as Nodo).value = '   ';
-    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
-    await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
-    assert.equal('destinatario' in (escenario.peticiones[escenario.peticiones.length - 2].cuerpo as object), false);
+    // Blank, spaces only, or only separators: no destinatarios key at all, so the automation is created without any.
+    // The 201 closed the wizard, so each next one is opened and walked again.
+    for (const texto of ['   ', ' , ;\n']) {
+      await abrirAlta(escenario);
+      await avanzar(escenario);
+      fijarHorario(escenario, 'diaria', '06:00');
+      (escenario.nodos.get('auto-destinatario') as Nodo).value = texto;
+      escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
+      await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+      const cuerpo = escenario.peticiones[escenario.peticiones.length - 2].cuerpo as object;
+      assert.equal('destinatarios' in cuerpo, false, JSON.stringify(texto));
+      assert.equal('destinatario' in cuerpo, false, JSON.stringify(texto));
+    }
   });
 
   // ---- CH-40: the minimum rows (spec `query-console`, DEC-186) ----------------------
@@ -1726,7 +1784,7 @@ describe('the console document, served by the real route', () => {
    * Spec "Invalid recipient shown legibly" and "Server 400 shown inside the pop-up" (CH-32b).
    * CH-21c RW3: through the wizard, which stays on step 2 with every typed value.
    */
-  test('CH-14 6.4 a rejected recipient is one legible sentence naming the field, never a raw error', async () => {
+  test('CH-14 6.4 a rejected recipient is one legible sentence naming the address typed, never a raw error', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
     await abrirAlta(escenario);
@@ -1734,10 +1792,10 @@ describe('the console document, served by the real route', () => {
     const [control] = nodo(escenario, 'auto-valores').porClase('parametro-valor');
     control.value = '5';
     fijarHorario(escenario, 'diaria', '06:00');
-    (escenario.nodos.get('auto-destinatario') as Nodo).value = 'ops@example.com, otro@example.com';
+    (escenario.nodos.get('auto-destinatario') as Nodo).value = 'ops@example.com, no-es-un-correo';
     await enviar(
       escenario,
-      { error: 'solicitud-invalida', campos: ['/destinatario'], stack: 'Error: boom\n    at direccionValida' },
+      { error: 'solicitud-invalida', campos: ['/destinatarios/1'], stack: 'Error: boom\n    at direccionValida' },
       400,
       'auto-crear',
       'click',
@@ -1745,9 +1803,9 @@ describe('the console document, served by the real route', () => {
     // CH-32b: the page banner is behind the pop-up, so the sentence is written inside it.
     const banner = nodo(escenario, 'auto-dialogo-aviso').textContent;
     assert.equal(nodo(escenario, 'banner').hidden, true);
-    assert.match(banner, /destinatario/);
-    assert.match(banner, /una sola dirección/);
-    assert.ok(!banner.includes('/destinatario'), 'the JSON pointer is translated');
+    assert.match(banner, /El correo «no-es-un-correo» no es válido\./);
+    assert.match(banner, /Escriba direcciones como operaciones@empresa\.com, separadas por comas\./);
+    assert.ok(!banner.includes('/destinatarios'), 'the JSON pointer is translated');
     assert.ok(!banner.includes('direccionValida'), 'no stack trace reaches the page');
     assert.ok(!banner.includes('solicitud-invalida'), 'no raw error code reaches the page');
     assert.deepEqual(ultimoCuerpo(escenario), {
@@ -1755,13 +1813,13 @@ describe('the console document, served by the real route', () => {
       conexionId: 'c-9',
       valores: { n: 5 },
       cron: '0 6 * * *',
-      destinatario: 'ops@example.com, otro@example.com',
+      destinatarios: ['ops@example.com', 'no-es-un-correo'],
       minimoFilas: 1,
     });
     // The 400 keeps the wizard open on step 2, with what was typed.
     assert.equal(nodo(escenario, 'auto-alta').hidden, false);
     assert.deepEqual(pasoVisible(escenario), [2, 2]);
-    assert.equal(nodo(escenario, 'auto-destinatario').value, 'ops@example.com, otro@example.com');
+    assert.equal(nodo(escenario, 'auto-destinatario').value, 'ops@example.com, no-es-un-correo');
     assert.equal(nodo(escenario, 'auto-cron').value, '0 6 * * *');
     assert.equal(nodo(escenario, 'auto-hora').value, '06:00');
     assert.equal(nodo(escenario, 'auto-conexion').value, 'c-9');
@@ -2692,6 +2750,36 @@ describe('the console document, served by the real route', () => {
     }
   });
 
+  /** Spec "Invalid recipient shown legibly" for a list over the cap, which the server names as the list itself. */
+  test('CH-41 a create 400 over the cap says there are more than 5 destinatarios, with the typed list kept', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    fijarHorario(escenario, 'diaria', '06:00');
+    const seis = 'a@x.com b@x.com, c@x.com; d@x.com e@x.com f@x.com';
+    (escenario.nodos.get('auto-destinatario') as Nodo).value = seis;
+    await enviar(escenario, { error: 'solicitud-invalida', campos: ['/destinatarios'] }, 400, 'auto-crear', 'click');
+    assert.match(nodo(escenario, 'auto-dialogo-aviso').textContent, /Hay más de 5 destinatarios\. Escriba hasta 5 direcciones distintas\./);
+    assert.deepEqual((ultimoCuerpo(escenario) as { destinatarios: string[] }).destinatarios, ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com']);
+    assert.equal(nodo(escenario, 'auto-destinatario').value, seis);
+  });
+
+  /** Design §6: both fields are text inputs, because an email input refuses the separators before the script reads them. */
+  test('CH-41 the recipients fields are text inputs with an email keyboard, labelled in the plural, with a hint', () => {
+    const m = marcado();
+    for (const [id, ayuda] of [['auto-destinatario', 'auto-destinatario-ayuda'], ['aj-destinatario', 'aj-destinatario-ayuda']]) {
+      const entrada = m.match(new RegExp('<input id="' + id + '"[^>]*>'))?.[0] ?? '';
+      assert.match(entrada, /\btype="text"/, id);
+      assert.match(entrada, /\binputmode="email"/, id);
+      assert.ok(!/\btype="email"/.test(entrada), id);
+      assert.ok(entrada.includes('aria-describedby="' + ayuda + '"'), id);
+      assert.match(m, new RegExp('<p id="' + ayuda + '" class="ayuda">Hasta 5, separados por comas\\.</p>'));
+    }
+    assert.match(m, /<label for="auto-destinatario" class="zd-label">Correos de los destinatarios \(opcional\)<\/label>/);
+    assert.match(m, /<label for="aj-destinatario" class="zd-label">Correos de los destinatarios \(opcional; vacío: no se envía correo\)<\/label>/);
+  });
+
   /** Design E1: a catalog row with no label at all gets the neutral theme, never a throw. */
   test('CH-21c E1 a template without a label previews with the neutral theme', async () => {
     const escenario = await vistaPrevia('Sin etiqueta', undefined);
@@ -2706,6 +2794,10 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'auto-destinatario').value = ' ops@example.com ';
     nodo(escenario, 'auto-destinatario').disparar('input');
     assert.equal(nodo(escenario, 'auto-vista-para').textContent, 'ops@example.com');
+    // CH-41: the «Para» line lists every address typed, however they were separated.
+    nodo(escenario, 'auto-destinatario').value = 'ops@example.com;  otro@example.com\nventas@example.com';
+    nodo(escenario, 'auto-destinatario').disparar('input');
+    assert.equal(nodo(escenario, 'auto-vista-para').textContent, 'ops@example.com, otro@example.com, ventas@example.com');
     nodo(escenario, 'auto-destinatario').value = '   ';
     nodo(escenario, 'auto-destinatario').disparar('input');
     assert.equal(nodo(escenario, 'auto-vista-para').textContent, 'sin destinatario: la ejecución no envía correo');

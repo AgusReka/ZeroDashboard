@@ -43,6 +43,12 @@ Un candidato pasa a la tabla de changes recién cuando se explora y se decide. S
 | CH-27 | Últimos resultados en el panel | P4h | Fuera de alcance (DEC-93) | Exige reabrir D-1: hoy no se persisten las filas |
 | — | La advertencia de frescura, también en el panel | F3 | Opción (b) de DEC-180 | Solo si el cliente necesita verla |
 
+### Candidatos que surgieron en la v2
+
+| ID | Qué resuelve | Historia | Estado | Notas |
+|---|---|---|---|---|
+| — | En el alta y el ajuste de la consola, el umbral y el mínimo de filas se confunden: el parámetro se rotula con su nombre crudo (`umbral`), sin explicar qué hace | D2 | Anotado el 2026-11-03, en la prueba manual de CH-41 | El umbral decide qué filas entran en el resultado (por ejemplo, productos con 5 unidades o menos); el mínimo decide si con esas filas se avisa (por ejemplo, solo si son al menos 3). Hoy la declaración de un parámetro solo tiene `nombre` y `tipo`, así que no hay de dónde sacar una descripción. Opciones a explorar: una `descripcion` opcional en la declaración del parámetro, cargada desde la pantalla de plantillas (CH-38); o renombrar los rótulos y sumar una ayuda fija para el mínimo que lo contraste con el umbral. El panel ya lo resuelve: rotula el umbral «Cantidad mínima», con su ayuda |
+
 ### Changes de la v2
 
 Orden de ejecución pensado para grabar el video cuanto antes: primero las automatizaciones (consola, mensaje y canales), después los reportes y al final los datos de demo. Cada change lleva su exploración. Los marcados con ⚠ probablemente pasen de 400 líneas y se parten en cortes al explorarlos.

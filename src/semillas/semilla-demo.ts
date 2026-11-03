@@ -316,7 +316,7 @@ export async function sembrarDemo(
           conexionId,
           valores: { umbral: UMBRAL_DEMO },
           cron: CRON_DEMO,
-          destinatario: entorno.correoPanel,
+          destinatarios: [entorno.correoPanel],
           activo: true,
         },
       }),

@@ -186,8 +186,8 @@ interface AutomatizacionACorrer {
   valores: unknown;
   cron: string;
   creadaEn: Date;
-  /** Read from the run's own scoped row: never a global fallback (rule 2, DEC-82). */
-  destinatario: string | null;
+  /** Read from the run's own scoped row: never a global fallback (rule 2, DEC-82, DEC-187). */
+  destinatarios: string[];
   /** CH-40 (DEC-186): the fewest rows a successful run needs before it notifies. */
   minimoFilas: number;
 }
@@ -356,7 +356,7 @@ export function crearPlanificador({
   ): Promise<{ salida: SalidaNotificacion; respaldo: string[] | null }> {
     const decision = decidirNotificacion(
       resultado,
-      automatizacion.destinatario,
+      automatizacion.destinatarios,
       notificador !== null,
       automatizacion.minimoFilas,
     );
@@ -506,7 +506,7 @@ export function crearPlanificador({
         valores: true,
         cron: true,
         creadaEn: true,
-        destinatario: true,
+        destinatarios: true,
         minimoFilas: true,
       },
       orderBy: [{ creadaEn: 'asc' }, { id: 'asc' }],

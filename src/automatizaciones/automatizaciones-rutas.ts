@@ -13,8 +13,9 @@ import { prepararSentencia, type ProblemaParametro } from '../ejecucion/parametr
  * DEC-78, DEC-79) — and the runs listing (DEC-80). None is exempt from `x-tenant-id`: `Automatizacion` is a scoped model,
  * so every read and write below is filtered by the tenant the hooks resolved from the
  * header (DEC-13), and the body never names one (rule 2). CH-33 (DEC-174) adds the
- * adjust: values, schedule and recipient change in place, on the same row; CH-40 (DEC-193)
- * adds the minimum rows to both. There is no
+ * adjust: values, schedule and recipients change in place, on the same row; CH-40 (DEC-193)
+ * adds the minimum rows to both; CH-41 (DEC-187, DEC-194) turns the one recipient into a
+ * list of at most 5. There is no
  * delete and no reactivation route, and the template and the connection never change: for
  * those, the automation is deactivated and created again.
  */
@@ -34,12 +35,12 @@ export const AutomatizacionResumen = {
 
 /**
  * Every column except `tenantId`, which the caller already knows: create, get, deactivate.
- * CH-14: `destinatario` is here only, never on the list (DEC-82). CH-40: so is `minimoFilas`.
+ * CH-14: `destinatarios` is here only, never on the list (DEC-82, CH-41). CH-40: so is `minimoFilas`.
  */
 export const AutomatizacionCompleta = {
   ...AutomatizacionResumen,
   valores: true,
-  destinatario: true,
+  destinatarios: true,
   minimoFilas: true,
 } as const;
 
@@ -80,8 +81,8 @@ interface RegistroAutomatizacionBody {
   /** Checked against the template's stored declaration by `prepararSentencia`. */
   valores: Record<string, unknown>;
   cron: string;
-  /** CH-14 (DEC-82): one address, settable only here. Absent means no notification. */
-  destinatario?: string;
+  /** CH-41 (DEC-187): the addresses, still untrusted. Absent means no notification. */
+  destinatarios?: unknown[];
   /** CH-40 (DEC-186): absent means `MINIMO_FILAS_POR_DEFECTO`. */
   minimoFilas?: number;
 }
@@ -100,25 +101,67 @@ interface AutomatizacionParams {
 const registroAutomatizacionSchema = {
   type: 'object',
   additionalProperties: false,
-  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron', 'destinatario', 'minimoFilas'] },
+  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron', 'destinatarios', 'minimoFilas'] },
   required: ['plantillaId', 'conexionId', 'cron'],
   properties: {
     plantillaId: { type: 'string', minLength: 1 },
     conexionId: { type: 'string', minLength: 1 },
     valores: { type: 'object', default: {} },
     cron: { type: 'string', minLength: 1 },
-    destinatario: { type: 'string', minLength: 1, maxLength: 254 },
+    destinatarios: { type: 'array', maxItems: 50, items: {} },
     minimoFilas: { type: 'integer', minimum: 1 },
   },
 } as const;
 
+/** CH-41 (DEC-187, DEC-194): the cap, after removing duplicates. */
+export const MAX_DESTINATARIOS = 5;
+
 /**
- * CH-14: the recipient as stored. Only surrounding spaces and tabs are trimmed (design
- * "trimmed"); a CR or LF anywhere stays in, so `direccionValida` refuses it (Threat
- * Matrix: CRLF in recipient is a `400`). `null` when the body has none.
+ * The list as stored, or what to name when it is refused: `indices` are the positions as
+ * given (before removing duplicates), `excede` is true when the list is over the cap.
  */
-export function destinatarioDe(valor: string | undefined): string | null {
-  return valor === undefined ? null : valor.replace(/^[ \t]+|[ \t]+$/g, '');
+export type ResolucionDestinatarios =
+  | { ok: true; lista: string[] }
+  | { ok: false; indices: number[]; excede: boolean };
+
+/**
+ * CH-41 (DEC-187, DEC-194): the list rule, shared by the alta, the operator's adjust and the
+ * panel's adjust. Each element must be a string; only surrounding spaces and tabs are
+ * trimmed (CH-14 "trimmed"), a CR or LF anywhere stays in, so `direccionValida` refuses it
+ * (Threat Matrix: CRLF in recipient is a `400`). Then equal addresses, ignoring case, are
+ * kept once with the first spelling and the given order, and only then is the cap checked.
+ * Pure: the schemas only check the shape, so a non-string element reaches this rule and is
+ * named by its position.
+ */
+export function destinatariosDe(valores: readonly unknown[]): ResolucionDestinatarios {
+  const indices: number[] = [];
+  const limpios: string[] = [];
+  valores.forEach((valor, indice) => {
+    const limpio = typeof valor === 'string' ? valor.replace(/^[ \t]+|[ \t]+$/g, '') : null;
+    if (limpio === null || !direccionValida(limpio)) {
+      indices.push(indice);
+    } else {
+      limpios.push(limpio);
+    }
+  });
+  if (indices.length > 0) {
+    return { ok: false, indices, excede: false };
+  }
+  const vistas = new Set<string>();
+  const lista = limpios.filter((direccion) => {
+    const clave = direccion.toLowerCase();
+    if (vistas.has(clave)) {
+      return false;
+    }
+    vistas.add(clave);
+    return true;
+  });
+  return lista.length > MAX_DESTINATARIOS ? { ok: false, indices: [], excede: true } : { ok: true, lista };
+}
+
+/** The refusal as the console's JSON pointers: one per refused position, or the list itself. */
+function camposDeDestinatarios(resolucion: { indices: number[]; excede: boolean }): string[] {
+  return resolucion.excede ? ['/destinatarios'] : resolucion.indices.map((indice) => `/destinatarios/${indice}`);
 }
 
 /**
@@ -133,12 +176,12 @@ export function minimoFilasValido(valor: number, tope: number): boolean {
 
 // ---- CH-33 (DEC-174): the operator's adjust ------------------------------------------
 
-/** The adjust body as the route hands it over: only the three keys, values still untrusted. */
+/** The adjust body as the route hands it over: only the four keys, values still untrusted. */
 export interface CuerpoAjusteOperador {
   valores?: Record<string, unknown>;
   cron?: string;
-  /** `null` clears it: the automation stops sending email (DEC-174, CH-33 D2). */
-  destinatario?: string | null;
+  /** CH-41 (DEC-187): replaces the list as a whole; `[]` empties it, so the automation stops sending email (DEC-174, CH-33 D2). */
+  destinatarios?: unknown[];
   /** CH-40 (DEC-193): same rule as the alta. */
   minimoFilas?: number;
 }
@@ -147,7 +190,7 @@ export interface CuerpoAjusteOperador {
 export interface DatosAjusteOperador {
   valores?: Record<string, unknown>;
   cron?: string;
-  destinatario?: string | null;
+  destinatarios?: string[];
   minimoFilas?: number;
 }
 
@@ -181,14 +224,12 @@ export function resolverAjusteOperador(
     }
   }
 
-  if (cuerpo.destinatario === null) {
-    datos.destinatario = null;
-  } else if (cuerpo.destinatario !== undefined) {
-    const limpio = destinatarioDe(cuerpo.destinatario);
-    if (limpio !== null && direccionValida(limpio)) {
-      datos.destinatario = limpio;
+  if (cuerpo.destinatarios !== undefined) {
+    const lista = destinatariosDe(cuerpo.destinatarios);
+    if (lista.ok) {
+      datos.destinatarios = lista.lista;
     } else {
-      campos.push('/destinatario');
+      campos.push(...camposDeDestinatarios(lista));
     }
   }
 
@@ -223,18 +264,18 @@ export function resolverAjusteOperador(
  * Strict body, `propertyNames` included for the reason `registroAutomatizacionSchema`
  * documents, so `plantillaId`, `conexionId`, `activo` or `tenantId` are a `400`, never a
  * silent drop. `valores` is a container only, as in the alta (DEC-60), and has no `default`:
- * an absent key must stay absent, or every adjust would rewrite the map. `destinatario`
- * admits `null`, which clears it.
+ * an absent key must stay absent, or every adjust would rewrite the map. `destinatarios`
+ * only checks the shape, and `[]` empties it (CH-41).
  */
 const ajusteOperadorSchema = {
   type: 'object',
   additionalProperties: false,
   minProperties: 1,
-  propertyNames: { enum: ['valores', 'cron', 'destinatario', 'minimoFilas'] },
+  propertyNames: { enum: ['valores', 'cron', 'destinatarios', 'minimoFilas'] },
   properties: {
     valores: { type: 'object' },
     cron: { type: 'string', minLength: 1 },
-    destinatario: { type: ['string', 'null'], maxLength: 254 },
+    destinatarios: { type: 'array', maxItems: 50, items: {} },
     minimoFilas: { type: 'integer', minimum: 1 },
   },
 } as const;
@@ -285,10 +326,13 @@ export function registerAutomatizacionRoutes(
       if (!cronValido(cron, zonaHoraria)) {
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/cron'] });
       }
-      // CH-14: pure as well, so a bad address is refused before any read (DEC-82).
-      const destinatario = destinatarioDe(request.body.destinatario);
-      if (destinatario !== null && !direccionValida(destinatario)) {
-        return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/destinatario'] });
+      // CH-14, CH-41: pure as well, so a bad address or a list over the cap is refused
+      // before any read (DEC-82, DEC-187). Absent means no recipients.
+      const destinatarios = destinatariosDe(request.body.destinatarios ?? []);
+      if (!destinatarios.ok) {
+        return reply
+          .code(400)
+          .send({ error: 'solicitud-invalida', campos: camposDeDestinatarios(destinatarios) });
       }
       // CH-40: pure too, against the cap the scheduler will read (DEC-186, DEC-193).
       const minimoFilas = request.body.minimoFilas ?? MINIMO_FILAS_POR_DEFECTO;
@@ -339,7 +383,7 @@ export function registerAutomatizacionRoutes(
           conexionId,
           valores: valores as Prisma.InputJsonObject,
           cron,
-          destinatario,
+          destinatarios: destinatarios.lista,
           minimoFilas,
         }),
         select: AutomatizacionCompleta,
@@ -453,7 +497,7 @@ export function registerAutomatizacionRoutes(
           ...(resolucion.problemas === undefined ? {} : { problemas: resolucion.problemas }),
         });
       }
-      const { valores, cron, destinatario, minimoFilas } = resolucion.datos;
+      const { valores, cron, destinatarios, minimoFilas } = resolucion.datos;
       try {
         const automatizacion = await prisma.automatizacion.update({
           where: { id: request.params.id },
@@ -462,7 +506,7 @@ export function registerAutomatizacionRoutes(
             // as a string, finite number or boolean (as in the alta).
             ...(valores === undefined ? {} : { valores: valores as Prisma.InputJsonObject }),
             ...(cron === undefined ? {} : { cron }),
-            ...(destinatario === undefined ? {} : { destinatario }),
+            ...(destinatarios === undefined ? {} : { destinatarios }),
             ...(minimoFilas === undefined ? {} : { minimoFilas }),
           },
           select: AutomatizacionCompleta,

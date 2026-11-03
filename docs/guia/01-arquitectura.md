@@ -13,7 +13,7 @@ ZeroDashboard permite ofrecer automatizaciones operativas a e-commerce pequeños
 | Vista canónica | El `SELECT` que el operador escribe para una entidad del contrato sobre la réplica de una conexión (DEC-30, DEC-169). | Mapeo y validación |
 | Plantilla | Entrada del catálogo global: un SQL escrito contra las vistas canónicas, los parámetros que declara y las entidades que necesita (DEC-61). | Plantillas |
 | Consulta guardada | SQL propio de un tenant, con parámetros declarados y versiones. No se ata a una conexión (DEC-11). | Consultas |
-| Automatización | Instancia de una plantilla en un tenant: plantilla, conexión, valores, horario cron y destinatario opcional. | Automatizaciones |
+| Automatización | Instancia de una plantilla en un tenant: plantilla, conexión, valores, horario cron y destinatarios opcionales (hasta 5). | Automatizaciones |
 | Ejecución | Registro de una corrida programada: inicio, fin, filas, estado y resultado del correo. No guarda las filas (DEC-93). | Automatizaciones, «Ejecuciones» |
 | Operador | Persona que usa la consola (P1). Es global: ve todos los tenants. | Barra superior |
 | Usuario del panel | Administrador del negocio (P2). Ve un solo tenant y no escribe SQL. | Usuarios del panel |
@@ -50,7 +50,7 @@ planificador ─► motor ─► réplica ─► ¿hay filas? ─► correo (SMT
 
 | Garantía | Cómo se cumple |
 |---|---|
-| El panel nunca ejecuta SQL arbitrario | El panel no tiene editor; solo ajusta umbral, hora, días y destinatario. |
+| El panel nunca ejecuta SQL arbitrario | El panel no tiene editor; solo ajusta umbral, hora, días y destinatarios. |
 | Aislamiento entre tenants | La extensión de acceso a datos agrega el tenant a cada consulta y falla si no hay tenant (DEC-13). Un `tenantId` en el cuerpo se rechaza. |
 | Solo lectura en dos capas | Antes de enviar, la aplicación verifica que el rol no pueda escribir (DEC-08); luego ejecuta dentro de una transacción `READ ONLY` (DEC-09). No hay parser de SQL. |
 | Sin concatenación de SQL | Los valores viajan como parámetros del driver (`:nombre` se reescribe a `$n`, DEC-47). |

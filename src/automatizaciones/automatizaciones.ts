@@ -346,7 +346,7 @@ export const MINIMO_FILAS_POR_DEFECTO = 1;
  */
 export type DecisionNotificacion =
   | { enviar: false; notificacion: OmisionNotificacion | null }
-  | { enviar: true; para: string };
+  | { enviar: true; para: string[] };
 
 /**
  * Evaluates the outcome precedence in order; the first condition that holds wins
@@ -359,10 +359,13 @@ export type DecisionNotificacion =
  * never match: zero rows already won. A result cut by the row cap (`hayMas`) had more rows
  * than were read, so it counts as reaching the minimum even when the cap was lowered below
  * it after the automation was created.
+ *
+ * CH-41 (DEC-187): an empty `destinatarios` is the missing recipient; otherwise one message
+ * goes to every address of the list, so the outcome is still one per run.
  */
 export function decidirNotificacion(
   r: ResultadoCorrida,
-  destinatario: string | null,
+  destinatarios: readonly string[],
   configurado: boolean,
   minimoFilas: number,
 ): DecisionNotificacion {
@@ -375,13 +378,13 @@ export function decidirNotificacion(
   if (r.filas.length < minimoFilas && !r.paginacion.hayMas) {
     return { enviar: false, notificacion: 'omitida-bajo-minimo' };
   }
-  if (destinatario === null) {
+  if (destinatarios.length === 0) {
     return { enviar: false, notificacion: 'sin-destinatario' };
   }
   if (!configurado) {
     return { enviar: false, notificacion: 'no-configurada' };
   }
-  return { enviar: true, para: destinatario };
+  return { enviar: true, para: [...destinatarios] };
 }
 
 /** What the notifier reports. It never throws and never carries SMTP text (DEC-81). */

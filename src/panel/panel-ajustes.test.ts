@@ -26,7 +26,7 @@ const PLANTILLA: PlantillaAjustes = {
 const SIN_UMBRAL: PlantillaAjustes = { sql: 'SELECT 1', parametros: [] };
 
 function fila(parche: Partial<FilaAjustes> = {}): FilaAjustes {
-  return { activo: true, cron: '30 8 * * 1-5', valores: { umbral: 20 }, destinatario: 'ana@empresa.com', ...parche };
+  return { activo: true, cron: '30 8 * * 1-5', valores: { umbral: 20 }, destinatarios: ['ana@empresa.com'], ...parche };
 }
 
 // ---- preset mapping (DEC-129 vectors, the table the console also pins) -------------
@@ -81,14 +81,19 @@ describe('proyectarAjustes — only the editable values', () => {
       umbral: 20,
       hora: '08:30',
       dias: 'lun-vie',
-      destinatario: 'ana@empresa.com',
+      destinatarios: ['ana@empresa.com'],
       zonaHoraria: ZONA,
     });
   });
 
+  test('CH-41 the stored list is returned as it is, in order', () => {
+    const ajustes = proyectarAjustes(fila({ destinatarios: ['b@empresa.com', 'a@empresa.com'] }), PLANTILLA, ZONA);
+    assert.deepEqual(ajustes.destinatarios, ['b@empresa.com', 'a@empresa.com']);
+  });
+
   test('a custom cron gives no hora, no dias and no cron text', () => {
     const ajustes = proyectarAjustes(fila({ cron: '0 */6 * * *' }), PLANTILLA, ZONA);
-    assert.deepEqual(Object.keys(ajustes).sort(), ['destinatario', 'umbral', 'zonaHoraria']);
+    assert.deepEqual(Object.keys(ajustes).sort(), ['destinatarios', 'umbral', 'zonaHoraria']);
     assert.ok(!JSON.stringify(ajustes).includes('*/6'));
   });
 
@@ -99,10 +104,10 @@ describe('proyectarAjustes — only the editable values', () => {
     }
   });
 
-  test('a missing recipient is null, and no stored column outside the allow-list leaks', () => {
-    const cruda = { ...fila({ destinatario: null }), tenantId: 'ten-1', conexionId: 'con-1', id: 'aut-1' };
+  test('a missing recipient list is empty, and no stored column outside the allow-list leaks', () => {
+    const cruda = { ...fila({ destinatarios: [] }), tenantId: 'ten-1', conexionId: 'con-1', id: 'aut-1' };
     const ajustes = proyectarAjustes(cruda, { ...PLANTILLA, sql: 'SELECT secreto :umbral' }, ZONA);
-    assert.equal(ajustes.destinatario, null);
+    assert.deepEqual(ajustes.destinatarios, []);
     const texto = JSON.stringify(ajustes);
     for (const valor of ['ten-1', 'con-1', 'aut-1', 'secreto', 'cron', 'valores']) {
       assert.ok(!texto.includes(valor), valor);
@@ -123,14 +128,14 @@ describe('resolverAjustes — what is written, and what is refused', () => {
       ],
     };
     const resultado = resolverAjustes(
-      { umbral: 5, hora: '09:15', dias: 'lun-sab', destinatario: '  nuevo@empresa.com  ' },
+      { umbral: 5, hora: '09:15', dias: 'lun-sab', destinatarios: ['  nuevo@empresa.com  ', 'otro@empresa.com'] },
       fila({ valores: { umbral: 20, otro: 'se queda' } }),
       dosParametros,
       ZONA,
     );
     assert.deepEqual(resultado, {
       ok: true,
-      datos: { valores: { umbral: 5, otro: 'se queda' }, cron: '15 9 * * 1-6', destinatario: 'nuevo@empresa.com' },
+      datos: { valores: { umbral: 5, otro: 'se queda' }, cron: '15 9 * * 1-6', destinatarios: ['nuevo@empresa.com', 'otro@empresa.com'] },
     });
   });
 
@@ -146,12 +151,12 @@ describe('resolverAjustes — what is written, and what is refused', () => {
 
   test('every offender is named together, in business names', () => {
     const resultado = resolverAjustes(
-      { umbral: 'x', hora: '25:00', dias: 'lunes', destinatario: 'no-es-un-correo' },
+      { umbral: 'x', hora: '25:00', dias: 'lunes', destinatarios: ['a@b.com', 'no-es-un-correo'] },
       fila(),
       PLANTILLA,
       ZONA,
     );
-    assert.deepEqual(resultado, { ok: false, estado: 400, campos: ['umbral', 'hora', 'dias', 'destinatario'] });
+    assert.deepEqual(resultado, { ok: false, estado: 400, campos: ['umbral', 'hora', 'dias', 'destinatarios'] });
   });
 
   test('umbral must be a finite JSON number (DEC-60) and the template must declare it', () => {
@@ -165,14 +170,56 @@ describe('resolverAjustes — what is written, and what is refused', () => {
     assert.deepEqual(resolverAjustes({ umbral: 5 }, fila(), SIN_UMBRAL, ZONA), { ok: false, estado: 400, campos: ['umbral'] });
   });
 
-  test('a recipient that is empty, not a string or carries a line break is refused', () => {
-    for (const destinatario of ['', '   ', 5, null, 'a@b.com\r\nBcc: x@y.com']) {
+  test('CH-41 recipients that are not a list, hold a bad element or carry a line break are refused, naming the field', () => {
+    const casos: unknown[] = [
+      'a@b.com',
+      5,
+      null,
+      {},
+      [5],
+      [''],
+      ['   '],
+      ['a@b.com', 'no-es-un-correo'],
+      ['a@b.com\r\nBcc: x@y.com'],
+      ['a@b.com, c@d.com'],
+    ];
+    for (const destinatarios of casos) {
       assert.deepEqual(
-        resolverAjustes({ destinatario }, fila(), PLANTILLA, ZONA),
-        { ok: false, estado: 400, campos: ['destinatario'] },
-        String(destinatario),
+        resolverAjustes({ destinatarios }, fila(), PLANTILLA, ZONA),
+        { ok: false, estado: 400, campos: ['destinatarios'] },
+        JSON.stringify(destinatarios),
       );
     }
+  });
+
+  test('CH-41 the panel cannot empty the list: [] or a list of blanks is refused (DEC-194 2(a))', () => {
+    for (const destinatarios of [[], ['', '  ']]) {
+      assert.deepEqual(
+        resolverAjustes({ destinatarios }, fila(), PLANTILLA, ZONA),
+        { ok: false, estado: 400, campos: ['destinatarios'] },
+        JSON.stringify(destinatarios),
+      );
+    }
+  });
+
+  test('CH-41 more than five distinct addresses are refused, five after removing a duplicate are written', () => {
+    const cinco = ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com'];
+    assert.deepEqual(resolverAjustes({ destinatarios: [...cinco, 'f@x.com'] }, fila(), PLANTILLA, ZONA), {
+      ok: false,
+      estado: 400,
+      campos: ['destinatarios'],
+    });
+    assert.deepEqual(resolverAjustes({ destinatarios: [...cinco, 'A@x.com'] }, fila(), PLANTILLA, ZONA), {
+      ok: true,
+      datos: { destinatarios: cinco },
+    });
+  });
+
+  test('CH-41 a list alone is written alone, with duplicates removed ignoring case', () => {
+    assert.deepEqual(resolverAjustes({ destinatarios: ['Ana@x.com', 'ana@x.com', 'b@x.com'] }, fila(), PLANTILLA, ZONA), {
+      ok: true,
+      datos: { destinatarios: ['Ana@x.com', 'b@x.com'] },
+    });
   });
 
   test('a schedule change over a non-preset cron is a 409 and never overwrites it', () => {
