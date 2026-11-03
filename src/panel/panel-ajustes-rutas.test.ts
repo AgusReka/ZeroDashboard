@@ -205,6 +205,8 @@ describe(
         valores: { umbral: 5 },
         destinatario: 'nuevo@empresa.com',
         activo: true,
+        // CH-40: the panel adjust never touches the minimum (DEC-186).
+        minimoFilas: 1,
       });
     });
 
@@ -218,6 +220,7 @@ describe(
         valores: { umbral: 20 },
         destinatario: 'ana@empresa.com',
         activo: true,
+        minimoFilas: 1,
       });
     });
 

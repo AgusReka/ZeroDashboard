@@ -47,7 +47,7 @@ DEC-193 goes on `v2/dec-193` from `master`, in its own PR.
 
 ## 7. Verification
 - [x] 7.1 `npm run build` (typecheck; the project has no lint script).
-- [ ] 7.2 `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`; only the known false positives of `conexiones` may fail.
+- [x] 7.2 `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`; only the known false positives of `conexiones` may fail. Run 2026-11-03: 1641/1645; the 4 failures are the known `conexiones.test.ts` false positives (the password `postgres` matches `"motor":"postgres"`), outside this change.
 - [ ] 7.3 Every scenario of the four delta specs maps to a test or is marked as covered by an existing one in the verify report.
 
 ## Review Workload Forecast
