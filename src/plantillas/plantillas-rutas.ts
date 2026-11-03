@@ -1,13 +1,23 @@
 import type { FastifyInstance } from 'fastify';
-import { Prisma } from '../generated/prisma/client.js';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { terminosProhibidosEn } from '../compartido/glosario-panel.js';
 import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
 import { TIPOS_PARAMETRO } from '../ejecucion/parametros.js';
-import { FORMATOS, VALORES_AUTOMATIZACION, problemasDePlantilla } from './plantillas.js';
+import {
+  FORMATOS,
+  PlantillaCompleta,
+  PlantillaResumen,
+  VALORES_AUTOMATIZACION,
+  problemasDePlantilla,
+  type PlantillaCompletaFila,
+} from './plantillas.js';
 import { ENTIDADES_CANONICAS } from '../mapeo/vistas-canonicas.js';
+
+// CH-38: the selects moved to `plantillas.ts` (no import cycle with the isolation extension);
+// re-exported so every existing importer keeps working.
+export { PlantillaCompleta, PlantillaResumen };
 
 /**
  * CH-12: the template catalog (D1, DEC-61). `Plantilla` is global, so these routes are
@@ -15,29 +25,6 @@ import { ENTIDADES_CANONICAS } from '../mapeo/vistas-canonicas.js';
  * `plantilla` delegate alone: an exempt handler has no scoped model within reach (DEC-24's
  * structural argument). The test route, which does need a tenant, lives in its own file.
  */
-
-/**
- * The list projection. `sql`, `parametros` and `entidades` stay out for the reason
- * `ConsultaGuardadaResumen` leaves `sql` out: a list renders names, and loading a
- * template is a second, explicit get-by-id call.
- */
-export const PlantillaResumen = {
-  id: true,
-  nombre: true,
-  automatizacion: true,
-  formato: true,
-  toleranciaFrescuraMinutos: true,
-} as const;
-
-/** Every column: create, get-by-id and replace. */
-export const PlantillaCompleta = {
-  ...PlantillaResumen,
-  sql: true,
-  parametros: true,
-  entidades: true,
-  titulo: true,
-  descripcion: true,
-} as const;
 
 export interface RegistroPlantillaBody {
   nombre: string;
@@ -216,14 +203,27 @@ export function datosDePlantilla(cuerpo: RegistroPlantillaBody) {
   };
 }
 
-/** `P2025` is Prisma's "no row to update"; here only an unknown `id` can raise it. */
-function esPlantillaInexistente(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
+/**
+ * CH-38 (DEC-191): the only cross-tenant facts the catalog routes may know. The catalog is
+ * global and exempt from `x-tenant-id`, but whether a template is in use is a property of
+ * every tenant's automations. The two answers come from the isolation extension's audited
+ * unscoped operations (`automatizacion.plantillaEnUso`, `automatizacion.reemplazarPlantillaLibre`),
+ * wired in `src/app/rutas.ts`: a route receives a port, never a client or a scoped model.
+ */
+export interface UsoDePlantillas {
+  /** Whether any tenant has an active automation on the template. A boolean, nothing else. */
+  enUso(plantillaId: string): Promise<boolean>;
+  /** Replaces the template only if no automation is active on it; the check and write are atomic. */
+  reemplazarSiLibre(
+    id: string,
+    datos: ReturnType<typeof datosDePlantilla>,
+  ): Promise<'no-encontrada' | 'en-uso' | PlantillaCompletaFila>;
 }
 
 export function registerPlantillaRoutes(
   app: FastifyInstance,
   plantillas: PrismaAislado['plantilla'],
+  uso: UsoDePlantillas,
 ): void {
   app.post<{ Body: RegistroPlantillaBody }>(
     '/plantillas',
@@ -237,7 +237,8 @@ export function registerPlantillaRoutes(
         data: datosDePlantilla(request.body),
         select: PlantillaCompleta,
       });
-      return reply.code(201).send({ plantilla });
+      // A template that was just created cannot be in use (CH-38, DEC-191).
+      return reply.code(201).send({ plantilla: { ...plantilla, enUso: false } });
     },
   );
 
@@ -266,14 +267,16 @@ export function registerPlantillaRoutes(
     if (plantilla === null) {
       return reply.code(404).send({ error: 'plantilla-no-encontrada' });
     }
-    return reply.code(200).send({ plantilla });
+    // CH-38 (DEC-191): a boolean computed at request time, never a count or an identifier.
+    return reply.code(200).send({ plantilla: { ...plantilla, enUso: await uso.enUso(request.params.id) } });
   });
 
   /**
-   * Replace in place by id (DEC-68): the same body and save-time checks as create, then
-   * one `update` of every column. There is no version history and no delete, so the row
-   * keeps its id and is the only row the write touches. `update`-and-catch is enough here,
-   * unlike `/tenants/:id/baja`: a template has no state to tell apart from "unknown".
+   * Replace in place by id (DEC-68): the same body and save-time checks as create, then one
+   * write of every column. There is no version history and no delete, so the row keeps its id.
+   * CH-38 (DEC-191): the write goes through `uso.reemplazarSiLibre`, which locks the row, checks
+   * that no tenant has an active automation on it and writes in one transaction. The body
+   * checks run first, so an invalid body is `400` whatever the template's use.
    */
   app.put<{ Params: PlantillaParams; Body: RegistroPlantillaBody }>(
     '/plantillas/:id',
@@ -283,19 +286,14 @@ export function registerPlantillaRoutes(
       if (rechazo !== null) {
         return reply.code(400).send(rechazo);
       }
-      try {
-        const plantilla = await plantillas.update({
-          where: { id: request.params.id },
-          data: datosDePlantilla(request.body),
-          select: PlantillaCompleta,
-        });
-        return reply.code(200).send({ plantilla });
-      } catch (error) {
-        if (esPlantillaInexistente(error)) {
-          return reply.code(404).send({ error: 'plantilla-no-encontrada' });
-        }
-        throw error;
+      const resultado = await uso.reemplazarSiLibre(request.params.id, datosDePlantilla(request.body));
+      if (resultado === 'no-encontrada') {
+        return reply.code(404).send({ error: 'plantilla-no-encontrada' });
       }
+      if (resultado === 'en-uso') {
+        return reply.code(409).send({ error: 'plantilla-en-uso' });
+      }
+      return reply.code(200).send({ plantilla: { ...resultado, enUso: false } });
     },
   );
 }

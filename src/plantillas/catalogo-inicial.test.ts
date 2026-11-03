@@ -108,7 +108,10 @@ describe('initial catalog — content and save-time checks (CH-21b, no database)
     const creados: unknown[] = [];
     const plantillas = { create: async ({ data }: { data: unknown }) => (creados.push(data), {}) };
     const app = Fastify({ logger: false });
-    registerPlantillaRoutes(app, plantillas as unknown as PrismaAislado['plantilla']);
+    registerPlantillaRoutes(app, plantillas as unknown as PrismaAislado['plantilla'], {
+      enUso: async () => assert.fail('a create consulted the use port'),
+      reemplazarSiLibre: async () => assert.fail('a create reached reemplazarSiLibre'),
+    });
     const post = (e: EntradaCatalogo) => app.inject({ method: 'POST', url: '/plantillas', payload: cuerpo(e) });
     for (const e of CATALOGO_INICIAL) {
       assert.equal((await post(e)).statusCode, 201);
@@ -225,7 +228,10 @@ describe('initial catalog — create-if-absent seeding (CH-21b L1-L3)', { skip: 
     const aislado = extenderConAislamiento(prisma);
     app = Fastify({ logger: false });
     registrarContextoTenant(app, aislado);
-    registerPlantillaRoutes(app, aislado.plantilla);
+    registerPlantillaRoutes(app, aislado.plantilla, {
+      enUso: (id) => aislado.automatizacion.plantillaEnUso(id),
+      reemplazarSiLibre: (id, datos) => aislado.automatizacion.reemplazarPlantillaLibre(id, datos),
+    });
     await app.ready();
   });
 
@@ -254,10 +260,12 @@ describe('initial catalog — create-if-absent seeding (CH-21b L1-L3)', { skip: 
     assert.equal(put.statusCode, 200, put.body);
     const post = await app.inject({ method: 'POST', url: '/plantillas', payload: { ...cuerpo(prueba[0]), nombre: `${marca} ajena` } });
     assert.equal(post.statusCode, 201, post.body);
-    const ajena = (post.json() as { plantilla: { id: string } }).plantilla;
+    // The bodies of POST and PUT carry `enUso` (CH-38); the row does not.
+    const { enUso: _enUsoAjena, ...ajena } = (post.json() as { plantilla: { id: string; enUso: boolean } }).plantilla;
     limpiar.push(ajena.id);
     assert.equal(await sembrar(), 0);
-    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: ids[0] } }), put.json().plantilla);
+    const { enUso: _enUsoEditada, ...editadaGuardada } = put.json().plantilla;
+    assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: ids[0] } }), editadaGuardada);
     assert.deepEqual(await prisma.plantilla.findUnique({ where: { id: ajena.id } }), ajena);
     assert.equal(await prisma.plantilla.count({ where: { nombre: { startsWith: marca } } }), 3);
   });
@@ -269,7 +277,7 @@ describe('initial catalog — create-if-absent seeding (CH-21b L1-L3)', { skip: 
     const filas = await leer();
     assert.deepEqual(filas, [editada, fila(prueba[1])]);
     const respuestas = await Promise.all(ids.map((id) => app.inject({ method: 'GET', url: `/plantillas/${id}` })));
-    assert.deepEqual(respuestas.map((r) => [r.statusCode, r.json()]), filas.map((plantilla) => [200, { plantilla }]));
+    assert.deepEqual(respuestas.map((r) => [r.statusCode, r.json()]), filas.map((plantilla) => [200, { plantilla: { ...plantilla, enUso: false } }]));
   });
 });
 
