@@ -3939,6 +3939,57 @@ Resultado cortado por el tope:
 
 ---
 
+### DEC-194 — CH-41: la lista de destinatarios se escribe en un solo campo, el panel exige al menos uno y los duplicados se unen sin importar mayúsculas
+
+**Contexto.**
+- DEC-187 (a) con (i) reemplaza `destinatario` por una lista de hasta 5 direcciones en la automatización, enviadas en un solo mensaje con todas en «Para». La editan el alta de la consola y P-04 del panel, y el ajuste de la consola también, por DEC-174.
+- Ninguna pantalla tiene diseño para cargar una lista: la guía nombra `destinatarios` en P-04, pero el mockup muestra un solo campo de correo.
+- Hoy el panel rechaza un destinatario vacío y solo la consola lo puede quitar (DEC-174).
+- DEC-187 dice que las direcciones se deduplican, sin decir si `Ops@empresa.com` y `ops@empresa.com` son la misma.
+
+Quedan tres puntos que DEC-187 no resuelve.
+
+**Opciones.**
+
+Cómo se carga la lista:
+- (a) Un solo campo, con las direcciones separadas por comas, punto y coma, espacios o saltos de línea, que el script separa antes de enviar.
+- (b) Hasta cinco campos, con «Agregar otro correo» y «Quitar».
+
+Vaciar la lista desde el panel:
+- (a) El panel exige al menos una dirección; la consola la puede vaciar.
+- (b) El panel también la puede vaciar.
+
+Duplicados que solo cambian en mayúsculas:
+- (a) Se unen, y queda la primera forma escrita.
+- (b) Solo se unen los iguales exactos.
+
+**Decisión.** Campo (a), vaciar (a) y duplicados (a).
+- **Campo (a).** Un solo control y una sola forma de separar en las dos pantallas, como el «Para» de un cliente de correo, sin marcado dinámico en la consola (la guardia G3' prohíbe clases `zd-*` en el script). El error sigue nombrando la dirección que falló. La (b) se puede sumar después sin cambiar la API.
+- **Vaciar (a).** Mantiene la regla de hoy en el panel. Un cliente que no quiera correos se lo pide al operador, que ve las ejecuciones con «Sin destinatario».
+- **Duplicados (a).** En la práctica los servidores de correo no distinguen mayúsculas, y un duplicado haría que la misma persona reciba el mensaje dos veces en un solo envío.
+
+**Forma.**
+- **Regla única**, para el alta, el ajuste de la consola y el ajuste del panel: cada elemento se recorta de espacios y tabulaciones (un CR o LF queda adentro, para que se rechace) y se valida con `direccionValida`; después se unen los duplicados sin importar mayúsculas, en el orden dado; más de 5 se rechaza.
+- **Cómo se nombra un rechazo.** Las rutas de la consola nombran la posición dada (`/destinatarios/1`) o la lista entera cuando pasa de 5 (`/destinatarios`). La ruta del panel nombra el campo (`destinatarios`), como nombra los demás.
+- **El tope cuenta después de unir duplicados:** seis direcciones con dos iguales se aceptan como cinco.
+- **En las pantallas**, el campo pasa a ser de texto con teclado de correo (`inputmode="email"`): un campo de correo del navegador puede rechazar los separadores antes de que el script los lea. El script no valida ni deduplica: decide el servidor.
+- **La consola vacía la lista** con `[]`, lo que antes era `null`.
+
+**Alcance que no cambia.** El asunto, el cuerpo, el mínimo de filas, el resultado del envío (DEC-187) y Telegram.
+
+**Por qué.** Cierra DEC-187 con la forma más chica que sirve en las dos pantallas, sin una segunda regla en el cliente.
+
+**Se resigna.**
+- **Un campo por dirección.** Cada error no tiene su campo propio: el mensaje de la consola nombra la dirección, y el del panel dice que hay que revisar los correos.
+- **El cliente no puede cortar el correo solo.** Para eso tiene que pedírselo al operador.
+- **Mayúsculas en la parte local.** Dos direcciones que un servidor estricto trataría como distintas quedan como una.
+
+**Decidido por:** el usuario, 2026-11-03, en la exploración de CH-41: eligió las tres opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
