@@ -8,14 +8,14 @@ Turning a `Plantilla` (CH-12) into something that runs unattended, per tenant, o
 
 ### Requirement: Automatizacion Binds a Plantilla, a Tenant's Connection, Parameter Values, and a Schedule (DEC-74)
 
-The own database SHALL have an `Automatizacion` table. Every row MUST reference exactly one `Tenant` row and exactly one `Plantilla` row through required foreign keys, MUST reference exactly one `Conexion` row belonging to the same tenant, MUST store a parameter-value map validated against the referenced `Plantilla`'s declared parameters (CH-11 rules), and MUST store a cron schedule expression and an `activo` boolean defaulting to `true`. Every row SHALL also have a nullable `destinatario` column holding a single validated email address (DEC-82), and a non-null integer `minimoFilas` column defaulting to 1 (DEC-186). Rows created before `minimoFilas` existed SHALL read 1.
-(Previously: no `minimoFilas` column.)
+The own database SHALL have an `Automatizacion` table. Every row MUST reference exactly one `Tenant` row and exactly one `Plantilla` row through required foreign keys, MUST reference exactly one `Conexion` row belonging to the same tenant, MUST store a parameter-value map validated against the referenced `Plantilla`'s declared parameters (CH-11 rules), and MUST store a cron schedule expression and an `activo` boolean defaulting to `true`. Every row SHALL also have a non-null `destinatarios` list of text, empty by default, holding at most 5 validated email addresses as defined by `email-notification` (DEC-187), and a non-null integer `minimoFilas` column defaulting to 1 (DEC-186). Rows created before `minimoFilas` existed SHALL read 1. A row whose single `destinatario` was set before `destinatarios` existed SHALL read a list holding exactly that address; a row whose `destinatario` was null SHALL read an empty list.
+(Previously: a nullable `destinatario` column held one address.)
 
 #### Scenario: Creating an automation with valid values
 
 - GIVEN an existing `Plantilla` and a `Conexion` belonging to the active tenant
 - WHEN an `Automatizacion` is created naming both, a value for every declared parameter, and a valid cron expression
-- THEN the row SHALL persist with `activo: true` and `minimoFilas: 1`
+- THEN the row SHALL persist with `activo: true`, `minimoFilas: 1` and `destinatarios: []`
 
 #### Scenario: Parameter values validated like CH-11
 
@@ -29,30 +29,36 @@ The own database SHALL have an `Automatizacion` table. Every row MUST reference 
 - WHEN an `Automatizacion` is created naming it
 - THEN the response SHALL be `404` and no row SHALL persist
 
-#### Scenario: Creating with a valid recipient
+#### Scenario: Creating with several recipients
 
-- GIVEN valid creation values and `destinatario` `"ops@example.com"`
+- GIVEN valid creation values and `destinatarios` `[" ops@example.com", "duena@example.com "]` (trimmed by the server)
 - WHEN the automation is created
-- THEN the row SHALL persist with that `destinatario`
+- THEN the row SHALL persist with `destinatarios` `["ops@example.com", "duena@example.com"]` in that order
 - AND the create and get responses SHALL include it
 
-#### Scenario: Creating without a recipient
+#### Scenario: Creating without recipients
 
-- GIVEN valid creation values and no `destinatario`
+- GIVEN valid creation values and no `destinatarios`
 - WHEN the automation is created
-- THEN the row SHALL persist with `destinatario` null
+- THEN the row SHALL persist with `destinatarios` `[]`
 
 #### Scenario: Invalid recipient rejected
 
-- GIVEN valid creation values and an invalid `destinatario`
+- GIVEN valid creation values and `destinatarios` whose second element is not a valid address
 - WHEN the automation is created
-- THEN the response SHALL be `400` naming `destinatario` and no row SHALL persist
+- THEN the response SHALL be `400` naming `/destinatarios/1` and no row SHALL persist
 
 #### Scenario: Existing rows read the default minimum
 
 - GIVEN an automation created before the `minimoFilas` migration
 - WHEN it is read after the migration
 - THEN its `minimoFilas` SHALL be 1
+
+#### Scenario: Existing recipients become a list
+
+- GIVEN one automation with `destinatario` `"a@empresa.com"` and one with `destinatario` null, both created before the `destinatarios` migration
+- WHEN they are read after the migration
+- THEN the first SHALL have `destinatarios` `["a@empresa.com"]` and the second `[]`
 
 ### Requirement: Minimum Rows Are Bounded by the Row Cap (DEC-186, DEC-19)
 
@@ -103,10 +109,10 @@ The own database SHALL have an `Automatizacion` table. Every row MUST reference 
 
 ### Requirement: Automation Lifecycle Is Create, List, Get, Deactivate — No Edit or Delete (DEC-78, DEC-79)
 
-The system SHALL expose, all scoped to the active tenant: `POST /automatizaciones` (create), `GET /automatizaciones` (list), `GET /automatizaciones/:id` (get), `PUT /automatizaciones/:id/ajustes` (adjust, DEC-174) and `POST /automatizaciones/:id/desactivar` (deactivate). The adjust route SHALL update only `valores`, `cron` and `destinatario` of the same row, and SHALL NOT change `plantillaId`, `conexionId`, `activo` or `tenantId`. It SHALL NOT expose any route that deletes a row or reactivates it. Deactivating sets `activo: false` and no route sets it back to `true`.
+The system SHALL expose, all scoped to the active tenant: `POST /automatizaciones` (create), `GET /automatizaciones` (list), `GET /automatizaciones/:id` (get), `PUT /automatizaciones/:id/ajustes` (adjust, DEC-174) and `POST /automatizaciones/:id/desactivar` (deactivate). The adjust route SHALL update only `valores`, `cron`, `destinatarios` and `minimoFilas` of the same row, and SHALL NOT change `plantillaId`, `conexionId`, `activo` or `tenantId`. It SHALL NOT expose any route that deletes a row or reactivates it. Deactivating sets `activo: false` and no route sets it back to `true`.
 
-The adjust body SHALL be a non-empty subset of `valores`, `cron` and `destinatario`; any other key, including `tenantId`, `plantillaId`, `conexionId` or `activo`, SHALL be refused with `400 solicitud-invalida`, never silently dropped. Each sent field SHALL be checked with the same rules as the create route: `cron` with `cronValido` in the configured zone; `destinatario` trimmed of surrounding spaces and tabs and checked with `direccionValida`, or `null` to clear it; `valores` with `prepararSentencia` against the stored row's template. A sent `valores` SHALL replace the stored map as a whole. Every offending field SHALL be named in `campos`. An unknown id, or another tenant's, SHALL answer `404 automatizacion-no-encontrada`; a deactivated automation SHALL answer `409 automatizacion-desactivada`; in both cases nothing is written. A `200` SHALL carry the updated row (`AutomatizacionCompleta`), `proximaEjecucion` computed from the new schedule and `zonaHoraria`. The scheduler SHALL apply the change from its next tick, with no reprogramming.
-(Previously: there was no adjust route; a `PUT`, `PATCH` or `DELETE` on `/automatizaciones/:id` had to be absent and `destinatario` could not be changed after creation, DEC-82.)
+The adjust body SHALL be a non-empty subset of `valores`, `cron`, `destinatarios` and `minimoFilas`; any other key, including `tenantId`, `plantillaId`, `conexionId`, `activo` or the former `destinatario`, SHALL be refused with `400 solicitud-invalida`, never silently dropped. Each sent field SHALL be checked with the same rules as the create route: `cron` with `cronValido` in the configured zone; `destinatarios` with the list rule of `email-notification`, where `[]` empties it; `minimoFilas` as defined by "Minimum Rows Are Bounded by the Row Cap"; `valores` with `prepararSentencia` against the stored row's template. A sent `valores` or `destinatarios` SHALL replace the stored value as a whole. Every offending field SHALL be named in `campos`. An unknown id, or another tenant's, SHALL answer `404 automatizacion-no-encontrada`; a deactivated automation SHALL answer `409 automatizacion-desactivada`; in both cases nothing is written. A `200` SHALL carry the updated row (`AutomatizacionCompleta`), `proximaEjecucion` computed from the new schedule and `zonaHoraria`. The scheduler SHALL apply the change from its next tick, with no reprogramming.
+(Previously: the adjust took one `destinatario`, with `null` to clear it.)
 
 #### Scenario: Deactivating an automation
 
@@ -124,9 +130,9 @@ The adjust body SHALL be a non-empty subset of `valores`, `cron` and `destinatar
 
 #### Scenario: Adjusting keeps the id and the history
 
-- GIVEN an active automation with prior runs, cron `0 8 * * *` and recipient `a@empresa.com`
-- WHEN `PUT /automatizaciones/:id/ajustes` is called with `{ "cron": "30 6 * * 1-5", "destinatario": "b@empresa.com" }`
-- THEN the response SHALL be `200` with the same `id`, the new `cron` and `destinatario`, and a `proximaEjecucion` matching the new schedule
+- GIVEN an active automation with prior runs, cron `0 8 * * *` and `destinatarios` `["a@empresa.com"]`
+- WHEN `PUT /automatizaciones/:id/ajustes` is called with `{ "cron": "30 6 * * 1-5", "destinatarios": ["b@empresa.com", "c@empresa.com"] }`
+- THEN the response SHALL be `200` with the same `id`, the new `cron` and `destinatarios`, and a `proximaEjecucion` matching the new schedule
 - AND its prior `Ejecucion` rows SHALL remain listed under the same id
 
 #### Scenario: Values are checked against the stored template and replaced whole
@@ -137,24 +143,24 @@ The adjust body SHALL be a non-empty subset of `valores`, `cron` and `destinatar
 - WHEN it is called with `{ "valores": { "umbral": 10 } }`
 - THEN the stored `valores` SHALL be exactly `{ "umbral": 10 }`
 
-#### Scenario: Clearing the recipient
+#### Scenario: Emptying the recipients
 
-- GIVEN an active automation with a recipient
-- WHEN the adjust is called with `{ "destinatario": null }`
-- THEN its `destinatario` SHALL become `null` and its next runs SHALL send no email
+- GIVEN an active automation with recipients
+- WHEN the adjust is called with `{ "destinatarios": [] }`
+- THEN its `destinatarios` SHALL become `[]` and its next runs SHALL send no email
 
 #### Scenario: Template, connection and state cannot be adjusted
 
 - GIVEN an active automation
-- WHEN the adjust body carries `plantillaId`, `conexionId`, `activo` or `tenantId`
+- WHEN the adjust body carries `plantillaId`, `conexionId`, `activo`, `tenantId` or `destinatario`
 - THEN the response SHALL be `400 solicitud-invalida` and the row SHALL be unchanged
 
-#### Scenario: Empty body, invalid cron and invalid recipient
+#### Scenario: Empty body, invalid cron and invalid recipients
 
 - WHEN the adjust body is `{}`
 - THEN the response SHALL be `400 solicitud-invalida`
-- WHEN it is `{ "cron": "cada día" }` or `{ "destinatario": "a@b.com, c@d.com" }`
-- THEN the response SHALL be `400` naming `cron` or `destinatario`, and nothing SHALL be written
+- WHEN it is `{ "cron": "cada día" }` or `{ "destinatarios": ["a@b.com", "c@d.com, e@f.com"] }`
+- THEN the response SHALL be `400` naming `/cron` or `/destinatarios/1`, and nothing SHALL be written
 
 #### Scenario: A deactivated automation cannot be adjusted
 
@@ -265,14 +271,14 @@ The scheduler SHALL catch any error raised by one automation's run and continue 
 
 ### Requirement: Run Pipeline Applies the Condition and Notifies After Query Success (X3, N1)
 
-After a run's query completes and while its result rows are in memory, the run SHALL evaluate the notification condition, including the automation's `minimoFilas` as read for that run, and, when it holds, send the notification, as defined by `email-notification`. The notification step SHALL run once per run, before the `Ejecucion` row is closed, so that one `Ejecucion` row records both the query result and the `notificacion` outcome. The rows SHALL NOT be persisted or retained after the run.
-(Previously: the condition had no minimum.)
+After a run's query completes and while its result rows are in memory, the run SHALL evaluate the notification condition, including the automation's `minimoFilas` and `destinatarios` as read for that run, and, when it holds, send the notification, as defined by `email-notification`. The notification step SHALL run once per run, before the `Ejecucion` row is closed, so that one `Ejecucion` row records both the query result and the `notificacion` outcome. The rows SHALL NOT be persisted or retained after the run.
+(Previously: the run read one `destinatario`.)
 
 #### Scenario: One run, one row, one send
 
-- GIVEN a due automation whose query returns rows reaching its minimum, with a recipient and SMTP configured
+- GIVEN a due automation whose query returns rows reaching its minimum, with two recipients and SMTP configured
 - WHEN the scheduler runs it
-- THEN exactly one `Ejecucion` row SHALL persist with `notificacion` set and the notifier SHALL have been called exactly once
+- THEN exactly one `Ejecucion` row SHALL persist with `notificacion` set and the notifier SHALL have been called exactly once, with both addresses
 
 #### Scenario: A run below the minimum closes without sending
 
@@ -281,9 +287,9 @@ After a run's query completes and while its result rows are in memory, the run S
 - THEN exactly one `Ejecucion` row SHALL persist with `estado='ok'`, `filas=2`, `notificacion='omitida-bajo-minimo'`
 - AND the notifier SHALL NOT be called
 
-#### Scenario: Existing automation without recipient keeps running
+#### Scenario: Automation without recipients keeps running
 
-- GIVEN an automation created before CH-14, with null `destinatario`
+- GIVEN an automation with `destinatarios` `[]`
 - WHEN it becomes due and its query returns rows
 - THEN the run SHALL execute and close `estado='ok'` with `notificacion='sin-destinatario'`
 - AND the notifier SHALL NOT be called

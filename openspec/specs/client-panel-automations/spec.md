@@ -361,7 +361,8 @@ Each `activas` item SHALL carry `id`, the automation's identifier, and nothing e
 - **THEN** the item has a non-empty string `id`
 
 ### Requirement: Read Current Settings
-`GET /api/panel/automatizaciones/:id/ajustes` SHALL return `{ umbral?, hora?, dias?, destinatario, zonaHoraria }`. `umbral` SHALL be present only if the template declares a `umbral` parameter. `hora` (`HH:MM`) and `dias` (`todos`, `lun-vie` or `lun-sab`) SHALL be present only if the stored cron is one of the three DEC-129 patterns. `destinatario` is `null` when none is stored. The response SHALL NOT contain `tenantId`, `conexionId`, `valores`, `cron`, `sql`, `codigoError` or `error`.
+`GET /api/panel/automatizaciones/:id/ajustes` SHALL return `{ umbral?, hora?, dias?, destinatarios, zonaHoraria }`. `umbral` SHALL be present only if the template declares a `umbral` parameter. `hora` (`HH:MM`) and `dias` (`todos`, `lun-vie` or `lun-sab`) SHALL be present only if the stored cron is one of the three DEC-129 patterns. `destinatarios` is the stored list, in order, and `[]` when none is stored. The response SHALL NOT contain `tenantId`, `conexionId`, `valores`, `cron`, `sql`, `codigoError`, `error` or `minimoFilas`.
+(Previously: one `destinatario`, `null` when none was stored.)
 
 #### Scenario: Preset schedule is returned as hour and days
 - **GIVEN** an automation with cron `30 8 * * 1-5` and `valores = { umbral: 20 }`
@@ -373,25 +374,40 @@ Each `activas` item SHALL carry `id`, the automation's identifier, and nothing e
 - **WHEN** its settings are read
 - **THEN** the body has no `hora` and no `dias`, and no cron text
 
+#### Scenario: The recipients are returned as a list
+- **GIVEN** an automation with `destinatarios` `["a@b.com", "c@d.com"]`
+- **WHEN** its settings are read
+- **THEN** the body has `destinatarios: ["a@b.com", "c@d.com"]`
+
 ### Requirement: Update Settings In Place
-`PUT /api/panel/automatizaciones/:id/ajustes` SHALL accept a strict JSON body `{ umbral?, hora?, dias?, destinatario? }` with at least one key. The server SHALL build the cron from `{hora, dias}`, replace only `umbral` inside the stored `valores`, validate `valores` against the template declaration, the cron with `cronValido` and the recipient with `direccionValida`, then perform one tenant-scoped `update`. The response SHALL repeat the read shape plus `proximaEjecucion` (ISO UTC). The change SHALL apply from the next run without any other action.
+`PUT /api/panel/automatizaciones/:id/ajustes` SHALL accept a strict JSON body `{ umbral?, hora?, dias?, destinatarios? }` with at least one key. The server SHALL build the cron from `{hora, dias}`, replace only `umbral` inside the stored `valores`, validate `valores` against the template declaration, the cron with `cronValido` and `destinatarios` with the list rule of `email-notification`, then perform one tenant-scoped `update`. A sent `destinatarios` SHALL hold at least one address after that rule; an empty list SHALL be refused naming `destinatarios` (DEC-194 2(a)). The response SHALL repeat the read shape plus `proximaEjecucion` (ISO UTC). The change SHALL apply from the next run without any other action.
+(Previously: the body took one `destinatario`, validated with `direccionValida`.)
 
 #### Scenario: Valid update is stored
 - **GIVEN** an active automation with a preset cron
-- **WHEN** `PUT` sends `{ umbral: 5, hora: "09:15", dias: "lun-sab", destinatario: "a@b.com" }`
-- **THEN** the response is 200, the stored cron is `15 9 * * 1-6`, `valores.umbral` is 5, and other `valores` keys are unchanged
+- **WHEN** `PUT` sends `{ umbral: 5, hora: "09:15", dias: "lun-sab", destinatarios: ["a@b.com", "c@d.com"] }`
+- **THEN** the response is 200, the stored cron is `15 9 * * 1-6`, `valores.umbral` is 5, `destinatarios` is `["a@b.com", "c@d.com"]`, and other `valores` keys are unchanged
 
 #### Scenario: Only the sent fields change
 - **GIVEN** an automation with cron `0 8 * * *`
 - **WHEN** `PUT` sends `{ hora: "10:00" }`
-- **THEN** the stored cron is `0 10 * * *` (days kept) and `valores` and recipient are unchanged
+- **THEN** the stored cron is `0 10 * * *` (days kept) and `valores` and recipients are unchanged
 
 #### Scenario: Invalid values name the field in business terms
-- **WHEN** `PUT` sends `{ umbral: "x", hora: "25:00", destinatario: "no-es-un-correo" }`
-- **THEN** the response is 400 `solicitud-invalida` with `campos` listing `umbral`, `hora` and `destinatario`, and nothing is stored
+- **WHEN** `PUT` sends `{ umbral: "x", hora: "25:00", destinatarios: ["a@b.com", "no-es-un-correo"] }`
+- **THEN** the response is 400 `solicitud-invalida` with `campos` listing `umbral`, `hora` and `destinatarios`, and nothing is stored
+
+#### Scenario: The panel cannot empty the list
+- **GIVEN** an automation with recipients
+- **WHEN** `PUT` sends `{ destinatarios: [] }` or a list whose elements are all blank
+- **THEN** the response is 400 `solicitud-invalida` with `campos` containing `destinatarios`, and the stored list is unchanged
+
+#### Scenario: More than five addresses are refused
+- **WHEN** `PUT` sends six distinct valid addresses
+- **THEN** the response is 400 with `campos` containing `destinatarios`, and nothing is stored
 
 #### Scenario: Forbidden keys are refused
-- **WHEN** `PUT` sends any of `tenantId`, `cron`, `sql`, `valores`, `activo` or an unknown key
+- **WHEN** `PUT` sends any of `tenantId`, `cron`, `sql`, `valores`, `activo`, `minimoFilas`, the former `destinatario` or an unknown key
 - **THEN** the response is 400 and nothing is stored
 
 #### Scenario: Unknown or foreign id

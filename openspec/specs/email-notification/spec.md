@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Delivering an automation run's result rows to one recipient by email (N1), only when rows exist (X3) and reach the automation's minimum (X9, DEC-186, DEC-193), rendered legibly even when the data is incomplete (N2). Transport is SMTP via nodemailer behind an injectable notifier (DEC-81); the recipient is one validated address on the automation (DEC-82); the body is produced by a generic columns-driven renderer (DEC-85). Since CH-39, a template that declares its message texts gets a body of the header and one line per row instead of the table (DEC-188, DEC-192). A run sends at most one message (X6, DEC-107). Retries of the send (DEC-97), content or cooldown duplicate suppression, "send when empty", per-template HTML, and multi-section reports are out of scope (documented artifact limits, rule 6).
+Delivering an automation run's result rows by email to its automation's recipients, up to 5 in one message with all of them in «Para» (N1, N6, DEC-187, DEC-194), only when rows exist (X3) and reach the automation's minimum (X9, DEC-186, DEC-193), rendered legibly even when the data is incomplete (N2). Transport is SMTP via nodemailer behind an injectable notifier (DEC-81); the recipients are a validated, deduplicated list on the automation (DEC-82, DEC-187, DEC-194); the body is produced by a generic columns-driven renderer (DEC-85). Since CH-39, a template that declares its message texts gets a body of the header and one line per row instead of the table (DEC-188, DEC-192). A run sends at most one message (X6, DEC-107). Retries of the send (DEC-97), content or cooldown duplicate suppression, "send when empty", per-template HTML, and multi-section reports are out of scope (documented artifact limits, rule 6).
 
 ## Requirements
 
-### Requirement: Notification Outcome Precedence Is Deterministic (DEC-83, DEC-84, DEC-86, DEC-186)
+### Requirement: Notification Outcome Precedence Is Deterministic (DEC-83, DEC-84, DEC-86, DEC-186, DEC-187)
 
 After a run's query finishes, the system SHALL compute exactly one `notificacion` value by evaluating these conditions in order, the first that holds winning:
 
@@ -15,13 +15,13 @@ After a run's query finishes, the system SHALL compute exactly one `notificacion
 | 1 | The run's query failed | `null` (no notification attempted) |
 | 2 | The query succeeded with zero rows | `omitida-sin-filas` |
 | 3 | The query succeeded with fewer rows than the automation's `minimoFilas` and the result was not cut by the row cap | `omitida-bajo-minimo` |
-| 4 | The automation's `destinatario` is null | `sin-destinatario` |
+| 4 | The automation's `destinatarios` list is empty | `sin-destinatario` |
 | 5 | SMTP is not configured | `no-configurada` |
-| 6 | Send accepted by the transport | `enviada` |
-| 7 | Send rejected, failed, or timed out | `fallo-envio` |
+| 6 | Send accepted by the transport for at least one address | `enviada` |
+| 7 | Send rejected for every address, failed, or timed out | `fallo-envio` |
 
-A result is cut by the row cap when the query had more rows than the run read (`paginacion.hayMas`); such a result SHALL count as reaching the minimum. The system SHALL attempt a send only when the outcome reaches step 6 or 7. Exactly one send attempt SHALL be made per run; there SHALL be no retry.
-(Previously: there was no minimum row; today's rows 4 to 7 were rows 3 to 6.)
+A result is cut by the row cap when the query had more rows than the run read (`paginacion.hayMas`); such a result SHALL count as reaching the minimum. The system SHALL attempt a send only when the outcome reaches step 6 or 7. Exactly one send attempt SHALL be made per run, with one message whose «Para» holds every address of the list; there SHALL be no retry and no message per address. An address the server rejects while it accepts others SHALL NOT change the outcome and SHALL NOT be recorded separately (DEC-187).
+(Previously: row 4 was a null `destinatario`, and the message had one address.)
 
 #### Scenario: Query failed records null and sends nothing
 
@@ -61,7 +61,7 @@ A result is cut by the row cap when the query had more rows than the run read (`
 
 #### Scenario: The minimum wins over a missing recipient
 
-- GIVEN an automation with `minimoFilas` 5 and null `destinatario`, whose run returns 3 rows
+- GIVEN an automation with `minimoFilas` 5 and `destinatarios` `[]`, whose run returns 3 rows
 - WHEN the run closes
 - THEN `notificacion` SHALL be `omitida-bajo-minimo`
 
@@ -73,7 +73,7 @@ A result is cut by the row cap when the query had more rows than the run read (`
 
 #### Scenario: Precedence between missing recipient and unset SMTP
 
-- GIVEN a successful run with rows reaching the minimum, a null `destinatario`, and SMTP unset
+- GIVEN a successful run with rows reaching the minimum, `destinatarios` `[]`, and SMTP unset
 - WHEN the run closes
 - THEN `notificacion` SHALL be `sin-destinatario`
 
@@ -83,11 +83,23 @@ A result is cut by the row cap when the query had more rows than the run read (`
 - WHEN the run closes
 - THEN `notificacion` SHALL be `no-configurada`, `estado` SHALL be `ok`, and the notifier SHALL NOT be called
 
-#### Scenario: Rows with recipient and SMTP configured send exactly once
+#### Scenario: Rows with recipients and SMTP configured send one message to all of them
 
-- GIVEN a successful run with rows reaching the minimum, a recipient, SMTP configured, and `formato` `correo-html`
+- GIVEN a successful run with rows reaching the minimum, `destinatarios` `["a@empresa.com", "b@empresa.com"]`, SMTP configured, and `formato` `correo-html`
 - WHEN the run closes
-- THEN the notifier SHALL be called exactly once with that recipient and `notificacion` SHALL be `enviada`
+- THEN the notifier SHALL be called exactly once, with «Para» holding both addresses in that order, and `notificacion` SHALL be `enviada`
+
+#### Scenario: One address rejected among accepted ones
+
+- GIVEN a run that sends to two addresses and a server that accepts the first and rejects the second
+- WHEN the run closes
+- THEN `notificacion` SHALL be `enviada`, `estado` SHALL be `ok`, and nothing SHALL name the rejected address
+
+#### Scenario: Every address rejected
+
+- GIVEN a run that sends to two addresses and a server that rejects both
+- WHEN the run closes
+- THEN `estado` SHALL be `fallo`, `fase` `notificacion`, `error` `envio-rechazado` and `notificacion` `fallo-envio`
 
 ### Requirement: Send Failure Fails the Run Without Crashing the Tick (DEC-83)
 
@@ -123,21 +135,46 @@ The transport SHALL bound every send attempt by a configured timeout, so that an
 - GIVEN a send that ends by timeout
 - WHEN the run closes
 - THEN the notifier SHALL have been called exactly once
-### Requirement: Recipient Is Validated and Header-Safe (DEC-82)
+### Requirement: Recipient Is Validated and Header-Safe (DEC-82, DEC-187, DEC-194)
 
-The `destinatario` MUST be a single syntactically valid email address, validated at automation creation, and MUST NOT contain CR, LF, commas, semicolons, or whitespace-separated additional addresses. A creation request with an invalid value SHALL be rejected with `400` naming the `destinatario` field and no row SHALL persist.
+`destinatarios` MUST be a list of at most `MAX_DESTINATARIOS` = 5 addresses after this rule, applied at creation, in the operator's adjust and in the panel's adjust:
+1. Each element MUST be a string; it is trimmed of surrounding spaces and tabs, and a CR or LF anywhere stays in, so the next step refuses it.
+2. Each element MUST be one syntactically valid email address (`direccionValida`): no CR, LF, comma, semicolon, whitespace or second address.
+3. Elements that are equal ignoring case SHALL be kept once, with the first spelling, in the order given.
+4. More than 5 elements after step 3 SHALL be refused.
+
+A refused element SHALL be named by its position as given: `/destinatarios/<i>` in the console's routes and `destinatarios` in the panel's route, which names fields, not pointers. A list over the cap SHALL be named `/destinatarios` or `destinatarios`. A refusal SHALL be `400` and nothing SHALL persist. Every stored element has passed this rule, so the run never places an unchecked value in a message header.
+(Previously: one `destinatario`, a single address validated at creation.)
 
 #### Scenario: Invalid recipient rejected
 
-- GIVEN a create request with `destinatario` `"not-an-email"`
+- GIVEN a create request with `destinatarios` `["ops@x.com", "not-an-email"]`
 - WHEN it is handled
-- THEN the response SHALL be `400` naming `destinatario` and no `Automatizacion` SHALL persist
+- THEN the response SHALL be `400` naming `/destinatarios/1` and no `Automatizacion` SHALL persist
 
-#### Scenario: Header injection or multiple addresses rejected
+#### Scenario: Header injection or two addresses in one element rejected
 
-- GIVEN a create request with `destinatario` `"a@x.com\r\nBcc: b@y.com"` or `"a@x.com,b@y.com"`
+- GIVEN a create request with `destinatarios` `["a@x.com\r\nBcc: b@y.com"]` or `["a@x.com,b@y.com"]`
 - WHEN it is handled
-- THEN the response SHALL be `400` naming `destinatario`
+- THEN the response SHALL be `400` naming `/destinatarios/0`
+
+#### Scenario: Duplicates kept once, ignoring case
+
+- GIVEN a create request with `destinatarios` `["Ops@x.com", "b@x.com", "ops@x.com"]`
+- WHEN it is handled
+- THEN the row SHALL persist with `destinatarios` `["Ops@x.com", "b@x.com"]`
+
+#### Scenario: More than five addresses rejected
+
+- GIVEN a create request with six distinct valid addresses
+- WHEN it is handled
+- THEN the response SHALL be `400` naming `/destinatarios` and no row SHALL persist
+
+#### Scenario: Five addresses after removing a duplicate are accepted
+
+- GIVEN a create request with six valid addresses, two of them equal ignoring case
+- WHEN it is handled
+- THEN the row SHALL persist with five addresses
 
 ### Requirement: Message Built From the Template's Texts (DEC-188, DEC-192)
 
