@@ -7,7 +7,8 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import {
-  destinatarioDe,
+  destinatariosDe,
+  MAX_DESTINATARIOS,
   minimoFilasValido,
   registerAutomatizacionRoutes,
   resolverAjusteOperador,
@@ -35,11 +36,52 @@ function clienteSoloTenant(tenant: { id: string; nombre: string; activo: boolean
   }) as PrismaAislado;
 }
 
-test('CH-14 destinatarioDe trims spaces and tabs only; CR/LF is kept for the gate to refuse', () => {
-  assert.equal(destinatarioDe(undefined), null);
-  assert.equal(destinatarioDe(' \t ops@example.com \t'), 'ops@example.com');
-  assert.equal(destinatarioDe('ops@example.com\r\n'), 'ops@example.com\r\n');
-  assert.equal(destinatarioDe('ops@example.com'), 'ops@example.com');
+test('CH-41 destinatariosDe trims spaces and tabs only and keeps the order given', () => {
+  assert.deepEqual(destinatariosDe([' \t ops@example.com \t', 'b@example.com']), {
+    ok: true,
+    lista: ['ops@example.com', 'b@example.com'],
+  });
+  assert.deepEqual(destinatariosDe(['b@example.com', 'a@example.com']), { ok: true, lista: ['b@example.com', 'a@example.com'] });
+});
+
+test('CH-41 destinatariosDe keeps a CR or LF in, so the second element of this list is refused by position', () => {
+  assert.deepEqual(destinatariosDe(['a@example.com', 'b@example.com\r\n']), { ok: false, indices: [1], excede: false });
+  assert.deepEqual(destinatariosDe(['a@example.com\r\nBcc: b@example.com']), { ok: false, indices: [0], excede: false });
+});
+
+test('CH-41 destinatariosDe refuses a non-string element and an element holding several addresses, naming every position', () => {
+  assert.deepEqual(destinatariosDe(['a@example.com', 3, null, '', '   ', 'a@b.com, c@d.com', 'a@b.com;c@d.com']), {
+    ok: false,
+    indices: [1, 2, 3, 4, 5, 6],
+    excede: false,
+  });
+});
+
+test('CH-41 destinatariosDe names positions as given, before removing duplicates', () => {
+  assert.deepEqual(destinatariosDe(['a@example.com', 'A@example.com', 'no-es-un-correo']), {
+    ok: false,
+    indices: [2],
+    excede: false,
+  });
+});
+
+test('CH-41 destinatariosDe removes duplicates ignoring case and keeps the first spelling', () => {
+  assert.deepEqual(destinatariosDe(['Ops@x.com', 'b@x.com', 'ops@x.com']), { ok: true, lista: ['Ops@x.com', 'b@x.com'] });
+  assert.deepEqual(destinatariosDe([' a@x.com', 'a@x.com\t']), { ok: true, lista: ['a@x.com'] });
+});
+
+test('CH-41 destinatariosDe caps the list at 5 after removing duplicates', () => {
+  assert.equal(MAX_DESTINATARIOS, 5);
+  const cinco = ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com'];
+  assert.deepEqual(destinatariosDe(cinco), { ok: true, lista: cinco });
+  assert.deepEqual(destinatariosDe([...cinco, 'f@x.com']), { ok: false, indices: [], excede: true });
+  assert.deepEqual(destinatariosDe([...cinco, 'E@x.com']), { ok: true, lista: cinco });
+  // A refused element is named before the cap is looked at.
+  assert.deepEqual(destinatariosDe([...cinco, 'f@x.com', 'no']), { ok: false, indices: [6], excede: false });
+});
+
+test('CH-41 destinatariosDe accepts the empty list', () => {
+  assert.deepEqual(destinatariosDe([]), { ok: true, lista: [] });
 });
 
 // ---- CH-33 (DEC-174): the operator's adjust, pure half ---------------------------------
@@ -57,13 +99,14 @@ test('CH-33 resolverAjusteOperador returns only the columns the body sent', () =
     ok: true,
     datos: { cron: '30 6 * * 1-5' },
   });
-  assert.deepEqual(resolverAjusteOperador({ destinatario: ' \tops@example.com ' }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
+  assert.deepEqual(
+    resolverAjusteOperador({ destinatarios: [' \tops@example.com ', 'dos@example.com'] }, PLANTILLA_AJUSTE, 'UTC', TOPE),
+    { ok: true, datos: { destinatarios: ['ops@example.com', 'dos@example.com'] } },
+  );
+  // CH-41: [] is a valid list and empties it.
+  assert.deepEqual(resolverAjusteOperador({ destinatarios: [] }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
     ok: true,
-    datos: { destinatario: 'ops@example.com' },
-  });
-  assert.deepEqual(resolverAjusteOperador({ destinatario: null }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
-    ok: true,
-    datos: { destinatario: null },
+    datos: { destinatarios: [] },
   });
   // The map is replaced as a whole, never merged with what was stored.
   assert.deepEqual(resolverAjusteOperador({ valores: { umbral: 10, nombre: 'x' } }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
@@ -74,7 +117,7 @@ test('CH-33 resolverAjusteOperador returns only the columns the body sent', () =
 
 test('CH-33 resolverAjusteOperador names every offender together, as the alta does', () => {
   const resolucion = resolverAjusteOperador(
-    { cron: '@daily', destinatario: 'ops@example.com\r\nBcc: otro@example.com', valores: { umbral: 'diez', nombre: 'x' } },
+    { cron: '@daily', destinatarios: ['ops@example.com', 'ops@example.com\r\nBcc: otro@example.com'], valores: { umbral: 'diez', nombre: 'x' } },
     PLANTILLA_AJUSTE,
     'UTC',
     TOPE,
@@ -82,7 +125,7 @@ test('CH-33 resolverAjusteOperador names every offender together, as the alta do
   assert.equal(resolucion.ok, false);
   if (resolucion.ok) return;
   assert.ok(resolucion.campos.includes('/cron'), JSON.stringify(resolucion.campos));
-  assert.ok(resolucion.campos.includes('/destinatario'), JSON.stringify(resolucion.campos));
+  assert.ok(resolucion.campos.includes('/destinatarios/1'), JSON.stringify(resolucion.campos));
   assert.ok(resolucion.campos.some((campo) => campo.startsWith('/valores')), JSON.stringify(resolucion.campos));
   assert.ok((resolucion.problemas ?? []).some((problema) => problema.parametro === 'umbral'));
 });
@@ -92,10 +135,20 @@ test('CH-33 resolverAjusteOperador refuses an undeclared or a missing value and 
     const resolucion = resolverAjusteOperador({ valores }, PLANTILLA_AJUSTE, 'UTC', TOPE);
     assert.equal(resolucion.ok, false, JSON.stringify(valores));
   }
-  for (const destinatario of ['', '   ', 'a@b.com, c@d.com']) {
-    const resolucion = resolverAjusteOperador({ destinatario }, PLANTILLA_AJUSTE, 'UTC', TOPE);
-    assert.deepEqual(resolucion, { ok: false, campos: ['/destinatario'] }, JSON.stringify(destinatario));
+  for (const elemento of ['', '   ', 'a@b.com, c@d.com']) {
+    const resolucion = resolverAjusteOperador({ destinatarios: [elemento] }, PLANTILLA_AJUSTE, 'UTC', TOPE);
+    assert.deepEqual(resolucion, { ok: false, campos: ['/destinatarios/0'] }, JSON.stringify(elemento));
   }
+  // CH-41: the second element is the one named, and a list over the cap names the list.
+  assert.deepEqual(resolverAjusteOperador({ destinatarios: ['a@b.com', 'c@d.com, e@f.com'] }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
+    ok: false,
+    campos: ['/destinatarios/1'],
+  });
+  const seis = ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com'];
+  assert.deepEqual(resolverAjusteOperador({ destinatarios: seis }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
+    ok: false,
+    campos: ['/destinatarios'],
+  });
 });
 
 test('CH-40 minimoFilasValido accepts an integer from 1 to the cap', () => {
@@ -181,16 +234,24 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
       [{ ...valido, cron: '@daily' }, ['/cron']],
       [{ ...valido, cron: '0 0 8 * * *' }, ['/cron']],
       [{ ...valido, cron: '61 * * * *' }, ['/cron']],
-      // CH-14 6.1: one address, checked by `direccionValida` before any read. CR/LF and
-      // separators are refused anywhere, edges included (Threat Matrix).
-      [{ ...valido, destinatario: 'no-es-una-direccion' }, ['/destinatario']],
-      [{ ...valido, destinatario: 'ops@example.com\r\nBcc: otro@example.com' }, ['/destinatario']],
-      [{ ...valido, destinatario: 'ops@example.com\r\n' }, ['/destinatario']],
-      [{ ...valido, destinatario: 'ops@example.com, otro@example.com' }, ['/destinatario']],
-      [{ ...valido, destinatario: 'ops@example.com;otro@example.com' }, ['/destinatario']],
-      [{ ...valido, destinatario: '' }, ['/destinatario']],
-      [{ ...valido, destinatario: '   ' }, ['/destinatario']],
-      [{ ...valido, destinatario: `${'a'.repeat(250)}@example.com` }, ['/destinatario']],
+      // CH-14 6.1, CH-41: every element checked by `direccionValida` before any read, and
+      // named by its position. CR/LF and separators are refused anywhere, edges included
+      // (Threat Matrix).
+      [{ ...valido, destinatarios: ['no-es-una-direccion'] }, ['/destinatarios/0']],
+      [{ ...valido, destinatarios: ['ops@x.com', 'not-an-email'] }, ['/destinatarios/1']],
+      [{ ...valido, destinatarios: ['ops@example.com\r\nBcc: otro@example.com'] }, ['/destinatarios/0']],
+      [{ ...valido, destinatarios: ['a@example.com', 'ops@example.com\r\n'] }, ['/destinatarios/1']],
+      [{ ...valido, destinatarios: ['ops@example.com, otro@example.com'] }, ['/destinatarios/0']],
+      [{ ...valido, destinatarios: ['ops@example.com;otro@example.com'] }, ['/destinatarios/0']],
+      [{ ...valido, destinatarios: [''] }, ['/destinatarios/0']],
+      [{ ...valido, destinatarios: ['   '] }, ['/destinatarios/0']],
+      [{ ...valido, destinatarios: [3] }, ['/destinatarios/0']],
+      [{ ...valido, destinatarios: ['a@example.com', null, 'x'] }, ['/destinatarios/1', '/destinatarios/2']],
+      [{ ...valido, destinatarios: [`${'a'.repeat(250)}@example.com`] }, ['/destinatarios/0']],
+      // CH-41: over the cap after removing duplicates; the old single key is no longer a key.
+      [{ ...valido, destinatarios: ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com'] }, ['/destinatarios']],
+      [{ ...valido, destinatario: 'ops@example.com' }, ['/destinatario']],
+      [{ ...valido, destinatarios: { 0: 'a@x.com' } }, ['/destinatarios']],
       // CH-40: an integer from 1 to the row cap, refused before any read.
       [{ ...valido, minimoFilas: 0 }, ['/minimoFilas']],
       [{ ...valido, minimoFilas: -3 }, ['/minimoFilas']],
@@ -211,7 +272,7 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
     }
   });
 
-  test('CH-33 an adjust body that is empty or names anything but valores, cron and destinatario is a 400 before any read', async () => {
+  test('CH-33 an adjust body that is empty or names anything but valores, cron, destinatarios and minimoFilas is a 400 before any read', async () => {
     const casos: [Record<string, unknown>, string][] = [
       [{}, ''],
       [{ plantillaId: 'p' }, '/plantillaId'],
@@ -220,6 +281,10 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
       [{ tenantId: 'otro' }, '/tenantId'],
       [{ cron: '0 8 * * *', id: 'otra' }, '/id'],
       [{ valores: [] }, '/valores'],
+      // CH-41: the former single key is refused, never silently dropped.
+      [{ destinatario: 'a@example.com' }, '/destinatario'],
+      [{ destinatario: null }, '/destinatario'],
+      [{ cron: '0 8 * * *', destinatario: 'a@example.com' }, '/destinatario'],
       // CH-40: the schema refuses a non-integer or a minimum below 1 before the row is read.
       [{ minimoFilas: 0 }, '/minimoFilas'],
       [{ minimoFilas: 2.5 }, '/minimoFilas'],
@@ -361,7 +426,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.deepEqual(Object.keys(cuerpo201).sort(), ['automatizacion', 'proximaEjecucion', 'zonaHoraria']);
     assert.deepEqual(
       Object.keys(cuerpo201.automatizacion).sort(),
-      ['activo', 'conexionId', 'creadaEn', 'cron', 'destinatario', 'id', 'minimoFilas', 'plantillaId', 'valores'],
+      ['activo', 'conexionId', 'creadaEn', 'cron', 'destinatarios', 'id', 'minimoFilas', 'plantillaId', 'valores'],
     );
     const { creadaEn, cron } = cuerpo201.automatizacion;
     assert.equal(cuerpo201.proximaEjecucion, proximaEjecucion(cron, new Date(creadaEn), 'UTC').toISOString());
@@ -369,24 +434,53 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.equal(cuerpo201.zonaHoraria, 'UTC');
   });
 
-  test('CH-14 6.1 a valid recipient persists trimmed and is returned by create and get', async () => {
-    const respuesta = await crear({ ...cuerpo(), destinatario: '  ops@example.com ' });
+  test('CH-41 a valid list persists trimmed, in order, and is returned by create and get', async () => {
+    const respuesta = await crear({ ...cuerpo(), destinatarios: ['  ops@example.com ', 'duena@example.com\t'] });
     assert.equal(respuesta.statusCode, 201, respuesta.body);
     const { automatizacion } = respuesta.json();
-    assert.equal(automatizacion.destinatario, 'ops@example.com');
+    assert.deepEqual(automatizacion.destinatarios, ['ops@example.com', 'duena@example.com']);
     const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id: automatizacion.id } });
-    assert.equal(fila.destinatario, 'ops@example.com');
+    assert.deepEqual(fila.destinatarios, ['ops@example.com', 'duena@example.com']);
     const obtenida = await pedir('GET', `/automatizaciones/${automatizacion.id}`);
-    assert.equal(obtenida.json().automatizacion.destinatario, 'ops@example.com');
+    assert.deepEqual(obtenida.json().automatizacion.destinatarios, ['ops@example.com', 'duena@example.com']);
   });
 
-  test('CH-14 6.1 without a recipient the row persists destinatario null', async () => {
+  test('CH-41 without recipients the row persists an empty list', async () => {
     const respuesta = await crear(cuerpo());
     assert.equal(respuesta.statusCode, 201, respuesta.body);
     const { automatizacion } = respuesta.json();
-    assert.equal(automatizacion.destinatario, null);
+    assert.deepEqual(automatizacion.destinatarios, []);
     const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id: automatizacion.id } });
-    assert.equal(fila.destinatario, null);
+    assert.deepEqual(fila.destinatarios, []);
+  });
+
+  test('CH-41 duplicates are kept once ignoring case, and five after removing a duplicate are accepted', async () => {
+    const dup = await crear({ ...cuerpo(), destinatarios: ['Ops@x.com', 'b@x.com', 'ops@x.com'] });
+    assert.equal(dup.statusCode, 201, dup.body);
+    assert.deepEqual(dup.json().automatizacion.destinatarios, ['Ops@x.com', 'b@x.com']);
+
+    const cinco = await crear({ ...cuerpo(), destinatarios: ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'A@x.com'] });
+    assert.equal(cinco.statusCode, 201, cinco.body);
+    assert.equal(cinco.json().automatizacion.destinatarios.length, 5);
+  });
+
+  test('CH-41 an invalid second recipient or a sixth one is a 400 naming it; nothing persists', async () => {
+    const antes = await prisma.automatizacion.count({ where: { tenantId: tenantA } });
+    const invalida = await crear({ ...cuerpo(), destinatarios: ['ops@x.com', 'not-an-email'] });
+    assert.equal(invalida.statusCode, 400, invalida.body);
+    assert.deepEqual(invalida.json().campos, ['/destinatarios/1']);
+    const seis = await crear({ ...cuerpo(), destinatarios: ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com'] });
+    assert.equal(seis.statusCode, 400, seis.body);
+    assert.deepEqual(seis.json().campos, ['/destinatarios']);
+    assert.equal(await prisma.automatizacion.count({ where: { tenantId: tenantA } }), antes);
+  });
+
+  test('CH-41 the former destinatario key is refused on create, never silently dropped', async () => {
+    const antes = await prisma.automatizacion.count({ where: { tenantId: tenantA } });
+    const respuesta = await crear({ ...cuerpo(), destinatario: 'ops@example.com' });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.ok(respuesta.json().campos.includes('/destinatario'), respuesta.body);
+    assert.equal(await prisma.automatizacion.count({ where: { tenantId: tenantA } }), antes);
   });
 
   test('3.2 a missing or ill-typed parameter value is 400 naming it; nothing persists', async () => {
@@ -433,8 +527,8 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     const fila = listado.json().automatizaciones.find((a: { id: string }) => a.id === id);
     assert.equal(fila?.activo, false);
     assert.equal('valores' in fila, false);
-    // CH-14 6.2: the list stays minimal; the recipient is on the get only.
-    assert.equal('destinatario' in fila, false);
+    // CH-14 6.2: the list stays minimal; the recipients are on the get only.
+    assert.equal('destinatarios' in fila, false);
     assert.equal(listado.json().truncado, false);
     assert.deepEqual((await pedir('GET', '/automatizaciones', tenantB)).json().automatizaciones, []);
   });
@@ -543,7 +637,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
   }
 
   async function nueva(): Promise<string> {
-    const respuesta = await crear({ ...cuerpo(), destinatario: 'a@example.com' });
+    const respuesta = await crear({ ...cuerpo(), destinatarios: ['a@example.com'] });
     assert.equal(respuesta.statusCode, 201, respuesta.body);
     return respuesta.json().automatizacion.id as string;
   }
@@ -563,14 +657,14 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
       },
     });
 
-    const respuesta = await ajustar(id, { cron: '30 6 * * 1-5', destinatario: 'b@example.com' });
+    const respuesta = await ajustar(id, { cron: '30 6 * * 1-5', destinatarios: ['b@example.com', 'c@example.com'] });
 
     assert.equal(respuesta.statusCode, 200, respuesta.body);
     const cuerpo200 = respuesta.json();
     assert.deepEqual(Object.keys(cuerpo200).sort(), ['automatizacion', 'proximaEjecucion', 'zonaHoraria']);
     assert.equal(cuerpo200.automatizacion.id, id);
     assert.equal(cuerpo200.automatizacion.cron, '30 6 * * 1-5');
-    assert.equal(cuerpo200.automatizacion.destinatario, 'b@example.com');
+    assert.deepEqual(cuerpo200.automatizacion.destinatarios, ['b@example.com', 'c@example.com']);
     assert.deepEqual(cuerpo200.automatizacion.valores, { nombre: 'x' }, 'valores were not sent and did not change');
     assert.equal(cuerpo200.zonaHoraria, 'UTC');
     const proxima = new Date(cuerpo200.proximaEjecucion);
@@ -584,7 +678,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.equal(ejecuciones.json().ejecuciones.length, 1, 'the run history stays under the same id');
   });
 
-  test('CH-33 valores are checked against the stored template and replace the map; a null recipient clears it', async () => {
+  test('CH-33 valores are checked against the stored template and replace the map; an empty list clears the recipients', async () => {
     const id = await nueva();
 
     const mal = await ajustar(id, { valores: { otro: 'y' } });
@@ -592,18 +686,50 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.ok(mal.json().campos.some((campo: string) => campo.startsWith('/valores')), mal.body);
     assert.deepEqual((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).valores, { nombre: 'x' });
 
-    const bien = await ajustar(id, { valores: { nombre: 'nuevo' }, destinatario: null });
+    const bien = await ajustar(id, { valores: { nombre: 'nuevo' }, destinatarios: [] });
     assert.equal(bien.statusCode, 200, bien.body);
+    assert.deepEqual(bien.json().automatizacion.destinatarios, []);
     const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
     assert.deepEqual(fila.valores, { nombre: 'nuevo' });
-    assert.equal(fila.destinatario, null);
+    assert.deepEqual(fila.destinatarios, []);
   });
 
-  test('CH-33 an invalid cron or recipient is a 400 naming it, and nothing is written', async () => {
+  test('CH-41 an adjust replaces the list as a whole and removes duplicates ignoring case', async () => {
+    const id = await nueva();
+    const respuesta = await ajustar(id, { destinatarios: ['B@example.com', 'a@example.com', 'b@example.com'] });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    assert.deepEqual(respuesta.json().automatizacion.destinatarios, ['B@example.com', 'a@example.com']);
+    assert.deepEqual((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).destinatarios, ['B@example.com', 'a@example.com']);
+  });
+
+  test('CH-41 the former destinatario key is refused on adjust and the row is unchanged', async () => {
+    const id = await nueva();
+    for (const payload of [{ destinatario: 'b@example.com' }, { destinatario: null }, { cron: '0 9 * * *', destinatario: 'b@example.com' }]) {
+      const respuesta = await ajustar(id, payload);
+      assert.equal(respuesta.statusCode, 400, `${JSON.stringify(payload)}: ${respuesta.body}`);
+      assert.equal(respuesta.json().error, 'solicitud-invalida');
+      assert.ok(respuesta.json().campos.includes('/destinatario'), respuesta.body);
+    }
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
+    assert.equal(fila.cron, '0 8 * * 1-5');
+    assert.deepEqual(fila.destinatarios, ['a@example.com']);
+  });
+
+  test("CH-41 another tenant's automation is 404 for a list adjust, and its row is unchanged", async () => {
+    const id = await nueva();
+    const respuesta = await ajustar(id, { destinatarios: ['intruso@example.com', 'otro@example.com'] }, tenantB);
+    assert.equal(respuesta.statusCode, 404, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'automatizacion-no-encontrada' });
+    assert.deepEqual((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).destinatarios, ['a@example.com']);
+  });
+
+  test('CH-33 an invalid cron or recipients is a 400 naming it, and nothing is written', async () => {
     const id = await nueva();
     const casos: [Record<string, unknown>, string][] = [
       [{ cron: 'cada día' }, '/cron'],
-      [{ destinatario: 'a@b.com, c@d.com' }, '/destinatario'],
+      [{ destinatarios: ['a@b.com', 'c@d.com, e@f.com'] }, '/destinatarios/1'],
+      [{ destinatarios: ['a@b.com', 3] }, '/destinatarios/1'],
+      [{ destinatarios: ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com'] }, '/destinatarios'],
     ];
     for (const [payload, campo] of casos) {
       const respuesta = await ajustar(id, payload);
@@ -612,7 +738,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     }
     const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
     assert.equal(fila.cron, '0 8 * * 1-5');
-    assert.equal(fila.destinatario, 'a@example.com');
+    assert.deepEqual(fila.destinatarios, ['a@example.com']);
   });
 
   // ---- CH-40 (DEC-186, DEC-193): the minimum rows ------------------------------------
@@ -667,7 +793,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
     assert.equal(fila.minimoFilas, 10);
     assert.equal(fila.cron, '0 8 * * 1-5');
-    assert.equal(fila.destinatario, 'a@example.com');
+    assert.deepEqual(fila.destinatarios, ['a@example.com']);
     const { ejecuciones } = (await pedir('GET', `/automatizaciones/${id}/ejecuciones`)).json();
     assert.deepEqual(
       ejecuciones.map((e: { notificacion: string | null }) => e.notificacion),

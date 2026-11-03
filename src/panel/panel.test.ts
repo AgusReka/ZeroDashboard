@@ -281,7 +281,8 @@ describe(
         'Ingresá un número válido.',
         'Elegí una hora válida.',
         'Elegí los días de envío.',
-        'Ingresá un correo válido.',
+        'Revisá los correos: escribí entre 1 y 5, separados por comas.',
+        'Hasta 5 correos, separados por comas.',
         'Revisá los datos e intentá de nuevo.',
         'No cambiaste ningún dato.',
         'Esta automatización ya no se puede ajustar.',
@@ -293,12 +294,48 @@ describe(
       }
       // The request body is built from the four fields only; nothing else can be added.
       const campos = new Set([...script.matchAll(/cuerpo\.(\w+) = /g)].map((m) => m[1]));
-      assert.deepEqual([...campos].sort(), ['destinatario', 'dias', 'hora', 'umbral']);
+      assert.deepEqual([...campos].sort(), ['destinatarios', 'dias', 'hora', 'umbral']);
       assert.ok(script.includes("method: 'PUT'"));
       assert.ok(script.includes('encodeURIComponent(id)'), 'the id travels as a path segment, encoded');
       assert.ok(!/\bcron\b|\bvalores\b|\bsql\b/i.test(script), 'no schedule expression, value map or SQL on the page');
       // Only the active and failing cards get the action.
       assert.match(script, /if \(esActiva \|\| esConFalla\) \{[\s\S]*?'Ajustar'/);
+    });
+
+    test('CH-41 the P-04 form splits the field into a list and sends it only when it differs from the stored one', async (t) => {
+      const { script } = await shellConScript();
+
+      // The regex survived the template string that serves the script: `\s` and not a bare `s`.
+      assert.ok(script.includes(String.raw`split(/[,;\s]+/)`), 'the separators are commas, semicolons and any whitespace');
+      // The control accepts the separators: a text input, not an email one that refuses them.
+      assert.ok(script.includes("correo.type = 'text'"));
+      assert.ok(!script.includes("correo.type = 'email'"));
+
+      // The two functions run on their own, with a fake field, against the served source.
+      const funcion = (nombre: string): string => {
+        const inicio = script.indexOf(`function ${nombre}(`);
+        assert.ok(inicio !== -1, nombre);
+        return script.slice(inicio, script.indexOf('\n}', inicio) + 2);
+      };
+      const cuerpoDeCambios = new Function(
+        `${funcion('direccionesDe')}\n${funcion('cuerpoDeCambios')}\nreturn cuerpoDeCambios;`,
+      )() as (campos: unknown, ajustes: unknown) => Record<string, unknown>;
+      const campo = (texto: string) => ({ destinatarios: { control: { value: texto } } });
+      const ajustes = { destinatarios: ['a@b.com', 'c@d.com'] };
+
+      // Two addresses typed with a comma, a semicolon and a line break: one list of two.
+      assert.deepEqual(cuerpoDeCambios(campo('a@b.com, c@d.com;e@f.com\n'), ajustes), {
+        destinatarios: ['a@b.com', 'c@d.com', 'e@f.com'],
+      });
+      // Only the separators changed: nothing is sent.
+      assert.deepEqual(cuerpoDeCambios(campo('a@b.com;  c@d.com'), ajustes), {});
+      assert.deepEqual(cuerpoDeCambios(campo(' a@b.com ,c@d.com '), ajustes), {});
+      // Emptied: the empty list is sent, and the server refuses it (the panel cannot empty the list).
+      assert.deepEqual(cuerpoDeCambios(campo('  , ;'), ajustes), { destinatarios: [] });
+      // The server's own spelling is kept: no case folding or deduplication here.
+      assert.deepEqual(cuerpoDeCambios(campo('A@b.com a@b.com'), { destinatarios: ['A@b.com'] }), {
+        destinatarios: ['A@b.com', 'a@b.com'],
+      });
     });
 
     test('the P-02 script is safe to embed and offers no activation (CH-22b, CH-23)', async (t) => {

@@ -202,7 +202,8 @@ export function notificadorDesdeTransporte(
   const de = { name: NOMBRE_REMITENTE, address: o.de };
   return {
     async enviar(c) {
-      const mensaje = { from: de, to: c.para, subject: c.asunto, html: c.html, text: c.texto };
+      // CH-41 (DEC-187): the whole list in one message; copied because nodemailer takes a mutable array.
+      const mensaje = { from: de, to: [...c.para], subject: c.asunto, html: c.html, text: c.texto };
       // `then` also catches a synchronous throw from `sendMail`: this promise never rejects.
       const envio = Promise.resolve()
         .then(() => t.sendMail(mensaje))

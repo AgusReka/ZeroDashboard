@@ -202,7 +202,7 @@ describe(
       assert.equal(automatizacion.conexionId, IDS_DEMO.conexion);
       assert.deepEqual(automatizacion.valores, { umbral: 5 });
       assert.equal(automatizacion.cron, '0 9 * * *');
-      assert.equal(automatizacion.destinatario, 'demo-ch31@prueba.test');
+      assert.deepEqual(automatizacion.destinatarios, ['demo-ch31@prueba.test']);
       assert.equal(automatizacion.activo, true);
 
       const filas = await db.registroEjecucion.findMany({

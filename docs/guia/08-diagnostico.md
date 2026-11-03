@@ -71,7 +71,7 @@ Las respuestas de ejecución, prueba de plantilla y validación llevan `fase` y 
 
 | `error` | HTTP | Causa y acción |
 |---|---|---|
-| `solicitud-invalida` | 400 | Cuerpo inválido. `campos` lista los campos como `/cron`, `/destinatario`, `/sql`, `/nota`, `/nombre`. Con `problemas`, cada uno trae el parámetro y un `motivo` (lista siguiente). En el panel, los campos son `umbral`, `hora`, `dias` y `destinatario`. |
+| `solicitud-invalida` | 400 | Cuerpo inválido. `campos` lista los campos como `/cron`, `/destinatarios/1` (la posición de la dirección rechazada) o `/destinatarios` (más de 5), `/sql`, `/nota`, `/nombre`. Con `problemas`, cada uno trae el parámetro y un `motivo` (lista siguiente). En el panel, los campos son `umbral`, `hora`, `dias` y `destinatarios`. |
 | `credencial-ilegible` | 409 | «La credencial guardada para esta conexión no se pudo descifrar. Si la conexión se registró antes de que el cifrado entrara en vigencia, hay que volver a registrarla.» También aplica si cambió `CREDENTIAL_MASTER_KEY`. Registrar la conexión de nuevo (DEC-20). |
 | `conexion-no-encontrada` | 404 | La conexión no existe **para el tenant activo**. |
 | `agente-no-encontrado` | 404 | El agente no existe o no es de este tenant. |

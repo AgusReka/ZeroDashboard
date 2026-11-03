@@ -95,7 +95,7 @@ function registro(lineas?: string[]) {
 /**
  * CH-14: a fake notifier that keeps every message and answers with `respuesta`. Ticks also
  * run the automations earlier tests left due, so each test reads only its own recipient's
- * messages through `a(para)`.
+ * messages through `a(para)`: the ones whose «Para» list holds that address (CH-41).
  */
 function notificadorFalso(respuesta: (c: Correo) => Promise<ResultadoEnvio> = async () => ({ resultado: 'enviada' })) {
   const enviados: Correo[] = [];
@@ -105,7 +105,7 @@ function notificadorFalso(respuesta: (c: Correo) => Promise<ResultadoEnvio> = as
       return respuesta(correo);
     },
   };
-  return { notificador, a: (para: string) => enviados.filter((c) => c.para === para) };
+  return { notificador, enviados, a: (para: string) => enviados.filter((c) => c.para.includes(para)) };
 }
 
 /** A plain login role: no table grant, no schema CREATE, so DEC-08 lets a run read with it. */
@@ -195,7 +195,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     creadaEn?: string;
     /** CH-14: the `producto` view's body, so a run can return 0 rows or a marker cell. */
     vistaSql?: string;
-    destinatario?: string;
+    destinatarios?: string[];
     /** CH-40: absent leaves the column to its database default. */
     minimoFilas?: number;
     /** CH-17b: see `conexion`. */
@@ -216,7 +216,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
         cron: opciones.cron ?? '* * * * *',
         activo: opciones.activo ?? true,
         creadaEn: new Date(opciones.creadaEn ?? '2020-01-01T00:00:00Z'),
-        destinatario: opciones.destinatario ?? null,
+        destinatarios: opciones.destinatarios ?? [],
         ...(opciones.minimoFilas === undefined ? {} : { minimoFilas: opciones.minimoFilas }),
       },
     });
@@ -640,12 +640,12 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     const vacia = await automatizacion(tenantId, {
       lector: true,
       vistaSql: 'SELECT 1 AS id WHERE false',
-      destinatario: 'ch14-51-vacia@example.com',
+      destinatarios: ['ch14-51-vacia@example.com'],
       creadaEn: '2020-01-01T00:00:00Z',
     });
     const conFilas = await automatizacion(tenantId, {
       lector: true,
-      destinatario: 'ch14-51@example.com',
+      destinatarios: ['ch14-51@example.com'],
       creadaEn: '2020-01-02T00:00:00Z',
     });
     const falso = notificadorFalso();
@@ -670,19 +670,50 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     );
   });
 
+  test('CH-41 a run sends one message to every address of its list, in order, and records one outcome', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, {
+      lector: true,
+      destinatarios: ['ch41-uno@example.com', 'ch41-dos@example.com'],
+      creadaEn: '2020-01-01T00:00:00Z',
+    });
+    const falso = notificadorFalso();
+
+    await tick(EN('16:10:30'), EN('16:11:30'), undefined, { notificador: falso.notificador });
+
+    const enviados = falso.a('ch41-uno@example.com');
+    assert.equal(enviados.length, 1, 'one message, not one per address');
+    assert.deepEqual(enviados[0].para, ['ch41-uno@example.com', 'ch41-dos@example.com']);
+    assert.equal(falso.a('ch41-dos@example.com')[0], enviados[0], 'the same message reaches both');
+    const filas = await ejecuciones(id);
+    assert.equal(filas.length, 1);
+    assert.deepEqual(columnas(filas[0], 'estado', 'fase', 'notificacion'), { estado: 'ok', fase: 'ejecucion', notificacion: 'enviada' });
+  });
+
+  test('CH-41 a run whose list is empty records sin-destinatario and never calls the notifier', async () => {
+    const id = await automatizacion(await tenant(), { lector: true, destinatarios: [] });
+    const falso = notificadorFalso();
+
+    await tick(EN('16:20:30'), EN('16:21:30'), undefined, { notificador: falso.notificador });
+
+    const [fila] = await ejecuciones(id);
+    assert.deepEqual(columnas(fila, 'estado', 'notificacion'), { estado: 'ok', notificacion: 'sin-destinatario' });
+    assert.equal(falso.enviados.filter((c) => c.para.length === 0).length, 0, 'an empty «Para» is never sent');
+  });
+
   test('CH-40 4.2 rows below the minimum close ok/omitida-bajo-minimo and never call the notifier', async () => {
     const tenantId = await tenant();
     const bajo = await automatizacion(tenantId, {
       lector: true,
       vistaSql: 'SELECT 1 AS id UNION ALL SELECT 2',
-      destinatario: 'ch40-42-bajo@example.com',
+      destinatarios: ['ch40-42-bajo@example.com'],
       minimoFilas: 5,
       creadaEn: '2020-01-01T00:00:00Z',
     });
     const alcanza = await automatizacion(tenantId, {
       lector: true,
       vistaSql: 'SELECT 1 AS id UNION ALL SELECT 2',
-      destinatario: 'ch40-42-alcanza@example.com',
+      destinatarios: ['ch40-42-alcanza@example.com'],
       minimoFilas: 2,
       creadaEn: '2020-01-02T00:00:00Z',
     });
@@ -709,7 +740,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-14 5.2 no recipient records sin-destinatario; an absent or null notifier records no-configurada', async () => {
     const sinDestinatario = await automatizacion(await tenant(), { lector: true });
-    const conDestinatario = await automatizacion(await tenant(), { lector: true, destinatario: 'ch14-52@example.com' });
+    const conDestinatario = await automatizacion(await tenant(), { lector: true, destinatarios: ['ch14-52@example.com'] });
     const falso = notificadorFalso();
 
     await tick(EN('17:00:30'), EN('17:01:30'), undefined, { notificador: falso.notificador });
@@ -734,8 +765,8 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-14 5.3 a query failure or a gate refusal records notificacion null and never calls the notifier', async () => {
     const tenantId = await tenant();
-    const fallo = await automatizacion(tenantId, { destinatario: 'ch14-53-fallo@example.com' });
-    const rechazo = await automatizacion(tenantId, { vista: false, destinatario: 'ch14-53-rechazo@example.com' });
+    const fallo = await automatizacion(tenantId, { destinatarios: ['ch14-53-fallo@example.com'] });
+    const rechazo = await automatizacion(tenantId, { vista: false, destinatarios: ['ch14-53-rechazo@example.com'] });
     const falso = notificadorFalso();
 
     await tick(EN('18:00:30'), EN('18:01:30'), undefined, { notificador: falso.notificador });
@@ -757,17 +788,17 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     const falla = await automatizacion(tenantId, {
       lector: true,
       vistaSql: "SELECT 'fila-secreta' AS id",
-      destinatario: 'ch14-54-falla@example.com',
+      destinatarios: ['ch14-54-falla@example.com'],
       creadaEn: '2020-01-01T00:00:00Z',
     });
     const hermana = await automatizacion(tenantId, {
       lector: true,
-      destinatario: 'ch14-54@example.com',
+      destinatarios: ['ch14-54@example.com'],
       creadaEn: '2020-01-02T00:00:00Z',
     });
     // A verdict carrying SMTP text that a real notifier never returns: none of it may leak.
     const falso = notificadorFalso(async (c) =>
-      c.para === 'ch14-54-falla@example.com'
+      c.para.includes('ch14-54-falla@example.com')
         ? ({ resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550', message: '550 secreto-smtp' } as ResultadoEnvio)
         : { resultado: 'enviada' },
     );
@@ -827,7 +858,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
       lector: true,
       plantillaId,
       vistaSql: "SELECT 'fila-ch39' AS id",
-      destinatario: 'ch39-respaldo@example.com',
+      destinatarios: ['ch39-respaldo@example.com'],
     });
     const falso = notificadorFalso();
 
@@ -852,13 +883,13 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
       lector: true,
       plantillaId,
       vistaSql: "SELECT 'fila-ch39b' AS id",
-      destinatario: 'ch39-textos@example.com',
+      destinatarios: ['ch39-textos@example.com'],
       creadaEn: '2020-01-01T00:00:00Z',
     });
     const sinTextos = await automatizacion(tenantId, {
       lector: true,
       vistaSql: "SELECT 'fila-ch39c' AS id",
-      destinatario: 'ch39-sin-textos@example.com',
+      destinatarios: ['ch39-sin-textos@example.com'],
       creadaEn: '2020-01-02T00:00:00Z',
     });
     const falso = notificadorFalso();
@@ -885,7 +916,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     const corrida = await automatizacion(tenantId, {
       lector: true,
       plantillaId,
-      destinatario: 'ch39-fallo@example.com',
+      destinatarios: ['ch39-fallo@example.com'],
     });
     const falso = notificadorFalso(async () => ({ resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550' }));
 
@@ -917,7 +948,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   });
 
   test('CH-14 5.5 a notifier that throws closes the row as error-interno and logs only the error name', async () => {
-    const id = await automatizacion(await tenant(), { lector: true, destinatario: 'ch14-55@example.com' });
+    const id = await automatizacion(await tenant(), { lector: true, destinatarios: ['ch14-55@example.com'] });
     // A synchronous throw, the case a `.catch` on the returned promise would miss.
     const notificador: Notificador = {
       enviar: () => {
@@ -945,7 +976,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   });
 
   test('CH-14 5.7 the send is inside the duration and the row closes once, after it', async () => {
-    const id = await automatizacion(await tenant(), { lector: true, destinatario: 'ch14-57@example.com' });
+    const id = await automatizacion(await tenant(), { lector: true, destinatarios: ['ch14-57@example.com'] });
     let ahora = EN('21:00:30').getTime();
     const reloj: Reloj = {
       ahora: () => new Date(ahora),
@@ -956,7 +987,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     let durante: Record<string, unknown>[] = [];
     // Every send takes five seconds on the injected clock.
     const falso = notificadorFalso(async (c) => {
-      if (c.para === 'ch14-57@example.com') {
+      if (c.para.includes('ch14-57@example.com')) {
         durante = (await ejecuciones(id)).map((f) => columnas(f, 'estado', 'finalizadaEn', 'notificacion'));
       }
       ahora += 5_000;
@@ -978,7 +1009,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   });
 
   test('CH-14 5.9 a hanging send is cut by the outer limit and the next automation still runs', async () => {
-    const colgada = await automatizacion(await tenant(), { lector: true, destinatario: 'ch14-59@example.com' });
+    const colgada = await automatizacion(await tenant(), { lector: true, destinatarios: ['ch14-59@example.com'] });
     const siguiente = await automatizacion(await tenant(), { lector: true });
     // The real notifier over a transport that never answers: only its outer limit ends it.
     const notificador = notificadorDesdeTransporte(
@@ -1107,7 +1138,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   test('CH-17a 2.1 a stuck automation gets one omitida/solapamiento row per tick and runs or notifies nothing', async () => {
     const tenantId = await tenant();
     // A run would reach the live server, read one row and send it: none of that may happen.
-    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch17a-21@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch17a-21@example.com'] });
     const viva = await atascada(tenantId, id);
     const falso = notificadorFalso();
     const lineas: string[] = [];
@@ -1277,7 +1308,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     const tenantId = await tenant();
     const credenciales = await automatizacion(tenantId, { lector: true, clave: 'clave-equivocada', creadaEn: '2020-01-01T00:00:00Z' });
     const lenta = await automatizacion(tenantId, { lector: true, vistaSql: 'SELECT pg_sleep(2) AS id', creadaEn: '2020-01-02T00:00:00Z' });
-    const envio = await automatizacion(tenantId, { lector: true, destinatario: 'ch17b-23@example.com', creadaEn: '2020-01-03T00:00:00Z' });
+    const envio = await automatizacion(tenantId, { lector: true, destinatarios: ['ch17b-23@example.com'], creadaEn: '2020-01-03T00:00:00Z' });
     const compuerta = await automatizacion(tenantId, { vista: false, creadaEn: '2020-01-04T00:00:00Z' });
     const falso = notificadorFalso(async () => ({ resultado: 'fallo', categoria: 'envio-rechazado', codigo: '550' }));
     const { reloj, pausas } = relojDePausas(EN('06:30:30'));
@@ -1401,8 +1432,8 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-18 1.1 a tenant whose listing throws is logged with closed fields, and the next tenant still runs', async () => {
     const [a, b] = await dosTenantsEnOrden();
-    const deA = await automatizacion(a, { lector: true, destinatario: 'ch18-11-a@example.com' });
-    const deB = await automatizacion(b, { lector: true, destinatario: 'ch18-11-b@example.com' });
+    const deA = await automatizacion(a, { lector: true, destinatarios: ['ch18-11-a@example.com'] });
+    const deB = await automatizacion(b, { lector: true, destinatarios: ['ch18-11-b@example.com'] });
     const { nombre } = await prisma.tenant.findUniqueOrThrow({ where: { id: a } });
     // The failing tenant is the lower id, so the tick visits it first.
     const { cliente, listados } = clienteDeBarrido([a, b], undefined, { fallaListadoEn: a });
@@ -1512,7 +1543,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-18 2.3 while the notifier runs, the row is en-curso with the marker; it closes enviada', async () => {
     const tenantId = await tenant();
-    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-23@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch18-23@example.com'] });
     let durante: Record<string, unknown>[] = [];
     const falso = notificadorFalso(async () => {
       durante = (await ejecuciones(id)).map((f) => columnas(f, 'estado', 'finalizadaEn', 'notificacion'));
@@ -1532,12 +1563,12 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   test('CH-18 2.4 the marker is written only on the path that sends: never for an omission or a failed run', async () => {
     const tenantId = await tenant();
     const vacia = await automatizacion(tenantId, {
-      lector: true, vistaSql: 'SELECT 1 AS id WHERE false', destinatario: 'ch18-24-vacia@example.com', creadaEn: '2020-01-01T00:00:00Z',
+      lector: true, vistaSql: 'SELECT 1 AS id WHERE false', destinatarios: ['ch18-24-vacia@example.com'], creadaEn: '2020-01-01T00:00:00Z',
     });
     const sinDestinatario = await automatizacion(tenantId, { lector: true, creadaEn: '2020-01-02T00:00:00Z' });
-    const fallida = await automatizacion(tenantId, { destinatario: 'ch18-24-fallo@example.com', creadaEn: '2020-01-03T00:00:00Z' });
-    const compuerta = await automatizacion(tenantId, { vista: false, destinatario: 'ch18-24-compuerta@example.com', creadaEn: '2020-01-04T00:00:00Z' });
-    const envia = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-24@example.com', creadaEn: '2020-01-05T00:00:00Z' });
+    const fallida = await automatizacion(tenantId, { destinatarios: ['ch18-24-fallo@example.com'], creadaEn: '2020-01-03T00:00:00Z' });
+    const compuerta = await automatizacion(tenantId, { vista: false, destinatarios: ['ch18-24-compuerta@example.com'], creadaEn: '2020-01-04T00:00:00Z' });
+    const envia = await automatizacion(tenantId, { lector: true, destinatarios: ['ch18-24@example.com'], creadaEn: '2020-01-05T00:00:00Z' });
     const { cliente, marcas } = clienteDeBarrido([tenantId]);
     const falso = notificadorFalso();
 
@@ -1562,7 +1593,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-18 2.5 a marker write that throws calls no notifier and closes fallo/notificacion as error-interno', async () => {
     const tenantId = await tenant();
-    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-25@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch18-25@example.com'] });
     const { cliente, marcas } = clienteDeBarrido([tenantId], undefined, { fallaMarca: true });
     const falso = notificadorFalso();
     const lineas: string[] = [];
@@ -1584,7 +1615,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-18 2.6 a process lost mid-send leaves en-curso/enviando, and the next boot sweep records incierta', async () => {
     const tenantId = await tenant();
-    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-26@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch18-26@example.com'] });
     // The send never answers: as far as this run knows, the process died during it.
     const falso = notificadorFalso(() => new Promise<ResultadoEnvio>(() => {}));
     void planificadorDe(clienteDeBarrido([tenantId]).cliente, EN('04:30:30'), { notificador: falso.notificador })
@@ -1641,7 +1672,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
   test('CH-18 2.8 a retried dial that then connects sends once', async () => {
     const puerto = await puertoLibre();
     const tenantId = await tenant();
-    const id = await automatizacion(tenantId, { lector: true, puerto, destinatario: 'ch18-28-reintento@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, puerto, destinatarios: ['ch18-28-reintento@example.com'] });
     let cerrar: (() => Promise<void>) | undefined;
     const { reloj } = relojDePausas(EN('04:50:30'), (_, disparar) => {
       void escuchar(puerto, 'reenviar').then((c) => {
@@ -1665,7 +1696,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-18 2.8 a run stuck in enviando makes the next tick skip as omitida, with no send', async () => {
     const tenantId = await tenant();
-    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-28-solape@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch18-28-solape@example.com'] });
     const atascadaEnviando = await prisma.ejecucion.create({
       data: { tenantId, automatizacionId: id, estado: 'en-curso', iniciadaEn: EN('04:59:00'), notificacion: 'enviando' },
     });
@@ -1683,7 +1714,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-18 2.8 detener during a send on the timer path waits for it: one send, enviada, nothing armed', async () => {
     const tenantId = await tenant();
-    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-28-detener@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch18-28-detener@example.com'] });
     let ahora = EN('05:30:30');
     const temporizadores: { ms: number; disparar: () => void }[] = [];
     const reloj: Reloj = {
@@ -1721,7 +1752,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   test('CH-18 2.8 a send cut by the outer time limit was attempted once and is not repeated', async () => {
     const tenantId = await tenant();
-    const id = await automatizacion(tenantId, { lector: true, destinatario: 'ch18-28-tiempo@example.com' });
+    const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch18-28-tiempo@example.com'] });
     let envios = 0;
     const notificador = notificadorDesdeTransporte(
       {

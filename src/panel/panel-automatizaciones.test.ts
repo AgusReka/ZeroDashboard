@@ -136,7 +136,7 @@ const FILA_CRUDA = {
   plantillaId: 'pla-1',
   conexionId: 'con-1',
   valores: { umbral: 5 },
-  destinatario: 'ana@empresa.com',
+  destinatarios: ['ana@empresa.com'],
   activo: true,
   cron: '0 8 * * *',
   plantilla: { ...TEXTO_FISICO, automatizacion: 'stock-fisico', nombre: 'Console name', sql: 'SELECT 1' },

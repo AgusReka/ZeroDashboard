@@ -108,8 +108,8 @@ interface Fixture {
   /** CH-13: this tenant's automation, created through the API, and one run of it. */
   automatizacionId: string;
   ejecucionId: string;
-  /** CH-14: this tenant's own recipient, set at create (DEC-82). */
-  destinatario: string;
+  /** CH-14, CH-41: this tenant's own recipients, set at create (DEC-82, DEC-187). */
+  destinatarios: string[];
 }
 
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
@@ -261,12 +261,14 @@ describe(
 
       // CH-13: an automation through the API, and one run of it as the scheduler files it.
       // CH-14: with its own recipient, and the run with its notification outcome.
-      const destinatario = `t2-${etiqueta.toLowerCase()}-${Date.now()}@example.com`;
+      // CH-41: A's list holds two addresses and B's one, so the sweep also covers a list.
+      const base = `t2-${etiqueta.toLowerCase()}-${Date.now()}`;
+      const destinatarios = etiqueta === 'A' ? [`${base}@example.com`, `${base}-2@example.com`] : [`${base}@example.com`];
       const alta = await app.inject({
         method: 'POST',
         url: '/automatizaciones',
         headers,
-        payload: { plantillaId, conexionId: conexion.id, cron: '0 8 * * *', destinatario },
+        payload: { plantillaId, conexionId: conexion.id, cron: '0 8 * * *', destinatarios },
       });
       assert.equal(alta.statusCode, 201, alta.body);
       const { automatizacion } = alta.json() as { automatizacion: { id: string } };
@@ -291,7 +293,7 @@ describe(
         validacion: { resultado, fase },
         automatizacionId: automatizacion.id,
         ejecucionId: ejecucion.id,
-        destinatario,
+        destinatarios,
       };
     }
 
@@ -493,7 +495,9 @@ describe(
           assert.ok(!respuesta.body.includes(duenio.tenantId));
           assert.ok(!respuesta.body.includes(duenio.automatizacionId));
           assert.ok(!respuesta.body.includes(duenio.ejecucionId));
-          assert.ok(!respuesta.body.includes(duenio.destinatario));
+          for (const direccion of duenio.destinatarios) {
+            assert.ok(!respuesta.body.includes(direccion));
+          }
         }
       });
 
@@ -606,8 +610,10 @@ describe(
           headers: cabeceras(llamante),
         });
         assert.equal(obtenida.statusCode, 200, obtenida.body);
-        assert.equal(obtenida.json().automatizacion.destinatario, llamante.destinatario);
-        assert.ok(!obtenida.body.includes(duenio.destinatario));
+        assert.deepEqual(obtenida.json().automatizacion.destinatarios, llamante.destinatarios);
+        for (const direccion of duenio.destinatarios) {
+          assert.ok(!obtenida.body.includes(direccion));
+        }
 
         const corridas = await app.inject({
           method: 'GET',
@@ -622,8 +628,9 @@ describe(
 
         // The list is minimal: no recipient at all, the caller's or the owner's.
         const listado = await app.inject({ method: 'GET', url: '/automatizaciones', headers: cabeceras(llamante) });
-        assert.ok(!listado.body.includes(llamante.destinatario));
-        assert.ok(!listado.body.includes(duenio.destinatario));
+        for (const direccion of [...llamante.destinatarios, ...duenio.destinatarios]) {
+          assert.ok(!listado.body.includes(direccion));
+        }
       }
     });
 
@@ -702,7 +709,7 @@ describe(
       ).id;
       // Same 2019 dating as the CH-13 tick above: only this test's automations are due.
       const creadaEn = new Date('2019-01-01T00:00:00Z');
-      const propias: { id: string; duenio: Fixture; para: string | null; marcador: string }[] = [];
+      const propias: { id: string; duenio: Fixture; para: string[]; marcador: string }[] = [];
       const conexionesT2: string[] = [];
       for (const [duenio, etiqueta] of [
         [a, 'a'],
@@ -731,10 +738,12 @@ describe(
             estadoValidacion: 'valida',
           },
         });
-        // A also owns an automation with no recipient: it must never borrow one.
+        // A also owns an automation with no recipient: it must never borrow one. CH-41: A's
+        // own list holds two addresses, B's one.
         const propio = `ch14-t2-${etiqueta}-${sello}@example.com`;
-        const destinatarios = duenio === a ? [propio, null] : [propio];
-        for (const para of destinatarios) {
+        const propio2 = `ch41-t2-${etiqueta}-${sello}@example.com`;
+        const listas = duenio === a ? [[propio, propio2], []] : [[propio]];
+        for (const para of listas) {
           const { id } = await db.automatizacion.create({
             data: {
               tenantId: duenio.tenantId,
@@ -742,7 +751,7 @@ describe(
               conexionId: conexion.id,
               cron: '* * * * *',
               creadaEn,
-              destinatario: para,
+              destinatarios: para,
             },
           });
           propias.push({ id, duenio, para, marcador });
@@ -789,15 +798,17 @@ describe(
         await db.$executeRawUnsafe(SQL_LIMPIEZA_T2);
       }
 
-      // Exactly two messages: one per recipient; the automation without one sent nothing.
-      const conDestinatario = propias.filter((p) => p.para !== null);
+      // Exactly two messages: one per automation with recipients, each addressed to its own
+      // whole list in order (A's two addresses, B's one); the automation without any sent nothing.
+      const conDestinatario = propias.filter((p) => p.para.length > 0);
+      assert.equal(enviados.length, 2);
       assert.deepEqual(
-        enviados.map((c) => c.para).sort(),
+        enviados.map((c) => [...c.para]).sort(),
         conDestinatario.map((p) => p.para).sort(),
       );
       for (const { para, duenio, marcador } of conDestinatario) {
         const otro = propias.find((p) => p.duenio !== duenio)!.marcador;
-        const [correo] = enviados.filter((c) => c.para === para);
+        const [correo] = enviados.filter((c) => JSON.stringify(c.para) === JSON.stringify(para));
         for (const cuerpo of [correo.texto, correo.html]) {
           assert.ok(cuerpo.includes(marcador), `${duenio.nombre}: its own row is missing`);
           assert.ok(!cuerpo.includes(otro), `${duenio.nombre}: the other tenant's row reached it`);
@@ -813,7 +824,7 @@ describe(
             tenantId: duenio.tenantId,
             estado: 'ok',
             filas: 1,
-            notificacion: para === null ? 'sin-destinatario' : 'enviada',
+            notificacion: para.length === 0 ? 'sin-destinatario' : 'enviada',
           },
         ]);
       }

@@ -431,7 +431,7 @@ describe('esFalloReintentable — only a transient connection failure is retried
 
 // ---- 3.1 notification precedence (DEC-83, DEC-84, DEC-86) ----------------------------
 
-const PARA = 'compras@ejemplo.test';
+const PARA = ['compras@ejemplo.test'];
 
 describe('decidirNotificacion — the first condition that holds wins', () => {
   test('3.1 a run that did not succeed records null and never sends', () => {
@@ -455,18 +455,18 @@ describe('decidirNotificacion — the first condition that holds wins', () => {
       enviar: false,
       notificacion: 'omitida-sin-filas',
     });
-    assert.deepEqual(decidirNotificacion(exitosa(0), null, false, 1), {
+    assert.deepEqual(decidirNotificacion(exitosa(0), [], false, 1), {
       enviar: false,
       notificacion: 'omitida-sin-filas',
     });
   });
 
   test('3.1 a missing recipient wins over unset SMTP', () => {
-    assert.deepEqual(decidirNotificacion(exitosa(2), null, false, 1), {
+    assert.deepEqual(decidirNotificacion(exitosa(2), [], false, 1), {
       enviar: false,
       notificacion: 'sin-destinatario',
     });
-    assert.deepEqual(decidirNotificacion(exitosa(2), null, true, 1), {
+    assert.deepEqual(decidirNotificacion(exitosa(2), [], true, 1), {
       enviar: false,
       notificacion: 'sin-destinatario',
     });
@@ -481,9 +481,24 @@ describe('decidirNotificacion — the first condition that holds wins', () => {
 
   test('3.1 rows, a recipient and SMTP configured: send once, to that recipient', () => {
     assert.deepEqual(decidirNotificacion(exitosa(12), PARA, true, 1), { enviar: true, para: PARA });
-    assert.deepEqual(decidirNotificacion(exitosa(1, 'tope-de-filas'), 'otro@ejemplo.test', true, 1), {
+    assert.deepEqual(decidirNotificacion(exitosa(1, 'tope-de-filas'), ['otro@ejemplo.test'], true, 1), {
       enviar: true,
-      para: 'otro@ejemplo.test',
+      para: ['otro@ejemplo.test'],
+    });
+  });
+
+  test('3.1 CH-41 two recipients: one decision to send, with both addresses in order', () => {
+    const dos = ['a@ejemplo.test', 'b@ejemplo.test'];
+    const decision = decidirNotificacion(exitosa(3), dos, true, 1);
+    assert.deepEqual(decision, { enviar: true, para: dos });
+    // A copy: the decision never aliases the stored list.
+    assert.ok(decision.enviar && decision.para !== dos);
+  });
+
+  test('3.1 CH-41 an empty list is the missing recipient, in the same row of the precedence', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(2), [], true, 1), {
+      enviar: false,
+      notificacion: 'sin-destinatario',
     });
   });
 });
@@ -517,7 +532,7 @@ describe('decidirNotificacion — the minimum rows (CH-40, DEC-186, DEC-193)', (
   });
 
   test('2.2 the minimum wins over a missing recipient and unset SMTP', () => {
-    assert.deepEqual(decidirNotificacion(exitosa(3), null, false, 5), {
+    assert.deepEqual(decidirNotificacion(exitosa(3), [], false, 5), {
       enviar: false,
       notificacion: 'omitida-bajo-minimo',
     });

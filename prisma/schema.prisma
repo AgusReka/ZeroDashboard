@@ -190,29 +190,30 @@ model Plantilla {
 // and there is no edit, delete or reactivation path (DEC-79). Every foreign key is
 // RESTRICT, so nothing an automation references can be deleted out from under it.
 //
-// CH-14 (DEC-82): `destinatario` is the one email address a run's rows are sent to. It
-// is nullable so pre-CH-14 automations keep running (they record `sin-destinatario`),
-// is validated in the application at creation, and there is no global fallback.
+// CH-14 (DEC-82), CH-41 (DEC-187, DEC-194): `destinatarios` is the list of email
+// addresses a run's rows are sent to, at most 5, validated and deduplicated in the
+// application. It replaced the single nullable `destinatario`. Empty means no email (the
+// run records `sin-destinatario`), and there is no global fallback.
 //
 // CH-40 (DEC-186, DEC-193): `minimoFilas` is the fewest rows a successful run needs before
 // it notifies; below it the run records `omitida-bajo-minimo`. The default 1 is the
 // behaviour before CH-40. It is an integer from 1 to the engine's row cap, validated in the
 // application, set at creation and in the operator's adjust, never from the panel.
 model Automatizacion {
-  id           String      @id @default(uuid())
-  tenantId     String
-  tenant       Tenant      @relation(fields: [tenantId], references: [id])
-  plantillaId  String
-  plantilla    Plantilla   @relation(fields: [plantillaId], references: [id])
-  conexionId   String
-  conexion     Conexion    @relation(fields: [conexionId], references: [id])
-  valores      Json        @default("{}")
-  cron         String
-  activo       Boolean     @default(true)
-  creadaEn     DateTime    @default(now())
-  destinatario String?
-  minimoFilas  Int         @default(1)
-  ejecuciones  Ejecucion[]
+  id            String      @id @default(uuid())
+  tenantId      String
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
+  plantillaId   String
+  plantilla     Plantilla   @relation(fields: [plantillaId], references: [id])
+  conexionId    String
+  conexion      Conexion    @relation(fields: [conexionId], references: [id])
+  valores       Json        @default("{}")
+  cron          String
+  activo        Boolean     @default(true)
+  creadaEn      DateTime    @default(now())
+  destinatarios String[]    @default([])
+  minimoFilas   Int         @default(1)
+  ejecuciones   Ejecucion[]
 
   @@index([tenantId])
 }

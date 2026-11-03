@@ -134,18 +134,18 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
   - Comparar: panel ancho con **dos bloques de texto lado a lado, sin diff** (`.zd-compare`).
   - Restaurar: diálogo «Restaurar versión N»; crea la versión N+1, nunca borra. Banner ok al terminar.
 
-### C-09 Automatizaciones — D1, D2, D3, N3, X9 · CH-12, CH-13, CH-21, CH-33, CH-40 · EXISTE — **con mockup**
+### C-09 Automatizaciones — D1, D2, D3, N3, X9 · CH-12, CH-13, CH-21, CH-33, CH-40, CH-41 · EXISTE — **con mockup**
 - **Lista**: automatización (plantilla + id) · conexión · cron (expresión mono + texto humano) · estado (Activa / Desactivada) · alta · acciones (Ver ejecuciones, Desactivar).
   - Desactivar: diálogo «Desactivar au_xx»; el historial se conserva.
-  - Ajustar (CH-33, CH-40): pop-up con los valores, el horario, el destinatario y el «Mínimo de filas para avisar»; envía solo lo que cambió.
+  - Ajustar (CH-33, CH-40, CH-41): pop-up con los valores, el horario, los destinatarios (un solo campo de texto, «a@x.com, b@x.com», con la ayuda «Hasta 5, separados por comas.») y el «Mínimo de filas para avisar»; envía solo lo que cambió. La lista se compara por direcciones, no por texto; vaciar el campo envía `[]` y deja de enviar correo. Un 400 nombra la dirección escrita en esa posición.
   - Vacío: "Este tenant no tiene automatizaciones" + «Nueva automatización».
 - **Alta en dos pasos** (`#automatizaciones/alta`), con `Stepper`:
   1. Conexión (select) + plantilla en tarjetas (`TemplatePicker`). Las no disponibles: deshabilitadas, borde punteado, candado + motivo (`.zd-template__why`), enlazado con `aria-describedby`.
-  2. Parámetros de la plantilla · frecuencia + hora → **cron resultante en vivo** (`.zd-cron`: expresión + texto) · destinatario · «Mínimo de filas para avisar» (número, 1 por defecto, sin máximo en el cliente: el tope lo valida el servidor) · vista previa del correo al costado, con «Se envía con: N filas o más». «Volver» / «Crear automatización».
+  2. Parámetros de la plantilla · frecuencia + hora → **cron resultante en vivo** (`.zd-cron`: expresión + texto) · «Correos de los destinatarios (opcional)» (un solo campo de texto con teclado de correo; coma, punto y coma o espacio separan; hasta 5; la vista previa lista las direcciones en «Para») · «Mínimo de filas para avisar» (número, 1 por defecto, sin máximo en el cliente: el tope lo valida el servidor) · vista previa del correo al costado, con «Se envía con: N filas o más». «Volver» / «Crear automatización».
 - **Estados**: creada → vuelve a la lista con Banner ok y la primera ejecución.
 
 ### C-10 Ejecuciones de una automatización — X2, X4, X5, X7 · CH-13, CH-17a, CH-17b · EXISTE — **con mockup**
-- Ruta: Automatizaciones › au_xx. Resumen (`KeyValueList layout="grid"`: conexión, cron, destinatario, estado).
+- Ruta: Automatizaciones › au_xx. Resumen (`KeyValueList layout="grid"`: conexión, cron, destinatarios, estado).
 - **Tabla**: inicio · fin · duración · filas · estado (OK / Fallo / Omitida por solapamiento / Interrumpida / Reintentando (n/3)) · notificación (Enviada / No enviada / Sin datos / Pendiente / No corresponde) · intentos · error (truncado, completo en `title`).
 - Filtro por estado. Clic en fila → panel lateral con todo el detalle y el error en mono.
 

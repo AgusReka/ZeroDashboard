@@ -166,9 +166,12 @@ export function asuntoCorreo(e: {
 
 // ---- message composition (N1, DEC-85) ------------------------------------------------
 
-/** One message, ready for the notifier. `para` comes from the run's own automation. */
+/**
+ * One message, ready for the notifier. `para` comes from the run's own automation: CH-41
+ * (DEC-187) makes it the whole list, all in «Para» of the one message.
+ */
 export interface Correo {
-  para: string;
+  para: readonly string[];
   asunto: string;
   html: string;
   texto: string;
