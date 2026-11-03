@@ -219,6 +219,7 @@ const IDS = [
   // CH-38 (DEC-191): the header action, the drawer's client texts and actions, and the template pop-up.
   'plantilla-nueva',
   'plantilla-textos',
+  'plantilla-mensaje',
   'plantilla-en-uso-aviso',
   'plantilla-editar',
   'plantilla-duplicar',
@@ -235,6 +236,8 @@ const IDS = [
   'plantilla-f-tolerancia',
   'plantilla-f-titulo',
   'plantilla-f-descripcion',
+  'plantilla-f-encabezado',
+  'plantilla-f-linea',
   'plantilla-f-aviso-copia',
   'plantilla-f-conexion',
   'plantilla-f-valores',
@@ -4272,6 +4275,8 @@ describe('the console document, served by the real route', () => {
     assert.match(dialogo, /<button id="plantilla-dialogo-guardar"[^>]*type="submit" form="plantilla-form"[^>]*disabled/);
     assert.match(dialogo, /<textarea id="plantilla-f-descripcion"[^>]*maxlength="200"/);
     assert.match(dialogo, /<input id="plantilla-f-titulo"[^>]*maxlength="80"/);
+    assert.match(dialogo, /<input id="plantilla-f-encabezado"[^>]*maxlength="200"/);
+    assert.match(dialogo, /<textarea id="plantilla-f-linea"[^>]*maxlength="300"/);
     assert.match(dialogo, /<input id="plantilla-f-tolerancia"[^>]*type="number" min="0"/);
     assert.match(dialogo, /<p id="plantilla-f-resultado"[^>]*role="status"/);
     assert.match(dialogo, /<p id="plantilla-dialogo-estado"[^>]*role="status"/);
@@ -4315,6 +4320,8 @@ describe('the console document, served by the real route', () => {
         toleranciaFrescuraMinutos: 60,
         titulo: 'Stock bajo',
         descripcion: 'Te avisamos cuando queda poco stock.',
+        encabezadoMensaje: '',
+        lineaMensaje: '',
         conexionId: 'c-1',
         valores: { umbral: 5 },
       },
@@ -4346,6 +4353,9 @@ describe('the console document, served by the real route', () => {
       toleranciaFrescuraMinutos: 60,
       titulo: 'Stock bajo',
       descripcion: 'Te avisamos cuando queda poco stock.',
+      encabezadoMensaje: '',
+      lineaMensaje: '',
+      columnasPrueba: ['n'],
     });
     assert.equal(lista.url, '/plantillas');
     assert.equal(detalle.url, '/plantillas/p-20');
@@ -4675,6 +4685,240 @@ describe('the console document, served by the real route', () => {
     assert.equal(await guardar({ status: 500, cuerpo: { error: 'x' } }), 'No se pudo guardar la plantilla (HTTP 500).');
     assert.equal(await guardar({ status: 200, cuerpo: {}, falla: true }), 'No se pudo contactar con la aplicación.');
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false, 'a refusal does not close the save');
+  });
+
+  // ---- CH-39b (DEC-188, DEC-192): the message texts in the pop-up, the drawer and the runs view ----
+
+  /** A passing test whose columns are the ones the message line names. */
+  const OK_CH39 = (): { status: number; cuerpo: unknown } => ({
+    status: 200,
+    cuerpo: respuestaOk({ columnas: ['producto', 'cantidad'], filas: [['Harina', 3]], paginacion: { limite: 50, desplazamiento: 0, hayMas: false, siguienteDesplazamiento: null, topeFilas: 200 } }),
+  });
+  const ENCABEZADO_CH39 = 'Stock bajo';
+  const LINEA_CH39 = '{producto}: quedan {cantidad}';
+  const PLANTILLA_CH39 = { ...PLANTILLA_CH38, encabezadoMensaje: ENCABEZADO_CH39, lineaMensaje: LINEA_CH39 };
+
+  /** Fills both message texts of the open pop-up. */
+  function escribirMensajeCH39(escenario: Escenario): void {
+    escribirCH38(escenario, 'plantilla-f-encabezado', ENCABEZADO_CH39);
+    escribirCH38(escenario, 'plantilla-f-linea', LINEA_CH39);
+  }
+
+  /** Opens «Editar» on a free template, with the connection chosen and the test passed. */
+  async function editarProbadaCH39(plantilla: Record<string, unknown>): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirDrawerCH38(escenario, { ...plantilla, enUso: false });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'plantilla-editar').disparar('click');
+    await asentarVarias();
+    escribirCH38(escenario, 'plantilla-f-conexion', 'c-1');
+    await probarCH38(escenario, OK_CH39());
+    return escenario;
+  }
+
+  test('CH-39b the pop-up holds the two message fields with their caps, and the hint says how they work', () => {
+    const dialogo = marcado().slice(marcado().indexOf('id="plantilla-dialogo"'), marcado().indexOf('</section>', marcado().indexOf('id="plantilla-dialogo"')));
+    assert.match(dialogo, /<label for="plantilla-f-encabezado" class="zd-label">Encabezado del mensaje<\/label>/);
+    assert.match(dialogo, /<input id="plantilla-f-encabezado"[^>]*maxlength="200"/);
+    assert.match(dialogo, /<label for="plantilla-f-linea" class="zd-label">Línea por fila<\/label>/);
+    assert.match(dialogo, /<textarea id="plantilla-f-linea"[^>]*maxlength="300"/);
+    assert.match(dialogo, /Hasta 200 caracteres\. Va una sola vez, arriba de las líneas, y no admite columnas\./);
+    assert.match(dialogo, /Hasta 300 caracteres\. \{columna\} se reemplaza por el valor de esa columna en cada fila\. Los dos textos van juntos; sin ellos, el correo muestra la tabla\./);
+    assert.match(marcado(), /<p id="plantilla-mensaje"><\/p>/);
+  });
+
+  /** Spec "Saving with message texts". */
+  test('CH-39b Guardar sends both message texts and the columns of the last test; the test request sends no columnasPrueba', async () => {
+    const escenario = await abrirNuevaCH38();
+    llenarCH38(escenario);
+    escribirMensajeCH39(escenario);
+    const antes = escenario.peticiones.length;
+    await probarCH38(escenario, OK_CH39());
+    const prueba = escenario.peticiones[antes].cuerpo as Record<string, unknown>;
+    assert.equal(escenario.peticiones[antes].url, '/plantillas/prueba');
+    assert.equal(prueba.encabezadoMensaje, ENCABEZADO_CH39);
+    assert.equal(prueba.lineaMensaje, LINEA_CH39);
+    assert.ok(!('columnasPrueba' in prueba), 'the test is what produces the columns');
+
+    escenario.respuestas.push({ status: 201, cuerpo: { plantilla: { ...PLANTILLA_CH39, id: 'p-21', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { ...PLANTILLA_CH39, id: 'p-21', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    const inicio = escenario.peticiones.length;
+    nodo(escenario, 'plantilla-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[inicio].url, '/plantillas');
+    assert.deepEqual(escenario.peticiones[inicio].cuerpo, {
+      nombre: 'Stock bajo',
+      sql: 'SELECT n FROM v_producto WHERE n < :umbral',
+      parametros: [{ nombre: 'umbral', tipo: 'numero' }],
+      entidades: ['producto'],
+      automatizacion: 'stock-fisico',
+      formato: 'correo-html',
+      toleranciaFrescuraMinutos: 60,
+      titulo: 'Stock bajo',
+      descripcion: 'Te avisamos cuando queda poco stock.',
+      encabezadoMensaje: ENCABEZADO_CH39,
+      lineaMensaje: LINEA_CH39,
+      columnasPrueba: ['producto', 'cantidad'],
+    });
+    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+  });
+
+  /** Spec "Editing the line keeps saving enabled". */
+  test('CH-39b editing either message text after a passing test keeps Guardar enabled and asks for no new test', async () => {
+    const escenario = await abrirNuevaCH38();
+    llenarCH38(escenario);
+    await probarCH38(escenario, OK_CH39());
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
+    const pedidas = escenario.peticiones.length;
+    escribirCH38(escenario, 'plantilla-f-linea', '{producto}');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
+    escribirCH38(escenario, 'plantilla-f-encabezado', 'Otro encabezado');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
+    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, '');
+    assert.equal(escenario.peticiones.length, pedidas, 'editing a text sends nothing');
+  });
+
+  /** Spec "An unknown column". */
+  test('CH-39b a 400 with marcadores on the line names the field, lists the columns missing from the last test and stays open', async () => {
+    const escenario = await abrirNuevaCH38();
+    llenarCH38(escenario);
+    escribirMensajeCH39(escenario);
+    await probarCH38(escenario, OK_CH39());
+    escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/lineaMensaje'], marcadores: ['stock', 'insumo'] } });
+    nodo(escenario, 'plantilla-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
+    assert.equal(
+      nodo(escenario, 'plantilla-dialogo-estado').textContent,
+      'Revisá estos campos: línea por fila. No están entre las columnas de la última prueba: stock, insumo.',
+    );
+    // Editing the form retires the refusal.
+    escribirCH38(escenario, 'plantilla-f-linea', '{producto}');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, '');
+  });
+
+  test('CH-39b a 400 with marcadores on the header says the header takes no columns; a pairing refusal names its field', async () => {
+    const escenario = await abrirNuevaCH38();
+    llenarCH38(escenario);
+    escribirMensajeCH39(escenario);
+    await probarCH38(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/encabezadoMensaje'], marcadores: ['producto'] } });
+    assert.equal(nodo(escenario, 'plantilla-f-resultado').textContent, 'Revisá estos campos: encabezado del mensaje. El encabezado no admite columnas: producto.');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true);
+    await probarCH38(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/lineaMensaje'] } });
+    assert.equal(nodo(escenario, 'plantilla-f-resultado').textContent, 'Revisá estos campos: línea por fila.');
+  });
+
+  /** Spec "Duplicating keeps the message texts". */
+  test('CH-39b «Duplicar y editar» copies both message texts and leaves the client texts empty', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirDrawerCH38(escenario, PLANTILLA_CH39);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'plantilla-duplicar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'plantilla-f-encabezado').value, ENCABEZADO_CH39);
+    assert.equal(nodo(escenario, 'plantilla-f-linea').value, LINEA_CH39);
+    assert.equal(nodo(escenario, 'plantilla-f-titulo').value, '');
+    assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
+    // The copy is untouched, so Cancelar closes without asking.
+    nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+  });
+
+  test('CH-39b «Editar» fills both message texts, and a template without them fills blanks', async () => {
+    const escenario = await editarProbadaCH39(PLANTILLA_CH39);
+    assert.equal(nodo(escenario, 'plantilla-f-encabezado').value, ENCABEZADO_CH39);
+    assert.equal(nodo(escenario, 'plantilla-f-linea').value, LINEA_CH39);
+
+    const sin = await editarProbadaCH39({ ...PLANTILLA_CH38, encabezadoMensaje: null, lineaMensaje: null });
+    assert.equal(nodo(sin, 'plantilla-f-encabezado').value, '');
+    assert.equal(nodo(sin, 'plantilla-f-linea').value, '');
+  });
+
+  test('CH-39b a 409 plantilla-en-uso turns the pop-up into a copy that keeps the message texts and drops the client texts', async () => {
+    const escenario = await editarProbadaCH39(PLANTILLA_CH39);
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'plantilla-en-uso' } });
+    nodo(escenario, 'plantilla-form').disparar('submit');
+    await asentarVarias();
+    nodo(escenario, 'plantilla-dialogo-duplicar').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-titulo').textContent, 'Duplicar plantilla');
+    assert.equal(nodo(escenario, 'plantilla-f-titulo').value, '');
+    assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
+    assert.equal(nodo(escenario, 'plantilla-f-encabezado').value, ENCABEZADO_CH39);
+    assert.equal(nodo(escenario, 'plantilla-f-linea').value, LINEA_CH39);
+  });
+
+  test('CH-39b Cancelar and Escape count a change to either message text as something to discard', async () => {
+    const escenario = await abrirNuevaCH38();
+    escribirCH38(escenario, 'plantilla-f-linea', '{producto}');
+    nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false);
+    nodo(escenario, 'plantilla-descartar').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
+    nodo(escenario, 'plantilla-nueva').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'plantilla-f-linea').value, '', 'a new pop-up starts without the previous text');
+    escribirCH38(escenario, 'plantilla-f-encabezado', 'Algo');
+    nodo(escenario, 'plantilla-dialogo').disparar('keydown', { key: 'Escape' });
+    assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false);
+  });
+
+  /** Spec "Viewing a template" and "A template without message texts". */
+  test('CH-39b the drawer shows the message texts as text, or says the email shows the table', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirDrawerCH38(escenario, PLANTILLA_CH39);
+    assert.equal(nodo(escenario, 'plantilla-mensaje').textContent, 'Encabezado del mensaje: Stock bajo\nLínea por fila: {producto}: quedan {cantidad}');
+
+    await abrirDrawerCH38(escenario, { ...PLANTILLA_CH38, encabezadoMensaje: null, lineaMensaje: null });
+    assert.equal(nodo(escenario, 'plantilla-mensaje').textContent, 'Sin texto propio: el correo muestra la tabla.');
+    await abrirDrawerCH38(escenario, PLANTILLA_CH38);
+    assert.equal(nodo(escenario, 'plantilla-mensaje').textContent, 'Sin texto propio: el correo muestra la tabla.', 'absent keys read as no text');
+
+    const hostil = '<img src=x onerror=alert(1)>';
+    await abrirDrawerCH38(escenario, { ...PLANTILLA_CH39, encabezadoMensaje: hostil });
+    assert.ok(nodo(escenario, 'plantilla-mensaje').textContent.includes(hostil));
+    assert.equal(nodo(escenario, 'plantilla-mensaje').hijos.length, 0);
+  });
+
+  /** Spec "A run that fell back". */
+  test('CH-39b the runs view says when the email was sent with the table, and shows nothing for a null or absent list', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const base = { corte: null, codigoError: null, error: null, fase: 'ejecucion', iniciadaEn: 'i', finalizadaEn: 'f', duracionMs: 1, filas: 3, intentos: 1, notificacion: 'enviada', estado: 'ok' };
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', mensajeRespaldo: ['stock'] },
+          { ...base, id: 'e-2', mensajeRespaldo: ['stock', 'insumo'] },
+          { ...base, id: 'e-3', mensajeRespaldo: null },
+          { ...base, id: 'e-4' },
+          { ...base, id: 'e-5', notificacion: 'fallo-envio', mensajeRespaldo: ['stock'] },
+          { ...base, id: 'e-6', notificacion: null, mensajeRespaldo: ['stock'] },
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentarVarias();
+    const corridas = filasDe(escenario, 'auto-ejecuciones', 'ejecucion').map((fila) => fila.hijos.map((c) => c.textContent));
+    assert.deepEqual(corridas.map((celdas) => celdas.length), [8, 8, 8, 8, 8, 8], 'no column was added');
+    assert.deepEqual(corridas.map((celdas) => celdas[5]), [
+      'Enviada. Se envió la tabla: falta la columna stock',
+      'Enviada. Se envió la tabla: faltan las columnas stock, insumo',
+      'Enviada',
+      'Enviada',
+      'Falló el envío. Iba a enviarse la tabla: falta la columna stock',
+      'Se envió la tabla: falta la columna stock',
+    ]);
+    assert.ok(!corridas.flat().some((texto) => texto.includes('null') || texto === 'undefined'));
   });
 
   // ---- CH-30e1 (DEC-163, screen C-12): the Auditoría screen -----------------------------------

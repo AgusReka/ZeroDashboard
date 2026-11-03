@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The content a fresh installation ships in the global `Plantilla` catalog (DEC-61), and how it gets there: a closed list of two verified templates, seeded by fixed id and create-if-absent (DEC-125), without schema, API or engine change. CH-37 adds the client texts to each entry and backfills them on existing rows through its migration (DEC-182, DEC-190). This capability covers catalog content and the seeding write path only. The mechanism of templates (validation, composition, test endpoint) stays in `automation-templates` and is not modified; seeded rows MUST satisfy it as written.
+The content a fresh installation ships in the global `Plantilla` catalog (DEC-61), and how it gets there: a closed list of two verified templates, seeded by fixed id and create-if-absent (DEC-125), without schema, API or engine change. CH-37 adds the client texts to each entry and backfills them on existing rows through its migration (DEC-182, DEC-190). CH-39 declares no message text on either entry, so they keep the table (DEC-188). This capability covers catalog content and the seeding write path only. The mechanism of templates (validation, composition, test endpoint) stays in `automation-templates` and is not modified; seeded rows MUST satisfy it as written.
 
 ## ADDED Requirements
 
@@ -267,6 +267,22 @@ The migration that adds the `titulo` and `descripcion` columns SHALL write the t
 - GIVEN the migration has run on a seeded database
 - WHEN the seeder runs again
 - THEN no row SHALL be created or modified
+
+### Requirement: Seeded Entries Declare No Message Texts (DEC-188)
+
+Each catalog entry SHALL declare `encabezadoMensaje: null` and `lineaMensaje: null`, and the seeded rows SHALL store both as null. The entries' key set SHALL equal the keys of the full template projection.
+
+#### Scenario: Fresh install
+
+- GIVEN an empty `Plantilla` table
+- WHEN the initial catalog is seeded
+- THEN each of the two rows SHALL have `encabezadoMensaje` and `lineaMensaje` null
+
+#### Scenario: Key set matches the projection
+
+- GIVEN the catalog entries
+- WHEN their keys are compared with the full template projection
+- THEN they SHALL be equal
 
 ## Open points for design
 
