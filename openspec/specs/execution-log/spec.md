@@ -91,14 +91,20 @@ The system SHALL expose `GET /automatizaciones/:id/ejecuciones`, scoped to the a
 - AND no run data SHALL be returned
 ### Requirement: Ejecucion Records the Notification Outcome (DEC-83)
 
-`Ejecucion` SHALL have a nullable `notificacion` column whose only permitted values are `enviada`, `omitida-sin-filas`, `fallo-envio`, `sin-destinatario`, `no-configurada`, `enviando`, `incierta`, and null (DEC-83, DEC-108). Its final value SHALL follow the precedence defined in `email-notification`. `enviando` is transient: it SHALL appear only on an `en-curso` row whose send is pending. `incierta` SHALL be written only by the boot sweep and means it is unknown whether the message left. `notificacion` SHALL be null when the query failed and for rows written before this change. `notificacion` MUST store the outcome only, never a message body, recipient, or row content.
-(Previously: the set had no `enviando` or `incierta`.)
+`Ejecucion` SHALL have a nullable `notificacion` column whose only permitted values are `enviada`, `omitida-sin-filas`, `omitida-bajo-minimo`, `fallo-envio`, `sin-destinatario`, `no-configurada`, `enviando`, `incierta`, and null (DEC-83, DEC-108, DEC-186). Its final value SHALL follow the precedence defined in `email-notification`. `enviando` is transient: it SHALL appear only on an `en-curso` row whose send is pending. `incierta` SHALL be written only by the boot sweep and means it is unknown whether the message left. `notificacion` SHALL be null when the query failed and for rows written before this change. `notificacion` MUST store the outcome only, never a message body, recipient, or row content. Adding a value SHALL NOT require a migration: the column is text whose permitted values live in code.
+(Previously: the set had no `omitida-bajo-minimo`.)
 
 #### Scenario: Each outcome is recorded
 
-- GIVEN runs that reach each of the five non-null outcomes
+- GIVEN runs that reach each of the six non-null closing outcomes
 - WHEN their `Ejecucion` rows are inspected
 - THEN each SHALL carry the matching `notificacion` value
+
+#### Scenario: A run below the minimum is recorded
+
+- GIVEN an automation with `minimoFilas` 5 whose run returns 3 rows
+- WHEN its `Ejecucion` row is inspected
+- THEN it SHALL have `estado: "ok"`, `filas: 3`, and `notificacion: "omitida-bajo-minimo"`
 
 #### Scenario: Query failure leaves notificacion null
 
@@ -108,7 +114,7 @@ The system SHALL expose `GET /automatizaciones/:id/ejecuciones`, scoped to the a
 
 #### Scenario: Legacy rows read as null
 
-- GIVEN an `Ejecucion` row written before this change
+- GIVEN an `Ejecucion` row written before CH-14
 - WHEN it is listed
 - THEN `notificacion` SHALL be null
 
@@ -164,12 +170,12 @@ The set of permitted `fase` values SHALL include `notificacion`. WHEN a send fai
 
 ### Requirement: Runs Listing Exposes the Notification Outcome (DEC-80, DEC-83)
 
-`GET /automatizaciones/:id/ejecuciones` SHALL include each run's `notificacion` value and its `mensajeRespaldo` (array or null), remaining scoped to the active tenant's automation.
-(Previously: the listing had no `mensajeRespaldo`.)
+`GET /automatizaciones/:id/ejecuciones` SHALL include each run's `notificacion` value, `omitida-bajo-minimo` included, and its `mensajeRespaldo` (array or null), remaining scoped to the active tenant's automation.
+(Previously: the listed values had no `omitida-bajo-minimo`.)
 
 #### Scenario: Listing shows notificacion
 
-- GIVEN an automation of the active tenant with runs of differing outcomes
+- GIVEN an automation of the active tenant with runs of differing outcomes, one of them `omitida-bajo-minimo`
 - WHEN its runs are listed
 - THEN each entry SHALL include its `notificacion` value
 
@@ -178,6 +184,7 @@ The set of permitted `fase` values SHALL include `notificacion`. WHEN a send fai
 - GIVEN a run with `mensajeRespaldo: ["stock"]` and a run with it null
 - WHEN the runs are listed
 - THEN the entries SHALL carry `["stock"]` and `null`
+
 ### Requirement: Estado Set Includes omitida (DEC-96)
 
 The permitted `Ejecucion.estado` values SHALL be `en-curso`, `ok`, `fallo`, and `omitida`. `omitida` SHALL mean the run was never started because a previous run of the same automation was still `en-curso`. An `omitida` row MUST carry `error='solapamiento'`, MUST have `notificacion` null, and MUST NOT have been preceded by any query against the tenant's connection.
