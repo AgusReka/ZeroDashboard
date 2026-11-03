@@ -134,13 +134,14 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
   - Comparar: panel ancho con **dos bloques de texto lado a lado, sin diff** (`.zd-compare`).
   - Restaurar: diálogo «Restaurar versión N»; crea la versión N+1, nunca borra. Banner ok al terminar.
 
-### C-09 Automatizaciones — D1, D2, D3, N3 · CH-12, CH-13, CH-21 · EXISTE — **con mockup**
+### C-09 Automatizaciones — D1, D2, D3, N3, X9 · CH-12, CH-13, CH-21, CH-33, CH-40 · EXISTE — **con mockup**
 - **Lista**: automatización (plantilla + id) · conexión · cron (expresión mono + texto humano) · estado (Activa / Desactivada) · alta · acciones (Ver ejecuciones, Desactivar).
   - Desactivar: diálogo «Desactivar au_xx»; el historial se conserva.
+  - Ajustar (CH-33, CH-40): pop-up con los valores, el horario, el destinatario y el «Mínimo de filas para avisar»; envía solo lo que cambió.
   - Vacío: "Este tenant no tiene automatizaciones" + «Nueva automatización».
 - **Alta en dos pasos** (`#automatizaciones/alta`), con `Stepper`:
   1. Conexión (select) + plantilla en tarjetas (`TemplatePicker`). Las no disponibles: deshabilitadas, borde punteado, candado + motivo (`.zd-template__why`), enlazado con `aria-describedby`.
-  2. Parámetros de la plantilla · frecuencia + hora → **cron resultante en vivo** (`.zd-cron`: expresión + texto) · destinatario · vista previa del correo al costado. «Volver» / «Crear automatización».
+  2. Parámetros de la plantilla · frecuencia + hora → **cron resultante en vivo** (`.zd-cron`: expresión + texto) · destinatario · «Mínimo de filas para avisar» (número, 1 por defecto, sin máximo en el cliente: el tope lo valida el servidor) · vista previa del correo al costado, con «Se envía con: N filas o más». «Volver» / «Crear automatización».
 - **Estados**: creada → vuelve a la lista con Banner ok y la primera ejecución.
 
 ### C-10 Ejecuciones de una automatización — X2, X4, X5, X7 · CH-13, CH-17a, CH-17b · EXISTE — **con mockup**
@@ -184,6 +185,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-30e2 | C-07 Tiempos de alta | EXISTE |
 | CH-38 | C-03 Plantillas: nueva, editar, duplicar | EXISTE |
 | CH-39 | C-03 Plantillas: texto del mensaje (encabezado y línea por fila) | EXISTE |
+| CH-40 | C-09 Automatizaciones: mínimo de filas en el alta y en el ajuste · C-10 Ejecuciones: «No enviada: menos filas que el mínimo» | EXISTE |
 
 ---
 

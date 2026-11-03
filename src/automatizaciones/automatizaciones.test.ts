@@ -5,6 +5,7 @@ import {
   cierreDeResultado,
   cronValido,
   decidirNotificacion,
+  MINIMO_FILAS_POR_DEFECTO,
   esFalloReintentable,
   estaVencida,
   proximaEjecucion,
@@ -442,7 +443,7 @@ describe('decidirNotificacion — the first condition that holds wins', () => {
       { resultado: 'excepcion', error: new Error('boom') },
     ];
     for (const resultado of noExitosas) {
-      assert.deepEqual(decidirNotificacion(resultado, PARA, true), {
+      assert.deepEqual(decidirNotificacion(resultado, PARA, true, 1), {
         enviar: false,
         notificacion: null,
       });
@@ -450,39 +451,83 @@ describe('decidirNotificacion — the first condition that holds wins', () => {
   });
 
   test('3.1 zero rows never sends, even with a recipient and SMTP configured', () => {
-    assert.deepEqual(decidirNotificacion(exitosa(0), PARA, true), {
+    assert.deepEqual(decidirNotificacion(exitosa(0), PARA, true, 1), {
       enviar: false,
       notificacion: 'omitida-sin-filas',
     });
-    assert.deepEqual(decidirNotificacion(exitosa(0), null, false), {
+    assert.deepEqual(decidirNotificacion(exitosa(0), null, false, 1), {
       enviar: false,
       notificacion: 'omitida-sin-filas',
     });
   });
 
   test('3.1 a missing recipient wins over unset SMTP', () => {
-    assert.deepEqual(decidirNotificacion(exitosa(2), null, false), {
+    assert.deepEqual(decidirNotificacion(exitosa(2), null, false, 1), {
       enviar: false,
       notificacion: 'sin-destinatario',
     });
-    assert.deepEqual(decidirNotificacion(exitosa(2), null, true), {
+    assert.deepEqual(decidirNotificacion(exitosa(2), null, true, 1), {
       enviar: false,
       notificacion: 'sin-destinatario',
     });
   });
 
   test('3.1 unset SMTP with a recipient records no-configurada', () => {
-    assert.deepEqual(decidirNotificacion(exitosa(2), PARA, false), {
+    assert.deepEqual(decidirNotificacion(exitosa(2), PARA, false, 1), {
       enviar: false,
       notificacion: 'no-configurada',
     });
   });
 
   test('3.1 rows, a recipient and SMTP configured: send once, to that recipient', () => {
-    assert.deepEqual(decidirNotificacion(exitosa(12), PARA, true), { enviar: true, para: PARA });
-    assert.deepEqual(decidirNotificacion(exitosa(1, 'tope-de-filas'), 'otro@ejemplo.test', true), {
+    assert.deepEqual(decidirNotificacion(exitosa(12), PARA, true, 1), { enviar: true, para: PARA });
+    assert.deepEqual(decidirNotificacion(exitosa(1, 'tope-de-filas'), 'otro@ejemplo.test', true, 1), {
       enviar: true,
       para: 'otro@ejemplo.test',
+    });
+  });
+});
+
+// ---- CH-40 2.2 the minimum rows (DEC-186, DEC-193) -----------------------------------
+
+describe('decidirNotificacion — the minimum rows (CH-40, DEC-186, DEC-193)', () => {
+  test('2.2 zero rows wins over the minimum', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(0), PARA, true, 5), {
+      enviar: false,
+      notificacion: 'omitida-sin-filas',
+    });
+  });
+
+  test('2.2 rows below the minimum never send', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(3), PARA, true, 5), {
+      enviar: false,
+      notificacion: 'omitida-bajo-minimo',
+    });
+  });
+
+  test('2.2 reaching the minimum exactly sends', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(5), PARA, true, 5), { enviar: true, para: PARA });
+  });
+
+  test('2.2 a result cut by the row cap reaches the minimum', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(20, 'tope-de-filas'), PARA, true, 50), {
+      enviar: true,
+      para: PARA,
+    });
+  });
+
+  test('2.2 the minimum wins over a missing recipient and unset SMTP', () => {
+    assert.deepEqual(decidirNotificacion(exitosa(3), null, false, 5), {
+      enviar: false,
+      notificacion: 'omitida-bajo-minimo',
+    });
+  });
+
+  test('2.2 the default minimum keeps the behaviour before CH-40', () => {
+    assert.equal(MINIMO_FILAS_POR_DEFECTO, 1);
+    assert.deepEqual(decidirNotificacion(exitosa(1), PARA, true, MINIMO_FILAS_POR_DEFECTO), {
+      enviar: true,
+      para: PARA,
     });
   });
 });
@@ -503,7 +548,7 @@ describe('cierreConNotificacion — only a failed send changes the query close',
   });
 
   test('3.2 every non-send outcome of an ok run keeps it ok in phase ejecucion', () => {
-    for (const omision of ['omitida-sin-filas', 'sin-destinatario', 'no-configurada'] as const) {
+    for (const omision of ['omitida-sin-filas', 'omitida-bajo-minimo', 'sin-destinatario', 'no-configurada'] as const) {
       const cierre = cierreDeResultado(exitosa(omision === 'omitida-sin-filas' ? 0 : 4));
       assert.deepEqual(cierreConNotificacion(cierre, omision), { ...cierre, notificacion: omision });
       assert.equal(cierreConNotificacion(cierre, omision).fase, 'ejecucion');
@@ -592,6 +637,7 @@ describe('cierreConNotificacion — never yields the marker or incierta (CH-18, 
     const salidas: SalidaNotificacion[] = [
       null,
       'omitida-sin-filas',
+      'omitida-bajo-minimo',
       'sin-destinatario',
       'no-configurada',
       { resultado: 'enviada' },
@@ -600,7 +646,7 @@ describe('cierreConNotificacion — never yields the marker or incierta (CH-18, 
       { resultado: 'excepcion', error: new Error('boom') },
     ];
     const cierres = [cierreDeResultado(exitosa(3)), cierreDeResultado(fallida('ejecucion', 'error-sintaxis', '42601'))];
-    const permitidos = new Set([null, 'enviada', 'omitida-sin-filas', 'fallo-envio', 'sin-destinatario', 'no-configurada']);
+    const permitidos = new Set([null, 'enviada', 'omitida-sin-filas', 'omitida-bajo-minimo', 'fallo-envio', 'sin-destinatario', 'no-configurada']);
     let vistos = 0;
     for (const cierre of cierres) {
       for (const salida of salidas) {

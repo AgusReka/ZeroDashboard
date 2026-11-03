@@ -6,7 +6,12 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
-import { destinatarioDe, registerAutomatizacionRoutes, resolverAjusteOperador } from './automatizaciones-rutas.js';
+import {
+  destinatarioDe,
+  minimoFilasValido,
+  registerAutomatizacionRoutes,
+  resolverAjusteOperador,
+} from './automatizaciones-rutas.js';
 import { proximaEjecucion } from './automatizaciones.js';
 
 /**
@@ -39,26 +44,29 @@ test('CH-14 destinatarioDe trims spaces and tabs only; CR/LF is kept for the gat
 
 // ---- CH-33 (DEC-174): the operator's adjust, pure half ---------------------------------
 
+/** CH-40: the row cap the routes are registered with in this file (the default, DEC-19). */
+const TOPE = 200;
+
 const PLANTILLA_AJUSTE = {
   sql: 'SELECT * FROM v_producto WHERE stock < :umbral AND nombre = :nombre',
   parametros: [{ nombre: 'umbral', tipo: 'numero' }, { nombre: 'nombre', tipo: 'texto' }],
 };
 
 test('CH-33 resolverAjusteOperador returns only the columns the body sent', () => {
-  assert.deepEqual(resolverAjusteOperador({ cron: '30 6 * * 1-5' }, PLANTILLA_AJUSTE, 'UTC'), {
+  assert.deepEqual(resolverAjusteOperador({ cron: '30 6 * * 1-5' }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
     ok: true,
     datos: { cron: '30 6 * * 1-5' },
   });
-  assert.deepEqual(resolverAjusteOperador({ destinatario: ' \tops@example.com ' }, PLANTILLA_AJUSTE, 'UTC'), {
+  assert.deepEqual(resolverAjusteOperador({ destinatario: ' \tops@example.com ' }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
     ok: true,
     datos: { destinatario: 'ops@example.com' },
   });
-  assert.deepEqual(resolverAjusteOperador({ destinatario: null }, PLANTILLA_AJUSTE, 'UTC'), {
+  assert.deepEqual(resolverAjusteOperador({ destinatario: null }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
     ok: true,
     datos: { destinatario: null },
   });
   // The map is replaced as a whole, never merged with what was stored.
-  assert.deepEqual(resolverAjusteOperador({ valores: { umbral: 10, nombre: 'x' } }, PLANTILLA_AJUSTE, 'UTC'), {
+  assert.deepEqual(resolverAjusteOperador({ valores: { umbral: 10, nombre: 'x' } }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
     ok: true,
     datos: { valores: { umbral: 10, nombre: 'x' } },
   });
@@ -69,6 +77,7 @@ test('CH-33 resolverAjusteOperador names every offender together, as the alta do
     { cron: '@daily', destinatario: 'ops@example.com\r\nBcc: otro@example.com', valores: { umbral: 'diez', nombre: 'x' } },
     PLANTILLA_AJUSTE,
     'UTC',
+    TOPE,
   );
   assert.equal(resolucion.ok, false);
   if (resolucion.ok) return;
@@ -80,12 +89,51 @@ test('CH-33 resolverAjusteOperador names every offender together, as the alta do
 
 test('CH-33 resolverAjusteOperador refuses an undeclared or a missing value and a bad recipient', () => {
   for (const valores of [{ umbral: 1, nombre: 'x', otro: 1 }, { umbral: 1 }]) {
-    const resolucion = resolverAjusteOperador({ valores }, PLANTILLA_AJUSTE, 'UTC');
+    const resolucion = resolverAjusteOperador({ valores }, PLANTILLA_AJUSTE, 'UTC', TOPE);
     assert.equal(resolucion.ok, false, JSON.stringify(valores));
   }
   for (const destinatario of ['', '   ', 'a@b.com, c@d.com']) {
-    const resolucion = resolverAjusteOperador({ destinatario }, PLANTILLA_AJUSTE, 'UTC');
+    const resolucion = resolverAjusteOperador({ destinatario }, PLANTILLA_AJUSTE, 'UTC', TOPE);
     assert.deepEqual(resolucion, { ok: false, campos: ['/destinatario'] }, JSON.stringify(destinatario));
+  }
+});
+
+test('CH-40 minimoFilasValido accepts an integer from 1 to the cap', () => {
+  for (const valor of [1, 5, TOPE]) assert.equal(minimoFilasValido(valor, TOPE), true, String(valor));
+  for (const valor of [0, -1, TOPE + 1, 2.5, Number.NaN]) assert.equal(minimoFilasValido(valor, TOPE), false, String(valor));
+  assert.equal(minimoFilasValido(51, 50), false, 'the cap is the one handed in');
+});
+
+test('CH-40 resolverAjusteOperador takes the minimum with the alta rule and names it with the others', () => {
+  assert.deepEqual(resolverAjusteOperador({ minimoFilas: 10 }, PLANTILLA_AJUSTE, 'UTC', TOPE), {
+    ok: true,
+    datos: { minimoFilas: 10 },
+  });
+  assert.deepEqual(resolverAjusteOperador({ minimoFilas: 51 }, PLANTILLA_AJUSTE, 'UTC', 50), {
+    ok: false,
+    campos: ['/minimoFilas'],
+  });
+  const ambos = resolverAjusteOperador({ cron: '@daily', minimoFilas: 0 }, PLANTILLA_AJUSTE, 'UTC', TOPE);
+  assert.deepEqual(ambos, { ok: false, campos: ['/cron', '/minimoFilas'] });
+});
+
+test('CH-40 the routes bound the minimum by the cap they were registered with, before any read', async () => {
+  const app = Fastify({ logger: false });
+  const cliente = clienteSoloTenant({ id: 't-activo', nombre: 'Activo', activo: true });
+  registrarContextoTenant(app, cliente);
+  registerAutomatizacionRoutes(app, cliente, 'UTC', 50);
+  await app.ready();
+  try {
+    const respuesta = await app.inject({
+      method: 'POST',
+      url: '/automatizaciones',
+      headers: { 'x-tenant-id': 't-activo' },
+      payload: { plantillaId: 'p', conexionId: 'c', cron: '0 8 * * *', minimoFilas: 51 },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json().campos, ['/minimoFilas']);
+  } finally {
+    await app.close();
   }
 });
 
@@ -96,7 +144,7 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
     sinLecturas = Fastify({ logger: false });
     const cliente = clienteSoloTenant({ id: 't-activo', nombre: 'Activo', activo: true });
     registrarContextoTenant(sinLecturas, cliente);
-    registerAutomatizacionRoutes(sinLecturas, cliente, 'UTC');
+    registerAutomatizacionRoutes(sinLecturas, cliente, 'UTC', TOPE);
     await sinLecturas.ready();
   });
 
@@ -143,6 +191,13 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
       [{ ...valido, destinatario: '' }, ['/destinatario']],
       [{ ...valido, destinatario: '   ' }, ['/destinatario']],
       [{ ...valido, destinatario: `${'a'.repeat(250)}@example.com` }, ['/destinatario']],
+      // CH-40: an integer from 1 to the row cap, refused before any read.
+      [{ ...valido, minimoFilas: 0 }, ['/minimoFilas']],
+      [{ ...valido, minimoFilas: -3 }, ['/minimoFilas']],
+      [{ ...valido, minimoFilas: 2.5 }, ['/minimoFilas']],
+      [{ ...valido, minimoFilas: 'cinco' }, ['/minimoFilas']],
+      [{ ...valido, minimoFilas: null }, ['/minimoFilas']],
+      [{ ...valido, minimoFilas: TOPE + 1 }, ['/minimoFilas']],
     ];
     for (const [payload, campos] of casos) {
       const respuesta = await sinLecturas.inject({
@@ -165,6 +220,9 @@ describe('automation routes — tenant header, body shape and cron (CH-13 3.1, 3
       [{ tenantId: 'otro' }, '/tenantId'],
       [{ cron: '0 8 * * *', id: 'otra' }, '/id'],
       [{ valores: [] }, '/valores'],
+      // CH-40: the schema refuses a non-integer or a minimum below 1 before the row is read.
+      [{ minimoFilas: 0 }, '/minimoFilas'],
+      [{ minimoFilas: 2.5 }, '/minimoFilas'],
     ];
     for (const [payload, campo] of casos) {
       const respuesta = await sinLecturas.inject({
@@ -258,7 +316,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     app = Fastify({ logger: false });
     const aislado = extenderConAislamiento(prisma);
     registrarContextoTenant(app, aislado);
-    registerAutomatizacionRoutes(app, aislado, 'UTC');
+    registerAutomatizacionRoutes(app, aislado, 'UTC', TOPE);
     await app.ready();
   });
 
@@ -303,7 +361,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.deepEqual(Object.keys(cuerpo201).sort(), ['automatizacion', 'proximaEjecucion', 'zonaHoraria']);
     assert.deepEqual(
       Object.keys(cuerpo201.automatizacion).sort(),
-      ['activo', 'conexionId', 'creadaEn', 'cron', 'destinatario', 'id', 'plantillaId', 'valores'],
+      ['activo', 'conexionId', 'creadaEn', 'cron', 'destinatario', 'id', 'minimoFilas', 'plantillaId', 'valores'],
     );
     const { creadaEn, cron } = cuerpo201.automatizacion;
     assert.equal(cuerpo201.proximaEjecucion, proximaEjecucion(cron, new Date(creadaEn), 'UTC').toISOString());
@@ -555,6 +613,85 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
     assert.equal(fila.cron, '0 8 * * 1-5');
     assert.equal(fila.destinatario, 'a@example.com');
+  });
+
+  // ---- CH-40 (DEC-186, DEC-193): the minimum rows ------------------------------------
+
+  test('CH-40 a minimum persists and is returned by create and get; without one it is 1', async () => {
+    const con = await crear({ ...cuerpo(), minimoFilas: 5 });
+    assert.equal(con.statusCode, 201, con.body);
+    const id = con.json().automatizacion.id as string;
+    assert.equal(con.json().automatizacion.minimoFilas, 5);
+    assert.equal((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).minimoFilas, 5);
+    assert.equal((await pedir('GET', `/automatizaciones/${id}`)).json().automatizacion.minimoFilas, 5);
+
+    const sin = await crear(cuerpo());
+    assert.equal(sin.statusCode, 201, sin.body);
+    assert.equal(sin.json().automatizacion.minimoFilas, 1);
+
+    // A numeric string is its integer, as in every other integer body field.
+    const texto = await crear({ ...cuerpo(), minimoFilas: '7' });
+    assert.equal(texto.statusCode, 201, texto.body);
+    assert.equal(texto.json().automatizacion.minimoFilas, 7);
+  });
+
+  test('CH-40 the cap itself is accepted; one above it is a 400 and nothing persists', async () => {
+    assert.equal((await crear({ ...cuerpo(), minimoFilas: TOPE })).statusCode, 201);
+    const antes = await prisma.automatizacion.count({ where: { tenantId: tenantA } });
+    const respuesta = await crear({ ...cuerpo(), minimoFilas: TOPE + 1 });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json().campos, ['/minimoFilas']);
+    assert.equal(await prisma.automatizacion.count({ where: { tenantId: tenantA } }), antes);
+  });
+
+  test('CH-40 an adjust changes the minimum on the same row and keeps its runs', async () => {
+    const id = await nueva();
+    await prisma.ejecucion.create({
+      data: {
+        tenantId: tenantA,
+        automatizacionId: id,
+        estado: 'ok',
+        iniciadaEn: new Date(),
+        finalizadaEn: new Date(),
+        duracionMs: 1,
+        filas: 3,
+        fase: 'ejecucion',
+        notificacion: 'omitida-bajo-minimo',
+      },
+    });
+
+    const respuesta = await ajustar(id, { minimoFilas: 10 });
+
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    assert.equal(respuesta.json().automatizacion.minimoFilas, 10);
+    const fila = await prisma.automatizacion.findUniqueOrThrow({ where: { id } });
+    assert.equal(fila.minimoFilas, 10);
+    assert.equal(fila.cron, '0 8 * * 1-5');
+    assert.equal(fila.destinatario, 'a@example.com');
+    const { ejecuciones } = (await pedir('GET', `/automatizaciones/${id}/ejecuciones`)).json();
+    assert.deepEqual(
+      ejecuciones.map((e: { notificacion: string | null }) => e.notificacion),
+      ['omitida-bajo-minimo'],
+      'the run keeps its id and the listing carries the new outcome',
+    );
+  });
+
+  test('CH-40 an adjust minimum out of range is a 400 naming it, and nothing is written', async () => {
+    const id = await nueva();
+    for (const minimoFilas of [0, TOPE + 1, 2.5]) {
+      const respuesta = await ajustar(id, { minimoFilas });
+      assert.equal(respuesta.statusCode, 400, `${minimoFilas}: ${respuesta.body}`);
+      assert.deepEqual(respuesta.json().campos, ['/minimoFilas']);
+    }
+    assert.equal((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).minimoFilas, 1);
+  });
+
+  test("CH-40 another tenant's automation is 404 for a minimum adjust, and its row is unchanged", async () => {
+    const id = await nueva();
+    const respuesta = await ajustar(id, { minimoFilas: 10 }, tenantB);
+    assert.equal(respuesta.statusCode, 404, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'automatizacion-no-encontrada' });
+    assert.equal((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).minimoFilas, 1);
   });
 
   test('CH-33 a deactivated automation answers 409, an unknown or foreign one 404, and neither is written', async () => {

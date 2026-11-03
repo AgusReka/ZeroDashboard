@@ -305,6 +305,8 @@ const IDS = [
   'auto-conexion',
   'auto-cron',
   'auto-destinatario',
+  'auto-minimo',
+  'auto-minimo-ayuda',
   'auto-crear',
   'auto-lista',
   'auto-ejecuciones',
@@ -327,6 +329,7 @@ const IDS = [
   // CH-21c PR5: the step-2 email preview (DEC-131).
   'auto-vista-asunto',
   'auto-vista-para',
+  'auto-vista-minimo',
   'auto-vista-titulo',
   // CH-24: the freshness section (C-22).
   'fresc-ventana',
@@ -374,6 +377,7 @@ const IDS = [
   'aj-horario-texto',
   'aj-cron',
   'aj-destinatario',
+  'aj-minimo',
   'aj-aviso',
   'aj-confirmar',
   'aj-descartar',
@@ -1433,6 +1437,27 @@ describe('the console document, served by the real route', () => {
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/automatizaciones', 'the list is reloaded');
   });
 
+  /** Spec "Adjust opens prefilled" and "Changing only the minimum" (CH-40, DEC-193). */
+  test('CH-40 5.4 the adjust opens on the stored minimum and sends only it when only it changed', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario, { ...AJUSTABLE, minimoFilas: 3 });
+    assert.equal(nodo(escenario, 'aj-minimo').value, '3');
+    nodo(escenario, 'aj-minimo').value = '10';
+    nodo(escenario, 'aj-minimo').disparar('input');
+    await guardarAjuste(escenario, { status: 200, cuerpo: { automatizacion: { ...AJUSTABLE, minimoFilas: 10 } } });
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { minimoFilas: 10 });
+  });
+
+  test('CH-40 5.4 an automation read without a minimum opens on 1, and an unchanged one is not sent', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    assert.equal(nodo(escenario, 'aj-minimo').value, '1');
+    nodo(escenario, 'aj-hora').value = '07:30';
+    nodo(escenario, 'aj-hora').disparar('input');
+    await guardarAjuste(escenario, { status: 200, cuerpo: { automatizacion: AJUSTABLE } });
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { cron: '30 7 * * 1-5' });
+  });
+
   test('CH-33 a changed value sends the whole map of declared values; an emptied recipient is sent as null', async () => {
     const escenario = await arrancar();
     await abrirAjuste(escenario);
@@ -1554,6 +1579,7 @@ describe('the console document, served by the real route', () => {
       conexionId: 'c-2',
       valores: { desde: '2026-01-01', n: 10 },
       cron: '30 7 * * 1',
+      minimoFilas: 1,
     });
     const filas = filasDe(escenario, 'auto-lista', 'automatizacion');
     assert.equal(filas.length, 2);
@@ -1620,6 +1646,7 @@ describe('the console document, served by the real route', () => {
       valores: {},
       cron: '0 6 * * *',
       destinatario: 'ops@example.com',
+      minimoFilas: 1,
     });
 
     // Blank (spaces only): no destinatario key at all, so the automation is created without one.
@@ -1631,6 +1658,68 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
     await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
     assert.equal('destinatario' in (escenario.peticiones[escenario.peticiones.length - 2].cuerpo as object), false);
+  });
+
+  // ---- CH-40: the minimum rows (spec `query-console`, DEC-186) ----------------------
+
+  /** Spec "Default minimum" and "Creating with a minimum": always sent as a number, and the preview states it. */
+  test('CH-40 5.4 the minimum starts at 1, is sent as a number and the email preview states it', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    assert.equal(nodo(escenario, 'auto-minimo').value, '1');
+    assert.equal(nodo(escenario, 'auto-vista-minimo').textContent, '1 fila o más');
+
+    nodo(escenario, 'auto-minimo').value = ' 5 ';
+    nodo(escenario, 'auto-minimo').disparar('input');
+    assert.equal(nodo(escenario, 'auto-vista-minimo').textContent, '5 filas o más');
+    fijarHorario(escenario, 'diaria', '06:00');
+    escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion() } });
+    await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
+    assert.deepEqual(escenario.peticiones[escenario.peticiones.length - 2].cuerpo, {
+      plantillaId: 'p-1',
+      conexionId: 'c-1',
+      valores: {},
+      cron: '0 6 * * *',
+      minimoFilas: 5,
+    });
+
+    // The 201 reset the wizard: the next one starts at 1 again.
+    await abrirAlta(escenario);
+    assert.equal(nodo(escenario, 'auto-minimo').value, '1');
+  });
+
+  /** Spec "Invalid minimum shown legibly": the server names the field, the pop-up keeps what was typed. */
+  test('CH-40 5.4 a rejected minimum is one legible sentence inside the pop-up, which stays open', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    nodo(escenario, 'auto-minimo').value = '0';
+    nodo(escenario, 'auto-minimo').disparar('input');
+    assert.equal(nodo(escenario, 'auto-vista-minimo').textContent, 'un mínimo de filas no válido');
+    fijarHorario(escenario, 'diaria', '06:00');
+    await enviar(escenario, { error: 'solicitud-invalida', campos: ['/minimoFilas'] }, 400, 'auto-crear', 'click');
+    const aviso = nodo(escenario, 'auto-dialogo-aviso').textContent;
+    assert.match(aviso, /mínimo de filas/);
+    assert.match(aviso, /tope de filas/);
+    assert.ok(!aviso.includes('/minimoFilas'), 'the JSON pointer is translated');
+    assert.equal((ultimoCuerpo(escenario) as { minimoFilas: unknown }).minimoFilas, 0);
+    assert.equal(nodo(escenario, 'auto-alta').hidden, false);
+    assert.equal(nodo(escenario, 'auto-minimo').value, '0');
+  });
+
+  /** A non-number is sent as typed, so the server's rule is the only one. */
+  test('CH-40 5.4 a minimum that is not digits is sent as text for the server to refuse', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    await abrirAlta(escenario);
+    await avanzar(escenario);
+    nodo(escenario, 'auto-minimo').value = '2,5';
+    fijarHorario(escenario, 'diaria', '06:00');
+    await enviar(escenario, { error: 'solicitud-invalida', campos: ['/minimoFilas'] }, 400, 'auto-crear', 'click');
+    assert.equal((ultimoCuerpo(escenario) as { minimoFilas: unknown }).minimoFilas, '2,5');
   });
 
   /**
@@ -1667,6 +1756,7 @@ describe('the console document, served by the real route', () => {
       valores: { n: 5 },
       cron: '0 6 * * *',
       destinatario: 'ops@example.com, otro@example.com',
+      minimoFilas: 1,
     });
     // The 400 keeps the wizard open on step 2, with what was typed.
     assert.equal(nodo(escenario, 'auto-alta').hidden, false);
@@ -2017,6 +2107,7 @@ describe('the console document, served by the real route', () => {
       conexionId: 'c-1',
       valores: { segunda: 'x' },
       cron: '0 6 * * *',
+      minimoFilas: 1,
     });
   });
 
@@ -2054,7 +2145,7 @@ describe('the console document, served by the real route', () => {
       assert.equal(nodo(escenario, 'auto-horario-texto').textContent, dias + ' a las ' + hora + ', ' + ZONA_DESPLIEGUE + '.');
       assert.ok(cronValido(cron, 'UTC'), cron + ' is standard cron for the server');
       const cuerpo = await crearSinCerrar(escenario);
-      assert.deepEqual(Object.keys(cuerpo).sort(), ['conexionId', 'cron', 'plantillaId', 'valores']);
+      assert.deepEqual(Object.keys(cuerpo).sort(), ['conexionId', 'cron', 'minimoFilas', 'plantillaId', 'valores']);
       assert.equal(cuerpo.cron, cron);
     }
     // Crear reads the hour again instead of trusting the last event: a value changed with
@@ -2080,7 +2171,7 @@ describe('the console document, served by the real route', () => {
       'Expresión cron estándar de cinco campos, ' + ZONA_DESPLIEGUE + '. Se valida al crear.');
     for (const cron of ['30 7 * * 1', '0 */2 * * *']) {
       fijarHorario(escenario, 'personalizado', cron);
-      assert.deepEqual(await crearSinCerrar(escenario), { plantillaId: 'p-1', conexionId: 'c-1', valores: {}, cron });
+      assert.deepEqual(await crearSinCerrar(escenario), { plantillaId: 'p-1', conexionId: 'c-1', valores: {}, cron, minimoFilas: 1 });
       assert.equal(nodo(escenario, 'auto-cron').value, cron, 'Crear does not rewrite it');
     }
     // Back to a preset: read-only again, with the translation of the hour.
@@ -2350,10 +2441,34 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'auto-siguiente').disabled, false);
     nodo(escenario, 'auto-siguiente').disparar('click');
     fijarHorario(escenario, 'diaria', '06:00');
-    assert.deepEqual(await crearSinCerrar(escenario), { plantillaId: 'p-1', conexionId: 'c-1', valores: {}, cron: '0 6 * * *' });
+    assert.deepEqual(await crearSinCerrar(escenario), { plantillaId: 'p-1', conexionId: 'c-1', valores: {}, cron: '0 6 * * *', minimoFilas: 1 });
   });
 
   /** Spec "Notification outcomes are legible" and "Send failure visible as failure". */
+  /** Spec "Notification outcomes are legible" (CH-40): the skip below the minimum has its own label. */
+  test('CH-40 5.4 the runs view labels a run skipped below the minimum', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const base = { corte: null, codigoError: null, error: null, iniciadaEn: 'i', finalizadaEn: 'f', duracionMs: 1, fase: 'ejecucion', estado: 'ok' };
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', notificacion: 'omitida-bajo-minimo', filas: 2 },
+          { ...base, id: 'e-2', notificacion: 'omitida-sin-filas', filas: 0 },
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+    const corridas = filasDe(escenario, 'auto-ejecuciones', 'ejecucion');
+    assert.deepEqual(
+      corridas.map((fila) => [fila.hijos[3].textContent, fila.hijos[5].textContent]),
+      [['2', 'No enviada: menos filas que el mínimo'], ['0', 'No enviada: sin filas']],
+    );
+  });
+
   test('CH-14 6.5 the runs view labels every notification outcome and explains a failed send', async () => {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [automatizacion()]);
@@ -2707,7 +2822,7 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: nueva } });
     await enviar(escenario, { automatizaciones: [nueva], truncado: false }, 200, 'auto-crear', 'click');
     const alta = escenario.peticiones[escenario.peticiones.length - 2];
-    assert.deepEqual(alta.cuerpo, { plantillaId: 'p-1', conexionId: 'c-2', valores: {}, cron: '30 7 * * 1' });
+    assert.deepEqual(alta.cuerpo, { plantillaId: 'p-1', conexionId: 'c-2', valores: {}, cron: '30 7 * * 1', minimoFilas: 1 });
     assert.ok(
       nodo(escenario, 'banner').textContent.endsWith(
         ' La réplica de este tenant se actualiza cada 2 h y esta plantilla tolera 1 h' + COLA_FRESCURA),

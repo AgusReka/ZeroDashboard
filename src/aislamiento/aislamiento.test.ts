@@ -172,7 +172,7 @@ describe(
       registerVistaCanonicaRoutes(app, aislado);
       registerValidacionMapeoRoutes(app, aislado);
       registerPlantillaPruebaRoute(app, aislado);
-      registerAutomatizacionRoutes(app, aislado, 'UTC');
+      registerAutomatizacionRoutes(app, aislado, 'UTC', 200);
       await app.ready();
 
       a = await montarTenant('A');
