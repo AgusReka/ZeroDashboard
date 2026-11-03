@@ -52,6 +52,8 @@ ORDER BY pr."stockDisponible" ASC, pr.nombre ASC, pr.id ASC`,
       toleranciaFrescuraMinutos: 60,
       titulo: 'Aviso de stock bajo',
       descripcion: 'Te avisamos por correo cuando un producto se está quedando sin stock.',
+      encabezadoMensaje: null,
+      lineaMensaje: null,
     },
     {
       id: ID_STOCK_PRODUCIBLE,
@@ -79,6 +81,8 @@ ORDER BY "Stock producible" ASC, pr.nombre ASC, pr.id ASC`,
       titulo: 'Aviso de productos que ya casi no podés armar',
       descripcion:
         'Te avisamos por correo cuando, con los insumos que tenés, ya casi no podés armar un producto.',
+      encabezadoMensaje: null,
+      lineaMensaje: null,
     },
   ].map((entrada) => Object.freeze(entrada)),
 );
@@ -132,6 +136,8 @@ export function rechazoDeEntrada(entrada: EntradaCatalogo): Record<string, unkno
     // Length and glossary of the client texts are checked by `rechazoDePlantilla`, as for the route.
     exigir('/titulo', e.titulo === null || typeof e.titulo === 'string');
     exigir('/descripcion', e.descripcion === null || typeof e.descripcion === 'string');
+    exigir('/encabezadoMensaje', e.encabezadoMensaje === null || typeof e.encabezadoMensaje === 'string');
+    exigir('/lineaMensaje', e.lineaMensaje === null || typeof e.lineaMensaje === 'string');
   }
   return rechazoDePlantilla(detalles.length > 0 ? { validation: detalles } : undefined, entrada);
 }

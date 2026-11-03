@@ -5,6 +5,7 @@ import {
   componerCorreo,
   direccionValida,
   escaparHtml,
+  respaldoDe,
   textoDeCelda,
 } from './correo.js';
 
@@ -302,6 +303,196 @@ describe('componerCorreo — the label picks the accent colour', () => {
       assert.equal(correo.html.includes('#6b7280'), true, automatizacion);
       assert.equal(ACENTOS.some((a) => correo.html.includes(a)), false, automatizacion);
     }
+  });
+});
+
+// ---- CH-39 message texts: header and one line per row (DEC-188, DEC-192) ----------------
+
+const MENSAJE = { encabezado: 'Productos con poco stock', linea: '{producto}: quedan {cantidad} unidades' };
+
+/** The three-column result of the spec scenarios: `deposito` is returned and never used. */
+function conMensaje(cambios: Partial<Parameters<typeof componerCorreo>[0]> = {}) {
+  return entrada({
+    columnas: ['producto', 'cantidad', 'deposito'],
+    filas: [['Harina 000', 3, 'Central'], ['Azúcar', 0, 'Central']],
+    mensaje: MENSAJE,
+    ...cambios,
+  });
+}
+
+describe('componerCorreo — the body built from the template texts (CH-39)', () => {
+  test('lines per row: the header then one line per row, in order, and no table', () => {
+    const correo = componerCorreo(conMensaje());
+    for (const parte of [correo.html, correo.texto]) {
+      const orden = ['Productos con poco stock', 'Harina 000: quedan 3 unidades', 'Azúcar: quedan 0 unidades'].map(
+        (t) => parte.indexOf(t),
+      );
+      assert.equal(orden.every((i) => i >= 0), true, parte);
+      assert.deepEqual([...orden].sort((a, b) => a - b), orden);
+      assert.equal(parte.includes('Central'), false);
+    }
+    assert.equal(correo.html.includes('<th'), false);
+    assert.equal(correo.html.includes('<td style="padding:6px 8px;border-bottom'), false);
+    assert.equal(correo.texto.includes(' | '), false);
+  });
+
+  test('the text part is the header and one plain line per row, between the date and the footer', () => {
+    const lineas = componerCorreo(conMensaje()).texto.split('\n');
+    assert.deepEqual(lineas, [
+      'Stock bajo',
+      'Ejecución del 2026-09-29 12:00 (UTC)',
+      '',
+      'Productos con poco stock',
+      'Harina 000: quedan 3 unidades',
+      'Azúcar: quedan 0 unidades',
+      '',
+      'Enviado automáticamente por ZeroDashboard.',
+    ]);
+  });
+
+  test('a null or empty value reads as the em-dash and never as the word null', () => {
+    const correo = componerCorreo(
+      conMensaje({
+        columnas: ['producto', 'cantidad'],
+        filas: [['Harina', null], ['Sal', undefined], ['Pan', '']],
+        mensaje: { encabezado: 'Stock', linea: '{producto}: {cantidad}' },
+      }),
+    );
+    for (const parte of [correo.html, correo.texto]) {
+      assert.equal(parte.includes(`Harina: ${RAYA}`), true, parte);
+      assert.equal(parte.includes(`Sal: ${RAYA}`), true, parte);
+      assert.equal(parte.includes(`Pan: ${RAYA}`), true, parte);
+      assert.equal(parte.includes('null'), false);
+    }
+    // The empty-cell notice stays, as it does with the table.
+    assert.equal(correo.html.includes(AVISO_VACIAS), true);
+    assert.equal(correo.texto.split('\n').includes(AVISO_VACIAS), true);
+  });
+
+  test('a value is escaped once, on its own: A<B & C in a line has no double escape', () => {
+    const correo = componerCorreo(
+      conMensaje({
+        columnas: ['producto'],
+        filas: [['A<B & C']],
+        mensaje: { encabezado: 'Hola <b> & chau', linea: '{producto} & más' },
+      }),
+    );
+    assert.equal(correo.html.includes('A&lt;B &amp; C &amp; más'), true, correo.html);
+    assert.equal(correo.html.includes('&amp;amp;'), false);
+    assert.equal(correo.html.includes('Hola &lt;b&gt; &amp; chau'), true);
+    assert.equal(correo.html.includes('<b>'), false);
+    // The text part is plain: no escaping at all.
+    assert.equal(correo.texto.split('\n').includes('A<B & C & más'), true);
+  });
+
+  test('markup in a value and in the literal text of the line never opens a tag', () => {
+    const correo = componerCorreo(
+      conMensaje({
+        columnas: ['producto'],
+        filas: [['<script>alert(1)</script>']],
+        mensaje: { encabezado: 'x', linea: '<i>{producto}</i>' },
+      }),
+    );
+    assert.equal(correo.html.includes('<script>'), false);
+    assert.equal(correo.html.includes('<i>'), false);
+    assert.equal(correo.html.includes('&lt;i&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;/i&gt;'), true);
+  });
+
+  test('CR and LF in a value keep each row on one line of the text part', () => {
+    const correo = componerCorreo(
+      conMensaje({
+        columnas: ['producto', 'cantidad'],
+        filas: [['Harina\r\n000', 3], ['Azúcar\nrefinada', 0], ['Sal\rfina', 1]],
+        mensaje: { encabezado: 'Stock', linea: '{producto}: {cantidad}' },
+      }),
+    );
+    const lineas = correo.texto.split('\n');
+    assert.equal(correo.texto.includes('\r'), false);
+    for (const linea of ['Harina 000: 3', 'Azúcar refinada: 0', 'Sal fina: 1']) {
+      assert.equal(lineas.includes(linea), true, linea);
+    }
+  });
+
+  test('a truncated result carries the notice in both parts, with lines', () => {
+    const correo = componerCorreo(conMensaje({ hayMas: true }));
+    const aviso = 'Se muestran las primeras 2 filas; la consulta devolvió más.';
+    assert.equal(correo.html.includes(aviso), true);
+    assert.equal(correo.texto.split('\n').includes(aviso), true);
+    assert.equal(correo.html.includes('Harina 000: quedan 3 unidades'), true);
+  });
+
+  test('a repeated placeholder is replaced everywhere, and a duplicated column name takes the first column', () => {
+    const correo = componerCorreo(
+      conMensaje({
+        columnas: ['nombre', 'nombre', 'cantidad'],
+        filas: [['primero', 'segundo', 7]],
+        mensaje: { encabezado: 'Stock', linea: '{nombre} / {nombre} / {cantidad}' },
+      }),
+    );
+    assert.equal(correo.texto.split('\n').includes('primero / primero / 7'), true, correo.texto);
+    assert.equal(correo.html.includes('segundo'), false);
+  });
+
+  test('a long value is capped like a table cell', () => {
+    const correo = componerCorreo(
+      conMensaje({
+        columnas: ['producto'],
+        filas: [['x'.repeat(600)]],
+        mensaje: { encabezado: 'S', linea: '[{producto}]' },
+      }),
+    );
+    assert.equal(correo.texto.includes(`[${'x'.repeat(499)}…]`), true);
+  });
+
+  test('the subject, theme and footer do not change with the texts, and the result keeps its three keys', () => {
+    const con = componerCorreo(conMensaje());
+    const sin = componerCorreo(conMensaje({ mensaje: null }));
+    assert.equal(con.asunto, sin.asunto);
+    for (const parte of ['#f59e0b', 'Enviado automáticamente por ZeroDashboard.', 'Ejecución del 2026-09-29 12:00 (UTC)']) {
+      assert.equal(con.html.includes(parte), true, parte);
+    }
+    assert.deepEqual(Object.keys(con).sort(), ['asunto', 'html', 'texto']);
+  });
+
+  test('without texts the message is the table, identical whether mensaje is absent or null', () => {
+    const base = entrada();
+    const ausente = componerCorreo(base);
+    assert.deepEqual(componerCorreo({ ...base, mensaje: null }), ausente);
+    assert.equal(ausente.html.includes('<th'), true);
+    assert.equal(ausente.html.includes('<p'), false);
+    assert.equal(ausente.texto.split('\n').includes('sku | cantidad'), true);
+  });
+});
+
+describe('componerCorreo — a missing column falls back to the table (CH-39)', () => {
+  test('a column that disappeared gives the table in both parts, and respaldoDe names it', () => {
+    const resultado = { columnas: ['producto', 'cantidad'], filas: [['Harina', 3]] };
+    const mensaje = { encabezado: 'Stock', linea: '{producto}: {stock}' };
+    const correo = componerCorreo(entrada({ ...resultado, mensaje }));
+    assert.deepEqual(correo, componerCorreo(entrada(resultado)));
+    assert.equal(correo.html.includes('<th'), true);
+    assert.equal(correo.texto.split('\n').includes('producto | cantidad'), true);
+    for (const parte of [correo.html, correo.texto]) {
+      assert.equal(parte.includes('{stock}'), false);
+    }
+    assert.deepEqual(respaldoDe(mensaje, resultado.columnas), ['stock']);
+  });
+});
+
+describe('respaldoDe — the one decision of "fell back" (CH-39)', () => {
+  test('it is null without a message, and null when every placeholder is a column', () => {
+    assert.equal(respaldoDe(null, ['a']), null);
+    assert.equal(respaldoDe(undefined, ['a']), null);
+    assert.equal(respaldoDe({ linea: '{a} {b}' }, ['a', 'b', 'c']), null);
+  });
+
+  test('it lists the missing names once, in order of first appearance', () => {
+    assert.deepEqual(respaldoDe({ linea: '{z} {a} {z} {b}' }, ['b']), ['z', 'a']);
+    assert.deepEqual(respaldoDe({ linea: '{stock}' }, []), ['stock']);
+  });
+
+  test('names are exact: case and spaces', () => {
+    assert.deepEqual(respaldoDe({ linea: '{Producto} {a b}' }, ['producto', 'a b']), ['Producto']);
   });
 });
 

@@ -420,6 +420,9 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
           notificacion: ['enviada', null, 'omitida-sin-filas'][i],
           // CH-17b: the middle run reads as a pre-migration row (null attempts, DEC-103).
           intentos: [1, null, 2][i],
+          // CH-39: the oldest run fell back to the table; the middle one is a pre-CH-39 row (null);
+          // the newest holds a value that is not an array of strings, which must read as null.
+          ...(i === 0 ? { mensajeRespaldo: ['stock'] } : i === 2 ? { mensajeRespaldo: ['stock', 1] } : {}),
         },
       });
     }
@@ -448,6 +451,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
         codigoError: null,
         notificacion: null,
         intentos: null,
+        mensajeRespaldo: null,
       },
     );
     // CH-14 6.2: each run carries its notification outcome.
@@ -459,6 +463,12 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.deepEqual(
       ejecuciones.map((e: { intentos: number | null }) => e.intentos),
       [2, null, 1],
+    );
+    // CH-39: each run carries the names its message lacked; null for none, and for a stored
+    // value that is not an array of strings.
+    assert.deepEqual(
+      ejecuciones.map((e: { mensajeRespaldo: string[] | null }) => e.mensajeRespaldo),
+      [null, null, ['stock']],
     );
 
     for (const url of [`/automatizaciones/${id}/ejecuciones`, '/automatizaciones/no-existe/ejecuciones']) {

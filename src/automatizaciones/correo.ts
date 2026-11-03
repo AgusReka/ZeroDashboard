@@ -6,6 +6,8 @@
  * `src/automatizaciones/planificador.ts` decides whether to call it.
  */
 
+import { faltantesEn, sustituir } from '../plantillas/marcadores-mensaje.js';
+
 // ---- recipient validation (DEC-82) ---------------------------------------------------
 
 /** RFC 5321 limits: the whole path and the local part. */
@@ -181,6 +183,25 @@ export interface EntradaCorreo {
   hayMas: boolean;
   fecha: Date;
   zona: string;
+  /**
+   * The template's message texts (CH-39, DEC-188), or null/absent for the table. When the line
+   * names a column the result lacks, the table is rendered anyway (`respaldoDe` says which).
+   */
+  mensaje?: { encabezado: string; linea: string } | null;
+}
+
+/**
+ * The column names `mensaje.linea` needs and `columnas` lacks, each once, in order of first
+ * appearance, or null when there is no message or nothing is missing. The renderer and the
+ * scheduler share this one decision, so what was sent and what was recorded cannot drift.
+ */
+export function respaldoDe(
+  mensaje: { linea: string } | null | undefined,
+  columnas: readonly string[],
+): string[] | null {
+  if (!mensaje) return null;
+  const faltantes = faltantesEn(mensaje.linea, columnas);
+  return faltantes.length > 0 ? faltantes : null;
 }
 
 const PIE = 'Enviado automáticamente por ZeroDashboard.';
@@ -200,6 +221,7 @@ export function componerCorreo(e: EntradaCorreo): Omit<Correo, 'para'> {
     columnas: e.columnas,
     filas,
     avisos: avisosDe(e, filas),
+    mensaje: e.mensaje && respaldoDe(e.mensaje, e.columnas) === null ? mensajeDe(e, e.mensaje) : null,
   };
   return {
     asunto: asuntoCorreo({
@@ -213,6 +235,31 @@ export function componerCorreo(e: EntradaCorreo): Omit<Correo, 'para'> {
   };
 }
 
+/** The message body of a piece: the header and the lines of both parts. */
+interface Mensaje {
+  encabezado: string;
+  lineasHtml: string[];
+  lineasTexto: string[];
+}
+
+/**
+ * The header and one line per row, ready for each part. A value is escaped on its own for
+ * HTML and the literal text around it is escaped separately, so nothing is escaped twice;
+ * in the text part a value loses its CR and LF so each row stays on one line. The first
+ * column of a duplicated name wins (`indexOf`).
+ */
+function mensajeDe(e: EntradaCorreo, mensaje: { encabezado: string; linea: string }): Mensaje {
+  const lineas = (literal: (texto: string) => string, ajustar: (valor: string) => string) =>
+    e.filas.map((fila) =>
+      sustituir(mensaje.linea, (nombre) => ajustar(textoDeCelda(fila[e.columnas.indexOf(nombre)])), literal),
+    );
+  return {
+    encabezado: mensaje.encabezado,
+    lineasHtml: lineas(escaparHtml, escaparHtml),
+    lineasTexto: lineas((texto) => texto, sinSaltos),
+  };
+}
+
 /** What both parts share once cells are normalized. */
 interface Pieza {
   tema: Tema;
@@ -221,6 +268,8 @@ interface Pieza {
   columnas: string[];
   filas: string[][];
   avisos: string[];
+  /** When set, the body is this instead of the table. */
+  mensaje: Mensaje | null;
 }
 
 /** The notices under the table: truncation, placeholders, and a result with no columns. */
@@ -258,11 +307,14 @@ function fechaEn(fecha: Date, zona: string): string {
 /** The text part: the same content, one row per line, cells joined by ` | `. */
 function textoDe(p: Pieza): string {
   const tabla = p.columnas.length === 0 ? [] : [p.columnas, ...p.filas];
+  const cuerpo = p.mensaje
+    ? [p.mensaje.encabezado, ...p.mensaje.lineasTexto]
+    : tabla.map((fila) => fila.map(sinSaltos).join(' | '));
   return [
     p.nombre,
     p.fecha,
     '',
-    ...tabla.map((fila) => fila.map(sinSaltos).join(' | ')),
+    ...cuerpo,
     '',
     ...p.avisos,
     PIE,
@@ -284,6 +336,7 @@ const ESTILO = {
   datos: 'border-collapse:collapse;font-size:13px;',
   columna: 'text-align:left;padding:6px 8px;',
   celda: 'padding:6px 8px;border-bottom:1px solid #e5e7eb;color:#374151;',
+  parrafo: 'margin:0 0 8px;font-size:14px;color:#374151;',
   aviso: 'padding:0 16px 8px;color:#4b5563;font-size:13px;',
   pie: 'padding:12px 16px;background:#f9fafb;color:#9ca3af;font-size:12px;',
 };
@@ -300,7 +353,7 @@ function filaMarco(estilo: string, contenido: string): string {
  */
 function htmlDe(p: Pieza): string {
   const columna = `${ESTILO.columna}border-bottom:2px solid ${p.tema.acento};`;
-  const datos =
+  const tabla =
     p.columnas.length === 0
       ? ''
       : `<table ${TABLA} style="${ESTILO.datos}">` +
@@ -309,6 +362,11 @@ function htmlDe(p: Pieza): string {
           .map((f) => `<tr>${f.map((v) => `<td style="${ESTILO.celda}">${escaparHtml(v)}</td>`).join('')}</tr>`)
           .join('') +
         '</table>';
+  // The lines arrive escaped by piece (literal and values apart), so they are not escaped again.
+  const datos = p.mensaje
+    ? `<p style="${ESTILO.parrafo}font-weight:bold;">${escaparHtml(p.mensaje.encabezado)}</p>` +
+      p.mensaje.lineasHtml.map((linea) => `<p style="${ESTILO.parrafo}">${linea}</p>`).join('')
+    : tabla;
   return (
     `<!DOCTYPE html><html lang="es"><body style="${ESTILO.cuerpo}">` +
     `<table role="presentation" ${TABLA} style="${ESTILO.marco}">` +

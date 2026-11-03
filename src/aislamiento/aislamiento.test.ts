@@ -1308,9 +1308,11 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     assert.deepEqual(columnas.sort(), [
       'automatizacion',
       'descripcion',
+      'encabezadoMensaje',
       'entidades',
       'formato',
       'id',
+      'lineaMensaje',
       'nombre',
       'parametros',
       'sql',

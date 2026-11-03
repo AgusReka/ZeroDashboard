@@ -147,6 +147,10 @@ describe('unsaved template test route — tenant header and body shape (CH-38, D
       [{ limite: 10 }, ['/limite']],
       [{ conexionId: '' }, ['/conexionId']],
       [{ valores: [] }, ['/valores']],
+      // CH-39: the message checks apply here too, except the test columns.
+      [{ lineaMensaje: '{nombre}' }, ['/encabezadoMensaje']],
+      [{ encabezadoMensaje: 'Aviso' }, ['/lineaMensaje']],
+      [{ encabezadoMensaje: 'Aviso {x}', lineaMensaje: '{nombre}' }, ['/encabezadoMensaje']],
     ];
     for (const [cambios, campos] of casos) {
       const respuesta = await sinLecturas.inject({
@@ -168,6 +172,18 @@ describe('unsaved template test route — tenant header and body shape (CH-38, D
       payload: PLANTILLA_VALIDA,
     });
     assert.deepEqual(sinConexion.json(), { error: 'solicitud-invalida', campos: ['/conexionId'] });
+  });
+
+  test('CH-39 an unpaired message text is a 400 naming the absent one, and nothing is read', async () => {
+    // `clienteSoloTenant` throws on any model read, so a 400 here means no lookup and no dial.
+    const respuesta = await sinLecturas.inject({
+      method: 'POST',
+      url: RUTA_SIN_GUARDAR,
+      headers: { 'x-tenant-id': 't-activo' },
+      payload: { ...PLANTILLA_VALIDA, conexionId: 'c', lineaMensaje: '{producto}: {cantidad}' },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'solicitud-invalida', campos: ['/encabezadoMensaje'] });
   });
 });
 
@@ -625,6 +641,34 @@ describe('plantilla test route — execution over the composed views (CH-12 5.4)
       [2, 'dos', "O'Brien"],
     ]);
     assert.equal(await prisma.plantilla.count({ where: { nombre } }), antes, 'no Plantilla row may be written');
+  });
+
+  test('CH-39 an unsaved template with message texts and no columnasPrueba runs and answers its columns', async () => {
+    const nombre = `${marca} con mensaje`;
+    const respuesta = await app.inject({
+      method: 'POST',
+      url: RUTA_SIN_GUARDAR,
+      headers: { 'x-tenant-id': tenantId },
+      payload: {
+        nombre,
+        sql: 'SELECT p.id, p.nombre FROM v_producto p ORDER BY p.id',
+        parametros: [],
+        entidades: ['producto'],
+        automatizacion: 'stock-fisico',
+        formato: 'correo-html',
+        toleranciaFrescuraMinutos: 0,
+        // A placeholder that is not a column of this query: a test is what produces the columns,
+        // so the save-time column check does not apply to it.
+        encabezadoMensaje: 'Productos',
+        lineaMensaje: '{nombre}: {no_es_columna}',
+        conexionId,
+      },
+    });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const veredicto = respuesta.json() as Veredicto;
+    assert.ok(veredicto.resultado === 'ok', JSON.stringify(veredicto));
+    assert.deepEqual(veredicto.columnas, ['id', 'nombre']);
+    assert.equal(await prisma.plantilla.count({ where: { nombre } }), 0, 'no Plantilla row may be written');
   });
 
   test('CH-38 an unsaved template that is not a read is a 200 fallo from the engine, never an execution', async () => {
