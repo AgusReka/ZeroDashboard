@@ -9,7 +9,7 @@ P1 decides that an automation notifies only when the result reaches a minimum nu
 
 ### In Scope
 - **Model.** `Automatizacion.minimoFilas`, an integer, not null, default 1. One migration; the default fills existing rows, so there is no backfill.
-- **Validation.** An integer with `1 ≤ minimoFilas ≤ maxFilasPorConsulta` (the engine's row cap, DEC-19, read at request time). Out of range or not an integer gives `400` with `campos: ['/minimoFilas']`. Checked with the other pure checks, before any read.
+- **Validation.** An integer with `1 ≤ minimoFilas ≤ maxFilasPorConsulta` (the engine's configured row cap, DEC-19). Out of range or not an integer gives `400` with `campos: ['/minimoFilas']`. Checked with the other pure checks, before any read.
 - **Create** (`POST /automatizaciones`). Optional `minimoFilas`; absent means 1. `AutomatizacionCompleta` returns it, so create and get show it. The list summary does not change.
 - **Operator adjust** (`PUT /automatizaciones/:id/ajustes`, CH-33, DEC-174). Accepts `minimoFilas` with the same rule and writes it to the same row, keeping the run history (DEC-193, 1(a), as a precision of DEC-186).
 - **Decision** (`decidirNotificacion`). New precedence row right after zero rows and before the missing recipient: a successful run with `0 < filas < minimoFilas` and no cut by the row cap ends `omitida-bajo-minimo`. A result cut by the cap (`paginacion.hayMas`) counts as reaching the minimum (DEC-193, 2(a)).

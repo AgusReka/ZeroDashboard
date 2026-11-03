@@ -7,7 +7,7 @@ An automation carries a minimum number of rows below which a successful run does
 
 ### Requirement: Minimum Rows Are Bounded by the Row Cap (DEC-186, DEC-19)
 
-`minimoFilas` SHALL be an integer with `1 ≤ minimoFilas ≤ maxFilasPorConsulta`, the engine's row cap (`MAX_FILAS_CONSULTA`) read when the request is handled. A value out of that range or not an integer SHALL be refused with `400` and `campos` containing `/minimoFilas`, and nothing SHALL be written. The same rule SHALL apply to `POST /automatizaciones` and to the operator's `PUT /automatizaciones/:id/ajustes`. A numeric string SHALL be accepted as its integer, as for every other integer body field. The panel's adjust route SHALL NOT accept `minimoFilas`.
+`minimoFilas` SHALL be an integer with `1 ≤ minimoFilas ≤ maxFilasPorConsulta`, the engine's row cap as configured for the running process (`MAX_FILAS_CONSULTA`), the same cap the scheduler reads its page with. A value out of that range or not an integer SHALL be refused with `400` and `campos` containing `/minimoFilas`, and nothing SHALL be written. The same rule SHALL apply to `POST /automatizaciones` and to the operator's `PUT /automatizaciones/:id/ajustes`. A numeric string SHALL be accepted as its integer, as for every other integer body field. The panel's adjust route SHALL NOT accept `minimoFilas`.
 
 #### Scenario: Creating with a minimum
 

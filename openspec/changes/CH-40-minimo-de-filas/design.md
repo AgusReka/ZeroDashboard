@@ -40,14 +40,15 @@ if (r.filas.length < minimoFilas && !r.paginacion.hayMas) {
 ### 4.1 Shared rule
 
 ```ts
-/** CH-40 (DEC-186): an integer from 1 to the engine's row cap, read when the request is handled. */
+/** CH-40 (DEC-186): an integer from 1 to the engine's row cap. */
 export function minimoFilasValido(valor: number, tope: number): boolean {
   return Number.isInteger(valor) && valor >= 1 && valor <= tope;
 }
 ```
 
 - **Coercion.** The schemas declare `minimoFilas: { type: 'integer', minimum: 1 }`. Under Fastify's default AJV options `"5"` becomes `5` and `2.5` or `"abc"` fail the type, like `puerto` and `limite` already do. DEC-60's no-coercion rule is for `valores`, whose JSON type changes the SQL parameter; here it does not. The schema refusal is reported through `camposInvalidos` as `/minimoFilas`, the same pointer the handler uses.
-- **Upper bound.** Not in the schema, because the cap is configuration. The handler reads `loadConfig().maxFilasPorConsulta` per request, as `plantilla-prueba.ts:149` and `planificador.ts:260` already do, so the rule and the run always see the same cap.
+- **Upper bound.** Not in the schema, because the cap is configuration. `registerAutomatizacionRoutes(app, prisma, zonaHoraria, topeFilas)` receives it from `src/server.ts`'s one `loadConfig()` through `DependenciasRutas.topeFilas`, exactly as `zonaHoraria` arrives (DEC-77). The environment does not change while the process runs, so it is the cap the scheduler reads its page with.
+- **Apply-time refinement (2026-11-03).** The first draft read `loadConfig()` per request. It was dropped during apply: `loadConfig()` also validates the master key and requires `APP_PORT`, so every pure route test would have had to fake the whole environment, and the route file already takes its other configuration as a parameter.
 
 ### 4.2 Create (`POST /automatizaciones`)
 
@@ -59,7 +60,7 @@ export function minimoFilasValido(valor: number, tope: number): boolean {
 
 - `ajusteOperadorSchema`: `minimoFilas` in `propertyNames.enum` and `properties` (`{ type: 'integer', minimum: 1 }`); `minProperties: 1` stays.
 - `CuerpoAjusteOperador` and `DatosAjusteOperador` gain `minimoFilas?: number`.
-- `resolverAjusteOperador(cuerpo, plantilla, zona, tope)`: a new block after `destinatario`, pushing `/minimoFilas` when invalid, so every offender is still named together. The handler passes `loadConfig().maxFilasPorConsulta`.
+- `resolverAjusteOperador(cuerpo, plantilla, zona, tope)`: a new block after `destinatario`, pushing `/minimoFilas` when invalid, so every offender is still named together. The handler passes `topeFilas`.
 - The `update` spreads `minimoFilas` like the other keys. Ownership, `404` and `409` are unchanged: the scoped `findUnique` already answers another tenant's id with `404` before anything is resolved.
 - `panel-ajustes.ts` does not change; its strict schema keeps refusing an unknown `minimoFilas`.
 
