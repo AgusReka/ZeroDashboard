@@ -3990,6 +3990,57 @@ Duplicados que solo cambian en mayúsculas:
 
 ---
 
+### DEC-195 — CH-42: la vista previa tiene su propio origen en la auditoría, se abre desde la fila de la automatización y muestra el texto y el HTML en un marco aislado
+
+**Contexto.**
+- DEC-189 (a) agrega una vista previa del mensaje en la consola: corre la consulta de la automatización, muestra las filas y el mensaje, no envía nada, no crea una `Ejecucion` y «queda en la auditoría como la prueba de plantilla». Pide mostrar el mensaje «como texto o HTML en un marco aislado».
+- `RegistroEjecucion` guarda `plantillaId`, pero no `automatizacionId`. Si la vista previa usara el origen `plantilla-prueba`, la auditoría no podría distinguirla de una prueba de plantilla.
+- DEC-189 ubica la vista previa en el «detalle de la automatización», pero la consola no tiene esa pantalla: las automatizaciones son una lista con acciones por fila («Ver ejecuciones», «Ajustar», «Desactivar»), y el ajuste se abre en una ventana emergente.
+- La consola no usa `iframe` ni CSP en ningún lado.
+
+Quedan tres puntos que DEC-189 no resuelve.
+
+**Opciones.**
+
+Origen en la auditoría:
+- (a) Un origen nuevo, `automatizacion-vista-previa`, con `plantillaId` como en la prueba de plantilla.
+- (b) El origen `plantilla-prueba` tal cual.
+
+Dónde se abre:
+- (a) Una acción «Vista previa» en la fila, solo para las automatizaciones activas, que abre una ventana emergente.
+- (b) Una pantalla nueva de detalle de la automatización.
+
+Cómo se muestra el mensaje:
+- (a) El texto y el HTML: el HTML en un `iframe` con `sandbox` vacío y `srcdoc`.
+- (b) Solo el texto.
+
+**Decisión.** Origen (a), ubicación (a) y mensaje (a).
+- **Origen (a).** «Como la prueba de plantilla» se lee como «registrada de la misma forma», no «con el mismo nombre». El operador tiene que poder ver qué hizo. `origen` es texto libre, así que no hace falta migración.
+- **Ubicación (a).** La ventana emergente es el «detalle» que la consola ya usa para el ajuste. La (b) no tiene diseño y suma tamaño; se puede hacer después sin cambiar la API.
+- **Mensaje (a).** Muestra lo que el cliente va a ver, con los mismos bytes que arma el envío, y es el marco aislado que nombra DEC-189.
+
+**Forma.**
+- **Ruta.** `POST /automatizaciones/:id/vista-previa`, con el alcance del tenant como las demás rutas de automatización. Es `POST` porque consulta la réplica del cliente y escribe en la auditoría.
+- **Las mismas piezas que la corrida.** Usa la página del planificador (`limite` = tope de filas), así que `hayMas` y el mínimo de filas dan lo mismo que en un envío real. También usa las mismas compuertas que la prueba de plantilla y `decidirNotificacion` con los destinatarios, el mínimo y el estado del SMTP. El armado del mensaje se extrae del planificador para que lo compartan los dos.
+- **Respuesta.** El resultado de la consulta, la decisión (se enviaría a…, o el motivo de la omisión) y, cuando se puede armar, el asunto, el texto y el HTML.
+- **Nunca envía ni crea una `Ejecucion`.** El notificador no se llama.
+- **Auditoría.** Una fila por vista previa, con `conexionId`, la sentencia compuesta y `plantillaId`. La pantalla de auditoría la rotula «Vista previa de automatización».
+- **Marco.** `<iframe sandbox srcdoc>` sin ningún permiso: sin scripts, sin mismo origen y sin formularios. El texto va en un `<pre>`.
+
+**Alcance que no cambia.** El planificador, las ejecuciones, el panel (regla 1), Telegram (CH-44) y la vista previa esquemática del alta (DEC-131).
+
+**Por qué.** Cierra DEC-189 con la forma más chica que sirve: no requiere migración, no agrega una pantalla y se arma con las mismas funciones que el envío.
+
+**Se resigna.**
+- **Una pantalla de detalle.** La vista previa vive en una ventana emergente, como el ajuste.
+- **La relación con la automatización en la auditoría.** La fila guarda la plantilla y la conexión, pero no la automatización, porque `RegistroEjecucion` no tiene esa columna.
+
+**Decidido por:** el usuario, 2026-11-03, en la exploración de CH-42: eligió las tres opciones recomendadas. El nombre del origen sigue la forma de los existentes (`plantilla-prueba`, `conexion-prueba`). No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
