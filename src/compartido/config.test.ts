@@ -12,6 +12,7 @@ import {
   loadConfig,
 } from './config.js';
 import { VARIABLE_CLAVE_MAESTRA } from './cripto-credencial.js';
+import { leerTelegram } from '../telegram/telegram-config.js';
 
 /**
  * Unit cases for CH-07 tasks 1.3 and 3.1. `loadConfig()` is the single required-env
@@ -37,6 +38,7 @@ const VARIABLES = [
   'SMTP_TIMEOUT_MS',
   'CONNECTION_RETRY_ATTEMPTS',
   'CONNECTION_RETRY_PAUSE_MS',
+  'TELEGRAM_BOT_TOKEN',
 ] as const;
 
 /** A minimal environment in which `loadConfig()` is expected to succeed. */
@@ -312,4 +314,25 @@ describe('loadConfig — the connection retry policy is configuration (CH-17b, D
       rechazaSinCitar('CONNECTION_RETRY_PAUSE_MS', valor);
     });
   }
+});
+
+describe('leerTelegram — the bot token is optional and never configuration (CH-43, DEC-185)', () => {
+  test('unset or empty gives null, and the boot still loads', () => {
+    assert.equal(leerTelegram(process.env), null);
+    assert.equal(leerTelegram({ TELEGRAM_BOT_TOKEN: '' }), null);
+    assert.equal(leerTelegram({ TELEGRAM_BOT_TOKEN: '   ' }), null);
+    assert.doesNotThrow(() => loadConfig());
+  });
+
+  test('a set value is the token, trimmed, with no format check', () => {
+    assert.deepEqual(leerTelegram({ TELEGRAM_BOT_TOKEN: ' 123:abc ' }), { token: '123:abc' });
+    assert.deepEqual(leerTelegram({ TELEGRAM_BOT_TOKEN: 'no-es-un-token' }), { token: 'no-es-un-token' });
+  });
+
+  test('the token never reaches AppConfig', () => {
+    process.env.TELEGRAM_BOT_TOKEN = '123456:token-de-prueba';
+    const serializado = JSON.stringify(loadConfig());
+    assert.ok(!serializado.includes('token-de-prueba'));
+    assert.ok(!serializado.toLowerCase().includes('telegram'));
+  });
 });

@@ -34,6 +34,8 @@ model Tenant {
   agente                         Agente?
   usuarios                       Usuario[]
   sesionesPanel                  SesionPanel[]
+  vinculoTelegram                VinculoTelegram?
+  codigoVinculoTelegram          CodigoVinculoTelegram?
 }
 
 model Conexion {
@@ -402,4 +404,29 @@ model RegistroEjecucion {
   creadoEn           DateTime @default(now())
 
   @@index([tenantId, creadoEn])
+}
+
+// CH-43 (DEC-185, DEC-196): the tenant's Telegram chat, linked to the platform's global
+// bot with a one-time code. At most one per tenant (`tenantId` unique); a chat may serve
+// several tenants. `chatId` is a 64-bit integer because a Telegram chat id may exceed 32
+// bits. No username, display name or message text is stored (rule 5).
+model VinculoTelegram {
+  id          String   @id @default(uuid())
+  tenantId    String   @unique
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  chatId      BigInt
+  vinculadoEn DateTime @default(now())
+}
+
+// CH-43 (DEC-185, DEC-196): the tenant's one live linking code. Only its SHA-256
+// `codigoHash` is stored, never the plain code; a new code replaces the previous one
+// (`tenantId` unique) and the code is deleted when it links. `venceEn` is 10 minutes
+// after creation, written by the application.
+model CodigoVinculoTelegram {
+  id         String   @id @default(uuid())
+  tenantId   String   @unique
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  codigoHash String   @unique
+  venceEn    DateTime
+  creadoEn   DateTime @default(now())
 }

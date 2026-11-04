@@ -1292,10 +1292,12 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     // `Automatizacion` and `Ejecucion`, CH-19b (DEC-121) adds `Agente`, and CH-22a
     // (DEC-133, DEC-134) adds `Usuario` and `SesionPanel` — both scoped, proven by the
     // fail-closed cases below, so this list pins them *in*, not out. CH-29 (DEC-151) adds
-    // `Operador` and `SesionConsola`, global like `Plantilla` (see the case below).
+    // `Operador` and `SesionConsola`, global like `Plantilla` (see the case below). CH-43
+    // (DEC-185, DEC-196) adds `VinculoTelegram` and `CodigoVinculoTelegram`, both scoped.
     assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
       'Agente',
       'Automatizacion',
+      'CodigoVinculoTelegram',
       'Conexion',
       'ConsultaGuardada',
       'ConsultaGuardadaVersion',
@@ -1307,6 +1309,7 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
       'SesionPanel',
       'Tenant',
       'Usuario',
+      'VinculoTelegram',
       'VistaCanonica',
     ]);
   });
@@ -1430,6 +1433,29 @@ describe('aislamiento — Automatizacion and Ejecucion fail closed outside a ten
       () => aislado.sesionPanel.deleteMany({ where: {} }),
       ErrorSinTenantActivo,
     );
+  });
+
+  test('CH-43 VinculoTelegram and CodigoVinculoTelegram reads and writes with no active tenant throw ErrorSinTenantActivo', async () => {
+    // Both carry a direct `tenantId` and join `MODELOS_AISLADOS` (DEC-185, DEC-196). The
+    // poller's code lookup is a separate, explicit exception, not a pass-through.
+    await assert.rejects(() => aislado.vinculoTelegram.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(() => aislado.vinculoTelegram.findFirst({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () => aislado.vinculoTelegram.create({ data: { chatId: 42n } } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(() => aislado.vinculoTelegram.deleteMany({}), ErrorSinTenantActivo);
+    await assert.rejects(() => aislado.codigoVinculoTelegram.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () => aislado.codigoVinculoTelegram.findUnique({ where: { codigoHash: 'h' } }),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () =>
+        aislado.codigoVinculoTelegram.create({ data: { codigoHash: 'h', venceEn: new Date() } } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(() => aislado.codigoVinculoTelegram.deleteMany({}), ErrorSinTenantActivo);
   });
 
   test('inside a tenant context the same query is scoped and handed on, not refused', async () => {
@@ -1724,5 +1750,81 @@ describe('aislamiento — automatizacion.plantillaEnUso and reemplazarPlantillaL
       liberar();
       await transaccion.catch(() => undefined);
     }
+  });
+});
+
+// ---- CH-43 2.3 the code lookup, the single audited unscoped read (DEC-185, DEC-196) ---
+
+describe('aislamiento — codigoVinculoTelegram.buscarPorHash on a live PostgreSQL target (CH-43)', {
+  skip: alcanzable ? false : motivoSkip,
+}, () => {
+  let db!: PrismaClient;
+  const tenantIds: string[] = [];
+  const hashes = { a: '', b: '', inactivo: '' };
+  const vence = new Date(Date.now() + 600_000);
+  const marca = `CH-43 2.3 ${Date.now()}`;
+
+  before(async () => {
+    db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    for (const clave of Object.keys(hashes) as (keyof typeof hashes)[]) {
+      const tenant = await db.tenant.create({
+        data: { nombre: `${marca} ${clave}`, activo: clave !== 'inactivo' },
+      });
+      tenantIds.push(tenant.id);
+      hashes[clave] = randomBytes(32).toString('hex');
+      await db.codigoVinculoTelegram.create({
+        data: { tenantId: tenant.id, codigoHash: hashes[clave], venceEn: vence },
+      });
+    }
+  });
+
+  after(async () => {
+    await db.codigoVinculoTelegram.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.vinculoTelegram.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+    await db.$disconnect();
+  });
+
+  test('with no context the lookup returns exactly tenantId, tenantNombre, tenantActivo and venceEn', async () => {
+    const encontrado = await extenderConAislamiento(db).codigoVinculoTelegram.buscarPorHash(hashes.a);
+    assert.deepEqual(encontrado, {
+      tenantId: tenantIds[0],
+      tenantNombre: `${marca} a`,
+      tenantActivo: true,
+      venceEn: vence,
+    });
+    assert.deepEqual(Object.keys(encontrado ?? {}).sort(), ['tenantActivo', 'tenantId', 'tenantNombre', 'venceEn']);
+  });
+
+  test('an unknown hash gives null; a deactivated tenant is reported, not filtered', async () => {
+    const aislado = extenderConAislamiento(db);
+    assert.equal(await aislado.codigoVinculoTelegram.buscarPorHash(randomBytes(32).toString('hex')), null);
+    assert.equal((await aislado.codigoVinculoTelegram.buscarPorHash(hashes.inactivo))?.tenantActivo, false);
+  });
+
+  test("each code resolves to its own tenant, even inside the other tenant's context", async () => {
+    const aislado = extenderConAislamiento(db);
+    const deA = await conTenantActivo({ id: tenantIds[1], nombre: 'B' }, async () => {
+      return await aislado.codigoVinculoTelegram.buscarPorHash(hashes.a);
+    });
+    assert.equal(deA?.tenantId, tenantIds[0]);
+    assert.equal((await aislado.codigoVinculoTelegram.buscarPorHash(hashes.b))?.tenantId, tenantIds[1]);
+  });
+
+  test("inside A's context the scoped reads see only A's code", async () => {
+    const aislado = extenderConAislamiento(db);
+    const filas = await conTenantActivo({ id: tenantIds[0], nombre: 'A' }, async () => {
+      return await aislado.codigoVinculoTelegram.findMany({ select: { tenantId: true } });
+    });
+    assert.deepEqual(filas, [{ tenantId: tenantIds[0] }]);
+  });
+
+  test('every other unscoped CodigoVinculoTelegram operation still rejects', async () => {
+    const aislado = extenderConAislamiento(db);
+    await assert.rejects(() => aislado.codigoVinculoTelegram.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(
+      () => aislado.codigoVinculoTelegram.findUnique({ where: { codigoHash: hashes.a } }),
+      ErrorSinTenantActivo,
+    );
   });
 });

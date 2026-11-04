@@ -17,6 +17,7 @@ import { registerAutomatizacionRoutes } from '../automatizaciones/automatizacion
 import { registerPanelAuthRoutes } from '../panel/panel-auth.js';
 import { registerPanelAjustesRoutes } from '../panel/panel-ajustes.js';
 import { registerPanelAutomatizacionesRoutes } from '../panel/panel-automatizaciones.js';
+import { registerPanelTelegramRoutes, type PuertoTelegram } from '../panel/panel-telegram.js';
 import { registerPanelRoutes } from '../panel/panel.js';
 import { registerAgenteRoutes } from '../agente/agentes-rutas.js';
 import { registerUsuarioPanelRoutes } from '../usuarios/usuarios-panel.js';
@@ -39,6 +40,11 @@ export interface DependenciasRutas {
    * scheduler decides with. Required, so the entry point always states it.
    */
   correoConfigurado: boolean;
+  /**
+   * CH-43 (DEC-185, DEC-196): the Telegram poller as the panel sees it, or `null` when
+   * `TELEGRAM_BOT_TOKEN` is unset. Required, so the entry point always states it.
+   */
+  telegram: PuertoTelegram | null;
 }
 
 /**
@@ -49,7 +55,7 @@ export interface DependenciasRutas {
  * scheduler, shutdown and `listen`; nothing here opens a connection or a port.
  */
 export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): void {
-  const { prisma, registro, estilos, zonaHoraria, topeFilas, correoConfigurado } = deps;
+  const { prisma, registro, estilos, zonaHoraria, topeFilas, correoConfigurado, telegram } = deps;
 
   // CH-29 (DEC-152): the operator guard comes FIRST, ahead even of the tenant hooks below,
   // so a request without a console session is a 401 before the tenant header is read. It
@@ -119,6 +125,9 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // by one exact row in `RUTAS_PANEL_PUBLICAS`. The clock stays at its default.
   registerPanelAutomatizacionesRoutes(app, prisma, zonaHoraria);
   registerPanelAjustesRoutes(app, prisma, zonaHoraria);
+  // CH-43 (DEC-185, DEC-196): the «Avisos por Telegram» card's API, session-guarded and
+  // exempt by three exact rows in `RUTAS_PANEL_PUBLICAS`, like the panel routes above.
+  registerPanelTelegramRoutes(app, { prisma, telegram });
   // CH-22a PR3: `GET /panel` serves the P-01 login screen without a session or the panel
   // shell with the tenant name once `levantarSesionPanel` resolves one (DEC-135). The page
   // route is exempt from the `X-Tenant-Id` header hooks by exact GET row in

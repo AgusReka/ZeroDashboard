@@ -10,6 +10,7 @@ import { conTenantActivo, registrarContextoTenant } from './contexto-tenant.js';
 import { hashearClave } from '../compartido/crypto-auth.js';
 import { registerPanelAuthRoutes } from '../panel/panel-auth.js';
 import { registerPanelAutomatizacionesRoutes } from '../panel/panel-automatizaciones.js';
+import { registerPanelTelegramRoutes } from '../panel/panel-telegram.js';
 
 /**
  * CH-22a task 2.2 (DEC-135, T2): the two-tenant panel isolation proof. User A logs in
@@ -89,6 +90,8 @@ describe(
       registrarContextoTenant(app, aislado);
       registerPanelAuthRoutes(app, aislado);
       registerPanelAutomatizacionesRoutes(app, aislado, 'UTC');
+      // CH-43: a fake port whose bot is always available, so every Telegram state is reachable.
+      registerPanelTelegramRoutes(app, { prisma: aislado, telegram: { bot: () => 'zd_prueba_bot' } });
       await app.ready();
 
       a = await montarUsuario('A');
@@ -97,6 +100,8 @@ describe(
 
     after(async () => {
       if (tenantIds.length > 0) {
+        await db.vinculoTelegram.deleteMany({ where: { tenantId: { in: tenantIds } } });
+        await db.codigoVinculoTelegram.deleteMany({ where: { tenantId: { in: tenantIds } } });
         await db.ejecucion.deleteMany({ where: { tenantId: { in: tenantIds } } });
         await db.automatizacion.deleteMany({ where: { tenantId: { in: tenantIds } } });
         await db.conexion.deleteMany({ where: { tenantId: { in: tenantIds } } });
@@ -354,6 +359,67 @@ describe(
       assert.ok(!deB.body.includes('2026-10-06T08:00:00.000Z'), "A's failed run instant must not reach B");
       assert.ok(!deA.body.includes('codigoError'));
       assert.ok(!deA.body.includes('error'));
+    });
+
+    // ---- CH-43 4.4: the Telegram card's API, one session per tenant -------------------
+
+    async function telegramDe(
+      token: string,
+      metodo: 'GET' | 'POST' | 'DELETE',
+      url: string,
+      cabecera?: string,
+    ) {
+      return await app.inject({
+        method: metodo,
+        url,
+        headers: {
+          cookie: `${NOMBRE_COOKIE}=${token}`,
+          ...(cabecera === undefined ? {} : { 'x-tenant-id': cabecera }),
+        },
+      });
+    }
+
+    test('CH-43 two tenants, two cards: each reads its own state and dates, whatever X-Tenant-Id says', async () => {
+      const vinculadoEnA = new Date('2026-11-05T10:00:00.000Z');
+      const venceEnB = new Date(Date.now() + 600_000);
+      await db.vinculoTelegram.create({ data: { tenantId: a.tenantId, chatId: 42n, vinculadoEn: vinculadoEnA } });
+      await db.codigoVinculoTelegram.create({
+        data: { tenantId: b.tenantId, codigoHash: randomBytes(32).toString('hex'), venceEn: venceEnB },
+      });
+      const tokenA = tokenDe(await ingresar(a));
+      const tokenB = tokenDe(await ingresar(b));
+      for (const cabecera of [undefined, b.tenantId]) {
+        const deA = await telegramDe(tokenA, 'GET', '/api/panel/telegram', cabecera);
+        assert.equal(deA.statusCode, 200, deA.body);
+        assert.deepEqual(deA.json(), { estado: 'vinculado', bot: 'zd_prueba_bot', vinculadoEn: vinculadoEnA.toISOString() });
+        assert.ok(!deA.body.includes(venceEnB.toISOString()));
+      }
+      for (const cabecera of [undefined, a.tenantId]) {
+        const deB = await telegramDe(tokenB, 'GET', '/api/panel/telegram', cabecera);
+        assert.equal(deB.statusCode, 200, deB.body);
+        assert.deepEqual(deB.json(), { estado: 'codigo-pendiente', bot: 'zd_prueba_bot', venceEn: venceEnB.toISOString() });
+        assert.ok(!deB.body.includes(vinculadoEnA.toISOString()));
+      }
+    });
+
+    test("CH-43 A's new code leaves B's code unchanged, and A's unlink leaves B's link unchanged", async () => {
+      const tokenA = tokenDe(await ingresar(a));
+      const codigoB = await db.codigoVinculoTelegram.findUniqueOrThrow({ where: { tenantId: b.tenantId } });
+      const creado = await telegramDe(tokenA, 'POST', '/api/panel/telegram/codigo', b.tenantId);
+      assert.equal(creado.statusCode, 201, creado.body);
+      assert.deepEqual(await db.codigoVinculoTelegram.findUniqueOrThrow({ where: { tenantId: b.tenantId } }), codigoB);
+      assert.equal(await db.codigoVinculoTelegram.count({ where: { tenantId: a.tenantId } }), 1);
+
+      await db.vinculoTelegram.upsert({
+        where: { tenantId: b.tenantId },
+        create: { tenantId: b.tenantId, chatId: 42n },
+        update: {},
+      });
+      const vinculoB = await db.vinculoTelegram.findUniqueOrThrow({ where: { tenantId: b.tenantId } });
+      const desvinculado = await telegramDe(tokenA, 'DELETE', '/api/panel/telegram/vinculo', b.tenantId);
+      assert.equal(desvinculado.statusCode, 204, desvinculado.body);
+      assert.equal(await db.vinculoTelegram.findUnique({ where: { tenantId: a.tenantId } }), null);
+      assert.deepEqual(await db.vinculoTelegram.findUniqueOrThrow({ where: { tenantId: b.tenantId } }), vinculoB);
     });
   },
 );

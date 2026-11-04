@@ -9,6 +9,7 @@ import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
 import { crearPlanificador } from './automatizaciones/planificador.js';
 import { crearNotificadorSmtp } from './automatizaciones/notificador.js';
 import { registrarApagado } from './app/apagado.js';
+import { leerTelegram } from './telegram/telegram-config.js';
 
 const config = loadConfig();
 // CH-21a (DEC-124): the five shared stylesheet files are read once, here, before any
@@ -30,6 +31,12 @@ const prisma = extenderConAislamiento(new PrismaClient({ adapter }));
 // Only the configured/not-configured state is logged: no host, port, sender or user.
 const notificador = crearNotificadorSmtp({ timeoutMs: config.smtpTimeoutMs });
 app.log.info({ correo: notificador === null ? 'no-configurado' : 'configurado' }, 'email notifications');
+// CH-43 (DEC-185, DEC-196): `TELEGRAM_BOT_TOKEN` is optional and read only by
+// `leerTelegram`, never copied onto `AppConfig`. Only the configured/not-configured state is
+// logged, never the token. The poller arrives in CH-43b; until then the panel reads
+// Telegram as not available either way.
+const configTelegram = leerTelegram(process.env);
+app.log.info({ telegram: configTelegram === null ? 'no-configurado' : 'configurado' }, 'telegram link');
 // CH-17b (DEC-98, DEC-105, DEC-106): the connection retry policy from
 // `CONNECTION_RETRY_ATTEMPTS` and `CONNECTION_RETRY_PAUSE_MS`, already validated by
 // `loadConfig()` above. Only scheduled runs retry; the console paths never do.
@@ -59,6 +66,8 @@ registrarRutas(app, {
   topeFilas: config.maxFilasPorConsulta,
   // CH-42 (DEC-195): the message preview decides with the scheduler's own signal.
   correoConfigurado: notificador !== null,
+  // CH-43 (DEC-185, DEC-196): no poller yet (CH-43b), so the bot is never available.
+  telegram: null,
 });
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops

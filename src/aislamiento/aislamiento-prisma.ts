@@ -46,6 +46,11 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  * answer a boolean or the replaced template: no row, count, tenant id or automation id of
  * `Automatizacion` leaves this module. Every other `Automatizacion` operation still fails
  * closed without a context.
+ *
+ * CH-43 adds `VinculoTelegram` and `CodigoVinculoTelegram` (DEC-185, DEC-196), and the
+ * fourth unscoped operation on a scoped model: `codigoVinculoTelegram.buscarPorHash`. A
+ * Telegram `/start <code>` arrives with no tenant, so the code row is found by its hash
+ * and the tenant comes from that row, never from the update (rule 2).
  */
 const MODELOS_AISLADOS = new Set([
   'Conexion',
@@ -61,6 +66,9 @@ const MODELOS_AISLADOS = new Set([
   'SesionPanel',
   // CH-20 (DEC-159): the console execution audit is tenant data: each tenant reads only its own.
   'RegistroEjecucion',
+  // CH-43 (DEC-185, DEC-196): the tenant's Telegram chat and its one live linking code.
+  'VinculoTelegram',
+  'CodigoVinculoTelegram',
   // CH-29 (DEC-151): `Operador` and `SesionConsola` are absent on purpose. They carry no
   // `tenantId`: an operator works across every tenant, like `Tenant` and `Plantilla`.
 ]);
@@ -266,6 +274,42 @@ export function extenderConAislamiento(prisma: PrismaClient) {
                 tenantId: fila.tenant.id,
                 tenantNombre: fila.tenant.nombre,
                 tenantActivo: fila.tenant.activo,
+              };
+        },
+      },
+      codigoVinculoTelegram: {
+        /**
+         * CH-43 (DEC-185, DEC-196): the single audited unscoped read of
+         * `CodigoVinculoTelegram`. The Telegram poller receives a code before any tenant
+         * context exists, so the row is found by its hash on the raw client and the tenant
+         * comes from the matched row, never from the Telegram update (rule 2). It takes the
+         * hash, never a tenant id, and returns the minimum the caller needs to refuse an
+         * expired code or a deactivated tenant and then enter the context: no hash, no row
+         * id and no other column. Every other `CodigoVinculoTelegram` operation stays scoped.
+         */
+        async buscarPorHash(
+          codigoHash: string,
+        ): Promise<{
+          tenantId: string;
+          tenantNombre: string;
+          tenantActivo: boolean;
+          venceEn: Date;
+        } | null> {
+          const fila = await prisma.codigoVinculoTelegram.findUnique({
+            where: { codigoHash },
+            select: {
+              tenantId: true,
+              venceEn: true,
+              tenant: { select: { nombre: true, activo: true } },
+            },
+          });
+          return fila === null
+            ? null
+            : {
+                tenantId: fila.tenantId,
+                tenantNombre: fila.tenant.nombre,
+                tenantActivo: fila.tenant.activo,
+                venceEn: fila.venceEn,
               };
         },
       },
