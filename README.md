@@ -44,6 +44,7 @@ Al iniciar, el contenedor aplica las migraciones (`prisma migrate deploy`), corr
 |---|---|
 | `ZONA_HORARIA_AUTOMATIZACIONES` | Zona IANA en que se leen los horarios cron. Predeterminada: `UTC`. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TIMEOUT_MS` | Servidor de correo. Sin `SMTP_HOST` no se envía correo y cada corrida lo registra. Con `SMTP_HOST`, el resto debe ser válido o el contenedor no arranca. |
+| `TELEGRAM_BOT_TOKEN` | Token del bot global de Telegram, al que cada negocio vincula un chat desde el panel. Opcional: sin él la app arranca y el panel muestra Telegram como no disponible. |
 | `CONNECTION_RETRY_ATTEMPTS`, `CONNECTION_RETRY_PAUSE_MS` | Reintentos de conexión de las corridas programadas (3 intentos y 5000 ms; máximo 5 intentos). |
 
 La aplicación también lee `CONNECTION_TEST_TIMEOUT_MS` (5000 ms), `QUERY_TIMEOUT_MS` (15 000 ms) y `MAX_FILAS_CONSULTA` (200), pero `docker-compose.yml` no las reenvía: con Compose rigen los predeterminados salvo que se agreguen al servicio `app`.

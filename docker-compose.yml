@@ -45,6 +45,11 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_TIMEOUT_MS: ${SMTP_TIMEOUT_MS:-}
+      # Optional since CH-43 (DEC-185, DEC-196): the platform's global Telegram bot, which
+      # tenants link a chat to from the panel. Forwarded, never given a value here. Unset or
+      # empty, the app starts, makes no request to Telegram and the panel reads Telegram as
+      # not available; a token Telegram refuses does not stop the app either.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Optional since CH-17b (DEC-98, DEC-105): the scheduled-run connection retry policy.
       # Unset or empty, the app falls back to its documented defaults (3 attempts, 5000 ms
       # pause); an out-of-range value makes the container refuse to start.

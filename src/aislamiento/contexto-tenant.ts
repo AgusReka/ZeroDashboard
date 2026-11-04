@@ -69,14 +69,17 @@ export function exigirTenantActivo(): TenantActivo {
  * Runs `fn` inside a context naming `tenant`. There is deliberately no exported way to
  * mutate an existing context from a handler.
  *
- * Production has exactly two entries into a tenant context: the request hooks below,
- * and — since CH-13 (design-level resolution under DEC-13/DEC-14) — the scheduler in
- * `src/automatizaciones/planificador.ts`, which has no request to read a header from. The scheduler
+ * Production has exactly three entries into a tenant context: the request hooks below;
+ * since CH-13 (design-level resolution under DEC-13/DEC-14), the scheduler in
+ * `src/automatizaciones/planificador.ts`, which has no request to read a header from; and
+ * since CH-43 (DEC-185, DEC-196), the Telegram poller. The scheduler
  * derives `tenant` only from own-database `Tenant` rows with `activo = true`, never from
  * any externally supplied value (regla 2), and runs one tenant's automations per
  * context. Its boot sweep (CH-17a, DEC-99) also enters deactivated tenants, from the same
- * rows, only to close their `en-curso` runs; it runs nothing there. Tests and seeds use
- * it too.
+ * rows, only to close their `en-curso` runs; it runs nothing there. The Telegram poller
+ * enters a context only to store a link, and only with the tenant that
+ * `codigoVinculoTelegram.buscarPorHash` returned for a live code; it never takes a tenant
+ * from any field of a Telegram update. Tests and seeds use it too.
  *
  * Queries must start inside `fn`: a Prisma query is a lazy thenable that runs only when
  * awaited, so one returned bare from a non-`async` `fn` runs after this context has been
@@ -148,6 +151,11 @@ export const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
   'GET /api/panel/automatizaciones',
   'GET /api/panel/automatizaciones/:id/ajustes',
   'PUT /api/panel/automatizaciones/:id/ajustes',
+  // CH-43 (DEC-185, DEC-196): the «Avisos por Telegram» card. The tenant comes from the
+  // session, like every authenticated panel row.
+  'GET /api/panel/telegram',
+  'POST /api/panel/telegram/codigo',
+  'DELETE /api/panel/telegram/vinculo',
 ]);
 
 /**
