@@ -54,6 +54,17 @@ En una automatización activa, «Ajustar» abre un pop-up con cuatro cosas edita
 - «Desactivar» detiene la automatización; no se puede reactivar. Sus ejecuciones pasadas siguen disponibles (DEC-79).
 - El panel del cliente ajusta lo mismo, con menos opciones: «Cantidad mínima», «Hora de envío», días y correos, de 1 a 5: el panel no puede dejar la lista vacía (DEC-138, DEC-187, DEC-194).
 
+## Vista previa del mensaje
+
+En una automatización activa, «Vista previa» abre un pop-up que corre su consulta una vez, como la correría una ejecución: la misma compuerta de vistas, los valores guardados, la conexión de la automatización y la misma página de filas, hasta el tope del motor (DEC-189, DEC-195). Muestra:
+
+- Si una ejecución enviaría el correo y a quién («Se enviaría a: …»), o por qué no («No se enviaría: …»).
+- «Para», las filas y, si una ejecución armaría el mensaje, el «Asunto», el texto y el HTML del correo. El HTML se ve en un marco aislado, sin permisos.
+
+No envía nada ni crea una ejecución: el pop-up solo tiene «Cerrar» y todo envío sigue siendo el programado. Un rechazo (vista sin aprobar, valores que ya no cumplen la plantilla, credencial ilegible) o una falla de la consulta se informan dentro del pop-up, como en la prueba de plantilla.
+
+Cada vista previa que llega a correr la consulta queda en la **Auditoría** con el origen «Vista previa de automatización», la conexión, la sentencia compuesta y la plantilla. No guarda la automatización, los destinatarios ni nada del mensaje.
+
 ## Frescura de datos
 
 Pantalla para declarar cuán vieja puede estar la réplica de un tenant y compararla con la tolerancia de cada plantilla (CH-24).

@@ -12,14 +12,11 @@ import {
 } from './automatizaciones.js';
 import { SIN_AGENTES, type AbridorDeCanales } from '../agente/canal-agente.js';
 import { loadConfig } from '../compartido/config.js';
-import { camposDeDestino, destinoDeConexion } from '../conexiones/conexion-destino.js';
 import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from '../ejecucion/consulta-ejecucion.js';
 import { conTenantActivo, type TenantActivo } from '../aislamiento/contexto-tenant.js';
 import { componerCorreo, respaldoDe } from './correo.js';
-import { ErrorCredencialIlegible } from '../compartido/cripto-credencial.js';
 import type { Notificador } from './notificador.js';
-import { prepararSentencia } from '../ejecucion/parametros.js';
-import { componerSentencia, evaluarVistas } from '../plantillas/plantillas.js';
+import { entradaDeCorreo, peticionDeCorrida, prepararCorrida, type PlantillaDeCorrida } from './corrida.js';
 
 /**
  * CH-13: the in-process scheduler (DEC-75, X1, X2). One tick reads the active `Tenant`
@@ -46,6 +43,10 @@ import { componerSentencia, evaluarVistas } from '../plantillas/plantillas.js';
  * (DEC-110): one tenant at a time, one automation at a time. It also makes the one send
  * per run explicit (X6, DEC-107): the run's row carries `notificacion='enviando'` just
  * before it, and the boot sweep closes a row still carrying it as `incierta` (DEC-108).
+ *
+ * CH-42 (DEC-195): the steps before the dial, the run's page and the renderer input live in
+ * `./corrida.ts`, shared with the message preview, unchanged. The dial and its retries, the
+ * `enviando` marker, the send and every `Ejecucion` write stay here.
  *
  * The engine executes the pattern and nothing more (rule 6): there is no new execution
  * surface, no parallelism, no per-tenant lanes and no circuit breaker (DEC-110). Missed
@@ -192,17 +193,8 @@ interface AutomatizacionACorrer {
   minimoFilas: number;
 }
 
-/** The template columns a run reads: its statement, and the name and label its email shows. */
-interface PlantillaACorrer {
-  sql: string;
-  parametros: unknown;
-  entidades: unknown;
-  nombre: string;
-  automatizacion: string;
-  /** The message texts (CH-39): both set, or the email shows the table. */
-  encabezadoMensaje: string | null;
-  lineaMensaje: string | null;
-}
+/** The template columns a run reads (CH-42: declared in `./corrida.ts`, shared with the preview). */
+type PlantillaACorrer = PlantillaDeCorrida;
 
 export function crearPlanificador({
   prisma,
@@ -227,50 +219,15 @@ export function crearPlanificador({
     plantilla: PlantillaACorrer,
     conteo: ConteoIntentos,
   ): Promise<ResultadoCorrida> {
-    // DEC-71 applies to scheduled runs as well: only this connection's saved verdicts count.
-    const filas = await prisma.vistaCanonica.findMany({
-      where: { conexionId: automatizacion.conexionId },
-      select: { entidad: true, sql: true, estadoValidacion: true },
-    });
-    const compuerta = evaluarVistas(plantilla.entidades, filas);
-    if (!compuerta.ok) {
-      return { resultado: 'rechazo', categoria: 'vista-canonica-no-aprobada', entidades: compuerta.entidades };
-    }
-
-    // DEC-68 replaces a template in place, so the values accepted at creation may be stale.
-    const sql = componerSentencia(plantilla.sql, compuerta.vistas);
-    const preparada = prepararSentencia(sql, plantilla.parametros, automatizacion.valores);
+    const preparada = await prepararCorrida(prisma, automatizacion, plantilla, canales);
     if (!preparada.ok) {
-      return { resultado: 'rechazo', categoria: 'valores-invalidos' };
-    }
-
-    let destino;
-    try {
-      destino = await destinoDeConexion(prisma, automatizacion.conexionId, canales);
-    } catch (error) {
-      if (error instanceof ErrorCredencialIlegible) {
-        return { resultado: 'rechazo', categoria: 'credencial-ilegible' };
-      }
-      throw error;
-    }
-    if (destino === null) {
-      return { resultado: 'rechazo', categoria: 'conexion-no-encontrada' };
+      return preparada.rechazo;
     }
 
     // One page of the existing row ceiling (DEC-19): no new budget. The rows are counted
     // by `cierreDeResultado`, rendered by the notify step, and then dropped (D-1 leaning).
     const topeFilas = loadConfig().maxFilasPorConsulta;
-    return conectarConReintentos(
-      automatizacion.id,
-      {
-        ...camposDeDestino(destino),
-        sentencia: preparada.valor,
-        limite: topeFilas,
-        desplazamiento: 0,
-        topeFilas,
-      },
-      conteo,
-    );
+    return conectarConReintentos(automatizacion.id, peticionDeCorrida(preparada, topeFilas), conteo);
   }
 
   /**
@@ -369,21 +326,9 @@ export function crearPlanificador({
         // Unreachable: a send is only decided for a successful query with a notifier.
         throw new Error('notificar: envío decidido sin resultado, plantilla o notificador');
       }
-      const mensaje =
-        plantilla.encabezadoMensaje !== null && plantilla.lineaMensaje !== null
-          ? { encabezado: plantilla.encabezadoMensaje, linea: plantilla.lineaMensaje }
-          : null;
-      const correo = componerCorreo({
-        nombre: plantilla.nombre,
-        automatizacion: plantilla.automatizacion,
-        columnas: resultado.columnas,
-        filas: resultado.filas,
-        hayMas: resultado.paginacion.hayMas,
-        fecha: iniciadaEn,
-        zona: zonaHoraria,
-        mensaje,
-      });
-      respaldo = respaldoDe(mensaje, resultado.columnas);
+      const entrada = entradaDeCorreo(plantilla, resultado, iniciadaEn, zonaHoraria);
+      const correo = componerCorreo(entrada);
+      respaldo = respaldoDe(entrada.mensaje, resultado.columnas);
       await prisma.ejecucion.update({ where: { id }, data: { notificacion: 'enviando' }, select: { id: true } });
       return { salida: await notificador.enviar({ para: decision.para, ...correo }), respaldo };
     } catch (error) {

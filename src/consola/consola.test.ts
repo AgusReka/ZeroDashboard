@@ -423,6 +423,19 @@ const IDS = [
   'auto-confirmar',
   'auto-descartar',
   'auto-seguir',
+  // CH-42 (DEC-195): the message preview pop-up; «Cerrar» is its only button and #vp-html its one frame.
+  'auto-vista-previa',
+  'vp-titulo',
+  'vp-aviso',
+  'vp-decision',
+  'vp-para',
+  'vp-tabla',
+  'vp-mensaje',
+  'vp-asunto',
+  'vp-texto',
+  'vp-html',
+  'vp-confirmar',
+  'vp-cerrar',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -431,7 +444,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -687,6 +700,27 @@ describe('the console document, served by the real route', () => {
     const botonesSeccion = seccion.match(/<button[^>]*>/g) ?? [];
     assert.ok(botonesSeccion.length >= 5);
     assert.ok(botonesSeccion.every((etiqueta) => etiqueta.includes('type="button"')), 'no button submits');
+  });
+
+  /** CH-42 (DEC-195), spec "The frame is isolated": one sandboxed frame, whose attributes the script never touches. */
+  test('CH-42 the only iframe is the preview frame, with an empty sandbox, and the script never names sandbox', () => {
+    const marcos = marcado().match(/<iframe[^>]*>/g) ?? [];
+    assert.equal(marcos.length, 1, 'exactly one iframe');
+    assert.match(marcos[0], /^<iframe id="vp-html" /);
+    assert.match(marcos[0], / sandbox=""/);
+    assert.match(marcos[0], / title="Mensaje en HTML"/);
+    assert.ok(!/\b(src|srcdoc)=/.test(marcos[0]), 'no content attribute in the markup');
+    assert.ok(!script.includes('sandbox'), 'the script never names sandbox');
+    assert.equal(script.split('.srcdoc = ').length - 1, 1, 'one srcdoc assignment');
+    // The pop-up starts hidden, its message block too, and every button in it is type="button".
+    const seccion = marcado().slice(marcado().indexOf('id="auto-vista-previa"'));
+    const dialogo = seccion.slice(0, seccion.indexOf('id="auto-lista"'));
+    for (const id of ['auto-vista-previa', 'vp-mensaje', 'vp-confirmar']) {
+      assert.match(dialogo, new RegExp('id="' + id + '"[^>]*\\bhidden\\b'), id + ' starts hidden');
+    }
+    const botonesDialogo = dialogo.match(/<button[^>]*>/g) ?? [];
+    assert.equal(botonesDialogo.length, 1, '«Cerrar» is the only button');
+    assert.match(botonesDialogo[0], /id="vp-cerrar"[^>]*type="button"/);
   });
 
   // ---- behavioural cases: the script is run, not grepped ----------------------------
@@ -1322,7 +1356,8 @@ describe('the console document, served by the real route', () => {
     }
     assert.ok(!fila.textContent.includes('c-1'), 'the connection id is not shown');
     // DEC-79, DEC-174: an active automation is adjusted or deactivated; never deleted or reactivated.
-    assert.deepEqual(botones(fila).map((nodo) => nodo.textContent), ['Ver ejecuciones', 'Ajustar', 'Desactivar']);
+    // CH-42 (DEC-195): and previewed, before «Ajustar».
+    assert.deepEqual(botones(fila).map((nodo) => nodo.textContent), ['Ver ejecuciones', 'Vista previa', 'Ajustar', 'Desactivar']);
 
     escenario.respuestas.push(
       { status: 200, cuerpo: { automatizacion: automatizacion({ activo: false }) } },
@@ -1598,6 +1633,202 @@ describe('the console document, served by the real route', () => {
     assert.equal(ajusteAbierto(escenario), false);
     assert.equal(nodo(escenario, 'aj-confirmar').hidden, true);
   });
+
+  // ---- CH-42 (DEC-195): «Vista previa» runs the automation's query once and shows the message ---------
+
+  const vistaPreviaAbierta = (escenario: Escenario): boolean => !nodo(escenario, 'auto-vista-previa').hidden;
+  const MARCADO_EN_MENSAJE = '<b>alerta</b>';
+  const CORREO_PREVIA = {
+    asunto: 'Stock diario: 2 filas',
+    texto: 'Poco stock\n' + MARCADO_EN_MENSAJE,
+    html: '<!doctype html><p>' + MARCADO_EN_MENSAJE + '</p>',
+  };
+
+  /** A preview `200`: the engine result, flat, plus `decision`, `para` and `correo`. */
+  function respuestaPrevia(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      ...respuestaOk({
+        columnas: ['producto', 'cantidad'],
+        filas: [['Harina', 3], ['Sal', 1]],
+        paginacion: { limite: 200, desplazamiento: 0, hayMas: false, siguienteDesplazamiento: null, topeFilas: 200 },
+      }),
+      decision: 'enviar',
+      para: ['ops@empresa.com', 'ventas@empresa.com'],
+      correo: CORREO_PREVIA,
+      ...overrides,
+    };
+  }
+
+  /** Lists one active automation, then presses its «Vista previa» with `respuesta` queued. */
+  async function abrirVistaPrevia(
+    escenario: Escenario,
+    respuesta: { status: number; cuerpo: unknown; falla?: boolean },
+    extra: Array<{ status: number; cuerpo: unknown }> = [],
+  ): Promise<void> {
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    escenario.respuestas.push(respuesta, ...extra);
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('vista-previa')[0].disparar('click');
+    await asentarVarias();
+  }
+
+  const filasVistaPrevia = (escenario: Escenario): string[][] =>
+    buscar(nodo(escenario, 'vp-tabla'), (n) => n.tagName === 'tr').slice(1).map((tr) => tr.hijos.map((celda) => celda.textContent));
+
+  /** What a refusal or a failure leaves: no decision, no «Para», no rows and no message, the frame emptied. */
+  function sinResultado(escenario: Escenario): void {
+    assert.equal(nodo(escenario, 'vp-decision').textContent, '');
+    assert.equal(nodo(escenario, 'vp-para').textContent, '');
+    assert.deepEqual(filasVistaPrevia(escenario), []);
+    assert.equal(nodo(escenario, 'vp-mensaje').hidden, true);
+    assert.equal((nodo(escenario, 'vp-html') as unknown as { srcdoc: string }).srcdoc, '');
+  }
+
+  test('CH-42 «Vista previa» is offered on active rows only, between «Ver ejecuciones» and «Ajustar»', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion(), automatizacion({ id: 'a-2', activo: false })]);
+    const [activa, desactivada] = filasDe(escenario, 'auto-lista', 'automatizacion');
+    assert.deepEqual(botones(activa).map((n) => n.textContent), ['Ver ejecuciones', 'Vista previa', 'Ajustar', 'Desactivar']);
+    assert.deepEqual(botones(desactivada).map((n) => n.textContent), ['Ver ejecuciones']);
+    assert.equal(vistaPreviaAbierta(escenario), false, 'closed at load');
+  });
+
+  test('CH-42 the pop-up opens at once, says it is generating, and sends one POST with the tenant and no body', async () => {
+    const escenario = await arrancar();
+    await abrirVistaPrevia(escenario, { status: 200, cuerpo: new Promise(() => {}) });
+    assert.equal(vistaPreviaAbierta(escenario), true);
+    assert.equal(nodo(escenario, 'vp-aviso').textContent, 'Generando la vista previa…');
+    const envio = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.deepEqual([envio.url, envio.tenant, envio.cuerpo], ['/automatizaciones/a-1/vista-previa', 't-1', null]);
+  });
+
+  test('CH-42 a run that would send: decision, «Para», subject, rows, count, text and the frame', async () => {
+    const escenario = await arrancar();
+    await abrirVistaPrevia(escenario, { status: 200, cuerpo: respuestaPrevia() });
+    assert.equal(nodo(escenario, 'vp-decision').textContent, 'Se enviaría a: ops@empresa.com, ventas@empresa.com');
+    assert.equal(nodo(escenario, 'vp-para').textContent, 'Para: ops@empresa.com, ventas@empresa.com');
+    assert.equal(nodo(escenario, 'vp-asunto').textContent, 'Asunto: ' + CORREO_PREVIA.asunto);
+    assert.deepEqual(filasVistaPrevia(escenario), [['Harina', '3'], ['Sal', '1']]);
+    assert.equal(nodo(escenario, 'vp-aviso').textContent, '2 filas.');
+    assert.equal(nodo(escenario, 'vp-mensaje').hidden, false);
+    // Spec "Markup in the message stays in the frame": the HTML exactly as received, the text verbatim.
+    assert.equal((nodo(escenario, 'vp-html') as unknown as { srcdoc: string }).srcdoc, CORREO_PREVIA.html);
+    assert.equal(nodo(escenario, 'vp-texto').textContent, CORREO_PREVIA.texto);
+    assert.equal(nodo(escenario, 'vp-texto').hijos.length, 0, 'no element is created from the text');
+    // Spec "Nothing to send from the pop-up": the script adds no control to it.
+    for (const id of ['vp-tabla', 'vp-mensaje', 'vp-decision', 'vp-para']) {
+      assert.equal(buscar(nodo(escenario, id), (n) => n.tagName === 'button').length, 0, id);
+    }
+  });
+
+  test('CH-42 without recipients the message is still shown and «Para» says «sin destinatario»', async () => {
+    const escenario = await arrancar();
+    await abrirVistaPrevia(escenario, { status: 200, cuerpo: respuestaPrevia({ decision: 'sin-destinatario', para: [] }) });
+    assert.equal(nodo(escenario, 'vp-decision').textContent, 'No se enviaría: la automatización no tiene destinatarios.');
+    assert.equal(nodo(escenario, 'vp-para').textContent, 'Para: sin destinatario');
+    assert.equal(nodo(escenario, 'vp-mensaje').hidden, false);
+  });
+
+  for (const [decision, linea, correo] of [
+    ['omitida-sin-filas', 'No se enviaría: la consulta no devolvió filas.', null],
+    ['omitida-bajo-minimo', 'No se enviaría: hay menos filas que el mínimo para avisar.', null],
+    ['no-configurada', 'No se enviaría: el envío de correo no está configurado.', CORREO_PREVIA],
+  ] as Array<[string, string, unknown]>) {
+    test(`CH-42 the decision ${decision} has its own line`, async () => {
+      const escenario = await arrancar();
+      await abrirVistaPrevia(escenario, { status: 200, cuerpo: respuestaPrevia({ decision, correo }) });
+      assert.equal(nodo(escenario, 'vp-decision').textContent, linea);
+      assert.equal(nodo(escenario, 'vp-mensaje').hidden, correo === null);
+    });
+  }
+
+  test('CH-42 with no message the block stays hidden and the pop-up says so', async () => {
+    const escenario = await arrancar();
+    await abrirVistaPrevia(escenario, { status: 200, cuerpo: respuestaPrevia({ decision: 'omitida-bajo-minimo', correo: null }) });
+    assert.deepEqual(filasVistaPrevia(escenario), [['Harina', '3'], ['Sal', '1']]);
+    assert.equal(nodo(escenario, 'vp-mensaje').hidden, true);
+    assert.equal(nodo(escenario, 'vp-aviso').textContent, '2 filas. Con este resultado una ejecución no arma un mensaje.');
+    assert.equal((nodo(escenario, 'vp-html') as unknown as { srcdoc: string }).srcdoc, '');
+  });
+
+  test('CH-42 a page cut by the row cap says the message announces more', async () => {
+    const escenario = await arrancar();
+    const cuerpo = respuestaPrevia();
+    await abrirVistaPrevia(escenario, {
+      status: 200,
+      cuerpo: { ...cuerpo, paginacion: { ...(cuerpo.paginacion as object), hayMas: true, siguienteDesplazamiento: 2 } },
+    });
+    assert.equal(nodo(escenario, 'vp-aviso').textContent, '2 filas. Se leyó el tope de filas; el correo avisa que hay más.');
+  });
+
+  test('CH-42 an unknown decision shows no decision line', async () => {
+    const escenario = await arrancar();
+    await abrirVistaPrevia(escenario, { status: 200, cuerpo: respuestaPrevia({ decision: 'otra-cosa' }) });
+    assert.equal(nodo(escenario, 'vp-decision').textContent, '');
+  });
+
+  for (const [caso, respuesta, esperado] of [
+    ['an unapproved view', { status: 409, cuerpo: { error: 'vista-canonica-no-aprobada', entidades: ['producto'] } }, /producto.*Mapeo y validación/],
+    ['stale values', { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/valores/umbral'], problemas: [{ parametro: 'umbral', motivo: 'valor-faltante', campo: '/valores/umbral' }] } }, /Revisá estos parámetros: «umbral» no tiene valor/],
+    ['an unreadable credential', { status: 409, cuerpo: { error: 'credencial-ilegible' } }, /no se pudo descifrar/],
+    ['a failed query', { status: 200, cuerpo: { resultado: 'fallo', fase: 'ejecucion', categoria: 'tiempo-agotado', codigo: null, duracionMs: 15000, decision: null, para: [], correo: null } }, /^La consulta superó el tiempo máximo de ejecución y fue cancelada\.$/],
+    ['a network failure', { status: 0, cuerpo: null, falla: true }, /^No se pudo contactar con la aplicación\.$/],
+  ] as Array<[string, { status: number; cuerpo: unknown; falla?: boolean }, RegExp]>) {
+    test(`CH-42 ${caso} is told inside the pop-up, with no rows and no message`, async () => {
+      const escenario = await arrancar();
+      await abrirVistaPrevia(escenario, respuesta);
+      assert.equal(vistaPreviaAbierta(escenario), true);
+      assert.match(nodo(escenario, 'vp-aviso').textContent, esperado);
+      assert.notEqual(nodo(escenario, 'vp-aviso').textContent, 'Generando la vista previa…');
+      sinResultado(escenario);
+      assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/automatizaciones/a-1/vista-previa', 'no reload');
+    });
+  }
+
+  for (const [status, error, frase] of [
+    [404, 'automatizacion-no-encontrada', 'Esa automatización ya no existe para el tenant activo. Se actualizó la lista.'],
+    [409, 'automatizacion-desactivada', 'Esa automatización ya estaba desactivada. Se actualizó la lista.'],
+  ] as Array<[number, string, string]>) {
+    test(`CH-42 a ${status} ${error} says the automation screen's sentence and reloads the list`, async () => {
+      const escenario = await arrancar();
+      await abrirVistaPrevia(escenario, { status, cuerpo: { error } }, [
+        { status: 200, cuerpo: { automatizaciones: [], truncado: false } },
+      ]);
+      assert.equal(nodo(escenario, 'vp-aviso').textContent, frase);
+      sinResultado(escenario);
+      assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/automatizaciones');
+    });
+  }
+
+  test('CH-42 a tenant switch closes the pop-up and the answer still in flight lands nowhere', async () => {
+    const escenario = await arrancar();
+    let responder!: (valor: unknown) => void;
+    await abrirVistaPrevia(escenario, { status: 200, cuerpo: new Promise((resolver) => { responder = resolver; }) });
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(vistaPreviaAbierta(escenario), false);
+    responder(respuestaPrevia());
+    await asentarVarias();
+    assert.equal(vistaPreviaAbierta(escenario), false);
+    sinResultado(escenario);
+    assert.equal(nodo(escenario, 'vp-aviso').textContent, '');
+  });
+
+  for (const [forma, cerrar] of [
+    ['Cerrar', (e: Escenario) => nodo(e, 'vp-cerrar').disparar('click')],
+    ['Escape', (e: Escenario) => nodo(e, 'auto-vista-previa').disparar('keydown', { key: 'Escape' })],
+  ] as Array<[string, (e: Escenario) => void]>) {
+    test(`CH-42 ${forma} closes the pop-up at once and empties it, the frame included`, async () => {
+      const escenario = await arrancar();
+      await abrirVistaPrevia(escenario, { status: 200, cuerpo: respuestaPrevia() });
+      const antes = escenario.peticiones.length;
+      cerrar(escenario);
+      assert.equal(vistaPreviaAbierta(escenario), false);
+      assert.equal(nodo(escenario, 'vp-confirmar').hidden, true, 'nothing to discard, nothing asked');
+      sinResultado(escenario);
+      assert.equal(nodo(escenario, 'vp-texto').textContent, '');
+      assert.equal(nodo(escenario, 'vp-asunto').textContent, '');
+      assert.equal(escenario.peticiones.length, antes, 'closing sends nothing');
+    });
+  }
 
   /**
    * Spec "Creating an automation from the console", "Parameters of the chosen template" and
@@ -2810,7 +3041,8 @@ describe('the console document, served by the real route', () => {
     assert.ok(nodo(escenario, 'auto-vista-asunto').textContent.includes(hostil));
     assert.equal(nodo(escenario, 'auto-vista-titulo').textContent, hostil);
     assert.ok(!documento.includes('inner' + 'HTML'));
-    assert.ok(!documento.includes('src' + 'doc'));
+    // CH-42 (DEC-195): the only one is the message preview's sandboxed frame, never the wizard's preview.
+    assert.equal(documento.split('src' + 'doc').length - 1, 1);
   });
 
   /** Spec "Preview is text-only and read-only"; design E4. */
@@ -5245,6 +5477,15 @@ describe('the console document, served by the real route', () => {
     assert.equal(celdasAuditoria(escenario, 3)[2], 'otro-origen');
   });
 
+  test('CH-42 a message preview row names its origin and its template', async () => {
+    const escenario = await abrirAuditoria([
+      { ...REGISTRO_AUDITORIA, consultaGuardadaId: null, consultaVersion: null, consultaNombre: null, plantillaId: 'p-1', origen: 'automatizacion-vista-previa', resultado: 'ok', fase: null, categoria: null, filas: 3, duracionMs: 40 },
+    ]);
+    const fila = celdasAuditoria(escenario, 0);
+    assert.equal(fila[2], 'Vista previa de automatización');
+    assert.equal(fila[4], 'Plantilla p-1');
+  });
+
   test('CH-30e1 the filters go in the URL as the local day bounds and the result', async () => {
     const escenario = await abrirAuditoria();
     nodo(escenario, 'aud-desde').value = '2026-10-14';
@@ -7367,11 +7608,23 @@ describe('CH-29 the console page by session', () => {
     return { respuesta, vistas };
   }
 
-  function sinPeligros(documento: string): void {
+  /**
+   * CH-42 (DEC-195): `srcdoc` is forbidden in the login document; the console document carries it exactly once,
+   * as the script's property assignment on the preview frame.
+   */
+  function sinPeligros(documento: string, consola = false): void {
     assert.equal(documento.split('</' + 'script>').length - 1, 1, 'exactly one closing script tag');
     assert.ok(!documento.includes('`'), 'no backtick');
-    for (const prohibido of ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'srcdoc']) {
+    for (const prohibido of ['innerHTML', 'outerHTML', 'insertAdjacentHTML']) {
       assert.ok(!documento.includes(prohibido), prohibido);
+    }
+    if (consola) {
+      assert.equal(documento.split('srcdoc').length - 1, 1, 'srcdoc exactly once in the console document');
+      assert.equal(documento.split('.srcdoc = ').length - 1, 1, 'and it is a property assignment');
+      const script = documento.slice(documento.indexOf('<script>'));
+      assert.ok(script.includes('.srcdoc = '), 'the assignment is in the script');
+    } else {
+      assert.ok(!documento.includes('srcdoc'), 'no srcdoc in the login document');
     }
     assert.ok(documento.includes('<link rel="stylesheet" href="/ui/styles.css">'));
   }
@@ -7396,7 +7649,7 @@ describe('CH-29 the console page by session', () => {
     assert.equal(respuesta.headers['cache-control'], 'no-store');
     assert.ok(respuesta.body.includes('<textarea id="sql"'));
     assert.match(respuesta.body, /id="operador"[^>]*>[^<]*<strong>Ana<\/strong>/);
-    sinPeligros(respuesta.body);
+    sinPeligros(respuesta.body, true);
   });
 
   test('a name with markup is shown as text, escaped by the server', async () => {

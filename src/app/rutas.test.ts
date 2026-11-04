@@ -47,6 +47,7 @@ describe('CH-29 route table — every registered route is guarded or listed (DEC
       estilos: cargarEstilos(),
       zonaHoraria: 'America/Argentina/Buenos_Aires',
       topeFilas: 200,
+      correoConfigurado: false,
     });
     // Registered after the guard, so it only runs for a request the guard let through;
     // the response header is how the test tells a guard refusal from a handler's own 401
@@ -68,7 +69,7 @@ describe('CH-29 route table — every registered route is guarded or listed (DEC
 
   test('the table is not empty and holds the routes this test is about', () => {
     assert.ok(rutas.size > 40, `only ${rutas.size} routes registered`);
-    for (const fila of ['GET /consultas-guardadas', 'POST /consola/ingresar', 'POST /consola/salir', 'GET /tenants']) {
+    for (const fila of ['GET /consultas-guardadas', 'POST /consola/ingresar', 'POST /consola/salir', 'GET /tenants', 'POST /automatizaciones/:id/vista-previa']) {
       assert.ok(rutas.has(fila), `${fila} is not registered`);
     }
   });

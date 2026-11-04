@@ -36,6 +36,12 @@ import { EJEMPLOS_MAPEO } from './mapeo-ejemplos.js';
  * CH-34 (DEC-176): the second interpolation is a compile-time constant, not stored data — the
  * mapping examples (`EJEMPLOS_MAPEO`), written once into the script through `jsonEnScript`.
  * They reach the page only as `textContent` and as an editor `value`, never as markup.
+ *
+ * CH-42 (DEC-195): the one exception to "never as markup" is the automation's message preview. Its HTML
+ * part, as `componerCorreo` built it (every cell already escaped), is handed to one frame whose markup
+ * carries an empty `sandbox`, through that frame's document property, set from one helper. The frame gets an
+ * opaque origin with scripts, forms, pop-ups and navigation off, and the console's own document never parses
+ * the message. Everything else in the pop-up, the text part included, is `textContent`.
  */
 
 /**
@@ -187,6 +193,11 @@ function documentoConsola(nombreOperador: string): string {
   #mapeo-guia ol { margin: var(--space-3) 0; padding-inline-start: var(--space-6); }
   #mapeo-entidades details { margin: var(--space-3) 0; }
   #mapeo-entidades pre { margin: var(--space-3) 0; overflow-x: auto; font-family: var(--font-mono); font-size: var(--text-sm); }
+  /* CH-42 (DEC-195): the message preview is wide like the wizard; its text part keeps its line breaks and its
+     HTML part is the one sandboxed frame, framed like a card. */
+  #auto-vista-previa .zd-dialog { width: min(900px, 100%); }
+  #vp-texto { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--text-sm); }
+  #vp-html { width: 100%; min-height: 24rem; border: var(--border-width) solid var(--border-1); border-radius: var(--radius-md); }
   /* CH-30e2 (C-07): one stage list per connection, the KeyValueList grid; an unreached stage carries
      the neutral badge look. Built by the script, so local selectors instead of zd-* classes (G3'). */
   #tiempos-lista { display: grid; gap: var(--space-6); }
@@ -988,6 +999,31 @@ function documentoConsola(nombreOperador: string): string {
       </span>
       <button id="aj-guardar" class="zd-btn zd-btn--primary" type="button">Guardar ajustes</button>
       <button id="aj-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+   </div>
+  </div>
+
+  <!--
+    CH-42 (DEC-195): «Vista previa» on an active row opens this pop-up and runs the automation's query once. It
+    shows the rows, whether a run would send and to whom, and the message: the text part as text and the HTML part
+    in the one frame below, sandboxed with no permission. It sends nothing, so «Cerrar» is its only button; the
+    empty #vp-confirmar is the strip every pop-up carries, and it never shows.
+  -->
+  <div id="auto-vista-previa" class="zd-dialog-backdrop" hidden>
+   <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="vp-titulo">
+    <h2 id="vp-titulo" class="zd-dialog__title">Vista previa del mensaje</h2>
+    <p id="vp-aviso" class="ayuda" role="status"></p>
+    <p id="vp-decision"></p>
+    <p id="vp-para"></p>
+    <div class="zd-table-wrap zd-table-scroll"><table id="vp-tabla" class="zd-table"></table></div>
+    <div id="vp-mensaje" hidden>
+      <p id="vp-asunto"></p>
+      <pre id="vp-texto"></pre>
+      <iframe id="vp-html" sandbox="" title="Mensaje en HTML"></iframe>
+    </div>
+    <div class="zd-dialog__actions">
+      <span id="vp-confirmar" hidden></span>
+      <button id="vp-cerrar" class="zd-btn zd-btn--secondary" type="button">Cerrar</button>
     </div>
    </div>
   </div>
@@ -2822,8 +2858,10 @@ async function listarAutomatizaciones() {
     filas.map(function (fila) {
       var acciones = document.createElement('span');
       acciones.appendChild(boton('Ver ejecuciones', 'ver-ejecuciones', function () { verEjecuciones(fila.id); }));
-      // Only while it can still happen (DEC-79): adjusting in place (DEC-174) and deactivating.
+      // Only while it can still happen (DEC-79): previewing the message (DEC-195), adjusting in place (DEC-174)
+      // and deactivating.
       if (fila.activo === true) {
+        acciones.appendChild(boton('Vista previa', 'vista-previa', function () { abrirVistaPrevia(String(fila.id)); }));
         acciones.appendChild(boton('Ajustar', 'ajustar', function () { abrirAjuste(String(fila.id)); }));
         acciones.appendChild(boton('Desactivar', 'desactivar', function () { desactivar(fila.id); }));
       }
@@ -3187,6 +3225,113 @@ async function verEjecuciones(id) {
     filas.length === 0 ? 'Esta automatización todavía no tiene ejecuciones.'
       : resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' ejecuciones más recientes.' : null
   );
+}
+
+// --- Message preview (CH-42, DEC-195) -------------------------------------------------------
+// «Vista previa» runs the automation's query once, as a run would read it, and shows the rows, whether a run
+// would send and to whom, and the message. Nothing is sent and no run is recorded; the pop-up has no control
+// that sends, saves or schedules. Refusals and failures read as in the template test. Every value is text,
+// except the HTML part, which only the frame below receives, through mostrarHtmlVistaPrevia.
+
+var fondoVistaPrevia = document.getElementById('auto-vista-previa');
+var avisoVistaPrevia = document.getElementById('vp-aviso');
+var decisionVistaPrevia = document.getElementById('vp-decision');
+var paraVistaPrevia = document.getElementById('vp-para');
+var tablaVistaPrevia = document.getElementById('vp-tabla');
+var mensajeVistaPrevia = document.getElementById('vp-mensaje');
+var asuntoMensajeVistaPrevia = document.getElementById('vp-asunto');
+var textoVistaPrevia = document.getElementById('vp-texto');
+var marcoVistaPrevia = document.getElementById('vp-html');
+var botonCerrarVistaPrevia = document.getElementById('vp-cerrar');
+// Raised on every open and close, so an answer that arrives after either lands nowhere.
+var generacionVistaPrevia = 0;
+
+// The decision a run would take, one sentence each; «enviar» names the recipients. An unknown value shows nothing.
+var DECISIONES_VISTA_PREVIA = {
+  'omitida-sin-filas': 'No se enviaría: la consulta no devolvió filas.',
+  'omitida-bajo-minimo': 'No se enviaría: hay menos filas que el mínimo para avisar.',
+  'sin-destinatario': 'No se enviaría: la automatización no tiene destinatarios.',
+  'no-configurada': 'No se enviaría: el envío de correo no está configurado.'
+};
+
+// The one place the frame receives the message: the isolated frame's own document, never the console's.
+function mostrarHtmlVistaPrevia(html) {
+  marcoVistaPrevia.srcdoc = String(html);
+}
+
+function limpiarVistaPrevia() {
+  generacionVistaPrevia += 1;
+  avisoVistaPrevia.textContent = '';
+  decisionVistaPrevia.textContent = '';
+  paraVistaPrevia.textContent = '';
+  vaciar(tablaVistaPrevia);
+  asuntoMensajeVistaPrevia.textContent = '';
+  textoVistaPrevia.textContent = '';
+  mensajeVistaPrevia.hidden = true;
+  mostrarHtmlVistaPrevia('');
+}
+
+// Nothing is ever typed here, so Cerrar and Escape close at once and #vp-confirmar never shows.
+var dialogoVistaPrevia = crearDialogo({
+  fondo: fondoVistaPrevia,
+  primerCampo: botonCerrarVistaPrevia,
+  cancelar: botonCerrarVistaPrevia,
+  confirmar: document.getElementById('vp-confirmar'),
+  hayCambios: function () { return false; },
+  alCerrar: limpiarVistaPrevia
+});
+limpiarVistaPrevia();
+
+// A 200 with resultado "ok", already rendered by mostrarResultadoPrueba: the count line for a run's page, the
+// decision, «Para» and, when a run would compose one, the message.
+function mostrarVistaPrevia(cuerpo) {
+  var filas = Array.isArray(cuerpo.filas) ? cuerpo.filas.length : 0;
+  var cuenta = filas === 1 ? '1 fila.' : filas + ' filas.';
+  if (cuerpo.paginacion && cuerpo.paginacion.hayMas === true) {
+    cuenta += ' Se leyó el tope de filas; el correo avisa que hay más.';
+  }
+  var para = Array.isArray(cuerpo.para) ? cuerpo.para.map(String) : [];
+  if (cuerpo.decision === 'enviar') {
+    decisionVistaPrevia.textContent = 'Se enviaría a: ' + para.join(', ');
+  } else if (Object.prototype.hasOwnProperty.call(DECISIONES_VISTA_PREVIA, cuerpo.decision)) {
+    decisionVistaPrevia.textContent = DECISIONES_VISTA_PREVIA[cuerpo.decision];
+  }
+  paraVistaPrevia.textContent = 'Para: ' + (para.length === 0 ? 'sin destinatario' : para.join(', '));
+  var correo = cuerpo.correo;
+  if (correo !== null && typeof correo === 'object' && typeof correo.asunto === 'string' &&
+      typeof correo.texto === 'string' && typeof correo.html === 'string') {
+    asuntoMensajeVistaPrevia.textContent = 'Asunto: ' + correo.asunto;
+    textoVistaPrevia.textContent = correo.texto;
+    mostrarHtmlVistaPrevia(correo.html);
+    mensajeVistaPrevia.hidden = false;
+  } else {
+    cuenta += ' Con este resultado una ejecución no arma un mensaje.';
+  }
+  avisoVistaPrevia.textContent = cuenta;
+}
+
+async function abrirVistaPrevia(id) {
+  ocultarBanner();
+  limpiarVistaPrevia();
+  var g = generacionVistaPrevia;
+  avisoVistaPrevia.textContent = 'Generando la vista previa…';
+  dialogoVistaPrevia.abrir();
+  // No body: the route reads everything from the stored automation.
+  var leido = await leerPrueba('/automatizaciones/' + encodeURIComponent(id) + '/vista-previa', { method: 'POST' });
+  // Dropped when the pop-up was closed or reopened meanwhile (a tenant switch closes it).
+  if (g !== generacionVistaPrevia) { return; }
+  // null: a tenant refusal the banner already shows, behind the pop-up; the same sentence is moved inside.
+  if (leido === null) { llevarBannerA(dialogoVistaPrevia, avisoVistaPrevia); return; }
+  var error = leido.cuerpo !== null && typeof leido.cuerpo === 'object' ? leido.cuerpo.error : undefined;
+  if ((leido.status === 404 && error === 'automatizacion-no-encontrada') ||
+      (leido.status === 409 && error === 'automatizacion-desactivada')) {
+    avisoVistaPrevia.textContent = MENSAJES_AUTOMATIZACION[error];
+    await listarAutomatizaciones();
+    return;
+  }
+  if (mostrarResultadoPrueba({ aviso: avisoVistaPrevia, tabla: tablaVistaPrevia }, leido)) {
+    mostrarVistaPrevia(leido.cuerpo);
+  }
 }
 
 // --- Freshness (CH-24, DEC-142 to DEC-145, screen C-22) --------------------------
@@ -5715,7 +5860,9 @@ var ORIGENES_AUDITORIA = {
   'consulta': 'Consulta',
   'plantilla-prueba': 'Prueba de plantilla',
   'validacion-mapeo': 'Validación de mapeo',
-  'conexion-prueba': 'Prueba de conexión'
+  'conexion-prueba': 'Prueba de conexión',
+  // CH-42 (DEC-195): the message preview; its Consulta cell names the template, like a template test.
+  'automatizacion-vista-previa': 'Vista previa de automatización'
 };
 var cuerpoAuditoria = document.getElementById('auditoria-cuerpo');
 var avisoAuditoria = document.getElementById('auditoria-aviso');

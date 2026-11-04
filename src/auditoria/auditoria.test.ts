@@ -80,6 +80,12 @@ describe('CH-20 audit row — pure (DEC-160)', () => {
       { resultado: 'ok', fase: null, categoria: null, codigo: null, filas: 0, duracionMs: 1 },
     );
     assert.equal(prueba.plantillaId, 'p-1');
+    // CH-42 (DEC-195): the message preview has its own origin and names its template.
+    const vistaPrevia = filaDeAuditoria(
+      { origen: 'automatizacion-vista-previa', conexionId: 'c-1', sql: 'SELECT 3', operador: OPERADOR, consulta: null, plantillaId: 'p-1' },
+      { resultado: 'ok', fase: null, categoria: null, codigo: null, filas: 2, duracionMs: 1 },
+    );
+    assert.deepEqual([vistaPrevia.origen, vistaPrevia.plantillaId], ['automatizacion-vista-previa', 'p-1']);
   });
 });
 

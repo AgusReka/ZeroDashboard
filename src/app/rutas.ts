@@ -34,6 +34,11 @@ export interface DependenciasRutas {
   zonaHoraria: string;
   /** CH-40: the engine's row cap (`maxFilasPorConsulta`), the bound of an automation's minimum. */
   topeFilas: number;
+  /**
+   * CH-42 (DEC-195): whether the boot notifier exists (`SMTP_HOST` set), the signal the
+   * scheduler decides with. Required, so the entry point always states it.
+   */
+  correoConfigurado: boolean;
 }
 
 /**
@@ -44,7 +49,7 @@ export interface DependenciasRutas {
  * scheduler, shutdown and `listen`; nothing here opens a connection or a port.
  */
 export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): void {
-  const { prisma, registro, estilos, zonaHoraria, topeFilas } = deps;
+  const { prisma, registro, estilos, zonaHoraria, topeFilas, correoConfigurado } = deps;
 
   // CH-29 (DEC-152): the operator guard comes FIRST, ahead even of the tenant hooks below,
   // so a request without a console session is a 401 before the tenant header is read. It
@@ -88,8 +93,9 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-13: automations are tenant-owned, so the full scoped client, like the test route.
   // The deployment zone (DEC-77) comes from this file's one `loadConfig()`, so a schedule
   // is accepted only in the zone the scheduler will read it in, and a minimum of rows only
-  // up to the row cap it reads with (CH-40).
-  registerAutomatizacionRoutes(app, prisma, zonaHoraria, topeFilas);
+  // up to the row cap it reads with (CH-40). CH-42 (DEC-195): the message preview dials like
+  // the test route, so it gets the agent registry, and decides like the scheduler.
+  registerAutomatizacionRoutes(app, prisma, zonaHoraria, topeFilas, { canales: registro, correoConfigurado });
   // CH-19b (DEC-121): the tenant's agent and its token, scoped by the header like the routes
   // above and not exempt; the `/agente/` prefix stays reserved for the agent itself (DEC-116).
   registerAgenteRoutes(app, prisma, registro);

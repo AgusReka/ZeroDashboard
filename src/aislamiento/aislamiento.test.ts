@@ -456,8 +456,12 @@ describe(
       },
       // CH-33 (DEC-174): the adjust comes before `desactivar`, whose owner control leaves the
       // fixture's automation deactivated, which the adjust would answer with 409.
-      ...(['', '/ejecuciones', '/ajustes', '/desactivar'] as const).map((sufijo) => {
-        const metodo = sufijo === '/desactivar' ? 'POST' : sufijo === '/ajustes' ? 'PUT' : 'GET';
+      // CH-42 (DEC-195): so does the message preview. Its owner control is a 409: the
+      // fixture's template reads `pedido`, which has no view on either connection, so the
+      // owner reaches the DEC-71 gate, which proves the route resolved its own automation.
+      ...(['', '/ejecuciones', '/ajustes', '/vista-previa', '/desactivar'] as const).map((sufijo) => {
+        const metodo =
+          sufijo === '/desactivar' || sufijo === '/vista-previa' ? 'POST' : sufijo === '/ajustes' ? 'PUT' : 'GET';
         return {
           nombre: `${metodo} /automatizaciones/:id${sufijo}`,
           errorEsperado: 'automatizacion-no-encontrada',
@@ -468,7 +472,7 @@ describe(
               headers: cabeceras(llamante),
               ...(metodo === 'PUT' ? { payload: { cron: '0 9 * * *' } } : {}),
             }),
-          exitoso: 200,
+          exitoso: sufijo === '/vista-previa' ? 409 : 200,
         };
       }),
     ];

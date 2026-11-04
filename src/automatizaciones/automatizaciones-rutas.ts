@@ -7,6 +7,7 @@ import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
 import { direccionValida } from './correo.js';
 import { prepararSentencia, type ProblemaParametro } from '../ejecucion/parametros.js';
+import { registerVistaPreviaRoute, type OpcionesVistaPrevia } from './vista-previa.js';
 
 /**
  * CH-13: the automation lifecycle routes — create, list, get, deactivate (DEC-74,
@@ -17,7 +18,9 @@ import { prepararSentencia, type ProblemaParametro } from '../ejecucion/parametr
  * adds the minimum rows to both; CH-41 (DEC-187, DEC-194) turns the one recipient into a
  * list of at most 5. There is no
  * delete and no reactivation route, and the template and the connection never change: for
- * those, the automation is deactivated and created again.
+ * those, the automation is deactivated and created again. CH-42 (DEC-195) adds the message
+ * preview, registered from here so every caller of this registrar gets it; its handler lives
+ * in `./vista-previa.ts`, where the dial and the audit write are visible.
  */
 
 /**
@@ -302,14 +305,19 @@ function proximaIso(cron: string, ahora: Date, zona: string): string | null {
  * its one `loadConfig()`, so a schedule is accepted only if it resolves in the zone the
  * scheduler will read it in. CH-40: `topeFilas` is the engine's row cap from the same
  * `loadConfig()` (`maxFilasPorConsulta`, DEC-19), the one the scheduler reads its page with,
- * so a minimum is accepted only if a run can reach it.
+ * so a minimum is accepted only if a run can reach it. CH-42: `opciones` carries the agent
+ * registry and whether SMTP is configured to the preview; absent, it fails closed and reads
+ * as not configured.
  */
 export function registerAutomatizacionRoutes(
   app: FastifyInstance,
   prisma: PrismaAislado,
   zonaHoraria: string,
   topeFilas: number,
+  opciones: OpcionesVistaPrevia = {},
 ): void {
+  registerVistaPreviaRoute(app, prisma, zonaHoraria, topeFilas, opciones);
+
   app.post<{ Body: RegistroAutomatizacionBody }>(
     '/automatizaciones',
     { schema: { body: registroAutomatizacionSchema }, attachValidation: true },
