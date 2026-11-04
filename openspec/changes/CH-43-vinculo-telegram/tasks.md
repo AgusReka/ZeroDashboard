@@ -58,7 +58,7 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 
 ### 10. Verification (CH-43b)
 - [x] 10.1 `npm run build`; `npm run test:db` as in 5.2.
-- [ ] 10.2 With the user's go-ahead and a test bot token in their own `.env`: `docker compose up -d --build app`, generate a code with `curl` against the panel API, send `/start <code>` from Telegram, read `vinculado`. Without a token, the app starts and logs `no-configurado`.
+- [x] 10.2 With the user's go-ahead and a test bot token in their own `.env`: `docker compose up -d --build app`, generate a code with `curl` against the panel API, send `/start <code>` from Telegram, read `vinculado`. Without a token, the app starts and logs `no-configurado`. Done 2026-11-04: real bot linked from the panel card (`telegram-vinculo` `vinculado`); a made-up token kept `/health` at 200 with `telegram-sondeo` `rechazada` backing off (4 lines in ~20 s) and no token or chat id in the logs; no token logged `no-configurado` with `/health` at 200.
 
 ## CH-43c — panel UI
 
