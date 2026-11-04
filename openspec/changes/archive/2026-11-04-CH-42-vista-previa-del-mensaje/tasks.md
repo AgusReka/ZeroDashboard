@@ -9,7 +9,7 @@ DEC-195 is already written in `docs/01-decisiones.md` and goes on `v2/dec-195` f
 Order is fixed for safety: the shared steps are extracted from the planner first, with `src/automatizaciones/planificador.test.ts` untouched and green; then the audit origin and the route; then the console; then the docs.
 
 ## 0. Decision
-- [ ] 0.1 DEC-195 is present in `docs/01-decisiones.md` on `v2/dec-195` (written; design §0). Confirm it is merged or in its own PR before code. Do not edit it here.
+- [x] 0.1 DEC-195 is present in `docs/01-decisiones.md` on `v2/dec-195` (written; design §0). Confirm it is merged or in its own PR before code. Do not edit it here. (Completed by PR #225, merged 2026-11-04, after verify.)
 
 ## 1. Shared steps (planner untouched)
 - [x] 1.1 `src/automatizaciones/corrida.ts` (new): `AutomatizacionDeCorrida`, `PlantillaDeCorrida` (moved from the planner's `PlantillaACorrer`), `PreparacionCorrida`, `prepararCorrida`, `peticionDeCorrida`, `entradaDeCorreo` (design §2). It imports neither `./notificador.js` nor `./planificador.js`.
