@@ -66,15 +66,23 @@ The system SHALL filter every read and write on `Conexion`, `ConsultaGuardada`, 
 
 ### Requirement: Cross-Tenant Isolation Is Proven by an Automated Test (T2)
 
-The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes (triggering validation, reading a validation result, reading the automation-applicability report), the routes creating, listing, getting, and deactivating an `Automatizacion` and listing an automation's `Ejecucion` rows, and `GET /conexiones`. The suite SHALL also include a two-tenant scheduler tick asserting that each tenant's result rows are delivered only to that tenant's own automation recipient (a recording fake notifier is permitted; the database is not mocked). The panel two-tenant suite (`src/aislamiento-panel.test.ts`) SHALL additionally exercise `GET /api/panel/automatizaciones` from each tenant's session, including with the other tenant's `X-Tenant-Id` header, and SHALL assert that neither response contains the other tenant's automations, execution dates or availability.
-(Previously: the tick scenario named one `destinatario` per tenant.)
+The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes (triggering validation, reading a validation result, reading the automation-applicability report), the routes creating, listing, getting, previewing and deactivating an `Automatizacion` and listing an automation's `Ejecucion` rows, and `GET /conexiones`. The suite SHALL also include a two-tenant scheduler tick asserting that each tenant's result rows are delivered only to that tenant's own automation recipient (a recording fake notifier is permitted; the database is not mocked). The panel two-tenant suite (`src/aislamiento-panel.test.ts`) SHALL additionally exercise `GET /api/panel/automatizaciones` from each tenant's session, including with the other tenant's `X-Tenant-Id` header, and SHALL assert that neither response contains the other tenant's automations, execution dates or availability.
+(Previously: the sweep had no preview route.)
 
 #### Scenario: Full two-tenant route sweep
 
 - GIVEN two tenants, each with its own `Conexion`, `ConsultaGuardada`, schema-mapping definition, validation result, `Automatizacion`, and `Ejecucion`
-- WHEN every tenant-scoped route is exercised from both tenants, including validate, validation-read, applicability-report, automation, runs-listing, and connection-listing routes
+- WHEN every tenant-scoped route is exercised from both tenants, including validate, validation-read, applicability-report, automation, preview, runs-listing, and connection-listing routes
 - THEN no response SHALL contain, confirm the existence of, trigger validation against, or act upon the other tenant's row
 - AND a cross-tenant request naming another tenant's connection, entity, or automation SHALL receive `404`
+
+#### Scenario: Preview sweep row
+
+- GIVEN tenants A and B, each with an active automation
+- WHEN A calls `POST /automatizaciones/:id/vista-previa` with B's automation id, and B with A's
+- THEN each SHALL receive `404 automatizacion-no-encontrada`, the same as for an unknown id
+- AND the body SHALL contain none of the owner's statement, credential, tenant id, automation id or recipient addresses
+- AND the same route called by each tenant on its own automation SHALL still answer, so the refusal is not a broken route
 
 #### Scenario: Connection listing sweep row
 
@@ -139,8 +147,8 @@ The scheduler SHALL enter each tenant's context using the same fail-closed, stru
 - THEN it SHALL throw rather than execute unfiltered, same as a request-time query
 ### Requirement: Notification Recipient Derives Only From the Tenant-Scoped Automation Row (rule 2)
 
-The recipients of a notification SHALL be read only from the `destinatarios` of the `Automatizacion` row loaded inside that run's tenant context, all of them and nothing else. They MUST NOT be taken from any request value, environment variable, or another tenant's row.
-(Previously: one `destinatario`.)
+The recipients of a notification SHALL be read only from the `destinatarios` of the `Automatizacion` row loaded inside that run's tenant context, all of them and nothing else. They MUST NOT be taken from any request value, environment variable, or another tenant's row. The message preview's `para` SHALL follow the same rule: the `destinatarios` of the automation row the preview loaded through the tenant-scoped client, as stored.
+(Previously: only the run read recipients.)
 
 #### Scenario: Recipient comes from the run's own automation
 
@@ -153,6 +161,12 @@ The recipients of a notification SHALL be read only from the `destinatarios` of 
 - GIVEN an automation with `destinatarios` `[]` and any environment variable resembling a recipient
 - WHEN it runs with rows
 - THEN no message SHALL be sent and `notificacion` SHALL be `sin-destinatario`
+
+#### Scenario: The preview's «Para» comes from the previewed automation
+
+- GIVEN two tenants' automations with different `destinatarios` lists and the same plantilla
+- WHEN each tenant previews its own automation
+- THEN each `para` SHALL equal its own automation's `destinatarios`, in order, and SHALL contain none of the other tenant's addresses
 
 ### Requirement: Boot Sweep Enters Each Tenant Context, Including Deactivated Tenants (DEC-99, DEC-14)
 
