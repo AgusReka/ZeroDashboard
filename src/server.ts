@@ -6,10 +6,13 @@ import { cargarEstilos } from './compartido/estilos-rutas.js';
 import { crearRegistroAgentes } from './agente/registro-agentes.js';
 import { registrarRutas } from './app/rutas.js';
 import { extenderConAislamiento } from './aislamiento/aislamiento-prisma.js';
-import { crearPlanificador } from './automatizaciones/planificador.js';
+import { crearPlanificador, relojDelSistema } from './automatizaciones/planificador.js';
 import { crearNotificadorSmtp } from './automatizaciones/notificador.js';
 import { registrarApagado } from './app/apagado.js';
 import { leerTelegram } from './telegram/telegram-config.js';
+import { crearClienteTelegram } from './telegram/cliente-telegram.js';
+import { crearSondeoTelegram } from './telegram/sondeo-telegram.js';
+import { crearVincular } from './telegram/vincular.js';
 
 const config = loadConfig();
 // CH-21a (DEC-124): the five shared stylesheet files are read once, here, before any
@@ -33,10 +36,20 @@ const notificador = crearNotificadorSmtp({ timeoutMs: config.smtpTimeoutMs });
 app.log.info({ correo: notificador === null ? 'no-configurado' : 'configurado' }, 'email notifications');
 // CH-43 (DEC-185, DEC-196): `TELEGRAM_BOT_TOKEN` is optional and read only by
 // `leerTelegram`, never copied onto `AppConfig`. Only the configured/not-configured state is
-// logged, never the token. The poller arrives in CH-43b; until then the panel reads
-// Telegram as not available either way.
+// logged, never the token. With no token there is no poller and no request to Telegram;
+// with one, the poller is built here and starts only once the server listens.
 const configTelegram = leerTelegram(process.env);
 app.log.info({ telegram: configTelegram === null ? 'no-configurado' : 'configurado' }, 'telegram link');
+const sondeo =
+  configTelegram === null
+    ? null
+    : crearSondeoTelegram({
+        cliente: crearClienteTelegram(configTelegram.token),
+        vincular: crearVincular(prisma, relojDelSistema),
+        reloj: relojDelSistema,
+        aleatorio: Math.random,
+        log: app.log,
+      });
 // CH-17b (DEC-98, DEC-105, DEC-106): the connection retry policy from
 // `CONNECTION_RETRY_ATTEMPTS` and `CONNECTION_RETRY_PAUSE_MS`, already validated by
 // `loadConfig()` above. Only scheduled runs retry; the console paths never do.
@@ -55,6 +68,10 @@ const planificador = crearPlanificador({
 app.addHook('onClose', async () => {
   await planificador.detener();
 });
+// CH-43 (DEC-185, DEC-196): closing aborts the poller's open long poll instead of waiting it out.
+app.addHook('onClose', async () => {
+  await sondeo?.detener();
+});
 
 // CH-29 (DEC-152): the operator guard, the tenant hooks and every route, in their
 // load-bearing order, live in `src/app/rutas.ts` so a test can build the same route table.
@@ -66,8 +83,8 @@ registrarRutas(app, {
   topeFilas: config.maxFilasPorConsulta,
   // CH-42 (DEC-195): the message preview decides with the scheduler's own signal.
   correoConfigurado: notificador !== null,
-  // CH-43 (DEC-185, DEC-196): no poller yet (CH-43b), so the bot is never available.
-  telegram: null,
+  // CH-43 (DEC-185, DEC-196): the poller is the panel's bot port; `null` with no token.
+  telegram: sondeo,
 });
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops
@@ -79,7 +96,11 @@ registrarApagado({ proceso: process, cerrar: () => app.close(), log: app.log });
 // safe; the sweep never rejects, so a failed one does not reach the `.catch` below.
 app
   .listen({ port: config.port, host: '0.0.0.0' })
-  .then(() => planificador.arrancar())
+  .then(() => {
+    // CH-43 (DEC-185, DEC-196): the poller starts beside the scheduler, never before `listen`.
+    sondeo?.iniciar();
+    return planificador.arrancar();
+  })
   .catch((error: unknown) => {
     app.log.error(error);
     process.exit(1);

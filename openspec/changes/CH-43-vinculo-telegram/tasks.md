@@ -41,23 +41,23 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 ## CH-43b — network loop
 
 ### 6. Client
-- [ ] 6.1 `src/telegram/cliente-telegram.ts`: `Buscar`, `CategoriaTelegram`, `ActualizacionTelegram`, `crearClienteTelegram` (design §4).
-- [ ] 6.2 `src/telegram/cliente-telegram.test.ts`: request shape, every category, update parsing (a chat id above 32 bits, missing fields), and the token never appearing in a result when the fake throws errors containing it.
+- [x] 6.1 `src/telegram/cliente-telegram.ts`: `Buscar`, `CategoriaTelegram`, `ActualizacionTelegram`, `crearClienteTelegram` (design §4).
+- [x] 6.2 `src/telegram/cliente-telegram.test.ts`: request shape, every category, update parsing (a chat id above 32 bits, missing fields), and the token never appearing in a result when the fake throws errors containing it.
 
 ### 7. Linking
-- [ ] 7.1 `src/telegram/vincular.ts`: `crearVincular` with the lookup and the `deleteMany` + `create` transaction (design §6).
-- [ ] 7.2 `src/telegram/vincular-rutas.test.ts` (DB): link, relink, shared chat, expired code, deactivated tenant, code deleted after use, A's code never touching B, no personal data stored.
+- [x] 7.1 `src/telegram/vincular.ts`: `crearVincular` with the lookup and the `deleteMany` + `create` transaction (design §6).
+- [x] 7.2 `src/telegram/vincular-rutas.test.ts` (DB): link, relink, shared chat, expired code, deactivated tenant, code deleted after use, A's code never touching B, no personal data stored.
 
 ### 8. Poller
-- [ ] 8.1 `src/automatizaciones/planificador.ts`: export `relojDelSistema`.
-- [ ] 8.2 `src/telegram/sondeo-telegram.ts`: `crearSondeoTelegram`, `esperaSondeo`, `manejarMensaje`, the cap and the closed-field logs (design §5).
-- [ ] 8.3 `src/telegram/sondeo-telegram.test.ts`: offset advance, no overlap, `getMe` gate, backoff bounds and reset, ignored messages, `/start@bot`, loose code, the cap, both answers, a failed answer keeping the link, `detener()` aborting an open request, no log containing the token or a chat id.
+- [x] 8.1 `src/automatizaciones/planificador.ts`: export `relojDelSistema`.
+- [x] 8.2 `src/telegram/sondeo-telegram.ts`: `crearSondeoTelegram`, `esperaSondeo`, `manejarMensaje`, the cap and the closed-field logs (design §5).
+- [x] 8.3 `src/telegram/sondeo-telegram.test.ts`: offset advance, no overlap, `getMe` gate, backoff bounds and reset, ignored messages, `/start@bot`, loose code, the cap, both answers, a failed answer keeping the link, `detener()` aborting an open request, no log containing the token or a chat id.
 
 ### 9. Wiring
-- [ ] 9.1 `src/server.ts`: build the poller when the token is set, its `onClose` hook, `telegram: sondeo` to the routes, `sondeo?.iniciar()` after `listen` (design §9).
+- [x] 9.1 `src/server.ts`: build the poller when the token is set, its `onClose` hook, `telegram: sondeo` to the routes, `sondeo?.iniciar()` after `listen` (design §9).
 
 ### 10. Verification (CH-43b)
-- [ ] 10.1 `npm run build`; `npm run test:db` as in 5.2.
+- [x] 10.1 `npm run build`; `npm run test:db` as in 5.2.
 - [ ] 10.2 With the user's go-ahead and a test bot token in their own `.env`: `docker compose up -d --build app`, generate a code with `curl` against the panel API, send `/start <code>` from Telegram, read `vinculado`. Without a token, the app starts and logs `no-configurado`.
 
 ## CH-43c — panel UI
