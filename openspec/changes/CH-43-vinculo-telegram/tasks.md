@@ -25,7 +25,7 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 
 ### 3. Config and code
 - [x] 3.1 `src/telegram/telegram-config.ts`: `leerTelegram(env)` (design §2). `src/compartido/config.test.ts`: `TELEGRAM_BOT_TOKEN` in the reset list; `leerTelegram` unset, empty, set.
-- [ ] 3.2 `docker-compose.yml` (`${TELEGRAM_BOT_TOKEN:-}` with a comment), the example env file and the README variable table. Compose and README done; the example env file is pending: the agent's permissions block it, so the user adds `TELEGRAM_BOT_TOKEN=` by hand.
+- [x] 3.2 `docker-compose.yml` (`${TELEGRAM_BOT_TOKEN:-}` with a comment), the example env file and the README variable table. Compose and README done; the example env file is pending: the agent's permissions block it, so the user adds `TELEGRAM_BOT_TOKEN=` by hand. Added by the user on 2026-11-04.
 - [x] 3.3 `src/telegram/codigo-vinculo.ts` and its test: `generarCodigo`, `normalizarCodigo`, `hashCodigo`, `DURACION_CODIGO_MS` (design §3).
 
 ### 4. Panel API
@@ -73,7 +73,7 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 
 ### 13. Verification (CH-43c)
 - [x] 13.1 `npm run build`; `npm run test:db` as in 5.2.
-- [ ] 13.2 Every scenario of the four delta specs maps to a test, or to 10.2, in the verify report.
+- [x] 13.2 Every scenario of the four delta specs maps to a test, or to 10.2, in the verify report.
 
 ## Review Workload Forecast
 - Estimated changed lines, by slice (DEC-196 is on its own branch and not counted; the specs are synced at archive; planning artifacts ride in CH-43a and are not counted):

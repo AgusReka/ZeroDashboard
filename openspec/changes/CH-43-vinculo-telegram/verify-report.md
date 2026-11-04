@@ -6,7 +6,7 @@ critical_findings: 0
 warnings: 2
 suggestions: 3
 requirements: 18/18 (16 fully evidenced; 2 carry a GAP, 1 of the 16 also carries a manual leg)
-scenarios: 33 (29 covered, 3 covered by the manual check 10.2, 1 GAP)
+scenarios: 33 (30 covered, 3 covered by the manual check 10.2, 0 GAP)
 test_command: TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db
 test_exit_code: 1 (only the 4 known environmental failures)
 build_command: npm run build
@@ -38,7 +38,7 @@ The warnings are the two scenarios that no automated test or manual step asserts
 | 11.1, 11.2 | done | Card in `panel.ts`; three `CH-43 P-07` cases in `panel.test.ts` |
 | 12.1–12.3 | done | `pantallas.md` P-07 in both copies; guide 06 and README; map row (PR numbers pending, see "Open items") |
 | 13.1 | done | The two commands above |
-| **13.2** | **open** | Left unchecked: 1 GAP below (the example env file, task 3.2) |
+| **13.2** | done | Every scenario maps to a test or to 10.2 (both GAPs closed on 2026-11-04) |
 
 ## Spec scenarios → evidence
 
@@ -91,7 +91,7 @@ Abbreviations (all under `src/`): CT `telegram/cliente-telegram.test.ts`, CV `te
 |---|---|---|
 | Application starts with the token unset | CF "unset or empty gives null, and the boot still loads" and "the token never reaches AppConfig"; PTR "no-disponible when the token is unset or the bot is not known yet". The `no-configurado` log line and the absence of any request live in `server.ts`, which no test boots. Task 10.2 no-token leg. | MANUAL (10.2) |
 | A wrong token does not stop the application | Asserted in part: ST "getMe is called until it answers…" (backoff after a failed `getMe`, category `red`) and the ST log-redaction test. **Not asserted:** that the app keeps serving requests with the poller failing (nothing boots `server.ts`), and the `rechazada` category on `getMe` (401). Covered by the 10.2 wrong-token leg (2026-11-04): `/health` answered 200 while `telegram-sondeo` logged `rechazada` with growing waits, and no log line carried the token. | MANUAL (10.2, done) |
-| Inspecting the example file and Compose definition | Compose (`docker-compose.yml:52`) and README (table row) are right by inspection. The example env file does not yet carry `TELEGRAM_BOT_TOKEN=` (task 3.2). No test reads these files. | **GAP** |
+| Inspecting the example file and Compose definition | Compose (`docker-compose.yml:52`) and README (table row) are right by inspection. The example env file carries `TELEGRAM_BOT_TOKEN=` with an empty value since 2026-11-04 (task 3.2, added by the user). No test reads these files. | COVERED (inspection) |
 
 ## Gaps
 1. **A wrong token does not stop the application** (project-environment). Closed on 2026-11-04 by the 10.2 wrong-token leg; kept here for the record. Two of three THEN clauses are asserted; "it serves requests" is not. Cheapest close: add a wrong-token step to 10.2 (start the app with a made-up token, read `/` or the panel, confirm the log carries no token), or a server-level test. The poller is started by a timer after `listen`, so the risk is low, but no assertion exists.
