@@ -60,7 +60,7 @@ export interface Reloj {
   programar(ms: number, fn: () => void): () => void;
 }
 
-const relojDelSistema: Reloj = {
+export const relojDelSistema: Reloj = {
   ahora: () => new Date(),
   programar: (ms, fn) => {
     const temporizador = setTimeout(fn, ms);
