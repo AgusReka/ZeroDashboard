@@ -4041,6 +4041,69 @@ Cómo se muestra el mensaje:
 
 ---
 
+### DEC-196 — CH-43: el sondeo a `getUpdates` corre siempre que hay token, el bot responde con textos fijos y un código nuevo reemplaza el vínculo
+
+**Contexto.**
+- DEC-185 fija un bot global con el token en `TELEGRAM_BOT_TOKEN`, un código de un solo uso desde el panel y la consulta saliente a `getUpdates`. Fija también un solo chat vinculado por tenant y un ciclo en segundo plano que solo vincula.
+- El sondeo es la tercera entrada de producción a un contexto de tenant, después de las peticiones y el planificador, y la primera llamada HTTP saliente del servidor.
+- Las acciones del panel no se auditan en ningún lado. `RegistroEjecucion` exige un operador y una sentencia.
+- La guía de diseño no tiene una pantalla para el vínculo.
+
+Quedan seis puntos que DEC-185 no resuelve.
+
+**Opciones.**
+
+Cuándo consulta el ciclo:
+- (a) Siempre que hay token, con long polling: una petición abierta por vez.
+- (b) Solo mientras algún tenant tiene un código vigente.
+
+Respuesta del bot:
+- (a) Textos fijos: uno cuando el vínculo se hace y otro cuando el código no es válido o venció.
+- (b) Ninguna respuesta. El cliente mira el panel.
+
+Volver a vincular:
+- (a) Un código nuevo usado con éxito reemplaza el chat vinculado del tenant. Un mismo chat puede quedar vinculado a varios tenants.
+- (b) Para reemplazarlo hay que desvincular antes. Un chat pertenece a un solo tenant.
+
+Auditoría:
+- (a) Sin tabla nueva: el vínculo guarda `vinculadoEn`, y las rutas y el sondeo dejan logs con campos cerrados.
+- (b) Una tabla nueva de acciones del panel.
+
+Ubicación en el panel:
+- (a) Una tarjeta «Avisos por Telegram» en la pantalla principal, arriba de «Mis automatizaciones».
+- (b) Una página aparte, con acceso desde el encabezado.
+
+Entrega:
+- (a) Un PR con `size:exception`.
+- (b) Dos PR apilados: CH-43a con el backend y CH-43b con la interfaz del panel.
+
+**Decisión.** (a) en los cinco primeros puntos y (b) en la entrega.
+- **Ciclo (a).** Es más simple, y un long poll es una sola petición en espera. DEC-185 limita lo que hace el ciclo, no cuántas veces espera. La (b) obliga a revisar la base cada tanto y a despertar el ciclo desde la ruta del código.
+- **Respuesta (a).** Sin respuesta, el cliente no sabe si funcionó. Es solo salida y no manda otro dato del tenant que el nombre del negocio, que el cliente ya conoce.
+- **Vínculo (a).** Mantiene un chat por tenant sin obligar a deshacer nada. Nada de CH-44 pide que el chat sea exclusivo.
+- **Auditoría (a).** Una tabla solo para esto es alcance nuevo.
+- **Ubicación (a).** Una acción y un estado no justifican una página. Se suma como P-07 en la guía de diseño.
+- **Entrega (b).** Son unas 1.000 líneas. El corte entre backend e interfaz es limpio y no pide código de compatibilidad, a diferencia de CH-41.
+
+**Forma.**
+- **Configuración.** Se lee como el SMTP. Sin token, la lectura devuelve `null`, el ciclo no arranca y el panel muestra la sección como no disponible. El token nunca llega a `AppConfig` ni a un log.
+- **Modelo.** `VinculoTelegram` guarda un vínculo por tenant (`chatId`, `vinculadoEn`). `CodigoVinculoTelegram` guarda un código vigente por tenant: solo el hash y el vencimiento. Los dos están aislados por tenant. No se guardan el usuario, el nombre ni el texto del mensaje (regla 5).
+- **Código.** Ocho caracteres de un alfabeto sin ambigüedades, válido diez minutos. Se borra al usarse y uno nuevo reemplaza al anterior. El panel lo muestra con el enlace directo al bot.
+- **Sondeo.** Copia la forma del planificador: reloj y cliente inyectados, `iniciar` y `detener`, y un hook `onClose`. El `offset` vive en memoria, porque Telegram ya confirma lo procesado y un `/start` repetido no hace daño: el código ya no existe. Ante `/start <código>` busca el tenant por el hash, sin filtro de tenant, y después vincula dentro del contexto del tenant, en una transacción. Ignora cualquier otro mensaje. Ante un 409 o un error de red espera con backoff.
+- **Panel.** Leer el estado, generar un código y desvincular.
+
+**Alcance que no cambia.** El planificador, el correo, las automatizaciones y las ejecuciones. El canal Telegram de la automatización es CH-44.
+
+**Se resigna.**
+- **Una petición siempre abierta hacia Telegram** mientras haya token, aunque nadie esté vinculando.
+- **Un registro auditable de quién vinculó y cuándo**, más allá de la fecha del vínculo vigente y los logs.
+
+**Decidido por:** el usuario, 2026-11-04, en la exploración de CH-43: eligió las seis opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
