@@ -57,6 +57,8 @@ registrarRutas(app, {
   estilos,
   zonaHoraria: config.zonaHoraria,
   topeFilas: config.maxFilasPorConsulta,
+  // CH-42 (DEC-195): the message preview decides with the scheduler's own signal.
+  correoConfigurado: notificador !== null,
 });
 
 // CH-17a (DEC-100): SIGTERM and SIGINT close the app, so the `onClose` hook above stops

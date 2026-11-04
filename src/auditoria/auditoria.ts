@@ -16,9 +16,17 @@ import { LIMITE_LISTADO } from '../compartido/listados.js';
  * the statement as executed (DEC-160) and the verdict, never a parameter value nor a row.
  * The table cannot be changed: no route edits or deletes it, and a database trigger refuses
  * it too (DEC-162). Scheduled runs are not here: they stay in `Ejecucion` (DEC-159).
+ *
+ * CH-42 (DEC-195): the automation's message preview is a fifth path, under its own origin. It
+ * records the template id, never the automation, a recipient or any part of the message.
  */
 
-export type OrigenEjecucion = 'consulta' | 'plantilla-prueba' | 'validacion-mapeo' | 'conexion-prueba';
+export type OrigenEjecucion =
+  | 'consulta'
+  | 'plantilla-prueba'
+  | 'validacion-mapeo'
+  | 'conexion-prueba'
+  | 'automatizacion-vista-previa';
 
 /** The verdict columns of a row, whatever produced it. */
 export interface VeredictoAuditado {

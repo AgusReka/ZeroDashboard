@@ -71,7 +71,7 @@ Pantalla **Auditoría**, del tenant activo: qué se ejecutó contra su réplica,
 
 - Filtros: «Desde», «Hasta» (por día) y «Resultado» (Todos, OK, Falló), con «Filtrar».
 - Columnas: Fecha y hora, Operador, Origen, Conexión, Consulta, SQL, Filas, Duración, Resultado.
-- «Origen»: Consulta, Prueba de plantilla, Validación de mapeo, Prueba de conexión. «Consulta» dice «nombre vN» si se corrió una consulta guardada sin editar, «Plantilla <id>» o «Ad hoc».
+- «Origen»: Consulta, Prueba de plantilla, Validación de mapeo, Prueba de conexión, Vista previa de automatización (DEC-195). «Consulta» dice «nombre vN» si se corrió una consulta guardada sin editar, «Plantilla <id>» o «Ad hoc».
 - Se guarda la sentencia tal como se ejecutó, nunca los valores de los parámetros ni las filas (DEC-160).
 - Es un registro que ni la API ni la base permiten modificar o borrar (DEC-162). Muestra las 200 más recientes.
 - No incluye las corridas programadas: esas están en las ejecuciones de cada automatización (DEC-159).

@@ -134,10 +134,11 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
   - Comparar: panel ancho con **dos bloques de texto lado a lado, sin diff** (`.zd-compare`).
   - Restaurar: diálogo «Restaurar versión N»; crea la versión N+1, nunca borra. Banner ok al terminar.
 
-### C-09 Automatizaciones — D1, D2, D3, N3, X9 · CH-12, CH-13, CH-21, CH-33, CH-40, CH-41 · EXISTE — **con mockup**
-- **Lista**: automatización (plantilla + id) · conexión · cron (expresión mono + texto humano) · estado (Activa / Desactivada) · alta · acciones (Ver ejecuciones, Desactivar).
+### C-09 Automatizaciones — D1, D2, D3, N3, X9, X10 · CH-12, CH-13, CH-21, CH-33, CH-40, CH-41, CH-42 · EXISTE — **con mockup**
+- **Lista**: automatización (plantilla + id) · conexión · cron (expresión mono + texto humano) · estado (Activa / Desactivada) · alta · acciones (Ver ejecuciones, Vista previa, Ajustar, Desactivar; una desactivada solo Ver ejecuciones).
   - Desactivar: diálogo «Desactivar au_xx»; el historial se conserva.
   - Ajustar (CH-33, CH-40, CH-41): pop-up con los valores, el horario, los destinatarios (un solo campo de texto, «a@x.com, b@x.com», con la ayuda «Hasta 5, separados por comas.») y el «Mínimo de filas para avisar»; envía solo lo que cambió. La lista se compara por direcciones, no por texto; vaciar el campo envía `[]` y deja de enviar correo. Un 400 nombra la dirección escrita en esa posición.
+  - Vista previa (CH-42, DEC-195): pop-up «Vista previa del mensaje» que corre la consulta una vez y muestra la decisión («Se enviaría a: …» o «No se enviaría: …»), «Para», las filas, el «Asunto», el texto en un `pre` y el HTML en un `iframe` con `sandbox` vacío. Solo «Cerrar»: no envía ni guarda nada.
   - Vacío: "Este tenant no tiene automatizaciones" + «Nueva automatización».
 - **Alta en dos pasos** (`#automatizaciones/alta`), con `Stepper`:
   1. Conexión (select) + plantilla en tarjetas (`TemplatePicker`). Las no disponibles: deshabilitadas, borde punteado, candado + motivo (`.zd-template__why`), enlazado con `aria-describedby`.
