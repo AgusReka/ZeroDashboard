@@ -62,7 +62,7 @@ Orden de ejecución pensado para grabar el video cuanto antes: primero las autom
 | 4 | CH-40 | Mínimo de filas por automatización y resultado `omitida-bajo-minimo` | X9 | CH-36 | DEC-186. Se carga en el alta de la consola. PR #219 |
 | 5 | CH-41 | Varios destinatarios: lista de hasta 5 direcciones en un solo mensaje, en el alta de la consola y en el ajuste del panel (P-04) | N6 | CH-36 | DEC-187. La migración conserva la dirección actual. PR #223 |
 | 6 | CH-42 | Vista previa del mensaje de una automatización, en la consola, sin enviar: una acción de la fila y un pop-up, no una pantalla de detalle | X10 | CH-39, CH-40 | DEC-189, DEC-195. Queda en la auditoría con su propio origen, como la prueba de plantilla. CH-44 le suma la vista de Telegram |
-| 7 | CH-43 | Vínculo de Telegram: bot global, código de un solo uso desde el panel y consulta saliente a `getUpdates` | N5 | CH-36 | ⚠ DEC-185. Primer ciclo en segundo plano fuera del planificador |
+| 7 | CH-43 | Vínculo de Telegram: bot global, código de un solo uso desde el panel y consulta saliente a `getUpdates` | N5 | CH-36 | ⚠ DEC-185, DEC-196. Primer ciclo en segundo plano fuera del planificador. Tres PRs encadenados: CH-43a (datos y API del panel), CH-43b (sondeo) y CH-43c (tarjeta P-07). PRs #pendiente |
 | 8 | CH-44 | Canal Telegram: la automatización elige su canal, mensaje de texto por ejecución y resultado `sin-vinculo` | N4 | CH-39, CH-43 | DEC-185. Reutiliza el texto de CH-39 |
 | 9 | CH-45 | Reportes: modelo, catálogo global sobre `v_*` con tipo de visualización y pantalla de definición y prueba en la consola | R1h | CH-36 | ⚠ DEC-183 |
 | 10 | CH-46 | Tablero del tenant: P1 elige qué reportes ve el cliente y en qué orden | R2h | CH-45 | DEC-183 |

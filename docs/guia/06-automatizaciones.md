@@ -65,6 +65,19 @@ No envía nada ni crea una ejecución: el pop-up solo tiene «Cerrar» y todo en
 
 Cada vista previa que llega a correr la consulta queda en la **Auditoría** con el origen «Vista previa de automatización», la conexión, la sentencia compuesta y la plantilla. No guarda la automatización, los destinatarios ni nada del mensaje.
 
+## Vincular Telegram
+
+El panel del cliente trae la tarjeta «Avisos por Telegram», arriba de «Mis automatizaciones» (CH-43, DEC-185, DEC-196). Un solo bot, el del despliegue (`TELEGRAM_BOT_TOKEN`, ver el README), atiende a todos los tenants; cada tenant vincula un chat.
+
+1. El cliente pulsa «Vincular Telegram». La tarjeta muestra un código de 8 caracteres, «Abrir Telegram» y la hora en que vence: 10 minutos, en la zona del tenant.
+2. «Abrir Telegram» abre el chat con el bot y el código ya cargado; basta con «Iniciar». También sirve mandar el código a mano: `/start <código>` en un chat privado, o `/start@<bot> <código>` en un grupo. Se aceptan minúsculas, espacios y guiones.
+3. El bot responde y la tarjeta pasa a «Telegram vinculado» al recargar el panel.
+
+- «Generar otro código» reemplaza el anterior. El código se ve solo en la respuesta que lo crea: al volver al panel, la tarjeta muestra solo su vencimiento.
+- «Vincular otro chat» genera un código nuevo; el chat que lo use reemplaza al anterior. «Desvincular» pide confirmación y no avisa nada al chat.
+- Sin `TELEGRAM_BOT_TOKEN`, o mientras el bot no respondió, la tarjeta dice «Por ahora no podés recibir avisos por Telegram.» y no ofrece acciones.
+- **Límite.** El vínculo existe, pero ninguna automatización envía todavía por Telegram: el canal llega con CH-44.
+
 ## Frescura de datos
 
 Pantalla para declarar cuán vieja puede estar la réplica de un tenant y compararla con la tolerancia de cada plantilla (CH-24).

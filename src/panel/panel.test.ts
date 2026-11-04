@@ -345,9 +345,143 @@ describe(
       assert.ok(!script.includes('${'), 'no interpolation');
       assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(script), 'API values only through textContent');
       assert.ok(script.includes('.textContent = texto'));
-      assert.ok(!/\.(href|src)\s*=/.test(script), 'no href or src built from API data');
+      // CH-43: the one link built from a server value is the Telegram one, behind its prefix check.
+      const enlaceTelegram = 'if (enlaceValido) { abrir.href = telegram.enlace; }';
+      assert.ok(script.includes(enlaceTelegram));
+      assert.ok(script.includes("var ENLACE_TELEGRAM = 'https://t.me/';"));
+      assert.ok(!/\.(href|src)\s*=/.test(script.replace(enlaceTelegram, '')), 'no other href or src built from API data');
       assert.ok(!/Activar/.test(html), 'activation is not offered');
-      assert.ok(!/<button/.test(html.replace(/<button id="boton-salir"[\s\S]*?<\/button>/, '')), 'Salir is the only static control');
+      const sinTarjeta = html.replace(/<section id="tarjeta-telegram"[\s\S]*?<\/section>/, '');
+      assert.ok(!/<button/.test(sinTarjeta.replace(/<button id="boton-salir"[\s\S]*?<\/button>/, '')), 'Salir is the only static control outside the Telegram card');
+    });
+
+    /** A minimal DOM: every id resolves to one recorded element, and clicks run the handlers. */
+    function domFalso() {
+      const elementos = new Map<string, any>();
+      const crear = (): any => ({
+        hidden: false, textContent: '', className: '', disabled: false, href: '', children: [] as unknown[],
+        atributos: {} as Record<string, string>, oyentes: [] as Array<() => void>,
+        appendChild(hijo: unknown) { this.children.push(hijo); return hijo; },
+        setAttribute(clave: string, valor: string) { this.atributos[clave] = valor; },
+        removeAttribute(clave: string) { delete this.atributos[clave]; },
+        addEventListener(_tipo: string, oyente: () => void) { this.oyentes.push(oyente); },
+        focus() {},
+        classList: { contains: () => false },
+      });
+      const documento = {
+        getElementById(id: string) {
+          if (!elementos.has(id)) elementos.set(id, crear());
+          return elementos.get(id);
+        },
+        createElement: crear,
+        createElementNS: crear,
+      };
+      return { documento, el: (id: string) => documento.getElementById(id), clic: (id: string) => documento.getElementById(id).oyentes.forEach((o: () => void) => o()) };
+    }
+
+    /** Runs the served script against the fake DOM; `respuestas` answers by "METHOD url", `null` rejects. */
+    function correrScript(script: string, respuestas: Record<string, { status: number; cuerpo?: unknown } | null>) {
+      const dom = domFalso();
+      const pedidos: string[] = [];
+      const buscar = (url: string, init: { method?: string } = {}) => {
+        const clave = `${init.method ?? 'GET'} ${url}`;
+        pedidos.push(clave);
+        const r = respuestas[clave];
+        if (r === null || r === undefined) return Promise.reject(new Error('red'));
+        return Promise.resolve({ status: r.status, ok: r.status < 300, json: () => (r.cuerpo === undefined ? Promise.reject(new Error('vacío')) : Promise.resolve(r.cuerpo)) });
+      };
+      const recargas: unknown[] = [];
+      new Function('document', 'fetch', 'window', script)(dom.documento, buscar, { location: { reload: () => recargas.push(1) } });
+      return { ...dom, pedidos, recargas };
+    }
+    const esperar = () => new Promise((r) => setImmediate(r));
+    const LISTA = { status: 200, cuerpo: { activas: [], disponibles: [], zonaHoraria: 'UTC', truncado: false } };
+
+    test('CH-43 P-07: the «Avisos por Telegram» card sits above the list, with its fixed blocks and copy', async (t) => {
+      const { html, script } = await shellConScript();
+
+      assert.match(html, /<section id="tarjeta-telegram" class="zd-card panel-telegram" [^>]*data-change="CH-43" data-estado="existe"/);
+      assert.ok(html.indexOf('id="tarjeta-telegram"') < html.indexOf('data-screen-label="Mis automatizaciones"'), 'the card goes above the list');
+      for (const id of ['telegram-carga', 'telegram-error', 'telegram-no-disponible', 'telegram-sin-vincular', 'telegram-codigo', 'telegram-vinculado', 'telegram-confirmar', 'telegram-aviso', 'telegram-reintentar', 'telegram-abrir']) {
+        assert.match(html, new RegExp(`id="${id}"`), id);
+      }
+      assert.match(html, /id="telegram-error"[^>]*role="alert"/);
+      assert.match(html, /<a id="telegram-abrir"[^>]*target="_blank" rel="noopener"/);
+      for (const texto of [
+        'Avisos por Telegram', 'Por ahora no podés recibir avisos por Telegram.', 'Vincular Telegram', 'Abrir Telegram',
+        'Vence a las', 'Generar otro código', 'Telegram vinculado', 'Vincular otro chat', 'Desvincular', 'Desvincular Telegram',
+        'Cancelar', 'Reintentar', 'No pudimos cargar tus avisos por Telegram', 'No pudimos generar el código', 'No pudimos desvincular Telegram',
+      ]) {
+        assert.ok((html + script).includes(texto), `falta el texto: ${texto}`);
+      }
+      // The card's own glossary on top of the screen guard: no chat id, token or bot API in what P2 reads.
+      const tarjeta = /<section id="tarjeta-telegram"[\s\S]*?<\/section>/.exec(html)![0].replace(/<!--[\s\S]*?-->/g, ' ').replace(/<[^>]*>/g, ' ');
+      const literales = (script.match(/'[^']*'/g) ?? []).join(' ');
+      for (const texto of [tarjeta, literales]) {
+        assert.ok(!/chat_id|chat id|token|bot api|tenant/i.test(texto), `término técnico: ${/chat_id|chat id|token|bot api|tenant/i.exec(texto)?.[0]}`);
+      }
+    });
+
+    test('CH-43 P-07: a failing card shows its own error with «Reintentar» and the list still loads', async (t) => {
+      const { script } = await shellConScript();
+      const corrida = correrScript(script, { 'GET /api/panel/automatizaciones': LISTA, 'GET /api/panel/telegram': null });
+      await esperar();
+
+      assert.equal(corrida.el('telegram-error').hidden, false);
+      assert.equal(corrida.el('telegram-carga').hidden, true);
+      assert.equal(corrida.el('estado-error').hidden, true, 'the list error stays hidden');
+      assert.equal(corrida.el('estado-vacio').hidden, false, 'the list painted its own state');
+      corrida.clic('telegram-reintentar');
+      assert.equal(corrida.pedidos.filter((p) => p === 'GET /api/panel/telegram').length, 2);
+    });
+
+    test('CH-43 P-07: creating a code shows it through textContent, a 409 repaints as unavailable, and unlinking asks first', async (t) => {
+      const { script } = await shellConScript();
+      const codigo = { status: 201, cuerpo: { codigo: '<b>7KQ2M9', enlace: 'https://t.me/zd_bot?start=x', venceEn: '2026-11-05T13:10:00.000Z' } };
+      const corrida = correrScript(script, {
+        'GET /api/panel/automatizaciones': LISTA,
+        'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'sin-vincular', bot: 'zd_bot' } },
+        'POST /api/panel/telegram/codigo': codigo,
+      });
+      await esperar();
+      assert.equal(corrida.el('telegram-sin-vincular').hidden, false);
+
+      corrida.clic('telegram-vincular');
+      await esperar();
+      assert.equal(corrida.el('telegram-codigo').hidden, false);
+      assert.equal(corrida.el('telegram-codigo-valor').textContent, '<b>7 KQ2M9', 'the code enters as text, split in two');
+      assert.equal(corrida.el('telegram-abrir').href, 'https://t.me/zd_bot?start=x');
+      assert.equal(corrida.el('telegram-vence').textContent, '13:10', 'the expiry in the zone the list brought');
+
+      // A link that does not point to Telegram is never set, and the button hides.
+      codigo.cuerpo.enlace = 'javascript:alert(1)';
+      corrida.clic('telegram-otro-codigo');
+      await esperar();
+      assert.equal(corrida.el('telegram-abrir').hidden, true);
+      assert.equal(corrida.el('telegram-abrir').href, 'https://t.me/zd_bot?start=x');
+
+      // The bot went away between the read and the press.
+      Object.assign(codigo, { status: 409, cuerpo: { error: 'telegram-no-disponible' } });
+      corrida.clic('telegram-otro-codigo');
+      await esperar();
+      assert.equal(corrida.el('telegram-no-disponible').hidden, false);
+      assert.equal(corrida.el('telegram-codigo').hidden, true);
+
+      const vinculado = correrScript(script, {
+        'GET /api/panel/automatizaciones': LISTA,
+        'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'vinculado', bot: 'zd_bot', vinculadoEn: '2026-11-05T12:00:00.000Z' } },
+        'DELETE /api/panel/telegram/vinculo': { status: 204 },
+      });
+      await esperar();
+      assert.equal(vinculado.el('telegram-vinculado-en').textContent, '05/11/2026');
+      vinculado.clic('telegram-desvincular');
+      await esperar();
+      assert.equal(vinculado.el('telegram-confirmar').hidden, false);
+      assert.ok(!vinculado.pedidos.includes('DELETE /api/panel/telegram/vinculo'), 'pressing «Desvincular» alone deletes nothing');
+      vinculado.clic('telegram-confirmar-desvincular');
+      await esperar();
+      assert.ok(vinculado.pedidos.includes('DELETE /api/panel/telegram/vinculo'));
+      assert.equal(vinculado.el('telegram-sin-vincular').hidden, false);
     });
 
     test('the P-02 screen has no glossary-forbidden term in visible text or script string literals (CH-22b)', async (t) => {

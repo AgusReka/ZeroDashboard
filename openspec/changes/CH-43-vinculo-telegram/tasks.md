@@ -63,16 +63,16 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 ## CH-43c — panel UI
 
 ### 11. Card
-- [ ] 11.1 `src/panel/panel.ts`: the «Avisos por Telegram» card with its fixed blocks, `cargarTelegram()`, create, unlink with confirmation, the 409 repaint (design §10).
-- [ ] 11.2 `src/panel/panel.test.ts`: card markup and ids, glossary, values inserted with `textContent` only, the card's error state leaving the list alone.
+- [x] 11.1 `src/panel/panel.ts`: the «Avisos por Telegram» card with its fixed blocks, `cargarTelegram()`, create, unlink with confirmation, the 409 repaint (design §10).
+- [x] 11.2 `src/panel/panel.test.ts`: card markup and ids, glossary, values inserted with `textContent` only, the card's error state leaving the list alone.
 
 ### 12. Docs
-- [ ] 12.1 `guidelines/pantallas.md` P-07, in both copies of the design skill, identical.
-- [ ] 12.2 `docs/guia/06-automatizaciones.md`: "Vincular Telegram". README: how to create the bot and that a webhook stops the link.
-- [ ] 12.3 `docs/02-mapa-de-changes.md`: the CH-43 row with the three PR numbers.
+- [x] 12.1 `guidelines/pantallas.md` P-07, in both copies of the design skill, identical.
+- [x] 12.2 `docs/guia/06-automatizaciones.md`: "Vincular Telegram". README: how to create the bot and that a webhook stops the link.
+- [x] 12.3 `docs/02-mapa-de-changes.md`: the CH-43 row with the three PR numbers. The numbers are not known yet: the row says `PRs #pendiente` until the PRs open.
 
 ### 13. Verification (CH-43c)
-- [ ] 13.1 `npm run build`; `npm run test:db` as in 5.2.
+- [x] 13.1 `npm run build`; `npm run test:db` as in 5.2.
 - [ ] 13.2 Every scenario of the four delta specs maps to a test, or to 10.2, in the verify report.
 
 ## Review Workload Forecast
