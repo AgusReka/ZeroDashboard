@@ -69,7 +69,7 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 ### 12. Docs
 - [x] 12.1 `guidelines/pantallas.md` P-07, in both copies of the design skill, identical.
 - [x] 12.2 `docs/guia/06-automatizaciones.md`: "Vincular Telegram". README: how to create the bot and that a webhook stops the link.
-- [x] 12.3 `docs/02-mapa-de-changes.md`: the CH-43 row with the three PR numbers. The numbers are not known yet: the row says `PRs #pendiente` until the PRs open.
+- [x] 12.3 `docs/02-mapa-de-changes.md`: the CH-43 row with the three PR numbers. PRs #229, #230 and #231 (DEC-196 in #228).
 
 ### 13. Verification (CH-43c)
 - [x] 13.1 `npm run build`; `npm run test:db` as in 5.2.
