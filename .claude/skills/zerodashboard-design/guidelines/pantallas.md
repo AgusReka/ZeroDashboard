@@ -143,6 +143,12 @@ Más aire (`data-surface="panel"`: cuerpo 16 px, controles 44 px), móvil primer
 ### P-06 Último resultado — P4h · CH-27 · FUERA DE ALCANCE
 - **No implementar.** DEC-93 (D-1) decidió no persistir el contenido de las filas, solo metadatos de ejecución. CH-27 queda fuera de alcance mientras D-1 no se reabra. El mockup `ui_kits/panel` conserva la pantalla solo como referencia visual; no es una pantalla a construir.
 
+### P-07 Avisos por Telegram — N5 · CH-43 · EXISTE
+- **Propósito**: vincular el Telegram del negocio sin datos técnicos (DEC-185, DEC-196). Tarjeta arriba de «Mis automatizaciones», con su propia carga: si falla, la lista carga igual.
+- **Datos**: `estado` (no-disponible / sin-vincular / codigo-pendiente / vinculado) · `codigo` (8 caracteres, se ve como `7KQ2 M9XA`, solo en la respuesta que lo crea) · `enlace` (t.me con el código) · `vence_en` (hora, «Vence a las 10:40») · `vinculado_en` (fecha, 05/11/2026). Nunca el chat ni el token del bot.
+- **Estados**: cargando (skeleton) · error (ErrorState con «Reintentar») · no disponible («Por ahora no podés recibir avisos por Telegram.», sin acciones) · sin vincular (explicación + «Vincular Telegram») · código (código, «Abrir Telegram», cómo mandarlo y vencimiento; un código de una visita anterior muestra solo el vencimiento) · vinculado (badge «Telegram vinculado» con la fecha).
+- **Acciones**: Vincular Telegram, Generar otro código, Vincular otro chat, Desvincular (confirma en línea con «Desvincular Telegram» / «Cancelar»).
+
 ---
 
 ## CORREO — N1, N2 · CH-14 · EXISTE
@@ -180,6 +186,7 @@ Reporte HTML compatible con clientes de correo: tablas, estilos inline, 600 px, 
 | CH-25 | C-05 Versiones | PENDIENTE |
 | CH-26 | P-05 Advertencia de frescura | PENDIENTE |
 | CH-27 | P-06 Último resultado | FUERA DE ALCANCE (DEC-93) |
+| CH-43 | P-07 Avisos por Telegram | EXISTE |
 
 ## Componentes → change
 | Componente | Historia · Change · Estado |

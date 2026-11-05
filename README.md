@@ -47,6 +47,8 @@ Al iniciar, el contenedor aplica las migraciones (`prisma migrate deploy`), corr
 | `TELEGRAM_BOT_TOKEN` | Token del bot global de Telegram, al que cada negocio vincula un chat desde el panel. Opcional: sin él la app arranca y el panel muestra Telegram como no disponible. |
 | `CONNECTION_RETRY_ATTEMPTS`, `CONNECTION_RETRY_PAUSE_MS` | Reintentos de conexión de las corridas programadas (3 intentos y 5000 ms; máximo 5 intentos). |
 
+**Bot de Telegram.** Se crea con [@BotFather](https://t.me/BotFather): `/newbot`, un nombre y un usuario terminado en `bot`. BotFather devuelve el token, que va en `TELEGRAM_BOT_TOKEN` del `.env` y nunca en el repositorio. La app lee los mensajes con `getUpdates`, sin puertos entrantes, y Telegram no lo permite mientras el bot tenga un webhook: con un webhook configurado, ningún vínculo se completa. Si el bot se usó antes con uno, se borra con `deleteWebhook`. El vínculo se hace desde el panel ([Automatizaciones](docs/guia/06-automatizaciones.md#vincular-telegram)).
+
 La aplicación también lee `CONNECTION_TEST_TIMEOUT_MS` (5000 ms), `QUERY_TIMEOUT_MS` (15 000 ms) y `MAX_FILAS_CONSULTA` (200), pero `docker-compose.yml` no las reenvía: con Compose rigen los predeterminados salvo que se agreguen al servicio `app`.
 
 ### Primer operador

@@ -25,7 +25,7 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 
 ### 3. Config and code
 - [x] 3.1 `src/telegram/telegram-config.ts`: `leerTelegram(env)` (design §2). `src/compartido/config.test.ts`: `TELEGRAM_BOT_TOKEN` in the reset list; `leerTelegram` unset, empty, set.
-- [ ] 3.2 `docker-compose.yml` (`${TELEGRAM_BOT_TOKEN:-}` with a comment), the example env file and the README variable table. Compose and README done; the example env file is pending: the agent's permissions block it, so the user adds `TELEGRAM_BOT_TOKEN=` by hand.
+- [x] 3.2 `docker-compose.yml` (`${TELEGRAM_BOT_TOKEN:-}` with a comment), the example env file and the README variable table. Compose and README done; the example env file is pending: the agent's permissions block it, so the user adds `TELEGRAM_BOT_TOKEN=` by hand. Added by the user on 2026-11-04.
 - [x] 3.3 `src/telegram/codigo-vinculo.ts` and its test: `generarCodigo`, `normalizarCodigo`, `hashCodigo`, `DURACION_CODIGO_MS` (design §3).
 
 ### 4. Panel API
@@ -58,22 +58,22 @@ DEC-196 goes on `v2/dec-196` from `master`, in its own PR, before any code (AGEN
 
 ### 10. Verification (CH-43b)
 - [x] 10.1 `npm run build`; `npm run test:db` as in 5.2.
-- [ ] 10.2 With the user's go-ahead and a test bot token in their own `.env`: `docker compose up -d --build app`, generate a code with `curl` against the panel API, send `/start <code>` from Telegram, read `vinculado`. Without a token, the app starts and logs `no-configurado`.
+- [x] 10.2 With the user's go-ahead and a test bot token in their own `.env`: `docker compose up -d --build app`, generate a code with `curl` against the panel API, send `/start <code>` from Telegram, read `vinculado`. Without a token, the app starts and logs `no-configurado`. Done 2026-11-04: real bot linked from the panel card (`telegram-vinculo` `vinculado`); a made-up token kept `/health` at 200 with `telegram-sondeo` `rechazada` backing off (4 lines in ~20 s) and no token or chat id in the logs; no token logged `no-configurado` with `/health` at 200.
 
 ## CH-43c — panel UI
 
 ### 11. Card
-- [ ] 11.1 `src/panel/panel.ts`: the «Avisos por Telegram» card with its fixed blocks, `cargarTelegram()`, create, unlink with confirmation, the 409 repaint (design §10).
-- [ ] 11.2 `src/panel/panel.test.ts`: card markup and ids, glossary, values inserted with `textContent` only, the card's error state leaving the list alone.
+- [x] 11.1 `src/panel/panel.ts`: the «Avisos por Telegram» card with its fixed blocks, `cargarTelegram()`, create, unlink with confirmation, the 409 repaint (design §10).
+- [x] 11.2 `src/panel/panel.test.ts`: card markup and ids, glossary, values inserted with `textContent` only, the card's error state leaving the list alone.
 
 ### 12. Docs
-- [ ] 12.1 `guidelines/pantallas.md` P-07, in both copies of the design skill, identical.
-- [ ] 12.2 `docs/guia/06-automatizaciones.md`: "Vincular Telegram". README: how to create the bot and that a webhook stops the link.
-- [ ] 12.3 `docs/02-mapa-de-changes.md`: the CH-43 row with the three PR numbers.
+- [x] 12.1 `guidelines/pantallas.md` P-07, in both copies of the design skill, identical.
+- [x] 12.2 `docs/guia/06-automatizaciones.md`: "Vincular Telegram". README: how to create the bot and that a webhook stops the link.
+- [x] 12.3 `docs/02-mapa-de-changes.md`: the CH-43 row with the three PR numbers. PRs #229, #230 and #231 (DEC-196 in #228).
 
 ### 13. Verification (CH-43c)
-- [ ] 13.1 `npm run build`; `npm run test:db` as in 5.2.
-- [ ] 13.2 Every scenario of the four delta specs maps to a test, or to 10.2, in the verify report.
+- [x] 13.1 `npm run build`; `npm run test:db` as in 5.2.
+- [x] 13.2 Every scenario of the four delta specs maps to a test, or to 10.2, in the verify report.
 
 ## Review Workload Forecast
 - Estimated changed lines, by slice (DEC-196 is on its own branch and not counted; the specs are synced at archive; planning artifacts ride in CH-43a and are not counted):

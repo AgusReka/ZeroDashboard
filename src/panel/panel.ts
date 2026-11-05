@@ -98,6 +98,10 @@ const CABEZA_PAGINA = `<!doctype html>
   .panel-aviso { margin-top: var(--space-5); }
   .panel-ajuste { margin-top: var(--space-5); padding-top: var(--space-5);
     border-top: var(--border-width) solid var(--border-1); }
+  /* P-07 Avisos por Telegram (CH-43): one card, one block visible at a time. */
+  .panel-telegram { display: grid; gap: var(--space-4); }
+  .panel-telegram .zd-muted, .panel-telegram .zd-meta, .panel-telegram .panel-acciones { margin: 0; }
+  .panel-telegram__codigo { margin: var(--space-3) 0; font-size: var(--text-2xl); letter-spacing: .08em; }
 </style>
 </head>
 <body class="zd-root" data-surface="panel">
@@ -197,7 +201,7 @@ formulario.addEventListener('submit', function (evento) {
 
 /**
  * The authenticated shell (CH-22, "parcial": the header, plus the P-02 list of CH-22b and
- * the P-04 inline "Ajustar" form of CH-23). The header names the session's tenant — the one store
+ * the P-04 inline "Ajustar" form of CH-23, below the P-07 Telegram card of CH-43). The header names the session's tenant — the one store
  * this administrator sees — and its Salir button revokes the session through the PR2
  * endpoint and reloads, so the server renders the login screen again. `nombreTenant`
  * is escaped before interpolation: it is stored data, so it is never trusted as
@@ -221,6 +225,57 @@ function documentoShell(nombreTenant: string): string {
   </div>
 </header>
 <main class="panel-main">
+  <!-- P-07 Avisos por Telegram (CH-43): fixed blocks toggled with hidden; values enter through textContent. -->
+  <section id="tarjeta-telegram" class="zd-card panel-telegram" data-screen-label="Avisos por Telegram" data-change="CH-43" data-estado="existe" aria-labelledby="titulo-telegram">
+    <h2 id="titulo-telegram" class="zd-h2">Avisos por Telegram</h2>
+    <div id="telegram-carga" class="panel-esqueleto" aria-busy="true" aria-label="Cargando tus avisos por Telegram"><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
+    <div id="telegram-error" class="zd-state zd-state--error" role="alert" hidden>
+      <span class="zd-state__icon"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>
+      <p class="zd-state__title">No pudimos cargar tus avisos por Telegram</p>
+      <p class="zd-state__body" id="telegram-texto-error">Volvé a intentar en unos minutos.</p>
+      <div class="zd-state__actions"><button id="telegram-reintentar" class="zd-btn zd-btn--secondary" type="button">Reintentar</button></div>
+    </div>
+    <p id="telegram-no-disponible" class="zd-muted" hidden>Por ahora no podés recibir avisos por Telegram.</p>
+    <div id="telegram-sin-vincular" class="panel-telegram" hidden>
+      <p class="zd-muted">Vinculá un chat de Telegram para recibir ahí los avisos de tu negocio.</p>
+      <div class="panel-acciones"><button id="telegram-vincular" class="zd-btn zd-btn--primary" type="button">Vincular Telegram</button></div>
+    </div>
+    <div id="telegram-vinculado" class="panel-telegram" hidden>
+      <p class="zd-muted"><span class="zd-badge zd-badge--ok"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>Telegram vinculado</span> desde el <span id="telegram-vinculado-en"></span>.</p>
+      <div class="panel-acciones">
+        <button id="telegram-otro-chat" class="zd-btn zd-btn--secondary" type="button">Vincular otro chat</button>
+        <button id="telegram-desvincular" class="zd-btn zd-btn--ghost" type="button" aria-expanded="false" aria-controls="telegram-confirmar">Desvincular</button>
+      </div>
+      <div id="telegram-confirmar" class="zd-banner zd-banner--warn" role="alert" hidden>
+        <svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+        <div>
+          <p class="zd-banner__title">¿Desvinculamos Telegram?</p>
+          <p class="zd-banner__body">Los avisos dejan de llegar a ese chat. Podés volver a vincularlo cuando quieras.</p>
+          <div class="zd-banner__actions">
+            <button id="telegram-confirmar-desvincular" class="zd-btn zd-btn--danger" type="button">Desvincular Telegram</button>
+            <button id="telegram-cancelar" class="zd-btn zd-btn--secondary" type="button">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="telegram-codigo" class="panel-telegram" hidden>
+      <div id="telegram-codigo-nuevo" hidden>
+        <p class="zd-muted">Tocá «Abrir Telegram» y después «Iniciar». También podés mandarle este código a nuestro bot:</p>
+        <p id="telegram-codigo-valor" class="zd-mono panel-telegram__codigo"></p>
+        <a id="telegram-abrir" class="zd-btn zd-btn--primary" target="_blank" rel="noopener">Abrir Telegram</a>
+      </div>
+      <p id="telegram-codigo-previo" class="zd-muted" hidden>Ya generaste un código. Si no lo tenés a mano, generá otro.</p>
+      <p class="zd-meta">Vence a las <span id="telegram-vence"></span>.</p>
+      <div class="panel-acciones"><button id="telegram-otro-codigo" class="zd-btn zd-btn--secondary" type="button">Generar otro código</button></div>
+    </div>
+    <div id="telegram-aviso" class="zd-banner zd-banner--error" role="alert" hidden>
+      <svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+      <div>
+        <p class="zd-banner__title" id="telegram-aviso-titulo"></p>
+        <p class="zd-banner__body" id="telegram-aviso-texto"></p>
+      </div>
+    </div>
+  </section>
   <section data-screen-label="Mis automatizaciones" data-change="CH-22" data-estado="parcial">
     <h1 class="zd-h1">Mis automatizaciones</h1>
     <p class="zd-muted">Lo que revisamos por vos y te mandamos por correo.</p>
@@ -266,8 +321,9 @@ function nodo(etiqueta, clase, texto) {
 function mostrar(id, visible) {
   document.getElementById(id).hidden = !visible;
 }
-function formatear(iso, zona) {
-  var opciones = { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+// The third argument narrows what is shown (CH-43: only the time, or only the date); the default is the P-02 one.
+function formatear(iso, zona, campos) {
+  var opciones = Object.assign({}, campos || { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
   var formato;
   try {
     opciones.timeZone = zona;
@@ -632,6 +688,11 @@ function pintar(cuerpo) {
   mostrar('seccion-disponibles', cuerpo.disponibles.length > 0);
   mostrar('nota-truncado', cuerpo.truncado === true);
   avisoGuardado = null;
+  // CH-43: the times of the Telegram card read in this same zone, which arrives with the list.
+  if (zonaPanel !== cuerpo.zonaHoraria) {
+    zonaPanel = cuerpo.zonaHoraria;
+    if (telegram !== null) { pintarTelegram(); }
+  }
 }
 function fallar(texto) {
   mostrar('estado-carga', false);
@@ -660,7 +721,164 @@ function cargarLista() {
     fallar(MENSAJE_ERROR);
   });
 }
+// ---- P-07 Avisos por Telegram (CH-43): fixed blocks, one state at a time ----------------
+// The card loads on its own: a failure here never touches the automations list, nor the reverse.
+var zonaPanel;
+var telegram = null;
+var ESTADOS_TELEGRAM = ['no-disponible', 'sin-vincular', 'codigo-pendiente', 'vinculado'];
+var BLOQUES_TELEGRAM = ['telegram-carga', 'telegram-error', 'telegram-no-disponible', 'telegram-sin-vincular', 'telegram-vinculado', 'telegram-codigo'];
+var SOLO_HORA = { hour: '2-digit', minute: '2-digit', hour12: false };
+var SOLO_FECHA = { day: '2-digit', month: '2-digit', year: 'numeric' };
+var ENLACE_TELEGRAM = 'https://t.me/';
+function verTelegram(visibles) {
+  for (var i = 0; i < BLOQUES_TELEGRAM.length; i++) { mostrar(BLOQUES_TELEGRAM[i], visibles.indexOf(BLOQUES_TELEGRAM[i]) !== -1); }
+}
+function avisoTelegram(titulo, texto) {
+  document.getElementById('telegram-aviso-titulo').textContent = titulo;
+  document.getElementById('telegram-aviso-texto').textContent = texto;
+  mostrar('telegram-aviso', titulo !== '');
+}
+function confirmarTelegram(visible) {
+  mostrar('telegram-confirmar', visible);
+  document.getElementById('telegram-desvincular').setAttribute('aria-expanded', visible ? 'true' : 'false');
+}
+function pintarTelegram() {
+  confirmarTelegram(false);
+  if (telegram.estado === 'no-disponible' || telegram.estado === 'sin-vincular') {
+    verTelegram(['telegram-' + telegram.estado]);
+    return;
+  }
+  var visibles = [];
+  if (telegram.estado === 'vinculado') {
+    visibles.push('telegram-vinculado');
+    document.getElementById('telegram-vinculado-en').textContent = formatear(telegram.vinculadoEn, zonaPanel, SOLO_FECHA);
+  }
+  if (typeof telegram.venceEn === 'string') {
+    visibles.push('telegram-codigo');
+    document.getElementById('telegram-vence').textContent = formatear(telegram.venceEn, zonaPanel, SOLO_HORA);
+    // The plain code exists only in the answer that created it: a code from an earlier visit shows only its expiry.
+    var conCodigo = typeof telegram.codigo === 'string';
+    mostrar('telegram-codigo-nuevo', conCodigo);
+    mostrar('telegram-codigo-previo', !conCodigo);
+    if (conCodigo) {
+      document.getElementById('telegram-codigo-valor').textContent = telegram.codigo.slice(0, 4) + ' ' + telegram.codigo.slice(4);
+      var abrir = document.getElementById('telegram-abrir');
+      var enlaceValido = typeof telegram.enlace === 'string' && telegram.enlace.indexOf(ENLACE_TELEGRAM) === 0;
+      // The only link built from a server value, and only toward Telegram.
+      if (enlaceValido) { abrir.href = telegram.enlace; }
+      abrir.hidden = !enlaceValido;
+    }
+  }
+  verTelegram(visibles);
+}
+function fallarTelegram(texto) {
+  document.getElementById('telegram-texto-error').textContent = texto;
+  verTelegram(['telegram-error']);
+}
+function pedirTelegram(metodo, ruta) {
+  return fetch(ruta, { method: metodo, credentials: 'same-origin' }).then(function (respuesta) {
+    return respuesta.json().catch(function () { return {}; }).then(function (datos) {
+      return { estado: respuesta.status, datos: datos || {} };
+    });
+  });
+}
+function cargarTelegram() {
+  avisoTelegram('', '');
+  verTelegram(['telegram-carga']);
+  return pedirTelegram('GET', '/api/panel/telegram').then(function (resultado) {
+    if (resultado.estado === 401) {
+      window.location.reload();
+      return;
+    }
+    if (resultado.estado === 409) {
+      fallarTelegram(MENSAJE_TENANT_INACTIVO);
+      return;
+    }
+    var datos = resultado.datos;
+    if (resultado.estado !== 200 || ESTADOS_TELEGRAM.indexOf(datos.estado) === -1) {
+      fallarTelegram(MENSAJE_ERROR);
+      return;
+    }
+    telegram = { estado: datos.estado, vinculadoEn: datos.vinculadoEn, venceEn: datos.venceEn };
+    pintarTelegram();
+  }).catch(function () {
+    fallarTelegram(MENSAJE_ERROR);
+  });
+}
+function crearCodigoTelegram(boton) {
+  avisoTelegram('', '');
+  boton.disabled = true;
+  pedirTelegram('POST', '/api/panel/telegram/codigo').then(function (resultado) {
+    var datos = resultado.datos;
+    if (resultado.estado === 401) {
+      window.location.reload();
+      return;
+    }
+    if (resultado.estado === 409 && datos.error === 'telegram-no-disponible') {
+      telegram = { estado: 'no-disponible' };
+      pintarTelegram();
+      return;
+    }
+    if (resultado.estado !== 201 || typeof datos.codigo !== 'string' || typeof datos.venceEn !== 'string') {
+      avisoTelegram('No pudimos generar el código', resultado.estado === 409 ? MENSAJE_TENANT_INACTIVO : MENSAJE_ERROR);
+      return;
+    }
+    if (telegram.estado !== 'vinculado') { telegram.estado = 'codigo-pendiente'; }
+    telegram.codigo = datos.codigo;
+    telegram.enlace = datos.enlace;
+    telegram.venceEn = datos.venceEn;
+    pintarTelegram();
+    var abrir = document.getElementById('telegram-abrir');
+    (abrir.hidden ? document.getElementById('telegram-otro-codigo') : abrir).focus();
+  }).catch(function () {
+    avisoTelegram('No pudimos generar el código', MENSAJE_ERROR);
+  }).finally(function () {
+    boton.disabled = false;
+  });
+}
+function desvincularTelegram(boton) {
+  avisoTelegram('', '');
+  boton.disabled = true;
+  pedirTelegram('DELETE', '/api/panel/telegram/vinculo').then(function (resultado) {
+    if (resultado.estado === 401) {
+      window.location.reload();
+      return;
+    }
+    if (resultado.estado !== 204) {
+      confirmarTelegram(false);
+      avisoTelegram('No pudimos desvincular Telegram', resultado.estado === 409 ? MENSAJE_TENANT_INACTIVO : MENSAJE_ERROR);
+      return;
+    }
+    // A live code survives the unlink (the server leaves it), so the card keeps showing it.
+    telegram.estado = typeof telegram.venceEn === 'string' ? 'codigo-pendiente' : 'sin-vincular';
+    telegram.vinculadoEn = undefined;
+    pintarTelegram();
+  }).catch(function () {
+    confirmarTelegram(false);
+    avisoTelegram('No pudimos desvincular Telegram', MENSAJE_ERROR);
+  }).finally(function () {
+    boton.disabled = false;
+  });
+}
+function alClic(id, accion) {
+  var boton = document.getElementById(id);
+  boton.addEventListener('click', function () { accion(boton); });
+}
+alClic('telegram-reintentar', function () { cargarTelegram(); });
+alClic('telegram-vincular', crearCodigoTelegram);
+alClic('telegram-otro-chat', crearCodigoTelegram);
+alClic('telegram-otro-codigo', crearCodigoTelegram);
+alClic('telegram-desvincular', function () {
+  confirmarTelegram(true);
+  document.getElementById('telegram-confirmar-desvincular').focus();
+});
+alClic('telegram-cancelar', function () {
+  confirmarTelegram(false);
+  document.getElementById('telegram-desvincular').focus();
+});
+alClic('telegram-confirmar-desvincular', desvincularTelegram);
 cargarLista();
+cargarTelegram();
 </script>
 ` + PIE_PAGINA;
 }
