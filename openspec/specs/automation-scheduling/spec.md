@@ -107,6 +107,32 @@ The own database SHALL have an `Automatizacion` table. Every row MUST reference 
 - WHEN tenant A sends the adjust with `{ "minimoFilas": 10 }` for its id
 - THEN the response SHALL be `404` and tenant B's row SHALL be unchanged
 
+### Requirement: The Automation Chooses One Channel (DEC-185, DEC-197)
+Every `Automatizacion` row SHALL have a non-null text `canal`, either `correo` or `telegram`, defaulting to `correo`, with its allowed values in code. Rows created before this column SHALL read `correo`. `POST /automatizaciones` and the operator's adjust route SHALL accept an optional `canal`; absent on create means `correo`, and absent on adjust leaves it unchanged. Any other value SHALL answer `400 solicitud-invalida` with `campos` containing `/canal`, and nothing SHALL be stored. `GET /automatizaciones/:id`, the create response and the adjust response SHALL include `canal`. These routes SHALL NOT refuse `telegram` for lacking a link or a token: the run records that state. `destinatarios` SHALL be stored and validated as before whatever the channel, and SHALL be ignored at send time under `telegram`.
+
+#### Scenario: Default channel
+- **WHEN** an automation is created with no `canal`
+- **THEN** the row SHALL persist with `canal: "correo"`
+
+#### Scenario: Existing rows
+- **GIVEN** a row created before this column existed
+- **WHEN** it is read after the migration
+- **THEN** `canal` SHALL be `correo`, and its `destinatarios` SHALL be unchanged
+
+#### Scenario: Creating a Telegram automation with no link
+- **GIVEN** a tenant with no link
+- **WHEN** an automation is created with `canal: "telegram"`
+- **THEN** the response SHALL be `201` and the row SHALL have `canal: "telegram"`
+
+#### Scenario: Unknown channel
+- **WHEN** a create or adjust body sends `canal: "sms"`
+- **THEN** the response SHALL be `400 solicitud-invalida` with `campos` containing `/canal`, and nothing SHALL be stored
+
+#### Scenario: Switching keeps the recipients
+- **GIVEN** an automation with `canal: "correo"` and `destinatarios` `["a@b.com"]`
+- **WHEN** an adjust sends `canal: "telegram"`, and a later one sends `canal: "correo"`
+- **THEN** `destinatarios` SHALL still be `["a@b.com"]`
+
 ### Requirement: Automation Lifecycle Is Create, List, Get, Deactivate — No Edit or Delete (DEC-78, DEC-79)
 
 The system SHALL expose, all scoped to the active tenant: `POST /automatizaciones` (create), `GET /automatizaciones` (list), `GET /automatizaciones/:id` (get), `PUT /automatizaciones/:id/ajustes` (adjust, DEC-174) and `POST /automatizaciones/:id/desactivar` (deactivate). The adjust route SHALL update only `valores`, `cron`, `destinatarios` and `minimoFilas` of the same row, and SHALL NOT change `plantillaId`, `conexionId`, `activo` or `tenantId`. It SHALL NOT expose any route that deletes a row or reactivates it. Deactivating sets `activo: false` and no route sets it back to `true`.
@@ -304,6 +330,14 @@ Nothing SHALL be dialled before steps 1 to 5 pass. A `200` SHALL carry the engin
 - THEN the automation's row and its `Ejecucion` rows SHALL be exactly as before
 - AND its next scheduled run SHALL be unaffected
 
+### Requirement: The Preview Reads the Automation's Channel (X10, DEC-195)
+`POST /automatizaciones/:id/vista-previa` SHALL read `canal`, and its `200` SHALL carry `canal` and `telegram` as defined by `email-notification` and `telegram-notification`. The refusal steps and their order SHALL NOT change.
+
+#### Scenario: A gate refusal on the Telegram channel dials nothing
+- **GIVEN** an active Telegram automation whose template declares an entity with no approved view
+- **WHEN** the preview is called
+- **THEN** the response SHALL be `409 vista-canonica-no-aprobada`, nothing SHALL be dialled and no link read SHALL be made
+
 ### Requirement: A Failure Does Not Stop the Tick for Other Automations or Tenants (X8, DEC-109)
 
 The scheduler SHALL catch any error raised by one automation's run and continue evaluating the remaining due automations in the same tick. It SHALL also catch any error raised while processing one tenant (including one thrown outside a run) and continue with the remaining tenants in the same tick. A tenant-level failure SHALL be written to the log using closed fields only (the tenant identifier from the own-database `Tenant` row and a classified error name) and MUST NOT include raw error text, stack trace, connection data, credentials, SMTP settings, or a recipient address. A tenant-level failure writes no `Ejecucion` row, and the failed tenant's window for that tick is not recovered (DEC-95).
@@ -360,6 +394,19 @@ After a run's query completes and while its result rows are in memory, the run S
 - WHEN it becomes due and its query returns rows
 - THEN the run SHALL execute and close `estado='ok'` with `notificacion='sin-destinatario'`
 - AND the notifier SHALL NOT be called
+
+### Requirement: The Run Notifies Through Its Channel (X3, N1, N4)
+The notification step SHALL use the automation's `canal` as read for that run, following `email-notification` for `correo` and `telegram-notification` for `telegram`. It SHALL remain one step per run, before the `Ejecucion` row closes. A run SHALL use exactly one channel.
+
+#### Scenario: A channel changed before the run
+- **GIVEN** a due automation adjusted from `correo` to `telegram` before its run
+- **WHEN** it runs
+- **THEN** the run SHALL use Telegram, and no email SHALL be sent
+
+#### Scenario: One run, one row, one send
+- **GIVEN** a due Telegram automation whose query returns rows reaching its minimum, with a link and a token
+- **WHEN** the scheduler runs it
+- **THEN** exactly one `Ejecucion` row SHALL persist with `notificacion` set, and one message SHALL have been sent
 
 ### Requirement: Overlap Check Before Creating a Run (X4, DEC-96)
 
