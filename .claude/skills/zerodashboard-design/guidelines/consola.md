@@ -138,11 +138,14 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 - **Lista**: automatización (plantilla + id) · conexión · cron (expresión mono + texto humano) · estado (Activa / Desactivada) · alta · acciones (Ver ejecuciones, Vista previa, Ajustar, Desactivar; una desactivada solo Ver ejecuciones).
   - Desactivar: diálogo «Desactivar au_xx»; el historial se conserva.
   - Ajustar (CH-33, CH-40, CH-41): pop-up con los valores, el horario, los destinatarios (un solo campo de texto, «a@x.com, b@x.com», con la ayuda «Hasta 5, separados por comas.») y el «Mínimo de filas para avisar»; envía solo lo que cambió. La lista se compara por direcciones, no por texto; vaciar el campo envía `[]` y deja de enviar correo. Un 400 nombra la dirección escrita en esa posición.
+  - Canal en el ajuste (CH-44, DEC-197): select «Canal» con «Correo» y «Telegram». Con «Telegram» se ocultan los destinatarios, que se conservan, y una ayuda explica el chat vinculado y «Sin vínculo». Envía `canal` solo si cambió.
   - Vista previa (CH-42, DEC-195): pop-up «Vista previa del mensaje» que corre la consulta una vez y muestra la decisión («Se enviaría a: …» o «No se enviaría: …»), «Para», las filas, el «Asunto», el texto en un `pre` y el HTML en un `iframe` con `sandbox` vacío. Solo «Cerrar»: no envía ni guarda nada.
+  - Vista previa por Telegram (CH-44, DEC-197): «Se enviaría al chat vinculado.» o por qué no, «Para: chat vinculado» y el texto en el `pre`, sin «Asunto» ni `iframe`. Nunca muestra el identificador del chat.
   - Vacío: "Este tenant no tiene automatizaciones" + «Nueva automatización».
 - **Alta en dos pasos** (`#automatizaciones/alta`), con `Stepper`:
   1. Conexión (select) + plantilla en tarjetas (`TemplatePicker`). Las no disponibles: deshabilitadas, borde punteado, candado + motivo (`.zd-template__why`), enlazado con `aria-describedby`.
   2. Parámetros de la plantilla · frecuencia + hora → **cron resultante en vivo** (`.zd-cron`: expresión + texto) · «Correos de los destinatarios (opcional)» (un solo campo de texto con teclado de correo; coma, punto y coma o espacio separan; hasta 5; la vista previa lista las direcciones en «Para») · «Mínimo de filas para avisar» (número, 1 por defecto, sin máximo en el cliente: el tope lo valida el servidor) · vista previa del correo al costado, con «Se envía con: N filas o más». «Volver» / «Crear automatización».
+     «Canal» (CH-44, DEC-197): con «Telegram» se ocultan los destinatarios y el esquema del correo, y la ayuda del mínimo dice «El mensaje sale…». Sin vínculo se puede crear igual: la ejecución queda «Sin vínculo».
 - **Estados**: creada → vuelve a la lista con Banner ok y la primera ejecución.
 
 ### C-10 Ejecuciones de una automatización — X2, X4, X5, X7 · CH-13, CH-17a, CH-17b · EXISTE — **con mockup**
@@ -187,6 +190,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-38 | C-03 Plantillas: nueva, editar, duplicar | EXISTE |
 | CH-39 | C-03 Plantillas: texto del mensaje (encabezado y línea por fila) | EXISTE |
 | CH-40 | C-09 Automatizaciones: mínimo de filas en el alta y en el ajuste · C-10 Ejecuciones: «No enviada: menos filas que el mínimo» | EXISTE |
+| CH-44 | C-09 Automatizaciones: canal en el alta, el ajuste y la vista previa · C-10 Ejecuciones: textos por canal de cada ejecución | EXISTE |
 
 ---
 

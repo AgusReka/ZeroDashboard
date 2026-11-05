@@ -126,6 +126,7 @@ Más aire (`data-surface="panel"`: cuerpo 16 px, controles 44 px), móvil primer
 ### P-02 Mis automatizaciones — P1h · CH-22 · PENDIENTE
 - **Datos**: `titulo` (de negocio, "Aviso de stock bajo") · `descripcion` · `estado` (activa / con_falla / pausada) · `ultima_ejecucion` (texto de negocio, "Hoy 08:00 · 3 productos con poco stock") · `proxima_ejecucion` · `frecuencia`. Disponibles: `titulo`, `descripcion`, `tolerancia`.
 - **Estados**: sin activas (EmptyState "Todavía no activaste ninguna automatización") · cargando (skeleton de tarjetas).
+- **Aviso sin chat** (CH-44, DEC-197): una automatización activa por Telegram sin chat vinculado muestra en su tarjeta un Banner warn, «Este aviso no te está llegando» / «Se manda por Telegram y no hay un chat vinculado.». No cambia el estado ni el último resultado.
 - **Acciones**: Ajustar, Activar. (No hay "Ver último resultado": DEC-93 no persiste las filas; el cliente recibe el resultado por correo.)
 
 ### P-03 Aviso de falla en lenguaje de negocio — P3h · CH-22 · PENDIENTE
@@ -134,6 +135,7 @@ Más aire (`data-surface="panel"`: cuerpo 16 px, controles 44 px), móvil primer
 
 ### P-04 Ajuste de umbrales y horarios — P2h · CH-23 · PENDIENTE
 - **Datos**: `umbral` (entero, 20, sufijo "unidades") · `hora` (08:00) · `dias` (enum) · `destinatarios` (un solo campo de texto, «Enviar a», de 1 a 5 correos separados por comas, con la ayuda «Hasta 5 correos, separados por comas.»; el panel no puede dejarlo vacío). **Sin campos de SQL.**
+- **Canal** (CH-44, DEC-197): cuando hay más de una opción, un select «Enviar por» con «Correo» y «Telegram». Telegram se ofrece con el token y un chat vinculado, o si ya está elegido. Con «Telegram», «Enviar a» se oculta y la lista se conserva. Volver a «Correo» pide al menos un correo. Error: «Elegí por dónde querés recibir este aviso.». Nunca se muestra el chat.
 - **Estados**: validación por campo · guardado (Banner ok "Se aplican desde la próxima revisión").
 
 ### P-05 Advertencia de frescura al activar — F3 · CH-26 · PENDIENTE
@@ -187,6 +189,7 @@ Reporte HTML compatible con clientes de correo: tablas, estilos inline, 600 px, 
 | CH-26 | P-05 Advertencia de frescura | PENDIENTE |
 | CH-27 | P-06 Último resultado | FUERA DE ALCANCE (DEC-93) |
 | CH-43 | P-07 Avisos por Telegram | EXISTE |
+| CH-44 | P-02 Aviso sin chat · P-04 Enviar por | EXISTE |
 
 ## Componentes → change
 | Componente | Historia · Change · Estado |
