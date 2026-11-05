@@ -1,7 +1,7 @@
 # Telegram Link Specification
 
 ## Purpose
-A tenant links one Telegram chat to the platform's global bot with a one-time code, read by polling Telegram outward with no webhook and no inbound port (N5, DEC-185, DEC-196). The link is what CH-44 will send notices to. This capability sends nothing to the chat except the bot's two fixed answers, and never runs an automation.
+A tenant links one Telegram chat to the platform's global bot with a one-time code, read by polling Telegram outward with no webhook and no inbound port (N5, DEC-185, DEC-196). The link is where `telegram-notification` sends a Telegram automation's notices (N4). This capability itself sends nothing to the chat except the bot's two fixed answers, and never runs an automation.
 
 Bot API facts this spec relies on, from the Bot API reference (core.telegram.org/bots/api, "Making requests", `getUpdates`, `Chat`) and the features page (core.telegram.org/bots/features, "Deep linking"), checked on 2026-11-04:
 - Requests go to `https://api.telegram.org/bot<token>/<method>`, so the token is in every URL. Every response is a JSON object with a boolean `ok`, and an optional `description` and `error_code`.
