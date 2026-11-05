@@ -7,6 +7,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { hashearClave } from '../compartido/crypto-auth.js';
+import { terminosProhibidosEn } from '../compartido/glosario-panel.js';
 import { registerPanelAuthRoutes } from './panel-auth.js';
 import { registerPanelRoutes } from './panel.js';
 
@@ -294,12 +295,50 @@ describe(
       }
       // The request body is built from the four fields only; nothing else can be added.
       const campos = new Set([...script.matchAll(/cuerpo\.(\w+) = /g)].map((m) => m[1]));
-      assert.deepEqual([...campos].sort(), ['destinatarios', 'dias', 'hora', 'umbral']);
+      assert.deepEqual([...campos].sort(), ['canal', 'destinatarios', 'dias', 'hora', 'umbral']);
       assert.ok(script.includes("method: 'PUT'"));
       assert.ok(script.includes('encodeURIComponent(id)'), 'the id travels as a path segment, encoded');
       assert.ok(!/\bcron\b|\bvalores\b|\bsql\b/i.test(script), 'no schedule expression, value map or SQL on the page');
       // Only the active and failing cards get the action.
       assert.match(script, /if \(esActiva \|\| esConFalla\) \{[\s\S]*?'Ajustar'/);
+    });
+
+    test('CH-44 the channel: copy, the glossary, and what the form sends', async () => {
+      const { script } = await shellConScript();
+      for (const texto of [
+        'Enviar por',
+        'Telegram',
+        'Correo',
+        'Elegí por dónde querés recibir este aviso.',
+        'Este aviso no te está llegando',
+        'Se manda por Telegram y no hay un chat vinculado.',
+      ]) {
+        assert.ok(script.includes(texto), `falta el texto: ${texto}`);
+        assert.deepEqual(terminosProhibidosEn(texto), [], texto);
+      }
+      const funcion = (nombre: string): string => {
+        const desde = script.indexOf(`function ${nombre}(`);
+        assert.ok(desde !== -1, nombre);
+        return script.slice(desde, script.indexOf('\n}', desde) + 2);
+      };
+      const cuerpoDeCambios = new Function(
+        `${funcion('direccionesDe')}\n${funcion('cuerpoDeCambios')}\nreturn cuerpoDeCambios;`,
+      )() as (campos: unknown, ajustes: unknown) => Record<string, unknown>;
+      const campos = (canal: string, correos: string) => ({
+        canal: { control: { value: canal } },
+        destinatarios: { control: { value: correos } },
+      });
+      const enCorreo = { canal: 'correo', destinatarios: ['a@b.com'] };
+      const enTelegram = { canal: 'telegram', destinatarios: [] };
+      // Choosing Telegram sends the channel alone, whatever the hidden field holds.
+      assert.deepEqual(cuerpoDeCambios(campos('telegram', 'otro@b.com'), enCorreo), { canal: 'telegram' });
+      // No change: nothing to send.
+      assert.deepEqual(cuerpoDeCambios(campos('correo', 'a@b.com'), enCorreo), {});
+      assert.deepEqual(cuerpoDeCambios(campos('telegram', ''), enTelegram), {});
+      // Going back sends the channel and what was typed.
+      assert.deepEqual(cuerpoDeCambios(campos('correo', 'c@d.com'), enTelegram), { canal: 'correo', destinatarios: ['c@d.com'] });
+      // With no choice offered, the form works as before.
+      assert.deepEqual(cuerpoDeCambios({ destinatarios: { control: { value: 'c@d.com' } } }, enCorreo), { destinatarios: ['c@d.com'] });
     });
 
     test('CH-41 the P-04 form splits the field into a list and sends it only when it differs from the stored one', async (t) => {
@@ -358,8 +397,11 @@ describe(
     /** A minimal DOM: every id resolves to one recorded element, and clicks run the handlers. */
     function domFalso() {
       const elementos = new Map<string, any>();
-      const crear = (): any => ({
-        hidden: false, textContent: '', className: '', disabled: false, href: '', children: [] as unknown[],
+      const crear = (tagName = ''): any => ({
+        tagName, hidden: false, textContent: '', className: '', disabled: false, href: '', children: [] as unknown[],
+        querySelector() { return null; },
+        insertBefore(hijo: unknown) { this.children.unshift(hijo); return hijo; },
+        removeChild(hijo: unknown) { this.children = this.children.filter((h: unknown) => h !== hijo); return hijo; },
         atributos: {} as Record<string, string>, oyentes: [] as Array<() => void>,
         appendChild(hijo: unknown) { this.children.push(hijo); return hijo; },
         setAttribute(clave: string, valor: string) { this.atributos[clave] = valor; },
@@ -376,7 +418,12 @@ describe(
         createElement: crear,
         createElementNS: crear,
       };
-      return { documento, el: (id: string) => documento.getElementById(id), clic: (id: string) => documento.getElementById(id).oyentes.forEach((o: () => void) => o()) };
+      return {
+        documento,
+        elementos: () => [...elementos.values()],
+        el: (id: string) => documento.getElementById(id),
+        clic: (id: string) => documento.getElementById(id).oyentes.forEach((o: () => void) => o()),
+      };
     }
 
     /** Runs the served script against the fake DOM; `respuestas` answers by "METHOD url", `null` rejects. */
@@ -396,6 +443,97 @@ describe(
     }
     const esperar = () => new Promise((r) => setImmediate(r));
     const LISTA = { status: 200, cuerpo: { activas: [], disponibles: [], zonaHoraria: 'UTC', truncado: false } };
+
+    describe('CH-44 the card and the form, run against the fake DOM', () => {
+      const ITEM = {
+        id: 'a-1', titulo: 'Aviso de stock', descripcion: 'Te avisamos.', estado: 'activa',
+        ultimaEjecucion: { fecha: '2026-11-05T08:00:00.000Z', resultado: 'completada' },
+        proximaEjecucion: '2026-11-06T08:00:00.000Z', frecuencia: 'Todos los días a las 08:00',
+      };
+      const lista = (item: object) => ({ status: 200, cuerpo: { activas: [item], disponibles: [], zonaHoraria: 'UTC', truncado: false } });
+      const AJUSTES = '/api/panel/automatizaciones/a-1/ajustes';
+
+      /** Every node under the page's fixed elements, depth first. */
+      function nodos(corrida: { elementos: () => any[] }): any[] {
+        const salida: any[] = [];
+        const visitar = (nodo: any) => {
+          salida.push(nodo);
+          for (const hijo of nodo.children) visitar(hijo);
+        };
+        corrida.elementos().forEach(visitar);
+        return salida;
+      }
+      const conTexto = (corrida: { elementos: () => any[] }, texto: string) => nodos(corrida).filter((n) => n.textContent === texto);
+
+      /** Paints the list, presses «Ajustar» and answers the read with `ajustes`. */
+      async function abrirForma(script: string, ajustes: object) {
+        const corrida = correrScript(script, {
+          'GET /api/panel/automatizaciones': lista(ITEM),
+          'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'sin-vincular', bot: 'zd_bot' } },
+          [`GET ${AJUSTES}`]: { status: 200, cuerpo: ajustes },
+        });
+        await esperar();
+        const [boton] = conTexto(corrida, 'Ajustar');
+        assert.ok(boton !== undefined, 'the card offers «Ajustar»');
+        boton.oyentes.forEach((oyente: () => void) => oyente());
+        await esperar();
+        return corrida;
+      }
+
+      const BASE = { destinatarios: ['a@b.com'], zonaHoraria: 'UTC' };
+
+      test('a card with sinVinculo shows the warning, and one without it does not', async () => {
+        const { script } = await shellConScript();
+        const conAviso = correrScript(script, {
+          'GET /api/panel/automatizaciones': lista({ ...ITEM, sinVinculo: true }),
+          'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'sin-vincular', bot: 'zd_bot' } },
+        });
+        await esperar();
+        assert.equal(conTexto(conAviso, 'Este aviso no te está llegando').length, 1);
+        assert.equal(conTexto(conAviso, 'Se manda por Telegram y no hay un chat vinculado.').length, 1);
+
+        const sinAviso = correrScript(script, {
+          'GET /api/panel/automatizaciones': lista(ITEM),
+          'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'sin-vincular', bot: 'zd_bot' } },
+        });
+        await esperar();
+        assert.equal(conTexto(sinAviso, 'Este aviso no te está llegando').length, 0);
+      });
+
+      test('with one channel to offer there is no choice, and «Enviar a» shows', async () => {
+        const { script } = await shellConScript();
+        const corrida = await abrirForma(script, { ...BASE, canal: 'correo', canales: ['correo'] });
+        assert.equal(conTexto(corrida, 'Enviar por').length, 0);
+        assert.equal(conTexto(corrida, 'Enviar a').length, 1);
+      });
+
+      test('with both, the select follows the stored channel and toggles «Enviar a»', async () => {
+        const { script } = await shellConScript();
+        const corrida = await abrirForma(script, { ...BASE, canal: 'correo', canales: ['correo', 'telegram'] });
+        assert.equal(conTexto(corrida, 'Enviar por').length, 1);
+        const select = nodos(corrida).find((n) => n.tagName === 'select' && n.children.some((o: any) => o.textContent === 'Telegram'));
+        assert.ok(select !== undefined, 'the select is on the page');
+        assert.equal(select.value, 'correo');
+        const cajaDeEnviarA = nodos(corrida).find((n) => n.children.some((h: any) => h.textContent === 'Enviar a'));
+        assert.equal(cajaDeEnviarA.hidden, false);
+        select.value = 'telegram';
+        select.oyentes.forEach((oyente: () => void) => oyente());
+        assert.equal(cajaDeEnviarA.hidden, true);
+        select.value = 'correo';
+        select.oyentes.forEach((oyente: () => void) => oyente());
+        assert.equal(cajaDeEnviarA.hidden, false);
+      });
+
+      test('a Telegram automation opens with «Enviar a» hidden and can go back', async () => {
+        const { script } = await shellConScript();
+        const corrida = await abrirForma(script, { ...BASE, destinatarios: [], canal: 'telegram', canales: ['correo', 'telegram'] });
+        const select = nodos(corrida).find((n) => n.tagName === 'select' && n.children.some((o: any) => o.textContent === 'Telegram'));
+        assert.equal(select.value, 'telegram');
+        assert.equal(select.children.map((o: any) => o.value).join(), 'correo,telegram');
+        const cajaDeEnviarA = nodos(corrida).find((n) => n.children.some((h: any) => h.textContent === 'Enviar a'));
+        assert.equal(cajaDeEnviarA.hidden, true);
+      });
+    });
 
     test('CH-43 P-07: the «Avisos por Telegram» card sits above the list, with its fixed blocks and copy', async (t) => {
       const { html, script } = await shellConScript();
