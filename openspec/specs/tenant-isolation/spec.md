@@ -64,6 +64,14 @@ The system SHALL filter every read and write on `Conexion`, `ConsultaGuardada`, 
 - WHEN it runs
 - THEN it SHALL expect `Agente` and SHALL fail if a model is neither scoped nor justified
 
+### Requirement: Telegram Link Models Are Tenant-Scoped
+`VinculoTelegram` and `CodigoVinculoTelegram` SHALL be in the isolation extension's scoped set, so every operation on them outside the lookup below SHALL be filtered by the active tenant, and SHALL fail closed with no context.
+
+#### Scenario: No context, no read
+- **GIVEN** no tenant context
+- **WHEN** `findMany` on `VinculoTelegram` or `CodigoVinculoTelegram` is attempted through the extended client
+- **THEN** it throws
+
 ### Requirement: Cross-Tenant Isolation Is Proven by an Automated Test (T2)
 
 The system SHALL include an automated test that loads two tenants, exercises every tenant-scoped route from each tenant's perspective, and asserts no operation returns, tests connectivity against, or executes a query against the other tenant's row. It SHALL run against a live database (skip, not fail, when unreachable) with no mocking, matching the existing `node:test` + `app.inject()` convention. The sweep SHALL include the mapping-validation routes (triggering validation, reading a validation result, reading the automation-applicability report), the routes creating, listing, getting, previewing and deactivating an `Automatizacion` and listing an automation's `Ejecucion` rows, and `GET /conexiones`. The suite SHALL also include a two-tenant scheduler tick asserting that each tenant's result rows are delivered only to that tenant's own automation recipient (a recording fake notifier is permitted; the database is not mocked). The panel two-tenant suite (`src/aislamiento-panel.test.ts`) SHALL additionally exercise `GET /api/panel/automatizaciones` from each tenant's session, including with the other tenant's `X-Tenant-Id` header, and SHALL assert that neither response contains the other tenant's automations, execution dates or availability.
@@ -114,6 +122,14 @@ The system SHALL include an automated test that loads two tenants, exercises eve
 - AND the response with the foreign `X-Tenant-Id` SHALL equal the response without it
 - AND neither response SHALL contain the other tenant's id, automation title or execution instant
 
+### Requirement: Telegram Panel Routes Are Proven Isolated by a Two-Tenant Test
+The panel two-tenant suite SHALL exercise the three Telegram routes from each tenant's session, including with the other tenant's `X-Tenant-Id` header, and SHALL assert that no response contains the other tenant's state, expiry or link date, that creating a code leaves the other tenant's code unchanged, and that unlinking leaves the other tenant's link unchanged.
+
+#### Scenario: Two tenants, two cards
+- **GIVEN** tenant A linked and tenant B with a live code
+- **WHEN** each session reads `GET /api/panel/telegram`, also sending the other's `X-Tenant-Id`
+- **THEN** A reads `vinculado` and B reads `codigo-pendiente`, each with its own dates only
+
 ### Requirement: Plantilla Is Outside the Structural Tenant Filter (DEC-61)
 
 `Plantilla` SHALL NOT be added to the tenant-scoped model allowlist (`MODELOS_AISLADOS`, DEC-13); its reads and writes SHALL proceed without any active-tenant filter. Its catalog routes (create, list, get, replace) SHALL be added to the tenant-context exemption allowlist, matched by exact method and route pattern. The test route (`POST /plantillas/:id/prueba`) SHALL NOT be added to that exemption: it resolves a tenant-owned `Conexion` and therefore SHALL require an active tenant like any other scoped route.
@@ -145,6 +161,15 @@ The scheduler SHALL enter each tenant's context using the same fail-closed, stru
 - GIVEN the scheduler's tenant-context entry mechanism
 - WHEN a query against a tenant-scoped model is attempted with no context entered
 - THEN it SHALL throw rather than execute unfiltered, same as a request-time query
+
+### Requirement: The Telegram Poller Enters a Tenant Context Only From the Code Row (rule 2)
+The poller SHALL be the third production entry into a tenant context, after request hooks and the scheduler. It SHALL enter a context only to store a link, only with the tenant id the code lookup returned, and SHALL NOT take a tenant id from any field of a Telegram update. The comment on the context entry function SHALL name the three entries.
+
+#### Scenario: A code from tenant A links only A
+- **GIVEN** tenants A and B, each with a live code
+- **WHEN** chat 42 sends A's code
+- **THEN** A is linked to chat 42, B is neither linked nor has its code changed
+
 ### Requirement: Notification Recipient Derives Only From the Tenant-Scoped Automation Row (rule 2)
 
 The recipients of a notification SHALL be read only from the `destinatarios` of the `Automatizacion` row loaded inside that run's tenant context, all of them and nothing else. They MUST NOT be taken from any request value, environment variable, or another tenant's row. The message preview's `para` SHALL follow the same rule: the `destinatarios` of the automation row the preview loaded through the tenant-scoped client, as stored.
@@ -238,6 +263,20 @@ The lookup result SHALL expose the tenant's state so the caller can refuse a dea
 - GIVEN tenants A and B with their own agents
 - WHEN each token is looked up
 - THEN each SHALL resolve only to its own `tenantId`
+
+### Requirement: Code Lookup Is the Single Audited Unscoped Read of CodigoVinculoTelegram
+The isolation extension SHALL expose exactly one operation that reads `CodigoVinculoTelegram` without a tenant context: a lookup by `codigoHash` returning only `tenantId`, `tenantNombre`, `tenantActivo` and `venceEn`, or nothing. It SHALL NOT accept a tenant id. The caller SHALL refuse an expired code or an inactive tenant. Every other unscoped operation on that model SHALL remain rejected.
+
+#### Scenario: Lookup works without context
+- **GIVEN** tenant A's live code and no tenant context
+- **WHEN** the lookup runs with its hash
+- **THEN** it returns A's id, name, state and the expiry, and nothing else
+
+#### Scenario: A code never links a deactivated tenant
+- **GIVEN** a live code of a tenant with `activo: false`
+- **WHEN** the bot receives it
+- **THEN** no link is stored and the "not valid" answer is sent
+
 ### Requirement: Panel Tenant Derivation Is Session-Locked (Rule 2, DEC-135)
 
 All panel routes (`/panel/*`, `/api/panel/*`) MUST derive the active tenant exclusively from the validated `SesionPanel` row. The server MUST NOT accept, inspect, or use any client-provided `X-Tenant-Id` header or URL parameter to determine tenant identity on panel routes. Downstream queries on panel routes MUST execute within `AsyncLocalStorage` entered with the session's `tenantId`.

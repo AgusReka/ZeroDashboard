@@ -118,6 +118,27 @@ The committed example environment file MUST document every SMTP variable with an
 - THEN every SMTP variable SHALL appear with an empty or placeholder value only
 - AND no real credential SHALL be present
 
+### Requirement: Optional Telegram Bot Token From the Environment (rule 7, DEC-185)
+The system SHALL read the bot token from `TELEGRAM_BOT_TOKEN`. The variable SHALL be optional: absent or empty, the application MUST start without error, SHALL NOT start the Telegram poller, and the panel SHALL report Telegram as not available. The token MUST NOT be hardcoded, MUST NOT be part of the application config object, and MUST NOT appear in any log, error message or HTTP response. At startup the application SHALL log only whether Telegram is `configurado` or `no-configurado`.
+
+#### Scenario: Application starts with the token unset
+- **GIVEN** `TELEGRAM_BOT_TOKEN` absent or empty
+- **WHEN** the application starts
+- **THEN** startup succeeds, the log says `no-configurado`, and no request to Telegram is made
+
+#### Scenario: A wrong token does not stop the application
+- **GIVEN** `TELEGRAM_BOT_TOKEN` set to a value Telegram refuses
+- **WHEN** the application starts
+- **THEN** it serves requests, the poller backs off on `getMe`, and no log carries the value
+
+### Requirement: Telegram Variable Ships Only as a Placeholder
+The committed example environment file MUST document `TELEGRAM_BOT_TOKEN` with an empty value, the README variable table SHALL describe it, and the Compose definition SHALL forward it as `${TELEGRAM_BOT_TOKEN:-}` without embedding a value.
+
+#### Scenario: Inspecting the example file and Compose definition
+- **GIVEN** a fresh clone of the repository
+- **WHEN** the example environment file and Compose definition are inspected
+- **THEN** `TELEGRAM_BOT_TOKEN` appears with an empty value only
+
 ### Requirement: Local Mail Catcher Under an Opt-In Compose Profile (DEC-81)
 
 The Compose definition SHALL provide a Mailpit service under a named profile, so that it starts only when that profile is requested. The default bring-up (no profile) MUST NOT start it and MUST remain a single-command start of the application and its database.

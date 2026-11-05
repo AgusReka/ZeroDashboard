@@ -3,9 +3,9 @@ schema: gentle-ai.verify-result/v1
 verdict: pass-with-warnings
 blockers: 0
 critical_findings: 0
-warnings: 2
+warnings: 0
 suggestions: 3
-requirements: 18/18 (16 fully evidenced; 2 carry a GAP, 1 of the 16 also carries a manual leg)
+requirements: 18/18 (16 evidenced by tests or inspection alone; 2 also rely on a manual leg, the check 10.2)
 scenarios: 33 (30 covered, 3 covered by the manual check 10.2, 0 GAP)
 test_command: TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db
 test_exit_code: 1 (only the 4 known environmental failures)
@@ -15,9 +15,9 @@ build_exit_code: 0
 
 # Verify report: CH-43 — Telegram link
 
-**Verdict: PASS WITH WARNINGS** (0 CRITICAL, 2 WARNING, 3 SUGGESTION). Date: 2026-11-04. Branch `ch43/panel-telegram`. CH-43a (`0f021d3`, with the planning artifacts in `6241c34`) and CH-43b (`ccc5703`) are committed; CH-43c (the panel card, its docs and this report) is in the working tree. Base `master`. DEC-196 is on `v2/dec-196` (`99eccd8`).
+**Verdict: PASS WITH WARNINGS** (0 CRITICAL, 0 WARNING, 3 SUGGESTION; kept because the test suite exits 1 from the 4 known failures, as in CH-41). Verified 2026-11-04 on branch `ch43/panel-telegram`; updated 2026-11-05 at archive. At first writing CH-43a (`0f021d3`, with the planning artifacts in `6241c34`) and CH-43b (`ccc5703`) were committed and CH-43c (the panel card, its docs and this report) was in the working tree. All three have since been merged into `master`: #229 CH-43a (b4dc642), #230 CH-43b (a188a88), #231 CH-43c (9b3a562), after #228 DEC-196 (a48b2e5, branch `v2/dec-196`, `99eccd8`).
 
-The warnings are the two scenarios that no automated test or manual step asserts (see "Gaps"). Task 13.2 is left unchecked in `tasks.md` because of them. The suite exits non-zero only because of the 4 known environmental failures. This verification ran in the same session as the apply, not in an independent one.
+The two warnings of the first run were the two scenarios that no automated test or manual step asserted (see "Gaps"). Both closed on 2026-11-04: the wrong-token leg of manual check 10.2 and the `TELEGRAM_BOT_TOKEN=` line the user added to the example env file (task 3.2). With no scenario left uncovered the verdict is PASS and the envelope `verdict` is `pass`, since nothing remaining warrants a warning; the three suggestions below are optional. The suite still exits non-zero because of the 4 known environmental failures in `src/conexiones/conexiones.test.ts`, which this change does not touch. This verification ran in the same session as the apply, not in an independent one.
 
 ## Commands
 | Command | Result |
@@ -31,14 +31,14 @@ The warnings are the two scenarios that no automated test or manual step asserts
 | 0.1 | done | DEC-196 on `v2/dec-196` before any code |
 | 1.1–2.3 | done | Models, migration, isolation set, `buscarPorHash`, `conTenantActivo` comment; `aislamiento.test.ts` |
 | 3.1, 3.3 | done | `telegram-config.ts`, `codigo-vinculo.ts`; `config.test.ts`, `codigo-vinculo.test.ts` |
-| **3.2** | **open** | Compose forwards `TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}` (`docker-compose.yml:52`) and the README table describes it. The example env file still lacks `TELEGRAM_BOT_TOKEN=`: the agent's permissions block it, the user adds it by hand. |
+| 3.2 | done | Compose forwards `TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}` (`docker-compose.yml:52`) and the README table describes it. The user added `TELEGRAM_BOT_TOKEN=` to the example env file on 2026-11-04 (the agent's permissions blocked that file) |
 | 4.1–4.4, 5.1, 5.2 | done | `panel-telegram.ts`, rows in `RUTAS_PANEL_PUBLICAS`, `panel-telegram-rutas.test.ts`, `aislamiento-panel.test.ts` |
 | 6.1–9.1, 10.1 | done | Client, `vincular`, poller, wiring in `server.ts` (`sondeo?.iniciar()` after `listen`, `detener()` in `onClose`) |
-| **10.2** | done (manual, 2026-11-04) | Real bot linked from the card (`vinculado`); made-up token: `/health` 200, `rechazada` with backoff, no token or chat id logged; no token: `no-configurado`, `/health` 200 |
+| 10.2 | done (manual, 2026-11-04) | Real bot linked from the card (`telegram-vinculo` `vinculado`); made-up token: `/health` 200 while `telegram-sondeo` logged `rechazada` and backed off, no token or chat id logged; no token: `no-configurado`, `/health` 200 |
 | 11.1, 11.2 | done | Card in `panel.ts`; three `CH-43 P-07` cases in `panel.test.ts` |
-| 12.1–12.3 | done | `pantallas.md` P-07 in both copies; guide 06 and README; map row (PR numbers pending, see "Open items") |
+| 12.1–12.3 | done | `pantallas.md` P-07 in both copies; guide 06 and README; the CH-43 map row carries #229, #230 and #231 |
 | 13.1 | done | The two commands above |
-| **13.2** | done | Every scenario maps to a test or to 10.2 (both GAPs closed on 2026-11-04) |
+| 13.2 | done | Every scenario maps to a test or to 10.2 (both GAPs closed on 2026-11-04) |
 
 ## Spec scenarios → evidence
 
@@ -94,8 +94,9 @@ Abbreviations (all under `src/`): CT `telegram/cliente-telegram.test.ts`, CV `te
 | Inspecting the example file and Compose definition | Compose (`docker-compose.yml:52`) and README (table row) are right by inspection. The example env file carries `TELEGRAM_BOT_TOKEN=` with an empty value since 2026-11-04 (task 3.2, added by the user). No test reads these files. | COVERED (inspection) |
 
 ## Gaps
-1. **A wrong token does not stop the application** (project-environment). Closed on 2026-11-04 by the 10.2 wrong-token leg; kept here for the record. Two of three THEN clauses are asserted; "it serves requests" is not. Cheapest close: add a wrong-token step to 10.2 (start the app with a made-up token, read `/` or the panel, confirm the log carries no token), or a server-level test. The poller is started by a timer after `listen`, so the risk is low, but no assertion exists.
-2. **Inspecting the example file and Compose definition** (project-environment). Closes when the user adds `TELEGRAM_BOT_TOKEN=` to the example env file (task 3.2); no automated check exists for these files.
+None open. Both gaps of the first run closed on 2026-11-04; they are kept here for the record.
+1. **A wrong token does not stop the application** (project-environment). Two of three THEN clauses were asserted by tests; "it serves requests" was not, because nothing boots `server.ts`. Closed by the wrong-token leg of 10.2: `/health` answered 200 while `telegram-sondeo` logged `rechazada` with growing waits, and no log line carried the token.
+2. **Inspecting the example file and Compose definition** (project-environment). Closed when the user added `TELEGRAM_BOT_TOKEN=` to the example env file (task 3.2); the Compose line and the README row were already right. No automated check reads these files.
 
 ## Rules and decisions
 - **Rule 2.** The tenant id reaches a context only from `buscarPorHash` (VR "A's code links only A"; AI lookup cases). Nothing in `ActualizacionTelegram` carries a tenant id (CT parse case).
@@ -104,13 +105,14 @@ Abbreviations (all under `src/`): CT `telegram/cliente-telegram.test.ts`, CV `te
 - **DEC-185 / DEC-196.** No webhook, no inbound port; fixed answers match the spec text byte for byte (ST asserts both constants).
 
 ## Open items
-1. **3.2**: the user adds `TELEGRAM_BOT_TOKEN=` to the example env file by hand.
-2. **10.2**: the real-bot check, with the user's go-ahead and a test token in their own `.env`; consider adding the wrong-token step (Gap 1).
-3. **PR numbers**: `docs/02-mapa-de-changes.md` says `PRs #pendiente` for CH-43; fill the three numbers when the PRs open.
-4. **PR #227 must merge before the archive.** Do not archive CH-43 earlier.
-5. **13.2** stays unchecked until Gaps 1 and 2 close.
+None. All five items of the first run were closed:
+1. **3.2**: done by the user on 2026-11-04.
+2. **10.2**: done on 2026-11-04, including the wrong-token step.
+3. **PR numbers**: the map row carries #229, #230 and #231.
+4. **PR #227** (the CH-42 archive) merged before this archive (85d6342).
+5. **13.2**: ticked, since Gaps 1 and 2 closed.
 
 ## Suggestions
-1. **Boot test for the no-token path.** A small test that builds the app wiring with `TELEGRAM_BOT_TOKEN` unset and a spy transport would turn two MANUAL scenarios and Gap 1 into COVERED, but `server.ts` runs on import today and would need its wiring extracted first.
+1. **Boot test for the no-token path.** A small test that builds the app wiring with `TELEGRAM_BOT_TOKEN` unset and a spy transport would turn the three MANUAL scenarios into COVERED, but `server.ts` runs on import today and would need its wiring extracted first.
 2. **Real-clock check of `detener()`.** ST asserts the abort with a fake that listens to the signal; the 25 s bound itself is only demonstrated by 10.2.
 3. **Skip guard names.** `panel-telegram-rutas.test.ts` and `vincular-rutas.test.ts` skip without a reachable database, as the other DB suites do; a CI run without `TEST_DB_*` would pass them silently. Not new to CH-43.
