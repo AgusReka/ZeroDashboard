@@ -5,6 +5,8 @@ import {
   cierreDeResultado,
   cronValido,
   decidirNotificacion,
+  decidirTelegram,
+  esCanal,
   MINIMO_FILAS_POR_DEFECTO,
   esFalloReintentable,
   estaVencida,
@@ -432,6 +434,53 @@ describe('esFalloReintentable — only a transient connection failure is retried
 // ---- 3.1 notification precedence (DEC-83, DEC-84, DEC-86) ----------------------------
 
 const PARA = ['compras@ejemplo.test'];
+
+describe('decidirTelegram — the same order on the Telegram channel (CH-44)', () => {
+  const CHAT = 42n;
+
+  test('a failed query records null', () => {
+    assert.deepEqual(decidirTelegram(fallida('ejecucion', 'error-sintaxis', '42601'), CHAT, true, 1), {
+      enviar: false,
+      notificacion: null,
+    });
+  });
+
+  test('zero rows win over a missing link and a missing token', () => {
+    assert.deepEqual(decidirTelegram(exitosa(0), null, false, 1), { enviar: false, notificacion: 'omitida-sin-filas' });
+  });
+
+  test('below the minimum wins over a missing link', () => {
+    assert.deepEqual(decidirTelegram(exitosa(2), null, false, 5), { enviar: false, notificacion: 'omitida-bajo-minimo' });
+  });
+
+  test('a missing link wins over a missing token', () => {
+    assert.deepEqual(decidirTelegram(exitosa(2), null, false, 1), { enviar: false, notificacion: 'sin-vinculo' });
+    assert.deepEqual(decidirTelegram(exitosa(2), null, true, 1), { enviar: false, notificacion: 'sin-vinculo' });
+  });
+
+  test('a link with no token is not configured', () => {
+    assert.deepEqual(decidirTelegram(exitosa(2), CHAT, false, 1), { enviar: false, notificacion: 'no-configurada' });
+  });
+
+  test('a link and a token send to that chat', () => {
+    assert.deepEqual(decidirTelegram(exitosa(2), CHAT, true, 1), { enviar: true, chatId: CHAT });
+  });
+
+  test('a sin-vinculo close stays ok and keeps the row count', () => {
+    const cierre = cierreConNotificacion(cierreDeResultado(exitosa(3)), 'sin-vinculo');
+    assert.equal(cierre.estado, 'ok');
+    assert.equal(cierre.filas, 3);
+    assert.equal(cierre.notificacion, 'sin-vinculo');
+  });
+
+  test('esCanal accepts only the two values', () => {
+    assert.ok(esCanal('correo'));
+    assert.ok(esCanal('telegram'));
+    for (const otro of ['sms', 'Telegram', '', null, undefined, 1, 'constructor']) {
+      assert.equal(esCanal(otro), false, String(otro));
+    }
+  });
+});
 
 describe('decidirNotificacion — the first condition that holds wins', () => {
   test('3.1 a run that did not succeed records null and never sends', () => {

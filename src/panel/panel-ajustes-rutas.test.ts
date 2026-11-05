@@ -69,7 +69,7 @@ describe(
       app = Fastify({ logger: false });
       const aislado = extenderConAislamiento(db);
       registrarContextoTenant(app, aislado);
-      registerPanelAjustesRoutes(app, aislado, 'UTC', () => RELOJ);
+      registerPanelAjustesRoutes(app, aislado, 'UTC', () => RELOJ, true);
       await app.ready();
       const plantilla = await db.plantilla.create({
         data: {
@@ -88,6 +88,7 @@ describe(
     after(async () => {
       if (tenantIds.length > 0) {
         const donde = { tenantId: { in: tenantIds } };
+        await db.vinculoTelegram.deleteMany({ where: donde });
         await db.automatizacion.deleteMany({ where: donde });
         await db.conexion.deleteMany({ where: donde });
         await db.usuario.deleteMany({ where: donde });
@@ -171,6 +172,8 @@ describe(
         hora: '08:30',
         dias: 'lun-vie',
         destinatarios: ['ana@empresa.com'],
+        canal: 'correo',
+        canales: ['correo'],
         zonaHoraria: 'UTC',
       });
       for (const texto of ['cron', 'valores', 'sql', 'tenantId', 'conexionId', n.tenantId, n.conexionId]) {
@@ -178,11 +181,78 @@ describe(
       }
     });
 
+    // ---- channel (CH-44, DEC-197) -----------------------------------------------------
+
+    const vincular = (n: Negocio, chatId = 987654321n) =>
+      db.vinculoTelegram.create({ data: { tenantId: n.tenantId, chatId } });
+
+    const canalDe = async (id: string) => {
+      const guardada = await db.automatizacion.findUniqueOrThrow({ where: { id }, select: { canal: true, destinatarios: true } });
+      return guardada;
+    };
+
+    test('CH-44 a linked tenant may choose Telegram, the recipients stay, and the chat id never leaves', async () => {
+      const n = await negocio('canal-vinculado');
+      await vincular(n);
+      const id = await automatizacion(n);
+      const leida = await leer(n, id);
+      assert.deepEqual(leida.json().canales, ['correo', 'telegram']);
+      assert.ok(!leida.body.includes('987654321'));
+      const guardada = await guardar(n, id, { canal: 'telegram' });
+      assert.equal(guardada.statusCode, 200, guardada.body);
+      assert.equal(guardada.json().canal, 'telegram');
+      assert.ok(!guardada.body.includes('987654321'));
+      assert.deepEqual(await canalDe(id), { canal: 'telegram', destinatarios: ['ana@empresa.com'] });
+    });
+
+    test('CH-44 an unlinked tenant is refused Telegram, and another tenant\'s link does not count', async () => {
+      const n = await negocio('canal-sin-vinculo');
+      const otro = await negocio('canal-otro');
+      await vincular(otro);
+      const id = await automatizacion(n);
+      assert.deepEqual((await leer(n, id)).json().canales, ['correo']);
+      const respuesta = await guardar(n, id, { canal: 'telegram' });
+      assert.equal(respuesta.statusCode, 400);
+      assert.deepEqual(respuesta.json().campos, ['canal']);
+      assert.equal((await canalDe(id)).canal, 'correo');
+    });
+
+    test('CH-44 an unknown channel and a chat id in the body are refused', async () => {
+      const n = await negocio('canal-raro');
+      const id = await automatizacion(n);
+      assert.equal((await guardar(n, id, { canal: 'sms' })).statusCode, 400);
+      assert.equal((await guardar(n, id, { chatId: '42' })).statusCode, 400);
+      assert.equal((await canalDe(id)).canal, 'correo');
+    });
+
+    test('CH-44 a Telegram automation can go back, and needs an address to do it', async () => {
+      const n = await negocio('canal-vuelve');
+      const id = await automatizacion(n, { destinatarios: [] });
+      await db.automatizacion.update({ where: { id }, data: { canal: 'telegram' } });
+      assert.deepEqual((await leer(n, id)).json().canales, ['correo', 'telegram'], 'with no link, it can still go back');
+      const sinCorreo = await guardar(n, id, { canal: 'correo' });
+      assert.equal(sinCorreo.statusCode, 400);
+      assert.deepEqual(sinCorreo.json().campos, ['destinatarios']);
+      assert.equal((await canalDe(id)).canal, 'telegram');
+      const conCorreo = await guardar(n, id, { canal: 'correo', destinatarios: ['a@b.com'] });
+      assert.equal(conCorreo.statusCode, 200, conCorreo.body);
+      assert.deepEqual(await canalDe(id), { canal: 'correo', destinatarios: ['a@b.com'] });
+    });
+
+    test('CH-44 a foreign id answers 404 and leaves the other tenant\'s channel alone', async () => {
+      const a = await negocio('canal-a');
+      const b = await negocio('canal-b');
+      await vincular(a);
+      const idB = await automatizacion(b);
+      assert.equal((await guardar(a, idB, { canal: 'telegram' })).statusCode, 404);
+      assert.equal((await canalDe(idB)).canal, 'correo');
+    });
+
     test('GET with a custom cron has no hora, no dias and no cron text', async () => {
       const n = await negocio('personalizado');
       const id = await automatizacion(n, { cron: '0 */6 * * *' });
       const cuerpo = (await leer(n, id)).json() as Record<string, unknown>;
-      assert.deepEqual(Object.keys(cuerpo).sort(), ['destinatarios', 'umbral', 'zonaHoraria']);
+      assert.deepEqual(Object.keys(cuerpo).sort(), ['canal', 'canales', 'destinatarios', 'umbral', 'zonaHoraria']);
     });
 
     test('CH-41 GET returns the stored list in order, and [] when none is stored', async () => {
@@ -210,6 +280,8 @@ describe(
         hora: '09:15',
         dias: 'lun-sab',
         destinatarios: ['nuevo@empresa.com', 'otro@empresa.com'],
+        canal: 'correo',
+        canales: ['correo'],
         zonaHoraria: 'UTC',
         proximaEjecucion: '2026-10-08T09:15:00.000Z',
       });

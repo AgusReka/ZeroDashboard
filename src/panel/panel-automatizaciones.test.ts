@@ -166,6 +166,26 @@ function clavesProfundas(valor: unknown): string[] {
   return [];
 }
 
+describe('proyectarActiva — the notice for a Telegram automation with no chat (CH-44)', () => {
+  const AHORA_FIJO = new Date('2026-10-07T12:00:00Z');
+  const item = (parche: Partial<FilaAutomatizacion>, vinculado: boolean) =>
+    proyectarActiva(fila(parche), null, AHORA_FIJO, 'UTC', vinculado);
+
+  test('an active Telegram automation with no link carries it', () => {
+    assert.equal(item({ canal: 'telegram' }, false).sinVinculo, true);
+  });
+
+  test('a link, another channel or a paused automation do not', () => {
+    assert.equal('sinVinculo' in item({ canal: 'telegram' }, true), false);
+    assert.equal('sinVinculo' in item({ canal: 'correo' }, false), false);
+    assert.equal('sinVinculo' in item({ canal: 'telegram', activo: false }, false), false);
+  });
+
+  test('the channel itself does not reach the item', () => {
+    assert.equal('canal' in item({ canal: 'telegram' }, false), false);
+  });
+});
+
 describe('proyectarActiva — allow-list without technical fields', () => {
   test('1.4 no forbidden key and no stored value reaches the item', () => {
     const item = proyectarActiva(FILA_CRUDA, EJECUCION_CRUDA, AHORA, 'UTC');
@@ -505,6 +525,7 @@ describe(
     after(async () => {
       if (tenantIds.length > 0) {
         const donde = { tenantId: { in: tenantIds } };
+        await db.vinculoTelegram.deleteMany({ where: donde });
         await db.ejecucion.deleteMany({ where: donde });
         await db.automatizacion.deleteMany({ where: donde });
         await db.conexion.deleteMany({ where: donde });
@@ -676,6 +697,25 @@ describe(
         cuerpo.activas.map((a) => a.ultimaEjecucion),
         [null, null, { fecha: '2026-10-07T08:00:00.000Z', resultado: 'completada' }],
       );
+    });
+
+    test('CH-44 sinVinculo follows the channel and the tenant\'s own link, and the last result stays as it is', async () => {
+      const a = await negocio('sin-vinculo-a');
+      const b = await negocio('sin-vinculo-b');
+      await db.vinculoTelegram.create({ data: { tenantId: b.tenantId, chatId: 987654321n } });
+      const enTelegram = await automatizacion(a, fisico);
+      await db.automatizacion.update({ where: { id: enTelegram }, data: { canal: 'telegram' } });
+      await ejecucion(a, enTelegram, 'ok', '2026-10-06T08:00:00Z');
+      const propia = await leer(a);
+      assert.equal(propia.cuerpo.activas[0].sinVinculo, true, "b's link does not count for a");
+      assert.deepEqual(propia.cuerpo.activas[0].ultimaEjecucion, { fecha: '2026-10-06T08:00:00.000Z', resultado: 'completada' });
+
+      await db.vinculoTelegram.create({ data: { tenantId: a.tenantId, chatId: 987654321n } });
+      const conVinculo = await leer(a);
+      assert.equal('sinVinculo' in conVinculo.cuerpo.activas[0], false);
+      assert.ok(!conVinculo.respuesta.body.includes('987654321'), 'the chat id never leaves');
+      assert.ok(!clavesProfundas(conVinculo.cuerpo).includes('chatId'));
+      assert.ok(!clavesProfundas(conVinculo.cuerpo).includes('canal'));
     });
 
     test('2.6 each automation reports its own latest; a failure is no-realizada with no error text', async () => {

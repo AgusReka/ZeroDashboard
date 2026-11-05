@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '../generated/prisma/client.js';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
-import { cronValido, proximaEjecucion } from '../automatizaciones/automatizaciones.js';
+import { cronValido, esCanal, proximaEjecucion, type Canal } from '../automatizaciones/automatizaciones.js';
 import { destinatariosDe } from '../automatizaciones/automatizaciones-rutas.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { conTenantActivo } from '../aislamiento/contexto-tenant.js';
@@ -24,6 +24,8 @@ export interface FilaAjustes {
   cron: string;
   valores: unknown;
   destinatarios: string[];
+  /** CH-44 (DEC-197): any stored value other than `telegram` reads as `correo`, as a run does. */
+  canal?: string;
 }
 
 /** The template columns the value rules read: the statement and its declaration. */
@@ -38,6 +40,9 @@ export interface AjustesLeidos {
   hora?: string;
   dias?: Dias;
   destinatarios: string[];
+  canal: Canal;
+  /** What the client may choose from now (`canalesDe`). Never a chat id. */
+  canales: Canal[];
   zonaHoraria: string;
 }
 
@@ -47,6 +52,7 @@ export interface CuerpoAjustes {
   hora?: unknown;
   dias?: unknown;
   destinatarios?: unknown;
+  canal?: unknown;
 }
 
 /** Columns to write: only the ones the body changed. `valores` is always the merged map. */
@@ -54,6 +60,20 @@ export interface DatosAjustes {
   cron?: string;
   valores?: Record<string, unknown>;
   destinatarios?: string[];
+  canal?: Canal;
+}
+
+function canalDe(guardado: string | undefined): Canal {
+  return guardado === 'telegram' ? 'telegram' : 'correo';
+}
+
+/**
+ * CH-44 (DEC-197): the channels the client may choose. Telegram needs the token and a linked
+ * chat, unless it is already the stored one: then it stays listed, so the form can show it and
+ * the automation can always go back. The read and the update share this one rule.
+ */
+export function canalesDe(guardado: string | undefined, configurado: boolean, vinculado: boolean): Canal[] {
+  return canalDe(guardado) === 'telegram' || (configurado && vinculado) ? ['correo', 'telegram'] : ['correo'];
 }
 
 export type ResolucionAjustes =
@@ -100,8 +120,14 @@ export function proyectarAjustes(
   fila: FilaAjustes,
   plantilla: PlantillaAjustes,
   zona: string,
+  canales: Canal[] = canalesDe(fila.canal, false, false),
 ): AjustesLeidos {
-  const ajustes: AjustesLeidos = { destinatarios: fila.destinatarios, zonaHoraria: zona };
+  const ajustes: AjustesLeidos = {
+    destinatarios: fila.destinatarios,
+    canal: canalDe(fila.canal),
+    canales,
+    zonaHoraria: zona,
+  };
   const umbral = valoresComoMapa(fila.valores).umbral;
   if (declaraUmbral(plantilla.parametros) && typeof umbral === 'number' && Number.isFinite(umbral)) {
     ajustes.umbral = umbral;
@@ -130,9 +156,10 @@ export function resolverAjustes(
   fila: FilaAjustes,
   plantilla: PlantillaAjustes,
   zona: string,
+  canales: readonly Canal[] = canalesDe(fila.canal, false, false),
 ): ResolucionAjustes {
-  const { umbral, hora, dias, destinatarios } = cuerpo;
-  if ([umbral, hora, dias, destinatarios].every((valor) => valor === undefined)) {
+  const { umbral, hora, dias, destinatarios, canal } = cuerpo;
+  if ([umbral, hora, dias, destinatarios, canal].every((valor) => valor === undefined)) {
     return { ok: false, estado: 400, campos: [] };
   }
   const base = horarioPresetDeCron(fila.cron);
@@ -185,6 +212,21 @@ export function resolverAjustes(
     }
   }
 
+  // CH-44 (DEC-197): only what the read offers, and DEC-194's "at least one address" also holds
+  // for going back to email, with the list sent or the stored one.
+  if (canal !== undefined) {
+    if (!esCanal(canal) || !canales.includes(canal)) {
+      campos.push('canal');
+    } else {
+      datos.canal = canal;
+      const lista = datos.destinatarios ?? fila.destinatarios;
+      const vuelveACorreo = canal === 'correo' && canalDe(fila.canal) === 'telegram';
+      if (vuelveACorreo && lista.length === 0 && !campos.includes('destinatarios')) {
+        campos.push('destinatarios');
+      }
+    }
+  }
+
   return campos.length > 0 ? { ok: false, estado: 400, campos } : { ok: true, datos };
 }
 
@@ -202,12 +244,13 @@ const ajustesSchema = {
   type: 'object',
   additionalProperties: false,
   minProperties: 1,
-  propertyNames: { enum: ['umbral', 'hora', 'dias', 'destinatarios'] },
+  propertyNames: { enum: ['umbral', 'hora', 'dias', 'destinatarios', 'canal'] },
   properties: {
     umbral: {},
     hora: { type: 'string', maxLength: 5 },
     dias: { type: 'string', maxLength: 16 },
     destinatarios: { type: 'array', maxItems: 50, items: {} },
+    canal: { type: 'string', maxLength: 16 },
   },
 } as const;
 
@@ -255,12 +298,18 @@ export function registerPanelAjustesRoutes(
   prisma: PrismaAislado,
   zonaHoraria: string,
   ahora: () => Date = () => new Date(),
+  telegramConfigurado = false,
 ): void {
+  /** CH-44 (DEC-197): whether this tenant has a link. Scoped, and the chat id is not selected. */
+  async function hayVinculo(): Promise<boolean> {
+    return (await prisma.vinculoTelegram.findFirst({ select: { id: true } })) !== null;
+  }
+
   /** The stored automation and its template, or `null` for an unknown or foreign id. */
   async function leer(id: string) {
     const fila = await prisma.automatizacion.findUnique({
       where: { id },
-      select: { activo: true, cron: true, valores: true, destinatarios: true, plantillaId: true },
+      select: { activo: true, cron: true, valores: true, destinatarios: true, canal: true, plantillaId: true },
     });
     if (fila === null) {
       return null;
@@ -283,9 +332,11 @@ export function registerPanelAjustesRoutes(
         { id: sesion.tenantId, nombre: sesion.tenantNombre },
         async (): Promise<RespuestaAjustes> => {
           const leida = await leer(request.params.id);
-          return leida === null
-            ? NO_ENCONTRADA
-            : { estado: 200, cuerpo: proyectarAjustes(leida.fila, leida.plantilla, zonaHoraria) };
+          if (leida === null) {
+            return NO_ENCONTRADA;
+          }
+          const canales = canalesDe(leida.fila.canal, telegramConfigurado, await hayVinculo());
+          return { estado: 200, cuerpo: proyectarAjustes(leida.fila, leida.plantilla, zonaHoraria, canales) };
         },
       );
       return reply.code(respuesta.estado).send(respuesta.cuerpo);
@@ -316,13 +367,20 @@ export function registerPanelAjustesRoutes(
           if (!leida.fila.activo) {
             return { estado: 409, cuerpo: { error: 'automatizacion-pausada' } };
           }
-          const resolucion = resolverAjustes(request.body, leida.fila, leida.plantilla, zonaHoraria);
+          const vinculado = await hayVinculo();
+          const resolucion = resolverAjustes(
+            request.body,
+            leida.fila,
+            leida.plantilla,
+            zonaHoraria,
+            canalesDe(leida.fila.canal, telegramConfigurado, vinculado),
+          );
           if (!resolucion.ok) {
             return resolucion.estado === 409
               ? { estado: 409, cuerpo: { error: resolucion.error } }
               : { estado: 400, cuerpo: { error: 'solicitud-invalida', campos: resolucion.campos } };
           }
-          const { cron, valores, destinatarios } = resolucion.datos;
+          const { cron, valores, destinatarios, canal } = resolucion.datos;
           try {
             const guardada = await prisma.automatizacion.update({
               where: { id: request.params.id },
@@ -332,13 +390,19 @@ export function registerPanelAjustesRoutes(
                 // value as a string, finite number or boolean (as in the alta route).
                 ...(valores === undefined ? {} : { valores: valores as Prisma.InputJsonObject }),
                 ...(destinatarios === undefined ? {} : { destinatarios }),
+                ...(canal === undefined ? {} : { canal }),
               },
-              select: { activo: true, cron: true, valores: true, destinatarios: true },
+              select: { activo: true, cron: true, valores: true, destinatarios: true, canal: true },
             });
             return {
               estado: 200,
               cuerpo: {
-                ...proyectarAjustes(guardada, leida.plantilla, zonaHoraria),
+                ...proyectarAjustes(
+                  guardada,
+                  leida.plantilla,
+                  zonaHoraria,
+                  canalesDe(guardada.canal, telegramConfigurado, vinculado),
+                ),
                 proximaEjecucion: proximaIso(guardada.cron, ahora(), zonaHoraria),
               },
             };

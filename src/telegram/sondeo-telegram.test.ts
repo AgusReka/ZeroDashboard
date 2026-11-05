@@ -75,6 +75,9 @@ function clienteFalso(guion: Partial<ClienteTelegram> = {}) {
       respuestas.push({ chatId, texto });
       return guion.responder ? guion.responder(chatId, texto, senal) : { ok: true, valor: undefined };
     },
+    enviarAviso: async () => {
+      throw new Error('el sondeo no envía avisos');
+    },
   };
   return { cliente, offsets, respuestas };
 }

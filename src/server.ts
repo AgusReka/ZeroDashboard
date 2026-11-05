@@ -13,6 +13,7 @@ import { leerTelegram } from './telegram/telegram-config.js';
 import { crearClienteTelegram } from './telegram/cliente-telegram.js';
 import { crearSondeoTelegram } from './telegram/sondeo-telegram.js';
 import { crearVincular } from './telegram/vincular.js';
+import { crearNotificadorTelegram } from './telegram/notificador-telegram.js';
 
 const config = loadConfig();
 // CH-21a (DEC-124): the five shared stylesheet files are read once, here, before any
@@ -40,11 +41,14 @@ app.log.info({ correo: notificador === null ? 'no-configurado' : 'configurado' }
 // with one, the poller is built here and starts only once the server listens.
 const configTelegram = leerTelegram(process.env);
 app.log.info({ telegram: configTelegram === null ? 'no-configurado' : 'configurado' }, 'telegram link');
+// CH-44 (DEC-185, DEC-197): one client, for the poller and for the channel's notices.
+const clienteTelegram = configTelegram === null ? null : crearClienteTelegram(configTelegram.token);
+const notificadorTelegram = clienteTelegram === null ? null : crearNotificadorTelegram(clienteTelegram);
 const sondeo =
-  configTelegram === null
+  clienteTelegram === null
     ? null
     : crearSondeoTelegram({
-        cliente: crearClienteTelegram(configTelegram.token),
+        cliente: clienteTelegram,
         vincular: crearVincular(prisma, relojDelSistema),
         reloj: relojDelSistema,
         aleatorio: Math.random,
@@ -62,6 +66,7 @@ const planificador = crearPlanificador({
   zonaHoraria: config.zonaHoraria,
   log: app.log,
   notificador,
+  notificadorTelegram,
   reintentos: { intentos: config.connectionRetryAttempts, pausaMs: config.connectionRetryPauseMs },
   canales: registro,
 });

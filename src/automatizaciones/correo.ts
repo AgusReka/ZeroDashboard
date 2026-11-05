@@ -215,17 +215,7 @@ const PIE = 'Enviado automáticamente por ZeroDashboard.';
  * connection or recipient ever reaches it, because none is an input (rule 5).
  */
 export function componerCorreo(e: EntradaCorreo): Omit<Correo, 'para'> {
-  // Short rows are padded and long rows cut to the column count, so the table never breaks.
-  const filas = e.filas.map((fila) => e.columnas.map((_, i) => textoDeCelda(fila[i])));
-  const pieza: Pieza = {
-    tema: temaDe(e.automatizacion),
-    nombre: unaLinea(e.nombre),
-    fecha: `Ejecución del ${fechaEn(e.fecha, e.zona)}`,
-    columnas: e.columnas,
-    filas,
-    avisos: avisosDe(e, filas),
-    mensaje: e.mensaje && respaldoDe(e.mensaje, e.columnas) === null ? mensajeDe(e, e.mensaje) : null,
-  };
+  const pieza = piezaDe(e);
   return {
     asunto: asuntoCorreo({
       nombre: e.nombre,
@@ -234,7 +224,22 @@ export function componerCorreo(e: EntradaCorreo): Omit<Correo, 'para'> {
       hayMas: e.hayMas,
     }),
     html: htmlDe(pieza),
-    texto: textoDe(pieza),
+    texto: unirTexto(partesDePieza(pieza)),
+  };
+}
+
+/** What both parts of the email, and the Telegram message, are built from. */
+function piezaDe(e: EntradaCorreo): Pieza {
+  // Short rows are padded and long rows cut to the column count, so the table never breaks.
+  const filas = e.filas.map((fila) => e.columnas.map((_, i) => textoDeCelda(fila[i])));
+  return {
+    tema: temaDe(e.automatizacion),
+    nombre: unaLinea(e.nombre),
+    fecha: `Ejecución del ${fechaEn(e.fecha, e.zona)}`,
+    columnas: e.columnas,
+    filas,
+    avisos: avisosDe(e, filas),
+    mensaje: e.mensaje && respaldoDe(e.mensaje, e.columnas) === null ? mensajeDe(e, e.mensaje) : null,
   };
 }
 
@@ -307,21 +312,32 @@ function fechaEn(fecha: Date, zona: string): string {
   return `${dia} ${parte('hour')}:${parte('minute')} (${zona})`;
 }
 
-/** The text part: the same content, one row per line, cells joined by ` | `. */
-function textoDe(p: Pieza): string {
+/**
+ * The text part in its pieces, so CH-44's Telegram message can cut the body and keep the rest.
+ * `cuerpo[0]` is the column row or the template's header; each later line is one row.
+ */
+export interface PartesDeTexto {
+  cabecera: string[];
+  cuerpo: string[];
+  avisos: string[];
+  pie: string;
+}
+
+/** The same content as the email's text part, one row per line, cells joined by ` | `. */
+function partesDePieza(p: Pieza): PartesDeTexto {
   const tabla = p.columnas.length === 0 ? [] : [p.columnas, ...p.filas];
   const cuerpo = p.mensaje
     ? [p.mensaje.encabezado, ...p.mensaje.lineasTexto]
     : tabla.map((fila) => fila.map(sinSaltos).join(' | '));
-  return [
-    p.nombre,
-    p.fecha,
-    '',
-    ...cuerpo,
-    '',
-    ...p.avisos,
-    PIE,
-  ].join('\n');
+  return { cabecera: [p.nombre, p.fecha], cuerpo, avisos: p.avisos, pie: PIE };
+}
+
+export function partesDeTexto(e: EntradaCorreo): PartesDeTexto {
+  return partesDePieza(piezaDe(e));
+}
+
+export function unirTexto(p: PartesDeTexto): string {
+  return [...p.cabecera, '', ...p.cuerpo, '', ...p.avisos, p.pie].join('\n');
 }
 
 /** In the text part a cell stays on its row: each CR, LF or CRLF becomes one space. */

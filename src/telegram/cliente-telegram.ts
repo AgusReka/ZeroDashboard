@@ -1,6 +1,6 @@
 /**
- * CH-43 (DEC-185, DEC-196): the Bot API client the poller talks to Telegram through. Three
- * methods, each a `POST` with a JSON body, each answering a closed `Resultado` and never
+ * CH-43 (DEC-185, DEC-196): the Bot API client the poller talks to Telegram through, and
+ * CH-44 (DEC-197) the channel's notices. Four methods, each a `POST` with a JSON body, each answering a closed `Resultado` and never
  * throwing.
  *
  * The token is part of every Bot API URL, so the URL is built in `urlMetodo` and nowhere
@@ -34,6 +34,8 @@ export interface ClienteTelegram {
   obtenerBot(senal: AbortSignal): Promise<Resultado<{ usuario: string }>>;
   recibir(offset: number | null, senal: AbortSignal): Promise<Resultado<ActualizacionTelegram[]>>;
   responder(chatId: bigint, texto: string, senal?: AbortSignal): Promise<Resultado<void>>;
+  /** CH-44: a run's notice, plain text with link previews off. A failure is never retried here. */
+  enviarAviso(chatId: bigint, texto: string): Promise<Resultado<void>>;
 }
 
 /** `getUpdates` long-poll wait, in seconds (Bot API `timeout`). */
@@ -144,6 +146,12 @@ export function crearClienteTelegram(token: string, buscar: Buscar = fetch): Cli
 
     async responder(chatId, texto, senal) {
       const r = await llamar('sendMessage', { chat_id: String(chatId), text: texto }, TIEMPO_CORTO_MS, senal);
+      return r.ok ? { ok: true, valor: undefined } : r;
+    },
+
+    async enviarAviso(chatId, texto) {
+      const cuerpo = { chat_id: String(chatId), text: texto, link_preview_options: { is_disabled: true } };
+      const r = await llamar('sendMessage', cuerpo, TIEMPO_CORTO_MS, undefined);
       return r.ok ? { ok: true, valor: undefined } : r;
     },
   };
