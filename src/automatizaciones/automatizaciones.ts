@@ -309,7 +309,7 @@ export function esFalloReintentable(r: ResultadoCorrida): boolean {
 /**
  * `Ejecucion.notificacion`: the outcome only, never a body, recipient, or row content.
  * CH-18 (DEC-108) adds the two marks in `MarcaNotificacion`. CH-40 (DEC-186) adds
- * `omitida-bajo-minimo`.
+ * `omitida-bajo-minimo`. CH-44 (DEC-185) adds `sin-vinculo`.
  */
 export type EstadoNotificacion =
   | 'enviada'
@@ -317,6 +317,7 @@ export type EstadoNotificacion =
   | 'omitida-bajo-minimo'
   | 'fallo-envio'
   | 'sin-destinatario'
+  | 'sin-vinculo'
   | 'no-configurada'
   | 'enviando'
   | 'incierta';
@@ -331,8 +332,15 @@ export type MarcaNotificacion = Extract<EstadoNotificacion, 'enviando' | 'incier
 /** The outcomes that end the notify step before any send is attempted. */
 export type OmisionNotificacion = Extract<
   EstadoNotificacion,
-  'omitida-sin-filas' | 'omitida-bajo-minimo' | 'sin-destinatario' | 'no-configurada'
+  'omitida-sin-filas' | 'omitida-bajo-minimo' | 'sin-destinatario' | 'sin-vinculo' | 'no-configurada'
 >;
+
+/** CH-44 (DEC-185, DEC-197): where an automation's notice goes. Plain TEXT, values here. */
+export type Canal = 'correo' | 'telegram';
+
+export function esCanal(valor: unknown): valor is Canal {
+  return valor === 'correo' || valor === 'telegram';
+}
 
 /**
  * CH-40 (DEC-186): the minimum an automation gets when its create body names none. The
@@ -369,14 +377,9 @@ export function decidirNotificacion(
   configurado: boolean,
   minimoFilas: number,
 ): DecisionNotificacion {
-  if (r.resultado !== 'ok') {
-    return { enviar: false, notificacion: null };
-  }
-  if (r.filas.length === 0) {
-    return { enviar: false, notificacion: 'omitida-sin-filas' };
-  }
-  if (r.filas.length < minimoFilas && !r.paginacion.hayMas) {
-    return { enviar: false, notificacion: 'omitida-bajo-minimo' };
+  const omision = omisionPorFilas(r, minimoFilas);
+  if (omision !== undefined) {
+    return { enviar: false, notificacion: omision.notificacion };
   }
   if (destinatarios.length === 0) {
     return { enviar: false, notificacion: 'sin-destinatario' };
@@ -385,6 +388,55 @@ export function decidirNotificacion(
     return { enviar: false, notificacion: 'no-configurada' };
   }
   return { enviar: true, para: [...destinatarios] };
+}
+
+/**
+ * Rows 1 to 3 of the precedence, the same on every channel; `undefined` means the result
+ * reaches the delivery rows. CH-44 keeps them here so the two channels cannot drift.
+ */
+export function omisionPorFilas(
+  r: ResultadoCorrida,
+  minimoFilas: number,
+): { notificacion: Extract<OmisionNotificacion, 'omitida-sin-filas' | 'omitida-bajo-minimo'> | null } | undefined {
+  if (r.resultado !== 'ok') {
+    return { notificacion: null };
+  }
+  if (r.filas.length === 0) {
+    return { notificacion: 'omitida-sin-filas' };
+  }
+  if (r.filas.length < minimoFilas && !r.paginacion.hayMas) {
+    return { notificacion: 'omitida-bajo-minimo' };
+  }
+  return undefined;
+}
+
+/** Whether a Telegram run sends, and to which chat. */
+export type DecisionTelegram =
+  | { enviar: false; notificacion: OmisionNotificacion | null }
+  | { enviar: true; chatId: bigint };
+
+/**
+ * CH-44 (DEC-185, DEC-197): the precedence on the Telegram channel. `chatId` is the running
+ * tenant's linked chat, or null; `configurado` is whether `TELEGRAM_BOT_TOKEN` is set. A
+ * missing link wins over a missing token, as a missing recipient does on the email channel.
+ */
+export function decidirTelegram(
+  r: ResultadoCorrida,
+  chatId: bigint | null,
+  configurado: boolean,
+  minimoFilas: number,
+): DecisionTelegram {
+  const omision = omisionPorFilas(r, minimoFilas);
+  if (omision !== undefined) {
+    return { enviar: false, notificacion: omision.notificacion };
+  }
+  if (chatId === null) {
+    return { enviar: false, notificacion: 'sin-vinculo' };
+  }
+  if (!configurado) {
+    return { enviar: false, notificacion: 'no-configurada' };
+  }
+  return { enviar: true, chatId };
 }
 
 /** What the notifier reports. It never throws and never carries SMTP text (DEC-81). */

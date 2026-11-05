@@ -915,8 +915,16 @@ function documentoConsola(nombreOperador: string): string {
       <label for="auto-cron" class="zd-label">Expresión cron (minuto hora día-del-mes mes día-de-la-semana)</label>
       <input id="auto-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" placeholder="por ejemplo: 0 6 * * *" readonly>
 
+      <!-- CH-44 (DEC-185, DEC-197): one channel per automation. On Telegram the recipients and the email schematic hide. -->
+      <label for="auto-canal" class="zd-label">Canal</label>
+      <select id="auto-canal" class="zd-select" aria-describedby="auto-canal-ayuda">
+        <option value="correo">Correo</option>
+        <option value="telegram">Telegram</option>
+      </select>
+      <p id="auto-canal-ayuda" class="ayuda" hidden>Se envía al chat vinculado del tenant. Sin chat vinculado, la ejecución queda como «Sin vínculo».</p>
+
       <!-- CH-41 (DEC-187, DEC-194): a text input, not an email one: that kind can refuse the separators before the script reads them. -->
-      <label for="auto-destinatario" class="zd-label">Correos de los destinatarios (opcional)</label>
+      <label id="auto-destinatario-etiqueta" for="auto-destinatario" class="zd-label">Correos de los destinatarios (opcional)</label>
       <input id="auto-destinatario" class="zd-input" type="text" inputmode="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com, ventas@empresa.com" aria-describedby="auto-destinatario-ayuda">
       <p id="auto-destinatario-ayuda" class="ayuda">Hasta 5, separados por comas.</p>
 
@@ -927,7 +935,7 @@ function documentoConsola(nombreOperador: string): string {
 
       <!-- CH-21c (DEC-131): a schematic of the notification email. Text nodes only, filled by the
            script; it never shows a row of any result. -->
-      <div class="zd-card" role="group" aria-label="Vista previa del correo">
+      <div id="auto-vista-correo" class="zd-card" role="group" aria-label="Vista previa del correo">
         <p class="ayuda">Asunto: <span id="auto-vista-asunto"></span></p>
         <p class="ayuda">Para: <span id="auto-vista-para"></span></p>
         <p class="ayuda">Se envía con: <span id="auto-vista-minimo"></span></p>
@@ -983,7 +991,14 @@ function documentoConsola(nombreOperador: string): string {
     <label for="aj-cron" class="zd-label">Expresión cron (minuto hora día-del-mes mes día-de-la-semana)</label>
     <input id="aj-cron" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" readonly>
 
-    <label for="aj-destinatario" class="zd-label">Correos de los destinatarios (opcional; vacío: no se envía correo)</label>
+    <label for="aj-canal" class="zd-label">Canal</label>
+    <select id="aj-canal" class="zd-select" aria-describedby="aj-canal-ayuda">
+      <option value="correo">Correo</option>
+      <option value="telegram">Telegram</option>
+    </select>
+    <p id="aj-canal-ayuda" class="ayuda" hidden>Se envía al chat vinculado del tenant. Sin chat vinculado, la ejecución queda como «Sin vínculo».</p>
+
+    <label id="aj-destinatario-etiqueta" for="aj-destinatario" class="zd-label">Correos de los destinatarios (opcional; vacío: no se envía correo)</label>
     <input id="aj-destinatario" class="zd-input" type="text" inputmode="email" autocomplete="off" spellcheck="false" placeholder="por ejemplo: operaciones@empresa.com, ventas@empresa.com" aria-describedby="aj-destinatario-ayuda">
     <p id="aj-destinatario-ayuda" class="ayuda">Hasta 5, separados por comas.</p>
 
@@ -1019,7 +1034,7 @@ function documentoConsola(nombreOperador: string): string {
     <div id="vp-mensaje" hidden>
       <p id="vp-asunto"></p>
       <pre id="vp-texto"></pre>
-      <iframe id="vp-html" sandbox="" title="Mensaje en HTML"></iframe>
+      <div id="vp-html-caja"><iframe id="vp-html" sandbox="" title="Mensaje en HTML"></iframe></div>
     </div>
     <div class="zd-dialog__actions">
       <span id="vp-confirmar" hidden></span>
@@ -1214,10 +1229,24 @@ var ETIQUETAS_NOTIFICACION = {
   'omitida-sin-filas': 'No enviada: sin filas',
   'omitida-bajo-minimo': 'No enviada: menos filas que el mínimo',
   'sin-destinatario': 'Sin destinatario',
+  'sin-vinculo': 'Sin vínculo',
   'no-configurada': 'Correo no configurado',
   'fallo-envio': 'Falló el envío',
   'enviando': 'Envío en curso',
   'incierta': 'Sin confirmar: puede haberse entregado'
+};
+
+// CH-44 (DEC-197): what a run on Telegram reads differently. Chosen by the run's own channel, never the
+// automation's current one, so changing the channel does not rewrite the history.
+var ETIQUETAS_NOTIFICACION_TELEGRAM = {
+  'enviada': 'Enviada por Telegram',
+  'no-configurada': 'Telegram no configurado'
+};
+var MENSAJES_TELEGRAM = {
+  'tiempo-agotado': 'Telegram no respondió dentro del tiempo permitido. La consulta se ejecutó, pero no se confirmó el envío: el mensaje puede haberse entregado.',
+  'servidor-inalcanzable': 'No se pudo conectar con Telegram. La consulta se ejecutó, pero el mensaje no se envió.',
+  'envio-rechazado': 'Telegram rechazó el mensaje: el bot puede estar bloqueado o el chat ya no existir. La consulta se ejecutó, pero el mensaje no se envió.',
+  'error-desconocido': 'El envío por Telegram falló por un motivo no reconocido. La consulta se ejecutó, pero el mensaje no se envió.'
 };
 
 var CLAVE_TENANT = 'zerodashboard.tenantActivo';
@@ -1252,6 +1281,7 @@ var selectorConexionAuto = document.getElementById('auto-conexion');
 var entradaCron = document.getElementById('auto-cron');
 var entradaDestinatario = document.getElementById('auto-destinatario');
 var entradaMinimo = document.getElementById('auto-minimo');
+var selectorCanalAlta = document.getElementById('auto-canal');
 var botonCrearAuto = document.getElementById('auto-crear');
 var tablaAutomatizaciones = document.getElementById('auto-lista');
 var tablaEjecuciones = document.getElementById('auto-ejecuciones');
@@ -2461,6 +2491,8 @@ function reiniciarAlta() {
   actualizarHorario();
   entradaDestinatario.value = '';
   entradaMinimo.value = '1';
+  selectorCanalAlta.value = 'correo';
+  aplicarCanalAlta();
   vistaAsunto.textContent = '';
   vistaPara.textContent = '';
   vistaMinimo.textContent = '';
@@ -2472,11 +2504,32 @@ function reiniciarAlta() {
   actualizarSiguiente();
 }
 
+// CH-44 (DEC-197): what Telegram hides and says, on the two forms. The recipients field keeps what it held.
+var AYUDA_MINIMO_CORREO = 'El correo sale solo si la consulta devuelve al menos esta cantidad de filas.';
+var AYUDA_MINIMO_TELEGRAM = 'El mensaje sale solo si la consulta devuelve al menos esta cantidad de filas.';
+
+function alternarDestinatarios(prefijo, enTelegram) {
+  document.getElementById(prefijo + '-destinatario-etiqueta').hidden = enTelegram;
+  document.getElementById(prefijo + '-destinatario').hidden = enTelegram;
+  document.getElementById(prefijo + '-destinatario-ayuda').hidden = enTelegram;
+  document.getElementById(prefijo + '-canal-ayuda').hidden = !enTelegram;
+}
+
+function aplicarCanalAlta() {
+  var enTelegram = selectorCanalAlta.value === 'telegram';
+  alternarDestinatarios('auto', enTelegram);
+  document.getElementById('auto-vista-correo').hidden = enTelegram;
+  document.getElementById('auto-minimo-ayuda').textContent = enTelegram ? AYUDA_MINIMO_TELEGRAM : AYUDA_MINIMO_CORREO;
+}
+
+selectorCanalAlta.addEventListener('change', aplicarCanalAlta);
+
 // What Cancelar and Escape would throw away: a connection or a template chosen, a parameter value or a
-// recipient typed, or a minimum other than 1. The schedule alone is not counted: it always holds a value.
+// recipient typed, a minimum other than 1, or a channel other than email. The schedule alone is not counted:
+// it always holds a value.
 function hayCambiosEnAlta() {
   return selectorConexionAuto.value !== '' || plantillaElegida !== '' || direccionesDe(entradaDestinatario.value).length > 0
-    || entradaMinimo.value.trim() !== '1' || Object.keys(valoresDe(filasValoresAuto)).length > 0;
+    || entradaMinimo.value.trim() !== '1' || selectorCanalAlta.value !== 'correo' || Object.keys(valoresDe(filasValoresAuto)).length > 0;
 }
 
 // CH-32b (DEC-173): opening resets the wizard and asks for the connections; closing, however it happens,
@@ -2900,8 +2953,11 @@ async function crearAutomatizacion() {
   };
   // CH-14, CH-41: the recipients are optional; a blank field, or one with only separators, sends no key at all.
   // The pieces sent stay at hand: a 400 names an address by its position, and the message quotes what was typed.
-  var enviadas = direccionesDe(entradaDestinatario.value);
+  // CH-44 (DEC-197): on Telegram the field is hidden, so what it holds is not sent; email stays the absent default.
+  var enTelegram = selectorCanalAlta.value === 'telegram';
+  var enviadas = enTelegram ? [] : direccionesDe(entradaDestinatario.value);
   if (enviadas.length > 0) { alta.destinatarios = enviadas; }
+  if (enTelegram) { alta.canal = 'telegram'; }
   // CH-40 (DEC-186): always sent, 1 included, so the body states the condition the automation runs with.
   alta.minimoFilas = numeroDeMinimo(entradaMinimo.value);
   var avisoFrescura = avisoFrescuraPlantilla(toleranciaDePlantilla(plantillaElegida));
@@ -2958,7 +3014,9 @@ function mensajeDe400DeAutomatizacion(cuerpo, enviadas) {
         ? 'Hay más de 5 destinatarios. Escriba hasta 5 direcciones distintas.'
         : campos.indexOf('/minimoFilas') !== -1
           ? 'El mínimo de filas no es válido: tiene que ser un número entero desde 1 hasta el tope de filas del motor.'
-          : mensajeDeSolicitudInvalida(cuerpo, []);
+          : campos.indexOf('/canal') !== -1
+            ? 'El canal no es válido: elija Correo o Telegram.'
+            : mensajeDeSolicitudInvalida(cuerpo, []);
 }
 
 // CH-40: the minimum as typed. Digits become a number; anything else is sent as text, so the server refuses
@@ -2999,6 +3057,7 @@ var HORARIO_AJUSTE = {
 };
 var entradaDestinatarioAjuste = document.getElementById('aj-destinatario');
 var entradaMinimoAjuste = document.getElementById('aj-minimo');
+var selectorCanalAjuste = document.getElementById('aj-canal');
 var avisoAjuste = document.getElementById('aj-aviso');
 var botonGuardarAjuste = document.getElementById('aj-guardar');
 var filasValoresAjuste = [];
@@ -3014,15 +3073,22 @@ function estadoAjuste() {
     valores: JSON.stringify(valoresDe(filasValoresAjuste)),
     cron: cronDeControles(HORARIO_AJUSTE),
     destinatarios: JSON.stringify(direccionesDe(entradaDestinatarioAjuste.value)),
-    minimo: entradaMinimoAjuste.value.trim()
+    minimo: entradaMinimoAjuste.value.trim(),
+    canal: selectorCanalAjuste.value
   };
 }
+
+function aplicarCanalAjuste() {
+  alternarDestinatarios('aj', selectorCanalAjuste.value === 'telegram');
+}
+
+selectorCanalAjuste.addEventListener('change', aplicarCanalAjuste);
 
 function hayCambiosEnAjuste() {
   if (baseAjuste === null) { return false; }
   var ahora = estadoAjuste();
   return ahora.valores !== baseAjuste.valores || ahora.cron !== baseAjuste.cron || ahora.destinatarios !== baseAjuste.destinatarios
-    || ahora.minimo !== baseAjuste.minimo;
+    || ahora.minimo !== baseAjuste.minimo || ahora.canal !== baseAjuste.canal;
 }
 
 // Emptied however the pop-up closed, and the token moves so an answer still in flight lands nowhere.
@@ -3079,6 +3145,8 @@ function llenarAjuste(guardada, plantilla) {
   entradaDestinatarioAjuste.value = Array.isArray(guardada.destinatarios) ? guardada.destinatarios.join(', ') : '';
   // CH-40: 1 when the server predates the minimum and the field is absent.
   entradaMinimoAjuste.value = typeof guardada.minimoFilas === 'number' ? String(guardada.minimoFilas) : '1';
+  selectorCanalAjuste.value = guardada.canal === 'telegram' ? 'telegram' : 'correo';
+  aplicarCanalAjuste();
   baseAjuste = estadoAjuste();
 }
 
@@ -3130,8 +3198,10 @@ async function guardarAjuste() {
   var cambios = {};
   if (ahora.valores !== baseAjuste.valores) { cambios.valores = valoresDe(filasValoresAjuste); }
   if (ahora.cron !== baseAjuste.cron) { cambios.cron = ahora.cron; }
-  if (ahora.destinatarios !== baseAjuste.destinatarios) { cambios.destinatarios = direccionesDe(entradaDestinatarioAjuste.value); }
+  // CH-44 (DEC-197): on Telegram the field is hidden, and the stored list stays as it is.
+  if (ahora.canal !== 'telegram' && ahora.destinatarios !== baseAjuste.destinatarios) { cambios.destinatarios = direccionesDe(entradaDestinatarioAjuste.value); }
   if (ahora.minimo !== baseAjuste.minimo) { cambios.minimoFilas = numeroDeMinimo(ahora.minimo); }
+  if (ahora.canal !== baseAjuste.canal) { cambios.canal = ahora.canal; }
   if (Object.keys(cambios).length === 0) {
     avisoAjuste.textContent = 'No hay cambios para guardar.';
     return;
@@ -3173,6 +3243,10 @@ function errorDeCorrida(fila) {
   if (fila.error === null || fila.error === undefined) { return ''; }
   var error = String(fila.error);
   var clave = String(fila.fase) + ':' + error;
+  // CH-44 (DEC-197): a Telegram send carries no code, so nothing reads as an SMTP reply.
+  if (fila.canal === 'telegram' && fila.fase === 'notificacion' && Object.prototype.hasOwnProperty.call(MENSAJES_TELEGRAM, error)) {
+    return MENSAJES_TELEGRAM[error];
+  }
   // A gate refusal names the ungated entities in codigoError (closed contract names).
   if (error === 'vista-canonica-no-aprobada') {
     return MENSAJES_CORRIDA[error] + ' ' + textoOpcional(fila.codigoError) + '.';
@@ -3195,7 +3269,9 @@ function etiquetaEstado(valor) {
 // CH-39 (DEC-188, DEC-192): the Notificación cell, plus the columns a message text asked for that the result lacked.
 // A null or empty list adds nothing.
 function notificacionDeCorrida(fila) {
-  var texto = etiquetaNotificacion(fila.notificacion);
+  var texto = fila.canal === 'telegram' && Object.prototype.hasOwnProperty.call(ETIQUETAS_NOTIFICACION_TELEGRAM, fila.notificacion)
+    ? ETIQUETAS_NOTIFICACION_TELEGRAM[fila.notificacion]
+    : etiquetaNotificacion(fila.notificacion);
   var faltantes = Array.isArray(fila.mensajeRespaldo) ? fila.mensajeRespaldo.map(String) : [];
   if (faltantes.length === 0) { return texto; }
   // A send that failed after the fallback did not send anything: it says what the email carried.
@@ -3242,6 +3318,7 @@ var mensajeVistaPrevia = document.getElementById('vp-mensaje');
 var asuntoMensajeVistaPrevia = document.getElementById('vp-asunto');
 var textoVistaPrevia = document.getElementById('vp-texto');
 var marcoVistaPrevia = document.getElementById('vp-html');
+var cajaMarcoVistaPrevia = document.getElementById('vp-html-caja');
 var botonCerrarVistaPrevia = document.getElementById('vp-cerrar');
 // Raised on every open and close, so an answer that arrives after either lands nowhere.
 var generacionVistaPrevia = 0;
@@ -3252,6 +3329,12 @@ var DECISIONES_VISTA_PREVIA = {
   'omitida-bajo-minimo': 'No se enviaría: hay menos filas que el mínimo para avisar.',
   'sin-destinatario': 'No se enviaría: la automatización no tiene destinatarios.',
   'no-configurada': 'No se enviaría: el envío de correo no está configurado.'
+};
+// CH-44 (DEC-195, DEC-197): the lines that change on Telegram. The chat id never reaches the page.
+var DECISIONES_VISTA_PREVIA_TELEGRAM = {
+  'enviar': 'Se enviaría al chat vinculado.',
+  'sin-vinculo': 'No se enviaría: el tenant no tiene un chat de Telegram vinculado.',
+  'no-configurada': 'No se enviaría: el envío por Telegram no está configurado.'
 };
 
 // The one place the frame receives the message: the isolated frame's own document, never the console's.
@@ -3268,6 +3351,8 @@ function limpiarVistaPrevia() {
   asuntoMensajeVistaPrevia.textContent = '';
   textoVistaPrevia.textContent = '';
   mensajeVistaPrevia.hidden = true;
+  asuntoMensajeVistaPrevia.hidden = false;
+  cajaMarcoVistaPrevia.hidden = false;
   mostrarHtmlVistaPrevia('');
 }
 
@@ -3285,20 +3370,35 @@ limpiarVistaPrevia();
 // A 200 with resultado "ok", already rendered by mostrarResultadoPrueba: the count line for a run's page, the
 // decision, «Para» and, when a run would compose one, the message.
 function mostrarVistaPrevia(cuerpo) {
+  var enTelegram = cuerpo.canal === 'telegram';
   var filas = Array.isArray(cuerpo.filas) ? cuerpo.filas.length : 0;
   var cuenta = filas === 1 ? '1 fila.' : filas + ' filas.';
   if (cuerpo.paginacion && cuerpo.paginacion.hayMas === true) {
-    cuenta += ' Se leyó el tope de filas; el correo avisa que hay más.';
+    cuenta += enTelegram ? ' Se leyó el tope de filas; el mensaje avisa que hay más.' : ' Se leyó el tope de filas; el correo avisa que hay más.';
   }
   var para = Array.isArray(cuerpo.para) ? cuerpo.para.map(String) : [];
-  if (cuerpo.decision === 'enviar') {
+  if (enTelegram && Object.prototype.hasOwnProperty.call(DECISIONES_VISTA_PREVIA_TELEGRAM, cuerpo.decision)) {
+    decisionVistaPrevia.textContent = DECISIONES_VISTA_PREVIA_TELEGRAM[cuerpo.decision];
+  } else if (cuerpo.decision === 'enviar') {
     decisionVistaPrevia.textContent = 'Se enviaría a: ' + para.join(', ');
   } else if (Object.prototype.hasOwnProperty.call(DECISIONES_VISTA_PREVIA, cuerpo.decision)) {
     decisionVistaPrevia.textContent = DECISIONES_VISTA_PREVIA[cuerpo.decision];
   }
-  paraVistaPrevia.textContent = 'Para: ' + (para.length === 0 ? 'sin destinatario' : para.join(', '));
+  paraVistaPrevia.textContent = enTelegram
+    ? (cuerpo.decision === 'sin-vinculo' ? 'Para: sin chat vinculado' : 'Para: chat vinculado')
+    : 'Para: ' + (para.length === 0 ? 'sin destinatario' : para.join(', '));
   var correo = cuerpo.correo;
-  if (correo !== null && typeof correo === 'object' && typeof correo.asunto === 'string' &&
+  var telegram = cuerpo.telegram;
+  if (enTelegram) {
+    if (telegram !== null && typeof telegram === 'object' && typeof telegram.texto === 'string') {
+      textoVistaPrevia.textContent = telegram.texto;
+      asuntoMensajeVistaPrevia.hidden = true;
+      cajaMarcoVistaPrevia.hidden = true;
+      mensajeVistaPrevia.hidden = false;
+    } else {
+      cuenta += ' Con este resultado una ejecución no arma un mensaje.';
+    }
+  } else if (correo !== null && typeof correo === 'object' && typeof correo.asunto === 'string' &&
       typeof correo.texto === 'string' && typeof correo.html === 'string') {
     asuntoMensajeVistaPrevia.textContent = 'Asunto: ' + correo.asunto;
     textoVistaPrevia.textContent = correo.texto;

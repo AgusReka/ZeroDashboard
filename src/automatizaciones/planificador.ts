@@ -4,8 +4,10 @@ import {
   cierreConNotificacion,
   cierreDeResultado,
   decidirNotificacion,
+  decidirTelegram,
   esFalloReintentable,
   estaVencida,
+  omisionPorFilas,
   type FalloInesperado,
   type ResultadoCorrida,
   type SalidaNotificacion,
@@ -15,7 +17,9 @@ import { loadConfig } from '../compartido/config.js';
 import { ejecutarConsulta, type PeticionEjecucion, type ResultadoEjecucion } from '../ejecucion/consulta-ejecucion.js';
 import { conTenantActivo, type TenantActivo } from '../aislamiento/contexto-tenant.js';
 import { componerCorreo, respaldoDe } from './correo.js';
+import { componerTelegram } from './mensaje-telegram.js';
 import type { Notificador } from './notificador.js';
+import type { NotificadorTelegram } from '../telegram/notificador-telegram.js';
 import { entradaDeCorreo, peticionDeCorrida, prepararCorrida, type PlantillaDeCorrida } from './corrida.js';
 
 /**
@@ -80,6 +84,8 @@ export interface DependenciasPlanificador {
    * a run with rows and a recipient then records `no-configurada`.
    */
   notificador?: Notificador | null;
+  /** CH-44 (DEC-185): `null` exactly when `TELEGRAM_BOT_TOKEN` is unset. */
+  notificadorTelegram?: NotificadorTelegram | null;
   /** CH-17b: the connection retry policy (DEC-98). Absent means `SIN_REINTENTOS`. */
   reintentos?: PoliticaReintentos;
   /** CH-19c1 (DEC-122): the agent session registry. Absent means `SIN_AGENTES`, which fails closed. */
@@ -191,6 +197,8 @@ interface AutomatizacionACorrer {
   destinatarios: string[];
   /** CH-40 (DEC-186): the fewest rows a successful run needs before it notifies. */
   minimoFilas: number;
+  /** CH-44 (DEC-197): `telegram` or `correo`; any other stored text runs as email. */
+  canal: string;
 }
 
 /** The template columns a run reads (CH-42: declared in `./corrida.ts`, shared with the preview). */
@@ -202,6 +210,7 @@ export function crearPlanificador({
   log,
   reloj = relojDelSistema,
   notificador = null,
+  notificadorTelegram = null,
   reintentos = SIN_REINTENTOS,
   canales = SIN_AGENTES,
 }: DependenciasPlanificador): Planificador {
@@ -311,6 +320,9 @@ export function crearPlanificador({
     iniciadaEn: Date,
     id: string,
   ): Promise<{ salida: SalidaNotificacion; respaldo: string[] | null }> {
+    if (automatizacion.canal === 'telegram') {
+      return notificarTelegram(automatizacion, plantilla, resultado, iniciadaEn, id);
+    }
     const decision = decidirNotificacion(
       resultado,
       automatizacion.destinatarios,
@@ -337,6 +349,49 @@ export function crearPlanificador({
   }
 
   /**
+   * CH-44 (DEC-185, DEC-197): the notify step on the Telegram channel, in the order of the
+   * email's. The link is read only when the result reaches the delivery rows, through the
+   * scoped client, so a failed read cannot fail a run with nothing to send and the chat is
+   * always the running tenant's (rule 2). The chat id goes nowhere but the send.
+   */
+  async function notificarTelegram(
+    automatizacion: AutomatizacionACorrer,
+    plantilla: PlantillaACorrer | null,
+    resultado: ResultadoCorrida,
+    iniciadaEn: Date,
+    id: string,
+  ): Promise<{ salida: SalidaNotificacion; respaldo: string[] | null }> {
+    const omision = omisionPorFilas(resultado, automatizacion.minimoFilas);
+    if (omision !== undefined) {
+      return { salida: omision.notificacion, respaldo: null };
+    }
+    let respaldo: string[] | null = null;
+    try {
+      const vinculo = await prisma.vinculoTelegram.findFirst({ select: { chatId: true } });
+      const decision = decidirTelegram(
+        resultado,
+        vinculo?.chatId ?? null,
+        notificadorTelegram !== null,
+        automatizacion.minimoFilas,
+      );
+      if (!decision.enviar) {
+        return { salida: decision.notificacion, respaldo: null };
+      }
+      if (resultado.resultado !== 'ok' || plantilla === null || notificadorTelegram === null) {
+        // Unreachable: a send is only decided for a successful query with a notifier.
+        throw new Error('notificarTelegram: envío decidido sin resultado, plantilla o notificador');
+      }
+      const entrada = entradaDeCorreo(plantilla, resultado, iniciadaEn, zonaHoraria);
+      const texto = componerTelegram(entrada);
+      respaldo = respaldoDe(entrada.mensaje, resultado.columnas);
+      await prisma.ejecucion.update({ where: { id }, data: { notificacion: 'enviando' }, select: { id: true } });
+      return { salida: await notificadorTelegram.enviar(decision.chatId, texto), respaldo };
+    } catch (error) {
+      return { salida: { resultado: 'excepcion', error }, respaldo };
+    }
+  }
+
+  /**
    * One run: open its row, run it, notify, and close the row once with closed columns only
    * (X2). A throw from the pipeline closes the row as `error-interno`; `previo` is a throw
    * that happened before the run could start (an unreadable stored schedule), recorded the
@@ -357,6 +412,7 @@ export function crearPlanificador({
       await prisma.ejecucion.create({
         data: conTenantInyectado({
           automatizacionId: automatizacion.id,
+          canal: automatizacion.canal,
           ...CIERRE_OMITIDA,
           iniciadaEn,
           finalizadaEn: iniciadaEn,
@@ -372,7 +428,12 @@ export function crearPlanificador({
     }
     // `tenantId` is never written here: the extension injects the active tenant's.
     const { id } = await prisma.ejecucion.create({
-      data: conTenantInyectado({ automatizacionId: automatizacion.id, estado: 'en-curso', iniciadaEn }),
+      data: conTenantInyectado({
+        automatizacionId: automatizacion.id,
+        canal: automatizacion.canal,
+        estado: 'en-curso',
+        iniciadaEn,
+      }),
       select: { id: true },
     });
     let resultado: ResultadoCorrida;
@@ -453,6 +514,7 @@ export function crearPlanificador({
         creadaEn: true,
         destinatarios: true,
         minimoFilas: true,
+        canal: true,
       },
       orderBy: [{ creadaEn: 'asc' }, { id: 'asc' }],
     });

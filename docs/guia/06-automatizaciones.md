@@ -1,6 +1,6 @@
 # Automatizaciones
 
-Una automatización ejecuta una plantilla del catálogo contra una conexión de un tenant, según un horario, y avisa por correo si hay filas. Pantallas: **Automatizaciones** y **Frescura de datos**, en Trabajo diario.
+Una automatización ejecuta una plantilla del catálogo contra una conexión de un tenant, según un horario, y avisa por correo o por Telegram si hay filas. Pantallas: **Automatizaciones** y **Frescura de datos**, en Trabajo diario.
 
 ## Anatomía
 
@@ -9,7 +9,7 @@ Una automatización ejecuta una plantilla del catálogo contra una conexión de 
 | Disparador | Expresión cron estándar de cinco campos, interpretada en la zona horaria del despliegue (`ZONA_HORARIA_AUTOMATIZACIONES`, `UTC` si no se define; DEC-76, DEC-77). |
 | Fuente | Siempre una plantilla, más una conexión y los valores de sus parámetros. Nunca una consulta guardada. |
 | Condición | Con cero filas no se envía nada (DEC-84), y tampoco con menos filas que el «Mínimo de filas para avisar» de la automatización: 1 por defecto, hasta el tope de filas del motor (DEC-186, DEC-193). El umbral de un valor es un parámetro dentro del SQL. |
-| Acción | Un correo HTML, a hasta 5 destinatarios en un solo mensaje, opcional (DEC-82, DEC-187). |
+| Acción | Por correo: un correo HTML, a hasta 5 destinatarios en un solo mensaje, opcional (DEC-82, DEC-187). Por Telegram: un mensaje de texto al chat vinculado del tenant (DEC-185, DEC-197). |
 | Registro | Una ejecución por corrida, con metadatos y sin filas (DEC-93). |
 
 ## Camino rápido
@@ -17,7 +17,7 @@ Una automatización ejecuta una plantilla del catálogo contra una conexión de 
 1. Comprobar en **Mapeo y validación** que las entidades de la plantilla están «Válida».
 2. **Automatizaciones** → «Nueva automatización».
 3. Paso «Conexión y plantilla»: elegir la conexión y una tarjeta de plantilla → «Siguiente».
-4. Paso «Parámetros y horario»: valores, «Frecuencia», «Hora (24 horas)» y, si se quiere correo, «Correos de los destinatarios (opcional)» (hasta 5, separados por comas, punto y coma o espacios) y «Mínimo de filas para avisar» (1 si no se cambia) → «Crear automatización».
+4. Paso «Parámetros y horario»: valores, «Frecuencia», «Hora (24 horas)», «Canal» («Correo» si no se cambia) y, si se quiere correo, «Correos de los destinatarios (opcional)» (hasta 5, separados por comas, punto y coma o espacios) y «Mínimo de filas para avisar» (1 si no se cambia) → «Crear automatización». Con «Telegram», los destinatarios se ocultan: el aviso va al chat vinculado del tenant, y se puede elegir antes de que el cliente lo vincule.
 5. El aviso informa la primera ejecución programada y la zona horaria.
 
 Si la conexión elegida no puede correr una plantilla, su tarjeta aparece deshabilitada con el motivo: «No disponible con esta conexión: producto (vista sin validar), … Cada ejecución se frenaría antes de conectar.» (DEC-127).
@@ -30,7 +30,7 @@ Si la conexión elegida no puede correr una plantilla, su tarjeta aparece deshab
 - **Límite.** Un disparo perdido no se recupera: si el servicio está detenido a la hora, esa ejecución se omite (DEC-95).
 - Si la corrida anterior de la misma automatización sigue en curso, se registra una ejecución «Omitida» con error `solapamiento` (DEC-96).
 - Al arrancar, las ejecuciones que quedaron «en-curso» se cierran como `fallo` con error `interrumpida` y no se repiten (DEC-99).
-- Los fallos transitorios de **conexión** (`host-inalcanzable`, `dns-no-resuelve`, `tiempo-agotado`) se reintentan: 3 intentos y 5000 ms de pausa por defecto (`CONNECTION_RETRY_ATTEMPTS`, máximo 5; `CONNECTION_RETRY_PAUSE_MS`). Nada más se reintenta, y el correo se intenta una sola vez (DEC-97).
+- Los fallos transitorios de **conexión** (`host-inalcanzable`, `dns-no-resuelve`, `tiempo-agotado`) se reintentan: 3 intentos y 5000 ms de pausa por defecto (`CONNECTION_RETRY_ATTEMPTS`, máximo 5; `CONNECTION_RETRY_PAUSE_MS`). Nada más se reintenta, y el correo o el mensaje de Telegram se intenta una sola vez (DEC-97, DEC-185).
 
 ## Ejecuciones
 
@@ -39,7 +39,7 @@ Si la conexión elegida no puede correr una plantilla, su tarjeta aparece deshab
 | Columna | Valores |
 |---|---|
 | Estado | `en-curso`, `ok`, `fallo`, «Omitida» |
-| Notificación | «Enviada», «No enviada: sin filas», «No enviada: menos filas que el mínimo», «Sin destinatario», «Correo no configurado», «Falló el envío», «Envío en curso», «Sin confirmar: puede haberse entregado» |
+| Notificación | «Enviada», «No enviada: sin filas», «No enviada: menos filas que el mínimo», «Sin destinatario», «Correo no configurado», «Falló el envío», «Envío en curso», «Sin confirmar: puede haberse entregado». Por Telegram: «Enviada por Telegram», «Sin vínculo», «Telegram no configurado». Cada fila se lee según el canal con que corrió, aunque después se cambie |
 | Error | Una frase por categoría, más el código SQLSTATE o SMTP si existe. Ver [Diagnóstico](08-diagnostico.md). |
 | Intentos | Intentos de conexión reales; `—` si no se llegó a conectar. |
 
@@ -47,12 +47,15 @@ Si la consulta anduvo y el correo falló, la ejecución queda en `fallo` pero co
 
 El correo necesita SMTP: sin `SMTP_HOST`, cada corrida registra «Correo no configurado» y sigue (DEC-86). Para desarrollo, `docker compose --profile correo up` levanta Mailpit.
 
+Telegram necesita `TELEGRAM_BOT_TOKEN` y un chat vinculado. Sin vínculo, la corrida registra «Sin vínculo» y no envía; con vínculo y sin token, «Telegram no configurado» (DEC-185). Las dos terminan en `ok`, porque la consulta anduvo.
+
 ## Ajustar en el lugar
 
-En una automatización activa, «Ajustar» abre un pop-up con cuatro cosas editables: los valores de los parámetros, el horario, los destinatarios (DEC-174, DEC-187) y el mínimo de filas (DEC-193). «Guardar ajustes» envía solo lo que cambió y rige desde la próxima ejecución; la lista se compara dirección por dirección, así que cambiar solo el separador no cuenta como cambio, y una lista vacía deja de enviar correo. La plantilla y la conexión se muestran y no se cambian: para eso se desactiva y se crea otra.
+En una automatización activa, «Ajustar» abre un pop-up con cinco cosas editables: los valores de los parámetros, el horario, el canal (DEC-197), los destinatarios (DEC-174, DEC-187) y el mínimo de filas (DEC-193). Cambiar el canal conserva la lista de destinatarios. «Guardar ajustes» envía solo lo que cambió y rige desde la próxima ejecución; la lista se compara dirección por dirección, así que cambiar solo el separador no cuenta como cambio, y una lista vacía deja de enviar correo. La plantilla y la conexión se muestran y no se cambian: para eso se desactiva y se crea otra.
 
 - «Desactivar» detiene la automatización; no se puede reactivar. Sus ejecuciones pasadas siguen disponibles (DEC-79).
 - El panel del cliente ajusta lo mismo, con menos opciones: «Cantidad mínima», «Hora de envío», días y correos, de 1 a 5: el panel no puede dejar la lista vacía (DEC-138, DEC-187, DEC-194).
+- Con Telegram disponible y un chat vinculado, el panel suma «Enviar por» («Correo» o «Telegram»). Sin vínculo o sin token no ofrece Telegram, salvo que ya esté elegido: una automatización en Telegram siempre puede volver a «Correo», con al menos un correo. Una automatización por Telegram sin vínculo muestra en su tarjeta «Este aviso no te está llegando» (DEC-197).
 
 ## Vista previa del mensaje
 
@@ -60,6 +63,7 @@ En una automatización activa, «Vista previa» abre un pop-up que corre su cons
 
 - Si una ejecución enviaría el correo y a quién («Se enviaría a: …»), o por qué no («No se enviaría: …»).
 - «Para», las filas y, si una ejecución armaría el mensaje, el «Asunto», el texto y el HTML del correo. El HTML se ve en un marco aislado, sin permisos.
+- Por Telegram: «Se enviaría al chat vinculado.» o por qué no, y el texto del mensaje, sin asunto ni marco. Nunca muestra el identificador del chat.
 
 No envía nada ni crea una ejecución: el pop-up solo tiene «Cerrar» y todo envío sigue siendo el programado. Un rechazo (vista sin aprobar, valores que ya no cumplen la plantilla, credencial ilegible) o una falla de la consulta se informan dentro del pop-up, como en la prueba de plantilla.
 
@@ -76,7 +80,6 @@ El panel del cliente trae la tarjeta «Avisos por Telegram», arriba de «Mis au
 - «Generar otro código» reemplaza el anterior. El código se ve solo en la respuesta que lo crea: al volver al panel, la tarjeta muestra solo su vencimiento.
 - «Vincular otro chat» genera un código nuevo; el chat que lo use reemplaza al anterior. «Desvincular» pide confirmación y no avisa nada al chat.
 - Sin `TELEGRAM_BOT_TOKEN`, o mientras el bot no respondió, la tarjeta dice «Por ahora no podés recibir avisos por Telegram.» y no ofrece acciones.
-- **Límite.** El vínculo existe, pero ninguna automatización envía todavía por Telegram: el canal llega con CH-44.
 
 ## Frescura de datos
 
@@ -97,6 +100,9 @@ Estado por plantilla: «Al día» (ventana menor o igual que la tolerancia), «D
 - **Límite.** Todas las direcciones van en «Para» de un mismo mensaje y se ven entre sí. Si el servidor de correo acepta al menos una, la ejecución figura «Enviada»; si las rechaza todas, «Falló el envío» (DEC-187).
 - **Límite.** El mínimo de filas se ajusta solo desde la consola; el panel del cliente no lo muestra (DEC-186). Si el resultado se cortó en el tope de filas, cuenta como alcanzado (DEC-193).
 - **Límite.** Las filas de una corrida se cuentan y se descartan: no hay vista de resultados anteriores (DEC-93).
+- **Límite.** Una automatización tiene un solo canal, y por Telegram manda un solo mensaje por ejecución: si no entra en los 4096 caracteres, se corta en una línea entera y lo avisa (DEC-185). Sin textos en la plantilla, el mensaje lleva las filas como `a | b | c` (DEC-197).
+- **Límite.** El envío por Telegram no se reintenta (DEC-185). Si varias automatizaciones de un tenant coinciden en un mismo minuto, Telegram puede rechazar alguna por pasarse de un mensaje por segundo: figura «Falló el envío». Un bot bloqueado, un chat que ya no existe y un token inválido se informan con el mismo texto.
+- **Límite.** Si un grupo vinculado pasa a supergrupo, Telegram le cambia el identificador y el envío falla hasta que se vuelva a vincular.
 
 ## Siguiente paso
 

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '../generated/prisma/client.js';
 import { conTenantInyectado, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
-import { cronValido, MINIMO_FILAS_POR_DEFECTO, proximaEjecucion } from './automatizaciones.js';
+import { cronValido, esCanal, MINIMO_FILAS_POR_DEFECTO, proximaEjecucion } from './automatizaciones.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
@@ -45,6 +45,8 @@ export const AutomatizacionCompleta = {
   valores: true,
   destinatarios: true,
   minimoFilas: true,
+  /** CH-44 (DEC-197). Never a chat id: that stays in `VinculoTelegram`. */
+  canal: true,
 } as const;
 
 /**
@@ -65,6 +67,8 @@ export const EjecucionListada = {
   codigoError: true,
   /** CH-14 (DEC-83): the closed notification outcome, never a body or a recipient. */
   notificacion: true,
+  /** CH-44 (DEC-197): the channel this run was created under; null reads as `correo`. */
+  canal: true,
   /** CH-17b (DEC-103): real connection attempts; null when the run never dialled. */
   intentos: true,
   /** CH-39 (DEC-188): the column names the message lacked when it fell back to the table; null otherwise. */
@@ -88,6 +92,8 @@ interface RegistroAutomatizacionBody {
   destinatarios?: unknown[];
   /** CH-40 (DEC-186): absent means `MINIMO_FILAS_POR_DEFECTO`. */
   minimoFilas?: number;
+  /** CH-44 (DEC-197): absent means `correo`. Not refused for lacking a link: the run records it. */
+  canal?: string;
 }
 
 interface AutomatizacionParams {
@@ -104,7 +110,7 @@ interface AutomatizacionParams {
 const registroAutomatizacionSchema = {
   type: 'object',
   additionalProperties: false,
-  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron', 'destinatarios', 'minimoFilas'] },
+  propertyNames: { enum: ['plantillaId', 'conexionId', 'valores', 'cron', 'destinatarios', 'minimoFilas', 'canal'] },
   required: ['plantillaId', 'conexionId', 'cron'],
   properties: {
     plantillaId: { type: 'string', minLength: 1 },
@@ -113,6 +119,7 @@ const registroAutomatizacionSchema = {
     cron: { type: 'string', minLength: 1 },
     destinatarios: { type: 'array', maxItems: 50, items: {} },
     minimoFilas: { type: 'integer', minimum: 1 },
+    canal: { type: 'string' },
   },
 } as const;
 
@@ -187,6 +194,8 @@ export interface CuerpoAjusteOperador {
   destinatarios?: unknown[];
   /** CH-40 (DEC-193): same rule as the alta. */
   minimoFilas?: number;
+  /** CH-44 (DEC-197): same rule as the alta. */
+  canal?: string;
 }
 
 /** Columns to write: only the ones the body sent. */
@@ -195,6 +204,7 @@ export interface DatosAjusteOperador {
   cron?: string;
   destinatarios?: string[];
   minimoFilas?: number;
+  canal?: string;
 }
 
 export type ResolucionAjusteOperador =
@@ -244,6 +254,14 @@ export function resolverAjusteOperador(
     }
   }
 
+  if (cuerpo.canal !== undefined) {
+    if (esCanal(cuerpo.canal)) {
+      datos.canal = cuerpo.canal;
+    } else {
+      campos.push('/canal');
+    }
+  }
+
   if (cuerpo.valores !== undefined) {
     // Only the verdict is used, as in the alta: every run composes the statement again.
     const preparada = prepararSentencia(sanearSql(plantilla.sql), plantilla.parametros, cuerpo.valores);
@@ -274,12 +292,13 @@ const ajusteOperadorSchema = {
   type: 'object',
   additionalProperties: false,
   minProperties: 1,
-  propertyNames: { enum: ['valores', 'cron', 'destinatarios', 'minimoFilas'] },
+  propertyNames: { enum: ['valores', 'cron', 'destinatarios', 'minimoFilas', 'canal'] },
   properties: {
     valores: { type: 'object' },
     cron: { type: 'string', minLength: 1 },
     destinatarios: { type: 'array', maxItems: 50, items: {} },
     minimoFilas: { type: 'integer', minimum: 1 },
+    canal: { type: 'string' },
   },
 } as const;
 
@@ -347,6 +366,11 @@ export function registerAutomatizacionRoutes(
       if (!minimoFilasValido(minimoFilas, topeFilas)) {
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/minimoFilas'] });
       }
+      // CH-44 (DEC-197): pure too. A link is not required: the operator may configure first.
+      const canal = request.body.canal ?? 'correo';
+      if (!esCanal(canal)) {
+        return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/canal'] });
+      }
 
       // `Plantilla` is global (DEC-61): this read is not scoped, and `id` is `text`, so a
       // malformed id is simply not found.
@@ -393,6 +417,7 @@ export function registerAutomatizacionRoutes(
           cron,
           destinatarios: destinatarios.lista,
           minimoFilas,
+          canal,
         }),
         select: AutomatizacionCompleta,
       });
@@ -505,7 +530,7 @@ export function registerAutomatizacionRoutes(
           ...(resolucion.problemas === undefined ? {} : { problemas: resolucion.problemas }),
         });
       }
-      const { valores, cron, destinatarios, minimoFilas } = resolucion.datos;
+      const { valores, cron, destinatarios, minimoFilas, canal } = resolucion.datos;
       try {
         const automatizacion = await prisma.automatizacion.update({
           where: { id: request.params.id },
@@ -516,6 +541,7 @@ export function registerAutomatizacionRoutes(
             ...(cron === undefined ? {} : { cron }),
             ...(destinatarios === undefined ? {} : { destinatarios }),
             ...(minimoFilas === undefined ? {} : { minimoFilas }),
+            ...(canal === undefined ? {} : { canal }),
           },
           select: AutomatizacionCompleta,
         });

@@ -22,7 +22,8 @@ import { registerConexionRoutes } from '../conexiones/conexiones.js';
 import { registerAutomatizacionRoutes } from './automatizaciones-rutas.js';
 import { entradaDeCorreo, peticionDeCorrida, type PlantillaDeCorrida } from './corrida.js';
 import { componerCorreo } from './correo.js';
-import { respuestaDeVistaPrevia } from './vista-previa.js';
+import { componerTelegram } from './mensaje-telegram.js';
+import { respuestaDeVistaPrevia, respuestaDeVistaPreviaTelegram } from './vista-previa.js';
 import { prepararSentencia } from '../ejecucion/parametros.js';
 import type { EjecucionExitosa, EjecucionFallida } from '../ejecucion/consulta-ejecucion.js';
 
@@ -165,7 +166,50 @@ describe('CH-42 respuestaDeVistaPrevia — the decision, «Para» and the messag
       duracionMs: 2,
     };
     const r = respuesta(fallo, PARA, 1, true);
-    assert.deepEqual(r, { ...fallo, decision: null, para: PARA, correo: null });
+    assert.deepEqual(r, { ...fallo, canal: 'correo', decision: null, para: PARA, correo: null, telegram: null });
+  });
+
+  describe('CH-44 on the Telegram channel', () => {
+    const CHAT = 987654321n;
+    const telegram = (resultado: Parameters<typeof respuestaDeVistaPreviaTelegram>[0], chatId: bigint | null, configurado = true, minimo = 1) =>
+      respuestaDeVistaPreviaTelegram(resultado, { minimoFilas: minimo }, plantillaCon(null, null), chatId, configurado, FECHA, ZONA);
+
+    test('a run that would send carries the text a send uses, and no email', () => {
+      const r = telegram(exitosa([['Harina', 3]]), CHAT);
+      assert.equal(r.canal, 'telegram');
+      assert.equal(r.decision, 'enviar');
+      assert.deepEqual(r.para, []);
+      assert.equal(r.correo, null);
+      const entrada = entradaDeCorreo(plantillaCon(null, null), exitosa([['Harina', 3]]), FECHA, ZONA);
+      assert.deepEqual(r.telegram, { texto: componerTelegram(entrada) });
+    });
+
+    test('no link and no token still show the message', () => {
+      const sinVinculo = telegram(exitosa([['Harina', 3]]), null);
+      assert.equal(sinVinculo.decision, 'sin-vinculo');
+      assert.notEqual(sinVinculo.telegram, null);
+      const sinToken = telegram(exitosa([['Harina', 3]]), CHAT, false);
+      assert.equal(sinToken.decision, 'no-configurada');
+      assert.notEqual(sinToken.telegram, null);
+    });
+
+    test('zero rows and below the minimum build nothing', () => {
+      const cero = telegram(exitosa([]), CHAT);
+      assert.equal(cero.decision, 'omitida-sin-filas');
+      assert.equal(cero.telegram, null);
+      const bajo = telegram(exitosa([['Harina', 3]]), CHAT, true, 5);
+      assert.equal(bajo.decision, 'omitida-bajo-minimo');
+      assert.equal(bajo.telegram, null);
+    });
+
+    test('a failed query has no decision and no message', () => {
+      const fallo: EjecucionFallida = { resultado: 'fallo', fase: 'ejecucion', categoria: 'error-sintaxis', codigo: '42601', duracionMs: 2 };
+      assert.deepEqual(telegram(fallo, null), { ...fallo, canal: 'telegram', decision: null, para: [], correo: null, telegram: null });
+    });
+
+    test('the chat id is not in the answer', () => {
+      assert.ok(!JSON.stringify(telegram(exitosa([['Harina', 3]]), CHAT)).includes(String(CHAT)));
+    });
   });
 
   test('3.4 a result cut by the row cap under the minimum still sends, as a run decides', () => {
@@ -233,7 +277,7 @@ describe(
 
     function construir(
       cliente: PrismaAislado,
-      { tope = TOPE, correoConfigurado = true } = {},
+      { tope = TOPE, correoConfigurado = true, telegramConfigurado = true } = {},
     ): { app: FastifyInstance; log: () => string } {
       const partes: string[] = [];
       const stream = new Writable({
@@ -246,7 +290,7 @@ describe(
       registrarGuardOperador(nueva, cliente);
       registrarContextoTenant(nueva, cliente);
       registerConexionRoutes(nueva, cliente);
-      registerAutomatizacionRoutes(nueva, cliente, 'UTC', tope, { correoConfigurado });
+      registerAutomatizacionRoutes(nueva, cliente, 'UTC', tope, { correoConfigurado, telegramConfigurado });
       return { app: nueva, log: () => partes.join('') };
     }
 
@@ -449,6 +493,41 @@ describe(
       } finally {
         await sinCorreo.app.close();
       }
+    });
+
+    test('CH-44 a Telegram automation previews its own link: the text, no chat id, no run and one audit row', async () => {
+      const id = await automatizacion();
+      await db.automatizacion.update({ where: { id }, data: { canal: 'telegram' } });
+      const auditoriaAntes = (await registros()).length;
+      await db.vinculoTelegram.deleteMany({ where: { tenantId: tenantA } });
+
+      const sinVinculo = await vistaPrevia(id);
+      assert.equal(sinVinculo.statusCode, 200, sinVinculo.body);
+      assert.equal(sinVinculo.json().decision, 'sin-vinculo');
+      assert.equal(typeof sinVinculo.json().telegram.texto, 'string');
+      assert.equal(sinVinculo.json().correo, null);
+
+      const CHAT = 987654321n;
+      await db.vinculoTelegram.create({ data: { tenantId: tenantA, chatId: CHAT } });
+      try {
+        const conVinculo = await vistaPrevia(id);
+        assert.equal(conVinculo.json().canal, 'telegram');
+        assert.equal(conVinculo.json().decision, 'enviar');
+        assert.deepEqual(conVinculo.json().para, []);
+        assert.ok(!conVinculo.body.includes(String(CHAT)), 'the chat id never leaves');
+
+        const sinToken = construir(prisma, { telegramConfigurado: false });
+        await sinToken.app.ready();
+        try {
+          assert.equal((await vistaPrevia(id, sinToken.app)).json().decision, 'no-configurada');
+        } finally {
+          await sinToken.app.close();
+        }
+      } finally {
+        await db.vinculoTelegram.deleteMany({ where: { tenantId: tenantA } });
+      }
+      assert.equal((await db.ejecucion.findMany({ where: { automatizacionId: id } })).length, 0, 'no run');
+      assert.equal((await registros()).length, auditoriaAntes + 3, 'one audit row per preview');
     });
 
     test('3.6 the run page: a row cap of 2 on three rows with minimum 5 reads two rows, hayMas and enviar', async () => {

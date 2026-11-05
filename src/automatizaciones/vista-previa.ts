@@ -2,9 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { registrarEjecucion, veredictoDeEjecucion } from '../auditoria/auditoria.js';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { SIN_AGENTES, type AbridorDeCanales } from '../agente/canal-agente.js';
-import { decidirNotificacion, type OmisionNotificacion } from './automatizaciones.js';
+import { decidirNotificacion, decidirTelegram, type Canal, type OmisionNotificacion } from './automatizaciones.js';
 import { componerCorreo } from './correo.js';
 import { entradaDeCorreo, peticionDeCorrida, prepararCorrida, type PlantillaDeCorrida } from './corrida.js';
+import { componerTelegram } from './mensaje-telegram.js';
 import { ejecutarConsulta, type ResultadoEjecucion } from '../ejecucion/consulta-ejecucion.js';
 
 /**
@@ -30,11 +31,16 @@ export interface CorreoVistaPrevia {
   html: string;
 }
 
-/** The template test's 200 body, plus the three preview fields. */
+/**
+ * The template test's 200 body, plus the preview fields. CH-44: never the chat id, which stays
+ * inside the route and the decision.
+ */
 export type RespuestaVistaPrevia = ResultadoEjecucion & {
+  canal: Canal;
   decision: DecisionVistaPrevia;
   para: string[];
   correo: CorreoVistaPrevia | null;
+  telegram: { texto: string } | null;
 };
 
 /** The decisions a run reaches the delivery rows with, so a message would be composed. */
@@ -64,7 +70,32 @@ export function respuestaDeVistaPrevia(
     resultado.resultado === 'ok' && DECISIONES_CON_MENSAJE.includes(decision)
       ? componerCorreo(entradaDeCorreo(plantilla, resultado, fecha, zona))
       : null;
-  return { ...resultado, decision, para: [...automatizacion.destinatarios], correo };
+  return { ...resultado, canal: 'correo', decision, para: [...automatizacion.destinatarios], correo, telegram: null };
+}
+
+/** The decisions a Telegram run reaches the delivery rows with. */
+const DECISIONES_CON_MENSAJE_TELEGRAM: readonly DecisionVistaPrevia[] = ['enviar', 'sin-vinculo', 'no-configurada'];
+
+/**
+ * CH-44 (DEC-185, DEC-195, DEC-197): the same answer on the Telegram channel, with the text a
+ * send would carry. `chatId` only feeds the decision; it is not part of the answer.
+ */
+export function respuestaDeVistaPreviaTelegram(
+  resultado: ResultadoEjecucion,
+  automatizacion: { minimoFilas: number },
+  plantilla: PlantillaDeCorrida,
+  chatId: bigint | null,
+  telegramConfigurado: boolean,
+  fecha: Date,
+  zona: string,
+): RespuestaVistaPrevia {
+  const decidida = decidirTelegram(resultado, chatId, telegramConfigurado, automatizacion.minimoFilas);
+  const decision: DecisionVistaPrevia = decidida.enviar ? 'enviar' : decidida.notificacion;
+  const telegram =
+    resultado.resultado === 'ok' && DECISIONES_CON_MENSAJE_TELEGRAM.includes(decision)
+      ? { texto: componerTelegram(entradaDeCorreo(plantilla, resultado, fecha, zona)) }
+      : null;
+  return { ...resultado, canal: 'telegram', decision, para: [], correo: null, telegram };
 }
 
 export interface OpcionesVistaPrevia {
@@ -72,6 +103,8 @@ export interface OpcionesVistaPrevia {
   canales?: AbridorDeCanales;
   /** Whether the boot notifier exists (`SMTP_HOST` set). Absent means false. */
   correoConfigurado?: boolean;
+  /** CH-44: whether `TELEGRAM_BOT_TOKEN` is set, the scheduler's own signal. Absent means false. */
+  telegramConfigurado?: boolean;
 }
 
 /**
@@ -83,7 +116,7 @@ export function registerVistaPreviaRoute(
   prisma: PrismaAislado,
   zonaHoraria: string,
   topeFilas: number,
-  { canales = SIN_AGENTES, correoConfigurado = false }: OpcionesVistaPrevia,
+  { canales = SIN_AGENTES, correoConfigurado = false, telegramConfigurado = false }: OpcionesVistaPrevia,
 ): void {
   // No body schema, like `/desactivar`: nothing is read from the body.
   app.post<{ Params: VistaPreviaParams }>('/automatizaciones/:id/vista-previa', async (request, reply) => {
@@ -97,6 +130,7 @@ export function registerVistaPreviaRoute(
         valores: true,
         destinatarios: true,
         minimoFilas: true,
+        canal: true,
       },
     });
     if (automatizacion === null) {
@@ -168,6 +202,26 @@ export function registerVistaPreviaRoute(
       consulta: null,
       plantillaId: automatizacion.plantillaId,
     }, veredictoDeEjecucion(resultado));
+    if (automatizacion.canal === 'telegram') {
+      // CH-44: the running tenant's own link, through the scoped client, as a run reads it.
+      const vinculo =
+        resultado.resultado === 'ok'
+          ? await prisma.vinculoTelegram.findFirst({ select: { chatId: true } })
+          : null;
+      return reply
+        .code(200)
+        .send(
+          respuestaDeVistaPreviaTelegram(
+            resultado,
+            automatizacion,
+            plantilla,
+            vinculo?.chatId ?? null,
+            telegramConfigurado,
+            new Date(),
+            zonaHoraria,
+          ),
+        );
+    }
     return reply
       .code(200)
       .send(respuestaDeVistaPrevia(resultado, automatizacion, plantilla, correoConfigurado, new Date(), zonaHoraria));

@@ -109,6 +109,8 @@ export interface FilaAutomatizacion {
   id: string;
   activo: boolean;
   cron: string;
+  /** CH-44 (DEC-197): read only to decide `sinVinculo`; the value itself never leaves. */
+  canal?: string;
   plantilla: { titulo: string | null; descripcion: string | null };
 }
 
@@ -128,6 +130,8 @@ export interface ItemActiva {
   frecuencia?: string;
   ultimaEjecucion: { fecha: string; resultado: ResultadoNegocio } | null;
   proximaEjecucion: string | null;
+  /** CH-44 (DEC-197): present only for an active Telegram automation with no linked chat. */
+  sinVinculo?: true;
 }
 
 /**
@@ -144,6 +148,7 @@ export function proyectarActiva(
   ultima: UltimaEjecucionFila | null,
   ahora: Date,
   zona: string,
+  vinculado = true,
 ): ItemActiva {
   const copy = textoDe(fila.plantilla) ?? COPY_NEUTRO;
   const ultimaEjecucion: ItemActiva['ultimaEjecucion'] =
@@ -175,6 +180,9 @@ export function proyectarActiva(
   const frecuencia = frecuenciaDeCron(fila.cron);
   if (frecuencia !== null) {
     item.frecuencia = frecuencia;
+  }
+  if (fila.activo && fila.canal === 'telegram' && !vinculado) {
+    item.sinVinculo = true;
   }
   return item;
 }
@@ -274,12 +282,13 @@ export function registerPanelAutomatizacionesRoutes(
       const cuerpo = await conTenantActivo(
         { id: sesion.tenantId, nombre: sesion.tenantNombre },
         async () => {
-          const [leidas, plantillas, activasGrupo] = await Promise.all([
+          const [leidas, plantillas, activasGrupo, vinculo] = await Promise.all([
             prisma.automatizacion.findMany({
               select: {
                 id: true,
                 activo: true,
                 cron: true,
+                canal: true,
                 plantilla: { select: { titulo: true, descripcion: true } },
               },
               orderBy: [{ creadaEn: 'desc' }, { id: 'asc' }],
@@ -290,6 +299,8 @@ export function registerPanelAutomatizacionesRoutes(
               select: { id: true, titulo: true, descripcion: true },
             }),
             prisma.automatizacion.groupBy({ by: ['plantillaId'], where: { activo: true } }),
+            // CH-44 (DEC-197): scoped, and only whether it exists: the chat id is not selected.
+            prisma.vinculoTelegram.findFirst({ select: { id: true } }),
           ]);
           const truncado = leidas.length > LIMITE_LISTADO;
           const filas = leidas.slice(0, LIMITE_LISTADO);
@@ -299,7 +310,9 @@ export function registerPanelAutomatizacionesRoutes(
             filas.map((f) => f.id),
           );
           return {
-            activas: filas.map((f) => proyectarActiva(f, ultimas.get(f.id) ?? null, referencia, zonaHoraria)),
+            activas: filas.map((f) =>
+              proyectarActiva(f, ultimas.get(f.id) ?? null, referencia, zonaHoraria, vinculo !== null),
+            ),
             disponibles: proyectarDisponibles(
               plantillas,
               new Set(activasGrupo.map((g) => g.plantillaId)),

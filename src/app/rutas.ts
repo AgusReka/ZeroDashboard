@@ -101,7 +101,12 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // is accepted only in the zone the scheduler will read it in, and a minimum of rows only
   // up to the row cap it reads with (CH-40). CH-42 (DEC-195): the message preview dials like
   // the test route, so it gets the agent registry, and decides like the scheduler.
-  registerAutomatizacionRoutes(app, prisma, zonaHoraria, topeFilas, { canales: registro, correoConfigurado });
+  registerAutomatizacionRoutes(app, prisma, zonaHoraria, topeFilas, {
+    canales: registro,
+    correoConfigurado,
+    // CH-44 (DEC-197): the port exists exactly when the token is set, the scheduler's signal.
+    telegramConfigurado: telegram !== null,
+  });
   // CH-19b (DEC-121): the tenant's agent and its token, scoped by the header like the routes
   // above and not exempt; the `/agente/` prefix stays reserved for the agent itself (DEC-116).
   registerAgenteRoutes(app, prisma, registro);
@@ -124,7 +129,7 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-22b (DEC-137): the panel's read-only "mis automatizaciones", session-guarded and exempt
   // by one exact row in `RUTAS_PANEL_PUBLICAS`. The clock stays at its default.
   registerPanelAutomatizacionesRoutes(app, prisma, zonaHoraria);
-  registerPanelAjustesRoutes(app, prisma, zonaHoraria);
+  registerPanelAjustesRoutes(app, prisma, zonaHoraria, undefined, telegram !== null);
   // CH-43 (DEC-185, DEC-196): the «Avisos por Telegram» card's API, session-guarded and
   // exempt by three exact rows in `RUTAS_PANEL_PUBLICAS`, like the panel routes above.
   registerPanelTelegramRoutes(app, { prisma, telegram });

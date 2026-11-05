@@ -426,7 +426,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.deepEqual(Object.keys(cuerpo201).sort(), ['automatizacion', 'proximaEjecucion', 'zonaHoraria']);
     assert.deepEqual(
       Object.keys(cuerpo201.automatizacion).sort(),
-      ['activo', 'conexionId', 'creadaEn', 'cron', 'destinatarios', 'id', 'minimoFilas', 'plantillaId', 'valores'],
+      ['activo', 'canal', 'conexionId', 'creadaEn', 'cron', 'destinatarios', 'id', 'minimoFilas', 'plantillaId', 'valores'],
     );
     const { creadaEn, cron } = cuerpo201.automatizacion;
     assert.equal(cuerpo201.proximaEjecucion, proximaEjecucion(cron, new Date(creadaEn), 'UTC').toISOString());
@@ -602,6 +602,7 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
         error: 'conexion',
         codigoError: null,
         notificacion: null,
+        canal: null,
         intentos: null,
         mensajeRespaldo: null,
       },
@@ -641,6 +642,51 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.equal(respuesta.statusCode, 201, respuesta.body);
     return respuesta.json().automatizacion.id as string;
   }
+
+  test('CH-44 the channel defaults to correo, Telegram needs no link, and a stray value is refused', async () => {
+    const porDefecto = await crear(cuerpo());
+    assert.equal(porDefecto.statusCode, 201, porDefecto.body);
+    assert.equal(porDefecto.json().automatizacion.canal, 'correo');
+
+    const telegram = await crear({ ...cuerpo(), canal: 'telegram' });
+    assert.equal(telegram.statusCode, 201, telegram.body);
+    assert.equal(telegram.json().automatizacion.canal, 'telegram');
+
+    const raro = await crear({ ...cuerpo(), canal: 'sms' });
+    assert.equal(raro.statusCode, 400);
+    assert.deepEqual(raro.json().campos, ['/canal']);
+  });
+
+  test('CH-44 an adjust switches the channel and keeps the recipients, and a stray value stores nothing', async () => {
+    const id = await nueva();
+    const aTelegram = await ajustar(id, { canal: 'telegram' });
+    assert.equal(aTelegram.statusCode, 200, aTelegram.body);
+    assert.equal(aTelegram.json().automatizacion.canal, 'telegram');
+    assert.deepEqual(aTelegram.json().automatizacion.destinatarios, ['a@example.com']);
+
+    const raro = await ajustar(id, { canal: 'sms' });
+    assert.equal(raro.statusCode, 400);
+    assert.deepEqual(raro.json().campos, ['/canal']);
+
+    const aCorreo = await ajustar(id, { canal: 'correo' });
+    assert.equal(aCorreo.json().automatizacion.canal, 'correo');
+    assert.deepEqual(aCorreo.json().automatizacion.destinatarios, ['a@example.com']);
+  });
+
+  test('CH-44 the runs listing carries each run\'s channel, and changing the channel leaves it alone', async () => {
+    const id = await nueva();
+    const inicio = new Date();
+    await prisma.ejecucion.createMany({
+      data: [
+        { tenantId: tenantA, automatizacionId: id, estado: 'ok', iniciadaEn: inicio, canal: 'correo' },
+        { tenantId: tenantA, automatizacionId: id, estado: 'ok', iniciadaEn: new Date(inicio.getTime() + 1000), canal: null },
+      ],
+    });
+    await ajustar(id, { canal: 'telegram' });
+    const respuesta = await pedir('GET', `/automatizaciones/${id}/ejecuciones`);
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    assert.deepEqual(new Set(respuesta.json().ejecuciones.map((e: { canal: string | null }) => e.canal)), new Set(['correo', null]));
+  });
 
   test('CH-33 an adjust changes only the sent columns, keeps the id and the runs, and reports the next run', async () => {
     const id = await nueva();

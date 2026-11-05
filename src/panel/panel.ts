@@ -278,7 +278,7 @@ function documentoShell(nombreTenant: string): string {
   </section>
   <section data-screen-label="Mis automatizaciones" data-change="CH-22" data-estado="parcial">
     <h1 class="zd-h1">Mis automatizaciones</h1>
-    <p class="zd-muted">Lo que revisamos por vos y te mandamos por correo.</p>
+    <p class="zd-muted">Lo que revisamos por vos y te avisamos.</p>
   </section>
   <!-- P-02 states: loading skeleton, error, empty, active cards, available section. -->
   <div id="estado-carga" class="panel-lista" aria-busy="true" aria-label="Cargando tus automatizaciones">
@@ -360,6 +360,7 @@ var ERRORES_CAMPO = {
   umbral: 'Ingresá un número válido.',
   hora: 'Elegí una hora válida.',
   dias: 'Elegí los días de envío.',
+  canal: 'Elegí por dónde querés recibir este aviso.',
   destinatarios: 'Revisá los correos: escribí entre 1 y 5, separados por comas.'
 };
 var OPCIONES_DIAS = [['todos', 'Todos los días'], ['lun-vie', 'De lunes a viernes'], ['lun-sab', 'De lunes a sábado']];
@@ -450,6 +451,10 @@ function cuerpoDeCambios(campos, ajustes) {
   }
   if (campos.hora && campos.hora.control.value !== ajustes.hora) { cuerpo.hora = campos.hora.control.value; }
   if (campos.dias && campos.dias.control.value !== ajustes.dias) { cuerpo.dias = campos.dias.control.value; }
+  // CH-44 (DEC-197): the channel only when it changed, and on Telegram the stored list stays as it is.
+  var canal = campos.canal ? campos.canal.control.value : ajustes.canal;
+  if (canal !== ajustes.canal) { cuerpo.canal = canal; }
+  if (canal === 'telegram') { return cuerpo; }
   // CH-41 (DEC-187): the whole list is sent, and only when it differs from the stored one (compared as JSON).
   var correos = direccionesDe(campos.destinatarios.control.value);
   if (JSON.stringify(correos) !== JSON.stringify(ajustes.destinatarios)) { cuerpo.destinatarios = correos; }
@@ -534,6 +539,22 @@ function formularioDeAjustes(item, ajustes, tarjeta, boton) {
   correo.value = ajustes.destinatarios.join(', ');
   correo.setAttribute('autocomplete', 'off');
   campos.destinatarios = campoDeFormulario(prefijo, 'destinatarios', 'Enviar a', correo, 'Hasta 5 correos, separados por comas.', null);
+  // CH-44 (DEC-197): the choice appears only when there is one. On Telegram, «Enviar a» has no use.
+  if (Array.isArray(ajustes.canales) && ajustes.canales.length > 1) {
+    var canal = nodo('select', 'zd-select');
+    for (var c = 0; c < ajustes.canales.length; c++) {
+      var opcionCanal = nodo('option', '', ajustes.canales[c] === 'telegram' ? 'Telegram' : 'Correo');
+      opcionCanal.value = ajustes.canales[c];
+      canal.appendChild(opcionCanal);
+    }
+    canal.value = ajustes.canal;
+    campos.canal = campoDeFormulario(prefijo, 'canal', 'Enviar por', canal, null, null);
+    forma.appendChild(campos.canal.caja);
+    campos.destinatarios.caja.hidden = canal.value === 'telegram';
+    canal.addEventListener('change', function () {
+      campos.destinatarios.caja.hidden = canal.value === 'telegram';
+    });
+  }
   forma.appendChild(campos.destinatarios.caja);
   var acciones = nodo('div', 'zd-form-actions');
   var guardar = nodo('button', 'zd-btn zd-btn--primary', 'Guardar cambios');
@@ -638,6 +659,10 @@ function tarjetaActiva(item, zona) {
     banner.appendChild(nodo('p', 'zd-banner__title', 'No pudimos completar esta automatización esta vez'));
     banner.appendChild(nodo('p', 'zd-banner__body', 'La última revisión falló. La próxima vez que se ejecute, volvemos a intentarlo.'));
     tarjeta.appendChild(banner);
+  }
+  // CH-44 (DEC-197): the last result can read fine while nobody gets the notice.
+  if (item.sinVinculo === true) {
+    tarjeta.appendChild(aviso('warn', 'Este aviso no te está llegando', 'Se manda por Telegram y no hay un chat vinculado.', 'status'));
   }
   if (avisoGuardado === item.id) {
     tarjeta.appendChild(aviso('ok', 'Guardamos tus cambios', 'Se aplican desde la próxima revisión.', 'status'));

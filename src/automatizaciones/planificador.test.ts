@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import { after, before, describe, test } from 'node:test';
+import { after, afterEach, before, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -12,6 +12,7 @@ import { MINIMO_FILAS_POR_DEFECTO, type ResultadoEnvio } from './automatizacione
 import type { Correo } from './correo.js';
 import { notificadorDesdeTransporte, type Notificador } from './notificador.js';
 import { crearPlanificador, type PoliticaReintentos, type Reloj } from './planificador.js';
+import type { NotificadorTelegram } from '../telegram/notificador-telegram.js';
 
 /**
  * CH-13 units 4a and 4b: scheduler ticks against a live PostgreSQL (tasks 4.1–4.6), skipped
@@ -130,7 +131,7 @@ $limpieza$;`;
  * CH-39 adds `mensajeRespaldo` (DEC-188), the column names a message lacked: names only.
  */
 const COLUMNAS_EJECUCION = [
-  'automatizacionId', 'codigoError', 'corte', 'duracionMs', 'error', 'estado',
+  'automatizacionId', 'canal', 'codigoError', 'corte', 'duracionMs', 'error', 'estado',
   'fase', 'filas', 'finalizadaEn', 'id', 'iniciadaEn', 'intentos', 'mensajeRespaldo', 'notificacion', 'tenantId',
 ];
 
@@ -198,6 +199,8 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     destinatarios?: string[];
     /** CH-40: absent leaves the column to its database default. */
     minimoFilas?: number;
+    /** CH-44: absent leaves the column to its database default, `correo`. */
+    canal?: string;
     /** CH-17b: see `conexion`. */
     puerto?: number;
     clave?: string;
@@ -218,6 +221,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
         creadaEn: new Date(opciones.creadaEn ?? '2020-01-01T00:00:00Z'),
         destinatarios: opciones.destinatarios ?? [],
         ...(opciones.minimoFilas === undefined ? {} : { minimoFilas: opciones.minimoFilas }),
+        ...(opciones.canal === undefined ? {} : { canal: opciones.canal }),
       },
     });
     return fila.id;
@@ -237,9 +241,9 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     desde: Date,
     hasta: Date,
     reloj: Reloj = relojFijo(desde),
-    extra: { notificador?: Notificador | null; lineas?: string[] } = {},
+    extra: { notificador?: Notificador | null; notificadorTelegram?: NotificadorTelegram | null; lineas?: string[] } = {},
   ): Promise<void> {
-    const { notificador, lineas } = extra;
+    const { notificador, notificadorTelegram, lineas } = extra;
     // With `lineas`, every log line is kept as the JSON pino writes, to inspect what leaks.
     const log = lineas
       ? Fastify({ logger: { stream: { write: (linea: string) => void lineas.push(linea) } } }).log
@@ -250,6 +254,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
       log,
       reloj,
       ...(notificador === undefined ? {} : { notificador }),
+      ...(notificadorTelegram === undefined ? {} : { notificadorTelegram }),
     });
     await planificador.ejecutarTick(hasta);
   }
@@ -477,6 +482,7 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
 
   after(async () => {
     for (const tenantId of tenants) {
+      await prisma.vinculoTelegram.deleteMany({ where: { tenantId } });
       await prisma.ejecucion.deleteMany({ where: { tenantId } });
       await prisma.automatizacion.deleteMany({ where: { tenantId } });
       await prisma.vistaCanonica.deleteMany({ where: { tenantId } });
@@ -688,6 +694,172 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     const filas = await ejecuciones(id);
     assert.equal(filas.length, 1);
     assert.deepEqual(columnas(filas[0], 'estado', 'fase', 'notificacion'), { estado: 'ok', fase: 'ejecucion', notificacion: 'enviada' });
+  });
+
+  describe('CH-44 the Telegram channel', () => {
+    const CHAT = 987654321n;
+
+    // A tick runs every active automation of every tenant, so each case leaves nothing due
+    // and nothing `en-curso` for the next one.
+    afterEach(async () => {
+      await prisma.ejecucion.deleteMany({ where: { estado: 'en-curso', automatizacion: { canal: 'telegram' } } });
+      await prisma.automatizacion.updateMany({ where: { canal: 'telegram' }, data: { activo: false } });
+      await prisma.automatizacion.updateMany({ where: { destinatarios: { has: 'ch44-c@example.com' } }, data: { activo: false } });
+    });
+
+    function telegramFalso(respuesta: () => Promise<ResultadoEnvio> = async () => ({ resultado: 'enviada' })) {
+      const enviados: Array<{ chatId: bigint; texto: string }> = [];
+      const notificadorTelegram: NotificadorTelegram = {
+        enviar: (chatId, texto) => {
+          enviados.push({ chatId, texto });
+          return respuesta();
+        },
+      };
+      return { notificadorTelegram, enviados };
+    }
+
+    const vincular = (tenantId: string, chatId = CHAT) => prisma.vinculoTelegram.create({ data: { tenantId, chatId } });
+
+    test('a run with a link sends one message to that chat, and the row holds no chat id', async () => {
+      const tenantId = await tenant();
+      await vincular(tenantId);
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram', destinatarios: ['ch44@example.com'] });
+      const correo = notificadorFalso();
+      const falso = telegramFalso();
+      const lineas: string[] = [];
+      await tick(EN('15:00:30'), EN('15:01:30'), undefined, { notificador: correo.notificador, notificadorTelegram: falso.notificadorTelegram, lineas });
+      assert.equal(falso.enviados.length, 1);
+      assert.equal(falso.enviados[0].chatId, CHAT);
+      assert.equal(correo.a('ch44@example.com').length, 0, 'no email');
+      const [fila] = await ejecuciones(id);
+      assert.deepEqual(columnas(fila, 'estado', 'fase', 'filas', 'notificacion', 'canal', 'error', 'codigoError'), {
+        estado: 'ok', fase: 'ejecucion', filas: 1, notificacion: 'enviada', canal: 'telegram', error: null, codigoError: null,
+      });
+      assert.ok(!JSON.stringify(fila, (_, v) => (typeof v === 'bigint' ? String(v) : v)).includes(String(CHAT)));
+      assert.ok(!lineas.join('').includes(String(CHAT)), 'no chat id in a log line');
+    });
+
+    test('no link records sin-vinculo, sends nothing, and recipients do not stand in for it', async () => {
+      const tenantId = await tenant();
+      const otro = await tenant();
+      await vincular(otro);
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram', destinatarios: ['ch44-b@example.com'] });
+      const correo = notificadorFalso();
+      const falso = telegramFalso();
+      await tick(EN('15:10:30'), EN('15:11:30'), undefined, { notificador: correo.notificador, notificadorTelegram: falso.notificadorTelegram });
+      const [fila] = await ejecuciones(id);
+      assert.deepEqual(columnas(fila, 'estado', 'notificacion', 'canal'), { estado: 'ok', notificacion: 'sin-vinculo', canal: 'telegram' });
+      assert.equal(falso.enviados.filter((e) => e.chatId === CHAT).length, 0, "another tenant's chat gets nothing");
+      assert.equal(correo.a('ch44-b@example.com').length, 0);
+    });
+
+    test('a link with no token records no-configurada', async () => {
+      const tenantId = await tenant();
+      await vincular(tenantId);
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram' });
+      await tick(EN('15:20:30'), EN('15:21:30'), undefined, { notificadorTelegram: null });
+      const [fila] = await ejecuciones(id);
+      assert.deepEqual(columnas(fila, 'estado', 'notificacion'), { estado: 'ok', notificacion: 'no-configurada' });
+    });
+
+    test('below the minimum sends nothing', async () => {
+      const tenantId = await tenant();
+      await vincular(tenantId);
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram', minimoFilas: 5 });
+      const falso = telegramFalso();
+      await tick(EN('15:30:30'), EN('15:31:30'), undefined, { notificadorTelegram: falso.notificadorTelegram });
+      const [fila] = await ejecuciones(id);
+      assert.equal(fila.notificacion, 'omitida-bajo-minimo');
+      assert.equal(falso.enviados.filter((e) => e.chatId === CHAT).length, 0);
+    });
+
+    test('a rejected send closes in phase notificacion, with one attempt and no code', async () => {
+      const tenantId = await tenant();
+      const chat = CHAT + 1n;
+      await vincular(tenantId, chat);
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram' });
+      const falso = telegramFalso(async () => ({ resultado: 'fallo', categoria: 'envio-rechazado', codigo: null }));
+      await tick(EN('15:40:30'), EN('15:41:30'), undefined, { notificadorTelegram: falso.notificadorTelegram });
+      assert.equal(falso.enviados.filter((e) => e.chatId === chat).length, 1);
+      const [fila] = await ejecuciones(id);
+      assert.deepEqual(columnas(fila, 'estado', 'fase', 'error', 'codigoError', 'notificacion', 'filas'), {
+        estado: 'fallo', fase: 'notificacion', error: 'envio-rechazado', codigoError: null, notificacion: 'fallo-envio', filas: 1,
+      });
+    });
+
+    test('relinking and unlinking apply to the next run', async () => {
+      const tenantId = await tenant();
+      const primero = CHAT + 2n;
+      const segundo = CHAT + 3n;
+      await vincular(tenantId, primero);
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram' });
+      await prisma.vinculoTelegram.update({ where: { tenantId }, data: { chatId: segundo } });
+      const falso = telegramFalso();
+      await tick(EN('15:50:30'), EN('15:51:30'), undefined, { notificadorTelegram: falso.notificadorTelegram });
+      assert.equal(falso.enviados.filter((e) => e.chatId === primero).length, 0);
+      assert.equal(falso.enviados.filter((e) => e.chatId === segundo).length, 1);
+      await prisma.vinculoTelegram.delete({ where: { tenantId } });
+      await tick(EN('15:52:30'), EN('15:53:30'), undefined, { notificadorTelegram: falso.notificadorTelegram });
+      const filas = await ejecuciones(id);
+      assert.equal(filas[filas.length - 1].notificacion, 'sin-vinculo');
+    });
+
+    test('a failed link read sends nothing and closes as a throw in the notify step', async () => {
+      const tenantId = await tenant();
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram' });
+      const falso = telegramFalso();
+      const conFallo = new Proxy(aislado, {
+        get(objetivo, clave) {
+          if (clave === 'vinculoTelegram') {
+            return {
+              findFirst: async () => {
+                throw new Error('vinculo caido');
+              },
+            };
+          }
+          return Reflect.get(objetivo, clave);
+        },
+      });
+      const planificador = crearPlanificador({
+        prisma: conFallo,
+        zonaHoraria: 'UTC',
+        log: Fastify({ logger: false }).log,
+        reloj: relojFijo(EN('15:57:30')),
+        notificadorTelegram: falso.notificadorTelegram,
+      });
+      await planificador.ejecutarTick(EN('15:58:30'));
+      const [fila] = await ejecuciones(id);
+      assert.deepEqual(columnas(fila, 'estado', 'fase', 'error', 'notificacion'), {
+        estado: 'fallo', fase: 'notificacion', error: 'error-interno', notificacion: 'fallo-envio',
+      });
+      assert.equal(falso.enviados.length, 0);
+    });
+
+    test('an overlap skip records the channel too', async () => {
+      const tenantId = await tenant();
+      const id = await automatizacion(tenantId, { lector: true, canal: 'telegram' });
+      await prisma.ejecucion.create({
+        data: { tenantId, automatizacionId: id, estado: 'en-curso', iniciadaEn: EN('15:58:00') },
+      });
+      await tick(EN('15:59:30'), EN('16:00:30'), undefined, { notificadorTelegram: telegramFalso().notificadorTelegram });
+      const filas = await ejecuciones(id);
+      const omitida = filas.find((f) => f.estado === 'omitida');
+      assert.equal(omitida?.canal, 'telegram');
+    });
+
+    test('an email automation ignores the link and records its channel', async () => {
+      const tenantId = await tenant();
+      const chat = CHAT + 4n;
+      await vincular(tenantId, chat);
+      const id = await automatizacion(tenantId, { lector: true, destinatarios: ['ch44-c@example.com'] });
+      const correo = notificadorFalso();
+      const falso = telegramFalso();
+      await tick(EN('15:55:30'), EN('15:56:30'), undefined, { notificador: correo.notificador, notificadorTelegram: falso.notificadorTelegram });
+      assert.equal(correo.a('ch44-c@example.com').length, 1);
+      assert.equal(falso.enviados.filter((e) => e.chatId === chat).length, 0);
+      const [fila] = await ejecuciones(id);
+      assert.deepEqual(columnas(fila, 'notificacion', 'canal'), { notificacion: 'enviada', canal: 'correo' });
+    });
   });
 
   test('CH-41 a run whose list is empty records sin-destinatario and never calls the notifier', async () => {
@@ -1635,6 +1807,19 @@ describe('scheduler tick — due check, tenant context, gate, run log (CH-13 4.1
     };
     assert.deepEqual((await ejecuciones(id)).map((f) => columnas(f, ...Object.keys(barrida))), [barrida]);
     assert.equal(falso.a('ch18-26@example.com').length, 1, 'the sweep never sends');
+  });
+
+  test('CH-44 the sweep closes a Telegram row left enviando as incierta, and keeps its channel', async () => {
+    const tenantId = await tenant();
+    const id = await automatizacion(tenantId, { canal: 'telegram', activo: false });
+    await prisma.ejecucion.create({
+      data: { tenantId, automatizacionId: id, estado: 'en-curso', iniciadaEn: EN('04:50:00'), notificacion: 'enviando', canal: 'telegram' },
+    });
+    await crearPlanificador({ prisma: clienteDeBarrido([tenantId]).cliente, zonaHoraria: 'UTC', log: registro() }).barrerInterrumpidas();
+    const [fila] = await ejecuciones(id);
+    assert.deepEqual(columnas(fila, 'estado', 'error', 'notificacion', 'canal'), {
+      estado: 'fallo', error: 'interrumpida', notificacion: 'incierta', canal: 'telegram',
+    });
   });
 
   test('CH-18 2.7 the sweep turns enviando into incierta, keeps null as null, and leaves closed rows alone', async () => {

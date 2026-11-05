@@ -33,6 +33,24 @@ const json = (cuerpo: unknown, status = 200) => async () => ({ status, text: asy
 describe('cliente-telegram (CH-43)', () => {
   const senal = () => new AbortController().signal;
 
+  test('CH-44 a notice is plain text with link previews off, and the chat id travels as a string', async () => {
+    const { buscar, llamadas } = transporte(json({ ok: true, result: {} }));
+    const cliente = crearClienteTelegram(TOKEN, buscar);
+    assert.deepEqual(await cliente.enviarAviso(-1001234567890123n, 'hola'), { ok: true, valor: undefined });
+    assert.equal(llamadas[0].metodo, 'sendMessage');
+    assert.deepEqual(llamadas[0].cuerpo, {
+      chat_id: '-1001234567890123',
+      text: 'hola',
+      link_preview_options: { is_disabled: true },
+    });
+  });
+
+  test('CH-44 the fixed answers keep their exact body', async () => {
+    const { buscar, llamadas } = transporte(json({ ok: true, result: {} }));
+    await crearClienteTelegram(TOKEN, buscar).responder(42n, 'hola');
+    assert.deepEqual(llamadas[0].cuerpo, { chat_id: '42', text: 'hola' });
+  });
+
   test('getUpdates is a POST with offset, timeout 25 and only messages', async () => {
     const { buscar, llamadas } = transporte(json({ ok: true, result: [] }));
     const cliente = crearClienteTelegram(TOKEN, buscar);

@@ -75,6 +75,7 @@ El anti-alcance del motor es el más frágil: cada límite va a parecer arbitrar
 - Acceso: réplica de solo lectura. Nunca la base primaria.
 - Despliegue: Docker Compose.
 - Canales de notificación: correo (DEC-81) y Telegram (DEC-185), los dos dirigidos a P2.
+- Consideraciones éticas y legales: el contenido de un aviso sale hacia un tercero. Por correo pasa por el relay SMTP (DEC-81) y por Telegram, por los servidores de Telegram (DEC-185). El tenant elige el canal por automatización, y el mensaje lleva solo las columnas que devuelve su plantilla (regla 5).
 
 ## 8. Entidades del dominio
 

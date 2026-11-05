@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { cronValido } from '../automatizaciones/automatizaciones.js';
 import {
+  canalesDe,
   cronDeHorario,
   proyectarAjustes,
   resolverAjustes,
@@ -73,6 +74,52 @@ describe('cronDeHorario — hour and day set to the cron the scheduler reads', (
   });
 });
 
+// ---- channel (CH-44, DEC-197) --------------------------------------------------------
+
+describe('canalesDe and the channel in an update', () => {
+  test('Telegram needs the token and a link, unless it is already stored', () => {
+    assert.deepEqual(canalesDe('correo', true, true), ['correo', 'telegram']);
+    assert.deepEqual(canalesDe('correo', true, false), ['correo']);
+    assert.deepEqual(canalesDe('correo', false, true), ['correo']);
+    assert.deepEqual(canalesDe('telegram', false, false), ['correo', 'telegram']);
+    assert.deepEqual(canalesDe(undefined, false, false), ['correo']);
+  });
+
+  const AMBOS = ['correo', 'telegram'] as const;
+
+  test('choosing what is offered writes only the channel', () => {
+    assert.deepEqual(resolverAjustes({ canal: 'telegram' }, fila(), PLANTILLA, ZONA, AMBOS), { ok: true, datos: { canal: 'telegram' } });
+  });
+
+  test('what is not offered, or does not exist, names the field', () => {
+    assert.deepEqual(resolverAjustes({ canal: 'telegram' }, fila(), PLANTILLA, ZONA, ['correo']), { ok: false, estado: 400, campos: ['canal'] });
+    assert.deepEqual(resolverAjustes({ canal: 'sms' }, fila(), PLANTILLA, ZONA, AMBOS), { ok: false, estado: 400, campos: ['canal'] });
+    assert.deepEqual(resolverAjustes({ canal: 5 }, fila(), PLANTILLA, ZONA, AMBOS), { ok: false, estado: 400, campos: ['canal'] });
+  });
+
+  test('going back to email needs an address, sent or stored', () => {
+    const enTelegram = fila({ canal: 'telegram', destinatarios: [] });
+    assert.deepEqual(resolverAjustes({ canal: 'correo' }, enTelegram, PLANTILLA, ZONA, AMBOS), { ok: false, estado: 400, campos: ['destinatarios'] });
+    assert.deepEqual(
+      resolverAjustes({ canal: 'correo', destinatarios: ['a@b.com'] }, enTelegram, PLANTILLA, ZONA, AMBOS),
+      { ok: true, datos: { destinatarios: ['a@b.com'], canal: 'correo' } },
+    );
+    assert.deepEqual(
+      resolverAjustes({ canal: 'correo' }, fila({ canal: 'telegram' }), PLANTILLA, ZONA, AMBOS),
+      { ok: true, datos: { canal: 'correo' } },
+    );
+  });
+
+  test('a list refused while going back names the field once', () => {
+    const enTelegram = fila({ canal: 'telegram', destinatarios: [] });
+    assert.deepEqual(resolverAjustes({ canal: 'correo', destinatarios: [] }, enTelegram, PLANTILLA, ZONA, AMBOS), { ok: false, estado: 400, campos: ['destinatarios'] });
+  });
+
+  test('a correo automation with no list may keep adjusting other fields', () => {
+    assert.deepEqual(resolverAjustes({ hora: '10:00' }, fila({ destinatarios: [] }), PLANTILLA, ZONA), { ok: true, datos: { cron: '0 10 * * 1-5' } });
+  });
+});
+
 // ---- projection (allow-list) ---------------------------------------------------------
 
 describe('proyectarAjustes — only the editable values', () => {
@@ -82,8 +129,17 @@ describe('proyectarAjustes — only the editable values', () => {
       hora: '08:30',
       dias: 'lun-vie',
       destinatarios: ['ana@empresa.com'],
+      canal: 'correo',
+      canales: ['correo'],
       zonaHoraria: ZONA,
     });
+  });
+
+  test('CH-44 the channel and what may be chosen are read, and a stray value reads as correo', () => {
+    const conVinculo = canalesDe('correo', true, true);
+    assert.deepEqual(proyectarAjustes(fila({ canal: 'telegram' }), PLANTILLA, ZONA, conVinculo).canal, 'telegram');
+    assert.deepEqual(proyectarAjustes(fila(), PLANTILLA, ZONA, conVinculo).canales, ['correo', 'telegram']);
+    assert.equal(proyectarAjustes(fila({ canal: 'sms' }), PLANTILLA, ZONA).canal, 'correo');
   });
 
   test('CH-41 the stored list is returned as it is, in order', () => {
@@ -93,7 +149,7 @@ describe('proyectarAjustes — only the editable values', () => {
 
   test('a custom cron gives no hora, no dias and no cron text', () => {
     const ajustes = proyectarAjustes(fila({ cron: '0 */6 * * *' }), PLANTILLA, ZONA);
-    assert.deepEqual(Object.keys(ajustes).sort(), ['destinatarios', 'umbral', 'zonaHoraria']);
+    assert.deepEqual(Object.keys(ajustes).sort(), ['canal', 'canales', 'destinatarios', 'umbral', 'zonaHoraria']);
     assert.ok(!JSON.stringify(ajustes).includes('*/6'));
   });
 

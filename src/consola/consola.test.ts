@@ -304,6 +304,10 @@ const IDS = [
   'auto-valores',
   'auto-conexion',
   'auto-cron',
+  'auto-canal',
+  'auto-canal-ayuda',
+  'auto-vista-correo',
+  'auto-destinatario-etiqueta',
   'auto-destinatario',
   'auto-destinatario-ayuda',
   'auto-minimo',
@@ -377,6 +381,9 @@ const IDS = [
   'aj-hora',
   'aj-horario-texto',
   'aj-cron',
+  'aj-canal',
+  'aj-canal-ayuda',
+  'aj-destinatario-etiqueta',
   'aj-destinatario',
   'aj-destinatario-ayuda',
   'aj-minimo',
@@ -434,6 +441,7 @@ const IDS = [
   'vp-asunto',
   'vp-texto',
   'vp-html',
+  'vp-html-caja',
   'vp-confirmar',
   'vp-cerrar',
 ] as const;
@@ -444,7 +452,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar', 'auto-canal-ayuda', 'aj-canal-ayuda'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -1699,6 +1707,159 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'vp-aviso').textContent, 'Generando la vista previa…');
     const envio = escenario.peticiones[escenario.peticiones.length - 1];
     assert.deepEqual([envio.url, envio.tenant, envio.cuerpo], ['/automatizaciones/a-1/vista-previa', 't-1', null]);
+  });
+
+  test('CH-44 a Telegram preview shows the text alone: no subject, no frame and no chat', async () => {
+    const escenario = await arrancar();
+    const texto = 'Stock bajo\n<img src=x onerror=alert(1)>';
+    await abrirVistaPrevia(escenario, {
+      status: 200,
+      cuerpo: respuestaPrevia({ canal: 'telegram', decision: 'enviar', para: [], correo: null, telegram: { texto } }),
+    });
+    assert.equal(nodo(escenario, 'vp-decision').textContent, 'Se enviaría al chat vinculado.');
+    assert.equal(nodo(escenario, 'vp-para').textContent, 'Para: chat vinculado');
+    assert.equal(nodo(escenario, 'vp-mensaje').hidden, false);
+    assert.equal(nodo(escenario, 'vp-texto').textContent, texto);
+    assert.equal(nodo(escenario, 'vp-texto').hijos.length, 0, 'no element is created from the text');
+    assert.equal(nodo(escenario, 'vp-asunto').hidden, true);
+    assert.equal(nodo(escenario, 'vp-html-caja').hidden, true);
+    assert.equal((nodo(escenario, 'vp-html') as unknown as { srcdoc: string }).srcdoc, '');
+  });
+
+  for (const [decision, linea, para] of [
+    ['sin-vinculo', 'No se enviaría: el tenant no tiene un chat de Telegram vinculado.', 'Para: sin chat vinculado'],
+    ['no-configurada', 'No se enviaría: el envío por Telegram no está configurado.', 'Para: chat vinculado'],
+  ]) {
+    test(`CH-44 a Telegram preview with ${decision} says so and still shows the text`, async () => {
+      const escenario = await arrancar();
+      await abrirVistaPrevia(escenario, {
+        status: 200,
+        cuerpo: respuestaPrevia({ canal: 'telegram', decision, para: [], correo: null, telegram: { texto: 'hola' } }),
+      });
+      assert.equal(nodo(escenario, 'vp-decision').textContent, linea);
+      assert.equal(nodo(escenario, 'vp-para').textContent, para);
+      assert.equal(nodo(escenario, 'vp-texto').textContent, 'hola');
+    });
+  }
+
+  test('CH-44 a Telegram preview with no message, and an email one after it, are clean', async () => {
+    const escenario = await arrancar();
+    await abrirVistaPrevia(escenario, {
+      status: 200,
+      cuerpo: respuestaPrevia({ canal: 'telegram', decision: 'omitida-sin-filas', para: [], correo: null, telegram: null, filas: [] }),
+    });
+    assert.equal(nodo(escenario, 'vp-decision').textContent, 'No se enviaría: la consulta no devolvió filas.');
+    assert.ok(nodo(escenario, 'vp-aviso').textContent.includes('Con este resultado una ejecución no arma un mensaje.'));
+    assert.equal(nodo(escenario, 'vp-mensaje').hidden, true);
+  });
+
+  test('CH-44 Canal on create: Telegram hides the recipients and the schematic, and is the only reason to send it', async () => {
+    const escenario = await arrancar();
+    assert.equal(nodo(escenario, 'auto-canal-ayuda').hidden, true, 'hidden at load');
+    nodo(escenario, 'auto-destinatario').value = 'a@b.com';
+    nodo(escenario, 'auto-canal').value = 'telegram';
+    nodo(escenario, 'auto-canal').disparar('change');
+    for (const id of ['auto-destinatario-etiqueta', 'auto-destinatario', 'auto-destinatario-ayuda', 'auto-vista-correo']) {
+      assert.equal(nodo(escenario, id).hidden, true, id);
+    }
+    assert.equal(nodo(escenario, 'auto-canal-ayuda').hidden, false);
+    assert.equal(nodo(escenario, 'auto-minimo-ayuda').textContent, 'El mensaje sale solo si la consulta devuelve al menos esta cantidad de filas.');
+    nodo(escenario, 'auto-canal').value = 'correo';
+    nodo(escenario, 'auto-canal').disparar('change');
+    assert.equal(nodo(escenario, 'auto-destinatario').hidden, false);
+    assert.equal(nodo(escenario, 'auto-destinatario').value, 'a@b.com', 'the field keeps what it held');
+    assert.equal(nodo(escenario, 'auto-vista-correo').hidden, false);
+    assert.equal(nodo(escenario, 'auto-minimo-ayuda').textContent, 'El correo sale solo si la consulta devuelve al menos esta cantidad de filas.');
+  });
+
+  test('CH-44 creating on Telegram sends the channel and no recipients; on email, no channel', async () => {
+    for (const [canal, esperado] of [
+      ['telegram', { canal: 'telegram' }],
+      ['correo', { destinatarios: ['ops@example.com'] }],
+    ] as const) {
+      const escenario = await arrancar();
+      await elegirTenant(escenario, [], [automatizacion()], 't-1', [{ id: 'p-1', nombre: 'Stock', automatizacion: 'stock-fisico' }], [{ id: 'c-A', nombre: 'food-store' }]);
+      await abrirAlta(escenario);
+      await avanzar(escenario, [], 'c-A');
+      nodo(escenario, 'auto-destinatario').value = 'ops@example.com';
+      nodo(escenario, 'auto-canal').value = canal;
+      nodo(escenario, 'auto-canal').disparar('change');
+      escenario.respuestas.push(
+        { status: 201, cuerpo: { automatizacion: automatizacion(), proximaEjecucion: null, zonaHoraria: 'UTC' } },
+        { status: 200, cuerpo: { automatizaciones: [automatizacion()], truncado: false } },
+      );
+      nodo(escenario, 'auto-crear').disparar('click');
+      await asentarVarias();
+      const envio = escenario.peticiones.find((p) => p.url === '/automatizaciones' && p.cuerpo !== null);
+      const cuerpo = envio?.cuerpo as Record<string, unknown>;
+      assert.equal(cuerpo.canal, 'canal' in esperado ? esperado.canal : undefined, canal);
+      assert.deepEqual(cuerpo.destinatarios, 'destinatarios' in esperado ? esperado.destinatarios : undefined, canal);
+    }
+  });
+
+  test('CH-44 Canal on adjust: fills from the stored one, and only the channel travels', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario);
+    assert.equal(nodo(escenario, 'aj-canal').value, 'correo');
+    assert.equal(nodo(escenario, 'aj-destinatario').hidden, false);
+    nodo(escenario, 'aj-destinatario').value = 'otro@empresa.com';
+    nodo(escenario, 'aj-canal').value = 'telegram';
+    nodo(escenario, 'aj-canal').disparar('change');
+    assert.equal(nodo(escenario, 'aj-destinatario').hidden, true);
+    assert.equal(nodo(escenario, 'aj-canal-ayuda').hidden, false);
+    await guardarAjuste(escenario, { status: 200, cuerpo: { automatizacion: AJUSTABLE, proximaEjecucion: null, zonaHoraria: 'UTC' } });
+    assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { canal: 'telegram' });
+  });
+
+  test('CH-44 adjusting a Telegram automation shows it, and a 400 on the channel is legible', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario, { ...AJUSTABLE, canal: 'telegram' });
+    assert.equal(nodo(escenario, 'aj-canal').value, 'telegram');
+    assert.equal(nodo(escenario, 'aj-destinatario').hidden, true);
+    nodo(escenario, 'aj-canal').value = 'correo';
+    nodo(escenario, 'aj-canal').disparar('change');
+    await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/canal'] } });
+    assert.equal(nodo(escenario, 'aj-aviso').textContent, 'El canal no es válido: elija Correo o Telegram.');
+  });
+
+  test('CH-44 the runs table reads each run\'s own channel', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()]);
+    const base = { corte: null, codigoError: null, error: null, iniciadaEn: 'i', finalizadaEn: 'f', duracionMs: 1, filas: 3, fase: 'ejecucion', estado: 'ok', mensajeRespaldo: null };
+    const fallo = { ...base, estado: 'fallo', fase: 'notificacion', notificacion: 'fallo-envio' };
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        ejecuciones: [
+          { ...base, id: 'e-1', canal: 'telegram', notificacion: 'enviada' },
+          { ...base, id: 'e-2', canal: 'telegram', notificacion: 'no-configurada' },
+          { ...base, id: 'e-3', canal: 'telegram', notificacion: 'sin-vinculo' },
+          { ...base, id: 'e-4', canal: 'correo', notificacion: 'no-configurada' },
+          { ...base, id: 'e-5', canal: null, notificacion: 'enviada' },
+          { ...fallo, id: 'f-1', canal: 'telegram', error: 'envio-rechazado' },
+          { ...fallo, id: 'f-2', canal: 'telegram', error: 'tiempo-agotado' },
+          { ...fallo, id: 'f-3', canal: 'telegram', error: 'servidor-inalcanzable' },
+          { ...fallo, id: 'f-4', canal: 'telegram', error: 'error-desconocido' },
+          { ...fallo, id: 'f-5', canal: null, error: 'envio-rechazado' },
+        ],
+        truncado: false,
+      },
+    });
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('ver-ejecuciones')[0].disparar('click');
+    await asentar();
+    const celdas = filasDe(escenario, 'auto-ejecuciones', 'ejecucion').map((fila) => fila.hijos.map((celda) => celda.textContent));
+    assert.deepEqual(
+      celdas.slice(0, 5).map((c) => c[5]),
+      ['Enviada por Telegram', 'Telegram no configurado', 'Sin vínculo', 'Correo no configurado', 'Enviada'],
+    );
+    assert.equal(celdas[5][6], 'Telegram rechazó el mensaje: el bot puede estar bloqueado o el chat ya no existir. La consulta se ejecutó, pero el mensaje no se envió.');
+    assert.equal(celdas[6][6], 'Telegram no respondió dentro del tiempo permitido. La consulta se ejecutó, pero no se confirmó el envío: el mensaje puede haberse entregado.');
+    assert.equal(celdas[7][6], 'No se pudo conectar con Telegram. La consulta se ejecutó, pero el mensaje no se envió.');
+    assert.equal(celdas[8][6], 'El envío por Telegram falló por un motivo no reconocido. La consulta se ejecutó, pero el mensaje no se envió.');
+    assert.ok(celdas[9][6].includes('servidor de correo'), 'an older row reads as email');
+    for (const fila of celdas.slice(5, 9)) {
+      assert.ok(!fila[6].includes('SMTP'), fila[6]);
+    }
   });
 
   test('CH-42 a run that would send: decision, «Para», subject, rows, count, text and the frame', async () => {
@@ -3007,8 +3168,8 @@ describe('the console document, served by the real route', () => {
       assert.ok(entrada.includes('aria-describedby="' + ayuda + '"'), id);
       assert.match(m, new RegExp('<p id="' + ayuda + '" class="ayuda">Hasta 5, separados por comas\\.</p>'));
     }
-    assert.match(m, /<label for="auto-destinatario" class="zd-label">Correos de los destinatarios \(opcional\)<\/label>/);
-    assert.match(m, /<label for="aj-destinatario" class="zd-label">Correos de los destinatarios \(opcional; vacío: no se envía correo\)<\/label>/);
+    assert.match(m, /<label id="auto-destinatario-etiqueta" for="auto-destinatario" class="zd-label">Correos de los destinatarios \(opcional\)<\/label>/);
+    assert.match(m, /<label id="aj-destinatario-etiqueta" for="aj-destinatario" class="zd-label">Correos de los destinatarios \(opcional; vacío: no se envía correo\)<\/label>/);
   });
 
   /** Design E1: a catalog row with no label at all gets the neutral theme, never a throw. */
