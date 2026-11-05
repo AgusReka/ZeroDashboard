@@ -4104,6 +4104,55 @@ Entrega:
 
 ---
 
+### DEC-197 — CH-44: el panel también elige el canal y avisa si falta el vínculo, la ejecución guarda su canal y sin textos se usa la parte de texto del correo
+
+**Contexto.**
+- DEC-185 fija que la automatización elige un canal, `correo` o `telegram`, y que sin vínculo el resultado es `sin-vinculo`, «visible como cualquier otro resultado».
+- N4 es una historia de P2, y P2 es quien vincula el chat. El ajuste del panel hoy no tiene canal y exige de 1 a 5 correos (DEC-194).
+- Una ejecución `sin-vinculo` termina con `estado='ok'`, y el panel solo lee `estado`: P2 ve «completada» aunque no le haya llegado nada.
+- `Ejecucion` no guarda el canal. La consola dice «Correo no configurado», sus textos de falla nombran el servidor de correo y todo código de la fase de notificación se muestra como «código SMTP».
+- Las plantillas del catálogo no tienen textos de mensaje, así que salen con la tabla, y DEC-188 dice que la tabla no funciona en Telegram.
+
+Quedan tres puntos que DEC-185 no resuelve.
+
+**Opciones.**
+
+Panel:
+- (a) P2 elige el canal en el ajuste, y una automatización por Telegram sin vínculo muestra un aviso en su tarjeta.
+- (b) P2 elige el canal, sin aviso.
+- (c) Solo la consola elige el canal.
+
+Canal en el historial:
+- (a) `Ejecucion.canal`, texto nullable que se escribe al crear la fila. Un valor nulo se lee como `correo`.
+- (b) Sin columna, con etiquetas y textos de falla genéricos.
+- (c) Sin columna, leyendo el canal actual de la automatización.
+
+Mensaje sin textos de plantilla:
+- (a) La parte de texto del correo: una fila de encabezado y líneas `a | b | c`.
+- (b) Una línea por fila con `columna: valor`, un formato solo para Telegram.
+
+**Decisión.** (a) en los tres puntos.
+- **Panel (a).** Con (c), el vínculo no sirve de nada hasta que P2 le pida el cambio al operador. Sin el aviso, P2 ve «completada» después de desvincular. El aviso sale del canal y del vínculo, sin leer ejecuciones.
+- **Historial (a).** El canal se puede cambiar en el ajuste, así que (c) reescribiría cómo se leen las ejecuciones viejas, y (b) pierde el texto específico de cada falla. Es un valor cerrado, así que respeta la regla 5.
+- **Mensaje (a).** Es lo más chico y son los mismos bytes que la parte de texto del correo. Las plantillas con textos propios ya se leen bien.
+
+**Forma.**
+- `Automatizacion.canal` es texto con valores en el código y `'correo'` por defecto, así que las automatizaciones existentes no cambian. Con `telegram`, `destinatarios` se conserva y se ignora.
+- El ajuste del panel exige destinatarios solo con el canal `correo`.
+- `sin-vinculo` no pide migración: `notificacion` es texto con valores en el código, como en CH-18 y CH-40.
+
+**Alcance que no cambia.** El sondeo, las rutas del vínculo, el horario del planificador, la consulta de la ejecución y el barrido de DEC-108. Sigue siendo un canal por automatización y un mensaje por ejecución, sin reintento (DEC-185).
+
+**Se resigna.**
+- **Un mensaje cómodo de leer en el teléfono** para las plantillas sin textos: las líneas con `|` se cortan en pantallas chicas. Se corrige escribiendo los textos en la plantilla (DEC-188).
+- **Una migración más sobre `Ejecucion`**, que es la tabla que más crece, a cambio de un historial correcto.
+
+**Decidido por:** el usuario, 2026-11-05, en la exploración de CH-44: eligió las tres opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
