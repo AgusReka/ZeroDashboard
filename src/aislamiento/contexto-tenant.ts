@@ -132,6 +132,20 @@ const PLANTILLAS_EXENTAS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * CH-45 (DEC-183): the report catalog, global like the template catalog, with the same four
+ * exact rows and for the same reasons. Its registrar is handed the `reporte` delegate alone.
+ * No `/reportes/` prefix: `POST /reportes/prueba` and `POST /reportes/:id/prueba` resolve a
+ * tenant-owned `Conexion` and must stay scoped. A report is never deleted (DEC-68), so there
+ * is no `DELETE` row.
+ */
+const REPORTES_EXENTOS: ReadonlySet<string> = new Set([
+  'GET /reportes',
+  'POST /reportes',
+  'GET /reportes/:id',
+  'PUT /reportes/:id',
+]);
+
+/**
  * The panel surface (CH-22a, DEC-135): exact rows, one per public endpoint of
  * `src/panel/panel-auth.ts`, plus the read of CH-22b (DEC-137). The panel never resolves a tenant from the request — the login
  * reads the user by email before any tenant exists, and every authenticated route
@@ -188,6 +202,10 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
   }
   // The template catalog is shared by every tenant (DEC-61); see PLANTILLAS_EXENTAS.
   if (PLANTILLAS_EXENTAS.has(`${metodo} ${patron}`)) {
+    return true;
+  }
+  // The report catalog is shared by every tenant too (DEC-183); see REPORTES_EXENTOS.
+  if (REPORTES_EXENTOS.has(`${metodo} ${patron}`)) {
     return true;
   }
   // The shared stylesheet is the same for every tenant (DEC-124); see ESTILOS_EXENTOS.

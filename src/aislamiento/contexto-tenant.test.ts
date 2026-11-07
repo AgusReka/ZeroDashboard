@@ -300,6 +300,80 @@ describe('contexto de tenant — /plantillas exemption rows (CH-12, DEC-61)', ()
   }
 });
 
+// ---- CH-45 the /reportes exemption rows, still with no database in sight ----
+
+/**
+ * DEC-183 exempts the report catalog, and only the catalog, by exact method and route
+ * pattern, as DEC-61 does for templates. Stub routes give each request a pattern; the
+ * throwing client proves an exempt row never resolves a tenant.
+ */
+describe('contexto de tenant — /reportes exemption rows (CH-45, DEC-183)', () => {
+  let app!: FastifyInstance;
+  const alcanzada = async (): Promise<{ alcanzada: true }> => ({ alcanzada: true });
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    app.get('/reportes', alcanzada);
+    app.post('/reportes', alcanzada);
+    app.get('/reportes/:id', alcanzada);
+    app.put('/reportes/:id', alcanzada);
+    // Not exempt, registered anyway so each carries a real pattern to be refused on.
+    app.delete('/reportes/:id', alcanzada);
+    app.patch('/reportes/:id', alcanzada);
+    app.post('/reportes/prueba', alcanzada);
+    app.post('/reportes/:id/prueba', alcanzada);
+    app.get('/reportes/:id/:otro', alcanzada);
+    app.get('/reportes-falsos', alcanzada);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  const exentas = [
+    { method: 'GET', url: '/reportes' },
+    { method: 'POST', url: '/reportes' },
+    { method: 'GET', url: '/reportes/un-reporte' },
+    { method: 'PUT', url: '/reportes/un-reporte' },
+  ] as const;
+
+  for (const { method, url } of exentas) {
+    test(`CH-45 ${method} ${url} reaches its handler with no header, and never looks one up`, async () => {
+      const sinCabecera = await app.inject({ method, url });
+      assert.equal(sinCabecera.statusCode, 200, sinCabecera.body);
+      assert.deepEqual(sinCabecera.json(), { alcanzada: true });
+      const conCabecera = await app.inject({
+        method,
+        url,
+        headers: { 'x-tenant-id': '11111111-2222-3333-4444-555555555555' },
+      });
+      assert.equal(conCabecera.statusCode, 200, conCabecera.body);
+    });
+  }
+
+  const rechazadas = [
+    // DEC-68: a report is never deleted, and there is no partial edit either.
+    { method: 'DELETE', url: '/reportes/un-reporte' },
+    { method: 'PATCH', url: '/reportes/un-reporte' },
+    // The test routes resolve a tenant-owned `Conexion`, so they are scoped.
+    { method: 'POST', url: '/reportes/prueba' },
+    { method: 'POST', url: '/reportes/un-reporte/prueba' },
+    // Look-alikes: a deeper path, and a name that merely starts with `/reportes`.
+    { method: 'GET', url: '/reportes/x/y' },
+    { method: 'GET', url: '/reportes-falsos' },
+  ] as const;
+
+  for (const { method, url } of rechazadas) {
+    test(`CH-45 ${method} ${url} with no header is refused 400 tenant-no-indicado`, async () => {
+      const respuesta = await app.inject({ method, url });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    });
+  }
+});
+
 // ---- CH-21a 1.4 the stylesheet exemption rows, still with no database in sight ----
 
 /**

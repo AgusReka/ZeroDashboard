@@ -19,6 +19,9 @@ import { LIMITE_LISTADO } from '../compartido/listados.js';
  *
  * CH-42 (DEC-195): the automation's message preview is a fifth path, under its own origin. It
  * records the template id, never the automation, a recipient or any part of the message.
+ *
+ * CH-45 (DEC-198): the report tests are a sixth path, under `reporte-prueba`, with the report
+ * id. Neither records the computed date of the period: it is a bound value.
  */
 
 export type OrigenEjecucion =
@@ -26,7 +29,9 @@ export type OrigenEjecucion =
   | 'plantilla-prueba'
   | 'validacion-mapeo'
   | 'conexion-prueba'
-  | 'automatizacion-vista-previa';
+  | 'automatizacion-vista-previa'
+  // CH-45 (DEC-198): the console's report tests, stored or unsaved.
+  | 'reporte-prueba';
 
 /** The verdict columns of a row, whatever produced it. */
 export interface VeredictoAuditado {
@@ -47,6 +52,11 @@ export interface ContextoAuditado {
   /** A saved query verified against the executed text (DEC-161), or `null` for ad hoc. */
   consulta: { id: string; version: number; nombre: string } | null;
   plantillaId: string | null;
+  /**
+   * CH-45 (DEC-198): the stored report a report test ran, `null` for the unsaved one.
+   * Optional so the paths before CH-45 need not name it; it is written as `null`.
+   */
+  reporteId?: string | null;
 }
 
 /** The engine's verdict as audit columns: rows are counted, never kept (DEC-93, DEC-160). */
@@ -118,6 +128,7 @@ export function filaDeAuditoria(contexto: ContextoAuditado, veredicto: Veredicto
     consultaVersion: contexto.consulta?.version ?? null,
     consultaNombre: contexto.consulta?.nombre ?? null,
     plantillaId: contexto.plantillaId,
+    reporteId: contexto.reporteId ?? null,
     resultado: veredicto.resultado,
     fase: veredicto.fase,
     categoria: veredicto.categoria,
@@ -199,6 +210,7 @@ const RegistroPublico = {
   consultaVersion: true,
   consultaNombre: true,
   plantillaId: true,
+  reporteId: true,
   sql: true,
   resultado: true,
   fase: true,

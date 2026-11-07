@@ -81,6 +81,8 @@ describe(
       for (const campo of ['id', 'creadoEn', 'operadorNombre', 'origen', 'conexionId', 'resultado', 'filas', 'duracionMs']) {
         assert.ok(campo in registros[0], campo);
       }
+      // CH-45 (DEC-198): `reporteId` is listed, and a row written without one reads null.
+      assert.equal(registros[0].reporteId, null);
     });
 
     test('filters by result and by an inclusive date range', async () => {
