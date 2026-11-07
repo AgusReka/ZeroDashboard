@@ -251,6 +251,56 @@ const IDS = [
   'plantilla-dialogo-duplicar',
   'plantilla-dialogo-guardar',
   'plantilla-dialogo-cancelar',
+  // CH-45 (DEC-183, DEC-198): the Reportes screen, its side panel with the test block, and its pop-up.
+  'pantalla-reportes',
+  'nav-reportes',
+  'reportes-aviso',
+  'reportes-cuerpo',
+  'reporte-nuevo',
+  'reporte-panel',
+  'reporte-titulo',
+  'reporte-entidades',
+  'reporte-periodo',
+  'reporte-sql',
+  'reporte-textos',
+  'reporte-visualizacion',
+  'reporte-columnas',
+  'reporte-editar',
+  'reporte-cerrar',
+  'reporte-prueba-conexion',
+  'reporte-prueba-periodo-caja',
+  'reporte-prueba-periodo',
+  'reporte-probar',
+  'reporte-prueba-aviso',
+  'reporte-prueba-tabla',
+  'reporte-dialogo',
+  'reporte-dialogo-titulo',
+  'reporte-form',
+  'reporte-f-nombre',
+  'reporte-f-titulo',
+  'reporte-f-descripcion',
+  'reporte-f-entidades',
+  'reporte-f-sql',
+  'reporte-f-periodo',
+  'reporte-f-periodo-campos',
+  'reporte-f-parametro',
+  'reporte-f-dias',
+  'reporte-f-visualizacion',
+  'reporte-f-columnas-aviso',
+  'reporte-f-columnas',
+  'reporte-f-agregar-columna',
+  'reporte-f-conexion',
+  'reporte-f-prueba-periodo-caja',
+  'reporte-f-prueba-periodo',
+  'reporte-f-probar',
+  'reporte-f-resultado',
+  'reporte-f-tabla',
+  'reporte-dialogo-estado',
+  'reporte-confirmar',
+  'reporte-descartar',
+  'reporte-seguir',
+  'reporte-dialogo-guardar',
+  'reporte-dialogo-cancelar',
   'pantalla-contrato',
   'nav-contrato',
   'contrato-aviso',
@@ -452,7 +502,8 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar', 'auto-canal-ayuda', 'aj-canal-ayuda'];
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar', 'auto-canal-ayuda', 'aj-canal-ayuda',
+  'pantalla-reportes', 'reporte-panel', 'reporte-prueba-periodo-caja', 'reporte-dialogo', 'reporte-confirmar', 'reporte-f-periodo-campos', 'reporte-f-agregar-columna', 'reporte-f-prueba-periodo-caja'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -743,7 +794,8 @@ describe('the console document, served by the real route', () => {
     for (const id of IDS) {
       // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
       // auto-frecuencia is a select from PR3; conexion is one from CH-32a (DEC-172).
-      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion', 'conexion', 'plantilla-prueba-conexion', 'plantilla-f-automatizacion', 'plantilla-f-formato', 'plantilla-f-conexion'].includes(id) ? 'select' : 'div');
+      const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion', 'conexion', 'plantilla-prueba-conexion', 'plantilla-f-automatizacion', 'plantilla-f-formato', 'plantilla-f-conexion',
+        'reporte-prueba-conexion', 'reporte-prueba-periodo', 'reporte-f-periodo', 'reporte-f-visualizacion', 'reporte-f-conexion', 'reporte-f-prueba-periodo'].includes(id) ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -3904,7 +3956,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'] as const;
+  const PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -5521,6 +5573,609 @@ describe('the console document, served by the real route', () => {
     assert.ok(!corridas.flat().some((texto) => texto.includes('null') || texto === 'undefined'));
   });
 
+  // ---- CH-45 (DEC-183, DEC-198, screen C-13): the Reportes screen, its side panel and its pop-up ----------------
+
+  const REPORTE_LISTADO = { id: 'r-1', nombre: 'Ventas por producto', titulo: 'Lo que más se vende', visualizacion: 'barras' };
+  /** A report as `GET /reportes/:id` answers it: a bar chart over a declared period of 30 or 7 days. */
+  const REPORTE_CH45 = {
+    ...REPORTE_LISTADO,
+    descripcion: 'Las unidades vendidas por producto.',
+    sql: 'SELECT producto, unidades FROM v_item_pedido WHERE fecha >= :desde',
+    entidades: ['pedido', 'item_pedido'],
+    periodo: { parametro: 'desde', dias: [30, 7] },
+    columnas: [
+      { rol: 'etiqueta', columna: 'producto', titulo: 'Producto' },
+      { rol: 'valor', columna: 'unidades', titulo: 'Unidades' },
+    ],
+  };
+  const PAGINA_CH45 = { limite: 21, desplazamiento: 0, hayMas: false, siguienteDesplazamiento: null, topeFilas: 20 };
+  /** A passing report test: the result's columns in another order than the assigned ones, plus one more. */
+  const OK_CH45 = (extra: Record<string, unknown> = {}): { status: number; cuerpo: unknown } => ({
+    status: 200,
+    cuerpo: respuestaOk({
+      columnas: ['unidades', 'producto', 'extra'],
+      filas: [[5, 'Harina', 'x'], [3, '<b>Pan</b>', null]],
+      paginacion: PAGINA_CH45,
+      periodo: { dias: 7, desde: '2026-10-31' },
+      faltantes: [],
+      ...extra,
+    }),
+  });
+
+  /** Shows Reportes with `reportes` queued as the listing. */
+  async function abrirReportes(escenario: Escenario, reportes: unknown[] = [REPORTE_LISTADO], truncado = false): Promise<void> {
+    escenario.respuestas.push({ status: 200, cuerpo: { reportes, truncado } });
+    irA(escenario, '#reportes');
+    await asentarVarias();
+  }
+
+  /** Opens `reporte` in the side panel from the first row; with a tenant, its test block also reads the connections. */
+  async function verReporteCH45(
+    escenario: Escenario,
+    reporte: Record<string, unknown> = REPORTE_CH45,
+    conexiones: unknown[] | null = CONEXIONES_CH35,
+  ): Promise<void> {
+    escenario.respuestas.push({ status: 200, cuerpo: { reporte } });
+    if (conexiones !== null) escenario.respuestas.push({ status: 200, cuerpo: { conexiones, truncado: false } });
+    botonesCon(nodo(escenario, 'reportes-cuerpo').hijos[0], 'Ver')[0].disparar('click');
+    await asentarVarias();
+  }
+
+  /** Boots with a tenant and one connection, opens the report in the side panel and chooses the connection. */
+  async function reporteListoParaProbar(reporte: Record<string, unknown> = REPORTE_CH45): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otro' }]);
+    await elegirTenant(escenario);
+    await abrirReportes(escenario);
+    await verReporteCH45(escenario, reporte);
+    nodo(escenario, 'reporte-prueba-conexion').value = 'c-1';
+    return escenario;
+  }
+
+  async function probarReporteCH45(
+    escenario: Escenario,
+    respuesta: { status: number; cuerpo: unknown; falla?: boolean } = OK_CH45(),
+  ): Promise<void> {
+    escenario.respuestas.push(respuesta);
+    nodo(escenario, 'reporte-probar').disparar('click');
+    await asentarVarias();
+  }
+
+  /** The rows of a table node, each cell as text. */
+  function filasDeTabla(escenario: Escenario, id: string): string[][] {
+    return buscar(nodo(escenario, id), (n) => n.tagName === 'tr').map((tr) => tr.hijos.map((celda) => celda.textContent));
+  }
+
+  /** Boots with a tenant, shows Reportes and opens «Nuevo reporte». */
+  async function abrirNuevoCH45(conexiones: unknown[] = CONEXIONES_CH35): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otro' }]);
+    await elegirTenant(escenario);
+    await abrirReportes(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones, truncado: false } });
+    nodo(escenario, 'reporte-nuevo').disparar('click');
+    await asentarVarias();
+    return escenario;
+  }
+
+  function marcarCH45(escenario: Escenario, entidades: string[], marcada = true): void {
+    for (const entidad of entidades) {
+      const rotulo = buscar(nodo(escenario, 'reporte-f-entidades'), (n) => n.tagName === 'label' && n.textContent === entidad)[0];
+      rotulo.hijos[0].checked = marcada;
+      rotulo.hijos[0].disparar('change');
+    }
+  }
+
+  /** Fills a bar report over a period of 30 or 7 days, and chooses the connection. */
+  function llenarCH45(escenario: Escenario): void {
+    escribirCH38(escenario, 'reporte-f-nombre', 'Ventas por producto');
+    escribirCH38(escenario, 'reporte-f-titulo', 'Lo que más se vende');
+    escribirCH38(escenario, 'reporte-f-sql', 'SELECT producto, unidades FROM v_item_pedido WHERE fecha >= :desde');
+    marcarCH45(escenario, ['pedido', 'item_pedido']);
+    escribirCH38(escenario, 'reporte-f-periodo', 'si');
+    escribirCH38(escenario, 'reporte-f-dias', '30, 7');
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'barras');
+    escribirCH38(escenario, 'reporte-f-conexion', 'c-1');
+  }
+
+  async function probarDialogoCH45(
+    escenario: Escenario,
+    respuesta: { status: number; cuerpo: unknown; falla?: boolean } = OK_CH45(),
+  ): Promise<void> {
+    escenario.respuestas.push(respuesta);
+    nodo(escenario, 'reporte-f-probar').disparar('click');
+    await asentarVarias();
+  }
+
+  /** The column rows of the pop-up: each one's select, title input, «Quitar» and labels. */
+  function filasColumnasCH45(escenario: Escenario): Array<{ selector: Nodo; titulo: Nodo; quitar: Nodo | undefined; texto: string }> {
+    return nodo(escenario, 'reporte-f-columnas').hijos.map((fila) => ({
+      selector: buscar(fila, (n) => n.tagName === 'select')[0],
+      titulo: buscar(fila, (n) => n.tagName === 'input')[0],
+      quitar: botonesCon(fila, 'Quitar')[0],
+      texto: buscar(fila, (n) => n.tagName === 'span').map((n) => n.textContent).join(' | '),
+    }));
+  }
+
+  /** Chooses a column and types a title in the row at `indice`, as the operator does. */
+  function asignarCH45(escenario: Escenario, indice: number, columna: string, titulo: string): void {
+    const fila = filasColumnasCH45(escenario)[indice];
+    fila.selector.value = columna;
+    fila.selector.disparar('change');
+    fila.titulo.value = titulo;
+    fila.titulo.disparar('input');
+  }
+
+  const guardarAbiertoCH45 = (escenario: Escenario): boolean => !nodo(escenario, 'reporte-dialogo-guardar').disabled;
+
+  test('CH-45 Reportes follows Plantillas in the Global group, and its screen and pop-up start hidden', () => {
+    const html = marcado();
+    const en = (id: string): number => html.indexOf(`id="${id}"`);
+    assert.ok(en('nav-plantillas') < en('nav-reportes'));
+    assert.ok(en('nav-reportes') < en('nav-contrato'));
+    assert.match(html, /<a id="nav-reportes" class="zd-sidenav__item" href="#reportes"><span>Reportes<\/span><\/a>/);
+    assert.match(html, /<section id="pantalla-reportes"[^>]*hidden>/);
+    assert.match(html, /<aside id="reporte-panel"[^>]*hidden>/);
+    assert.match(html, /<div id="reporte-dialogo" class="zd-dialog-backdrop" hidden>/);
+    assert.ok(en('reporte-nuevo') < en('reportes-aviso'), 'the primary action is in the header');
+    // The test block sits in the side panel, after the columns and before Cerrar.
+    assert.ok(en('reporte-columnas') < en('reporte-prueba-conexion'));
+    assert.ok(en('reporte-prueba-tabla') < en('reporte-cerrar'));
+    const seccion = html.slice(en('pantalla-reportes'), html.indexOf('</section>', en('reporte-dialogo')));
+    for (const boton of seccion.match(/<button[^>]*>/g) ?? []) {
+      assert.match(boton, /type="(button|submit)"/, boton);
+    }
+    assert.match(seccion, /<button id="reporte-dialogo-guardar"[^>]*type="submit" form="reporte-form"[^>]*disabled/);
+    assert.match(seccion, /<input id="reporte-f-nombre"[^>]*maxlength="80"/);
+    assert.match(seccion, /<input id="reporte-f-titulo"[^>]*maxlength="80"/);
+    assert.match(seccion, /<textarea id="reporte-f-descripcion"[^>]*maxlength="200"/);
+    const opciones = (id: string): string[][] => {
+      const select = seccion.match(new RegExp('<select id="' + id + '"[\\s\\S]*?</select>'))?.[0] ?? '';
+      return [...select.matchAll(/<option value="([^"]*)">([^<]*)</g)].map((m) => [m[1], m[2]]);
+    };
+    assert.deepEqual(opciones('reporte-f-visualizacion'), [['numero', 'Número'], ['tabla', 'Tabla'], ['barras', 'Barras'], ['linea', 'Línea']]);
+    assert.deepEqual(opciones('reporte-f-periodo'), [['no', 'Sin período'], ['si', 'Con período']]);
+  });
+
+  test('CH-45 the hash shows only Reportes, which lists the catalog with no tenant header and says when it was cut', async () => {
+    const escenario = await arrancar();
+    await abrirReportes(escenario, [REPORTE_LISTADO, { ...REPORTE_LISTADO, id: 'r-2', nombre: '<b>Otro</b>', visualizacion: 'numero' }], true);
+    soloVisible(escenario, 'reportes');
+    const pedido = escenario.peticiones[escenario.peticiones.length - 1];
+    assert.deepEqual([pedido.url, pedido.tenant], ['/reportes', null]);
+    const filasLista = nodo(escenario, 'reportes-cuerpo').hijos.map((fila) => fila.hijos.slice(0, 3).map((celda) => celda.textContent));
+    assert.deepEqual(filasLista, [['Ventas por producto', 'Lo que más se vende', 'Barras'], ['<b>Otro</b>', 'Lo que más se vende', 'Número']]);
+    assert.equal(nodo(escenario, 'reportes-aviso').textContent, 'Se muestran solo los primeros 2 reportes.');
+  });
+
+  test('CH-45 an empty catalog says so', async () => {
+    const escenario = await arrancar();
+    await abrirReportes(escenario, []);
+    assert.equal(nodo(escenario, 'reportes-aviso').textContent, 'Todavía no hay reportes.');
+  });
+
+  test('CH-45 Ver shows the entities, period, statement, client texts, visualization and columns, as text', async () => {
+    const escenario = await arrancar();
+    await abrirReportes(escenario);
+    const hostil = { rol: 'valor', columna: 'unidades', titulo: '<b>Unidades</b>' };
+    await verReporteCH45(escenario, { ...REPORTE_CH45, columnas: [REPORTE_CH45.columnas[0], hostil] }, null);
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/reportes/r-1');
+    assert.equal(nodo(escenario, 'reporte-panel').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-titulo').textContent, 'Ventas por producto');
+    assert.equal(nodo(escenario, 'reporte-entidades').textContent, 'Entidades: pedido, item_pedido');
+    assert.equal(nodo(escenario, 'reporte-periodo').textContent, 'Período: parámetro desde; días: 30 (predeterminado), 7');
+    assert.equal(nodo(escenario, 'reporte-sql').textContent, REPORTE_CH45.sql);
+    assert.equal(
+      nodo(escenario, 'reporte-textos').textContent,
+      'Título para el cliente: Lo que más se vende\nDescripción para el cliente: Las unidades vendidas por producto.',
+    );
+    assert.equal(nodo(escenario, 'reporte-visualizacion').textContent, 'Visualización: Barras');
+    assert.equal(
+      nodo(escenario, 'reporte-columnas').textContent,
+      'Columnas asignadas:\nEtiqueta: producto, con el título «Producto»\nValor: unidades, con el título «<b>Unidades</b>»',
+    );
+    assert.equal(nodo(escenario, 'reporte-editar').hidden, false);
+    // The period select offers the declared days and starts on the default.
+    assert.equal(nodo(escenario, 'reporte-prueba-periodo-caja').hidden, false);
+    assert.deepEqual(
+      nodo(escenario, 'reporte-prueba-periodo').options.map((o) => [o.value, o.textContent]),
+      [['30', 'Últimos 30 días'], ['7', 'Últimos 7 días']],
+    );
+    assert.equal(nodo(escenario, 'reporte-prueba-periodo').value, '30');
+  });
+
+  test('CH-45 a report with no period and no description says so, and its test block has no period select', async () => {
+    const escenario = await reporteListoParaProbar({
+      ...REPORTE_CH45, periodo: null, descripcion: null, visualizacion: 'tabla', columnas: [{ rol: 'columna', columna: 'producto', titulo: 'Producto' }],
+    });
+    assert.equal(nodo(escenario, 'reporte-periodo').textContent, 'Sin período');
+    assert.match(nodo(escenario, 'reporte-textos').textContent, /\nSin descripción para el cliente$/);
+    assert.equal(nodo(escenario, 'reporte-columnas').textContent, 'Columnas asignadas:\nColumna 1: producto, con el título «Producto»');
+    assert.equal(nodo(escenario, 'reporte-prueba-periodo-caja').hidden, true);
+    const antes = escenario.peticiones.length;
+    await probarReporteCH45(escenario, OK_CH45({ periodo: null }));
+    assert.deepEqual(escenario.peticiones[antes].cuerpo, { conexionId: 'c-1' }, 'no dias without a period');
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, '2 filas.');
+  });
+
+  test('CH-45 Probar sends one POST with the tenant, the connection and the days, and shows only the assigned columns under their titles', async () => {
+    const escenario = await reporteListoParaProbar();
+    assert.deepEqual(nodo(escenario, 'reporte-prueba-conexion').options.map((o) => o.value), ['', 'c-1']);
+    nodo(escenario, 'reporte-prueba-periodo').value = '7';
+    const antes = escenario.peticiones.length;
+    await probarReporteCH45(escenario);
+    assert.equal(escenario.peticiones.length, antes + 1);
+    assert.deepEqual(escenario.peticiones[antes], { url: '/reportes/r-1/prueba', tenant: 't-1', cuerpo: { conexionId: 'c-1', dias: 7 } });
+    assert.deepEqual(filasDeTabla(escenario, 'reporte-prueba-tabla'), [['Producto', 'Unidades'], ['Harina', '5'], ['<b>Pan</b>', '3']]);
+    assert.equal(buscar(nodo(escenario, 'reporte-prueba-tabla'), (n) => n.tagName === 'b').length, 0, 'markup in a value is text');
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, '2 filas. Desde el 31/10/2026.');
+    assert.equal(nodo(escenario, 'reporte-probar').disabled, false);
+  });
+
+  test('CH-45 a column title with markup heads the table as text', async () => {
+    const escenario = await reporteListoParaProbar({
+      ...REPORTE_CH45, columnas: [REPORTE_CH45.columnas[0], { rol: 'valor', columna: 'unidades', titulo: '<b>Unidades</b>' }],
+    });
+    await probarReporteCH45(escenario);
+    assert.deepEqual(filasDeTabla(escenario, 'reporte-prueba-tabla')[0], ['Producto', '<b>Unidades</b>']);
+    assert.equal(buscar(nodo(escenario, 'reporte-prueba-tabla'), (n) => n.tagName === 'b').length, 0);
+  });
+
+  test('CH-45 a result cut at the cap says so with the cap of the visualization', async () => {
+    const escenario = await reporteListoParaProbar();
+    await probarReporteCH45(escenario, OK_CH45({ corte: 'tope-de-filas' }));
+    assert.equal(
+      nodo(escenario, 'reporte-prueba-aviso').textContent,
+      '2 filas. Desde el 31/10/2026. El resultado se cortó en el tope de 20 filas de esta visualización.',
+    );
+  });
+
+  test('CH-45 a missing column is named and no table is shown', async () => {
+    const escenario = await reporteListoParaProbar();
+    await probarReporteCH45(escenario, OK_CH45({ columnas: ['producto'], filas: [['Harina']], faltantes: ['unidades'] }));
+    assert.equal(
+      nodo(escenario, 'reporte-prueba-aviso').textContent,
+      'El resultado no trae estas columnas del reporte: unidades. Revisá la sentencia o las columnas asignadas.',
+    );
+    assert.equal(nodo(escenario, 'reporte-prueba-tabla').hijos.length, 0);
+  });
+
+  test('CH-45 the other answers are written as legible text and leave no table', async () => {
+    const escenario = await reporteListoParaProbar();
+    const aviso = (): string => nodo(escenario, 'reporte-prueba-aviso').textContent;
+    await probarReporteCH45(escenario, { status: 200, cuerpo: { resultado: 'fallo', fase: 'x', categoria: 'y', codigo: '42P01', periodo: { dias: 30, desde: '2026-10-08' } } });
+    assert.equal(aviso(), 'La ejecución falló y la consola no pudo identificar el motivo. (SQLSTATE 42P01)');
+    await probarReporteCH45(escenario, { status: 409, cuerpo: { error: 'vista-canonica-no-aprobada', entidades: ['pedido', 'item_pedido'] } });
+    assert.equal(aviso(), 'Las vistas de estas entidades no están aprobadas en esta conexión: pedido, item_pedido. Mapealas y validalas en Mapeo y validación.');
+    await probarReporteCH45(escenario, { status: 409, cuerpo: { error: 'credencial-ilegible' } });
+    assert.match(aviso(), /^La credencial guardada para esta conexión no se pudo descifrar\./);
+    await probarReporteCH45(escenario, { status: 404, cuerpo: { error: 'reporte-no-encontrado' } });
+    assert.equal(aviso(), 'El reporte o la conexión ya no existen.');
+    await probarReporteCH45(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/dias'] } });
+    assert.equal(aviso(), 'Revisá estos campos: período de la prueba.');
+    await probarReporteCH45(escenario, { status: 500, cuerpo: { error: 'x' } });
+    assert.equal(aviso(), 'La aplicación respondió HTTP 500.');
+    await probarReporteCH45(escenario, { status: 200, cuerpo: null });
+    assert.equal(aviso(), 'La aplicación respondió algo que la consola no pudo interpretar (HTTP 200).');
+    await probarReporteCH45(escenario, { status: 200, cuerpo: {}, falla: true });
+    assert.equal(aviso(), 'No se pudo contactar con la aplicación.');
+    assert.equal(nodo(escenario, 'reporte-prueba-tabla').hijos.length, 0);
+  });
+
+  test('CH-45 with no active tenant the block says so and sends nothing', async () => {
+    const escenario = await arrancar();
+    await abrirReportes(escenario);
+    await verReporteCH45(escenario, REPORTE_CH45, null);
+    const antes = escenario.peticiones.length;
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, 'Elegí un tenant para probar el reporte.');
+    nodo(escenario, 'reporte-probar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, 'Elegí un tenant para probar el reporte.');
+  });
+
+  test('CH-45 with no connection chosen the block says so and sends nothing', async () => {
+    const escenario = await reporteListoParaProbar();
+    nodo(escenario, 'reporte-prueba-conexion').value = '';
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'reporte-probar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, 'Elegí una conexión para probar el reporte.');
+  });
+
+  test('CH-45 loading another report, switching the tenant and closing the panel clear the result', async () => {
+    const escenario = await reporteListoParaProbar();
+    await probarReporteCH45(escenario);
+    assert.ok(filasDeTabla(escenario, 'reporte-prueba-tabla').length > 0);
+    await verReporteCH45(escenario, { ...REPORTE_CH45, nombre: 'Otro' });
+    assert.equal(nodo(escenario, 'reporte-titulo').textContent, 'Otro');
+    assert.equal(nodo(escenario, 'reporte-prueba-tabla').hijos.length, 0);
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, '');
+
+    nodo(escenario, 'reporte-prueba-conexion').value = 'c-1';
+    await probarReporteCH45(escenario);
+    // The open panel asks for the new tenant's connections first, then the usual switch requests.
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [{ id: 'c-2', nombre: 'otra' }], truncado: false } });
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'reporte-prueba-tabla').hijos.length, 0);
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, '');
+    assert.deepEqual(nodo(escenario, 'reporte-prueba-conexion').options.map((o) => o.value), ['', 'c-2']);
+
+    nodo(escenario, 'reporte-prueba-conexion').value = 'c-2';
+    await probarReporteCH45(escenario);
+    nodo(escenario, 'reporte-cerrar').disparar('click');
+    assert.equal(nodo(escenario, 'reporte-panel').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-prueba-tabla').hijos.length, 0);
+    assert.equal(nodo(escenario, 'reporte-prueba-aviso').textContent, '');
+  });
+
+  test('CH-45 «Nuevo reporte» opens a blank pop-up with empty column selects and Guardar closed, and says why', async () => {
+    const escenario = await abrirNuevoCH45();
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Nuevo reporte');
+    assert.equal(nodo(escenario, 'reporte-f-nombre').value, '');
+    assert.equal(nodo(escenario, 'reporte-f-periodo').value, 'no');
+    assert.equal(nodo(escenario, 'reporte-f-periodo-campos').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-f-prueba-periodo-caja').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-dialogo-guardar').disabled, true);
+    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Probá el reporte antes de guardarlo.');
+    const rotulos = buscar(nodo(escenario, 'reporte-f-entidades'), (n) => n.tagName === 'label').map((n) => n.textContent);
+    assert.deepEqual(rotulos, [...ENTIDADES_CANONICAS]);
+    // A table to start with: one column row whose select offers nothing until a test passes.
+    const filasIniciales = filasColumnasCH45(escenario);
+    assert.equal(filasIniciales.length, 1);
+    assert.deepEqual(filasIniciales[0].selector.options.map((o) => o.value), ['']);
+    assert.equal(filasIniciales[0].selector.disabled, true);
+    assert.equal(nodo(escenario, 'reporte-f-columnas-aviso').textContent, 'Probá el reporte para elegir sus columnas.');
+    assert.deepEqual(nodo(escenario, 'reporte-f-conexion').options.map((o) => o.value), ['', 'c-1']);
+  });
+
+  test('CH-45 a bar report: the test sends the form with no columns, then Guardar sends the columns and those of the test', async () => {
+    const escenario = await abrirNuevoCH45();
+    llenarCH45(escenario);
+    assert.deepEqual(
+      nodo(escenario, 'reporte-f-prueba-periodo').options.map((o) => [o.value, o.textContent]),
+      [['30', 'Últimos 30 días'], ['7', 'Últimos 7 días']],
+    );
+    escribirCH38(escenario, 'reporte-f-prueba-periodo', '7');
+    assert.deepEqual(filasColumnasCH45(escenario).map((f) => f.texto), ['Etiqueta | Título (Etiqueta)', 'Valor | Título (Valor)']);
+    const antes = escenario.peticiones.length;
+    await probarDialogoCH45(escenario, OK_CH45({ columnas: ['producto', 'unidades'], filas: [['Harina', 5]] }));
+    assert.deepEqual(escenario.peticiones[antes], {
+      url: '/reportes/prueba',
+      tenant: 't-1',
+      cuerpo: {
+        nombre: 'Ventas por producto',
+        titulo: 'Lo que más se vende',
+        descripcion: '',
+        sql: 'SELECT producto, unidades FROM v_item_pedido WHERE fecha >= :desde',
+        entidades: ['pedido', 'item_pedido'],
+        visualizacion: 'barras',
+        periodo: { parametro: 'desde', dias: [30, 7] },
+        conexionId: 'c-1',
+        dias: 7,
+      },
+    });
+    assert.deepEqual(filasDeTabla(escenario, 'reporte-f-tabla'), [['producto', 'unidades'], ['Harina', '5']], 'the pop-up shows every column');
+    assert.equal(nodo(escenario, 'reporte-f-resultado').textContent, '1 fila. Desde el 31/10/2026.');
+    assert.deepEqual(filasColumnasCH45(escenario)[0].selector.options.map((o) => o.value), ['', 'producto', 'unidades']);
+    assert.equal(nodo(escenario, 'reporte-f-columnas-aviso').textContent, '');
+    asignarCH45(escenario, 0, 'producto', 'Producto');
+    asignarCH45(escenario, 1, 'unidades', 'Unidades');
+    assert.equal(guardarAbiertoCH45(escenario), true);
+    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, '');
+
+    escenario.respuestas.push({ status: 201, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-20' } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reportes: [REPORTE_LISTADO, { ...REPORTE_LISTADO, id: 'r-20' }], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-20' } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    const inicio = escenario.peticiones.length;
+    nodo(escenario, 'reporte-form').disparar('submit');
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    const [alta, lista, detalle] = escenario.peticiones.slice(inicio);
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/reportes' && p.cuerpo !== null).length, 1, 'a second press sends nothing more');
+    assert.equal(alta.url, '/reportes');
+    assert.equal(alta.tenant, null, 'the catalog is global: no tenant header');
+    assert.deepEqual(alta.cuerpo, {
+      nombre: 'Ventas por producto',
+      titulo: 'Lo que más se vende',
+      descripcion: '',
+      sql: 'SELECT producto, unidades FROM v_item_pedido WHERE fecha >= :desde',
+      entidades: ['pedido', 'item_pedido'],
+      visualizacion: 'barras',
+      periodo: { parametro: 'desde', dias: [30, 7] },
+      columnas: [
+        { rol: 'etiqueta', columna: 'producto', titulo: 'Producto' },
+        { rol: 'valor', columna: 'unidades', titulo: 'Unidades' },
+      ],
+      columnasPrueba: ['producto', 'unidades'],
+    });
+    assert.equal(lista.url, '/reportes');
+    assert.equal(detalle.url, '/reportes/r-20');
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true, 'the pop-up closes');
+    assert.equal(nodo(escenario, 'reporte-panel').hidden, false, 'and the panel shows the saved report');
+  });
+
+  test('CH-45 editing the SQL after a test closes Guardar and says why; the name, texts, visualization and columns do not', async () => {
+    const escenario = await abrirNuevoCH45();
+    llenarCH45(escenario);
+    await probarDialogoCH45(escenario);
+    asignarCH45(escenario, 0, 'producto', 'Producto');
+    assert.equal(guardarAbiertoCH45(escenario), true);
+    escribirCH38(escenario, 'reporte-f-nombre', 'Otro nombre');
+    escribirCH38(escenario, 'reporte-f-titulo', 'Otro título');
+    escribirCH38(escenario, 'reporte-f-descripcion', 'Otra descripción.');
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'linea');
+    asignarCH45(escenario, 1, 'unidades', 'Unidades');
+    escribirCH38(escenario, 'reporte-f-prueba-periodo', '30');
+    assert.equal(guardarAbiertoCH45(escenario), true);
+    escribirCH38(escenario, 'reporte-f-sql', 'SELECT producto, unidades FROM v_item_pedido WHERE fecha > :desde');
+    assert.equal(guardarAbiertoCH45(escenario), false);
+    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Cambió el reporte desde la última prueba. Probalo de nuevo para poder guardarlo.');
+  });
+
+  test('CH-45 the period, the entities and the connection are part of the fingerprint', async () => {
+    const escenario = await abrirNuevoCH45([{ id: 'c-1', nombre: 'uno' }, { id: 'c-2', nombre: 'dos' }]);
+    llenarCH45(escenario);
+    await probarDialogoCH45(escenario);
+    escribirCH38(escenario, 'reporte-f-dias', '30, 7, 90');
+    assert.equal(guardarAbiertoCH45(escenario), false, 'the days');
+    escribirCH38(escenario, 'reporte-f-dias', '30, 7');
+    assert.equal(guardarAbiertoCH45(escenario), true, 'back to the tested content, the test holds again');
+    escribirCH38(escenario, 'reporte-f-parametro', 'inicio');
+    assert.equal(guardarAbiertoCH45(escenario), false, 'the parameter');
+    escribirCH38(escenario, 'reporte-f-parametro', 'desde');
+    escribirCH38(escenario, 'reporte-f-periodo', 'no');
+    assert.equal(guardarAbiertoCH45(escenario), false, 'dropping the period');
+    escribirCH38(escenario, 'reporte-f-periodo', 'si');
+    marcarCH45(escenario, ['producto']);
+    assert.equal(guardarAbiertoCH45(escenario), false, 'an entity');
+    marcarCH45(escenario, ['producto'], false);
+    escribirCH38(escenario, 'reporte-f-conexion', 'c-2');
+    assert.equal(guardarAbiertoCH45(escenario), false, 'the connection');
+    escribirCH38(escenario, 'reporte-f-conexion', 'c-1');
+    assert.equal(guardarAbiertoCH45(escenario), true);
+  });
+
+  test('CH-45 a failed test keeps Guardar closed, says the last test failed and fills no column select', async () => {
+    const escenario = await abrirNuevoCH45();
+    llenarCH45(escenario);
+    await probarDialogoCH45(escenario, { status: 200, cuerpo: { resultado: 'fallo', fase: 'x', categoria: 'y', codigo: '42P01', periodo: null } });
+    assert.equal(nodo(escenario, 'reporte-f-resultado').textContent, 'La ejecución falló y la consola no pudo identificar el motivo. (SQLSTATE 42P01)');
+    assert.equal(guardarAbiertoCH45(escenario), false);
+    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'La última prueba falló. Corregí el reporte y probalo de nuevo para poder guardarlo.');
+    assert.deepEqual(filasColumnasCH45(escenario)[0].selector.options.map((o) => o.value), ['']);
+    await probarDialogoCH45(escenario, {
+      status: 400,
+      cuerpo: { error: 'solicitud-invalida', campos: ['/periodo/parametro'], problemas: [{ parametro: 'desde', motivo: 'sin-usar' }] },
+    });
+    assert.equal(
+      nodo(escenario, 'reporte-f-resultado').textContent,
+      'Revisá estos campos: nombre del parámetro del período. «desde» está declarado pero la sentencia no lo usa.',
+    );
+  });
+
+  test('CH-45 changing the visualization keeps the rows whose role exists and empties the rest', async () => {
+    const escenario = await abrirNuevoCH45();
+    llenarCH45(escenario);
+    await probarDialogoCH45(escenario, OK_CH45({ columnas: ['producto', 'unidades'] }));
+    asignarCH45(escenario, 0, 'producto', 'Producto');
+    asignarCH45(escenario, 1, 'unidades', 'Unidades');
+    const estado = (): string[][] => filasColumnasCH45(escenario).map((f) => [f.texto, f.selector.value, f.titulo.value]);
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'linea');
+    assert.deepEqual(estado(), [['Etiqueta | Título (Etiqueta)', 'producto', 'Producto'], ['Valor | Título (Valor)', 'unidades', 'Unidades']]);
+    assert.equal(guardarAbiertoCH45(escenario), true, 'the visualization is not in the fingerprint');
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'numero');
+    assert.deepEqual(estado(), [['Valor | Título (Valor)', 'unidades', 'Unidades']]);
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'barras');
+    assert.deepEqual(estado(), [['Etiqueta | Título (Etiqueta)', '', ''], ['Valor | Título (Valor)', 'unidades', 'Unidades']]);
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'tabla');
+    assert.deepEqual(estado(), [['Columna 1 | Título (Columna 1)', '', '']]);
+    assert.equal(nodo(escenario, 'reporte-f-agregar-columna').hidden, false);
+  });
+
+  test('CH-45 a table takes 1 to 10 columns: «Agregar columna» stops at 10 and «Quitar» at 1', async () => {
+    const escenario = await abrirNuevoCH45();
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'tabla');
+    const agregar = nodo(escenario, 'reporte-f-agregar-columna');
+    assert.equal(agregar.hidden, false);
+    assert.equal(filasColumnasCH45(escenario)[0].quitar?.disabled, true, 'the only row cannot be removed');
+    for (let vez = 0; vez < 9; vez++) agregar.disparar('click');
+    assert.equal(filasColumnasCH45(escenario).length, 10);
+    assert.equal(agregar.disabled, true);
+    agregar.disparar('click');
+    assert.equal(filasColumnasCH45(escenario).length, 10);
+    assert.equal(filasColumnasCH45(escenario)[9].texto, 'Columna 10 | Título (Columna 10)');
+    filasColumnasCH45(escenario)[3].quitar?.disparar('click');
+    assert.equal(filasColumnasCH45(escenario).length, 9);
+    assert.equal(agregar.disabled, false);
+    escribirCH38(escenario, 'reporte-f-visualizacion', 'barras');
+    assert.equal(agregar.hidden, true, 'only a table adds columns');
+  });
+
+  test('CH-45 a refused save names the fields, the glossary terms and the missing columns, and the pop-up stays open', async () => {
+    const escenario = await abrirNuevoCH45();
+    llenarCH45(escenario);
+    await probarDialogoCH45(escenario);
+    escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/columnas/1/titulo', '/titulo'], terminos: ['sql'] } });
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(
+      nodo(escenario, 'reporte-dialogo-estado').textContent,
+      'Revisá estos campos: título de la columna 2, título para el cliente. Estos términos no se admiten en los textos para el cliente: «sql».',
+    );
+    escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/columnas'], faltantes: ['total'] } });
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Revisá estos campos: columnas. No están entre las columnas de la última prueba: total.');
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
+  });
+
+  test('CH-45 «Editar» opens the stored report and saves it with one PUT', async () => {
+    const escenario = await reporteListoParaProbar();
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'reporte-editar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Editar reporte');
+    assert.equal(nodo(escenario, 'reporte-f-nombre').value, 'Ventas por producto');
+    assert.equal(nodo(escenario, 'reporte-f-periodo').value, 'si');
+    assert.equal(nodo(escenario, 'reporte-f-dias').value, '30, 7');
+    assert.equal(nodo(escenario, 'reporte-f-visualizacion').value, 'barras');
+    assert.deepEqual(filasColumnasCH45(escenario).map((f) => f.titulo.value), ['Producto', 'Unidades']);
+    assert.equal(guardarAbiertoCH45(escenario), false);
+    escribirCH38(escenario, 'reporte-f-conexion', 'c-1');
+    await probarDialogoCH45(escenario);
+    // The stored choices are selected once the test offers them.
+    assert.deepEqual(filasColumnasCH45(escenario).map((f) => f.selector.value), ['producto', 'unidades']);
+    escenario.respuestas.push({ status: 200, cuerpo: { reporte: REPORTE_CH45 } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reportes: [REPORTE_LISTADO], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reporte: REPORTE_CH45 } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    const inicio = escenario.peticiones.length;
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    const cambio = escenario.peticiones[inicio];
+    assert.equal(cambio.url, '/reportes/r-1');
+    assert.equal(cambio.tenant, null);
+    assert.deepEqual((cambio.cuerpo as Record<string, unknown>).columnas, REPORTE_CH45.columnas);
+    assert.deepEqual((cambio.cuerpo as Record<string, unknown>).columnasPrueba, ['unidades', 'producto', 'extra']);
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true);
+  });
+
+  test('CH-45 with no active tenant the pop-up test says so, sends nothing and Guardar stays closed', async () => {
+    const escenario = await arrancar();
+    await abrirReportes(escenario, []);
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'reporte-nuevo').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'reporte-f-resultado').textContent, 'Elegí un tenant para probar el reporte.');
+    nodo(escenario, 'reporte-f-probar').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(guardarAbiertoCH45(escenario), false);
+    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Elegí un tenant para probar el reporte.');
+  });
+
+  test('CH-45 Cancelar and Escape ask before dropping what was typed; a tenant switch closes the pop-up', async () => {
+    const escenario = await abrirNuevoCH45();
+    nodo(escenario, 'reporte-dialogo-cancelar').disparar('click');
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true, 'nothing typed: it closes');
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'reporte-nuevo').disparar('click');
+    await asentarVarias();
+    escribirCH38(escenario, 'reporte-f-nombre', 'Algo');
+    nodo(escenario, 'reporte-dialogo').disparar('keydown', { key: 'Escape' });
+    assert.equal(nodo(escenario, 'reporte-confirmar').hidden, false);
+    nodo(escenario, 'reporte-seguir').disparar('click');
+    assert.equal(nodo(escenario, 'reporte-confirmar').hidden, true);
+    llenarCH45(escenario);
+    await probarDialogoCH45(escenario);
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-f-tabla').hijos.length, 0);
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/reportes' && p.cuerpo !== null).length, 0);
+  });
+
   // ---- CH-30e1 (DEC-163, screen C-12): the Auditoría screen -----------------------------------
 
   const REGISTRO_AUDITORIA = {
@@ -5645,6 +6300,17 @@ describe('the console document, served by the real route', () => {
     const fila = celdasAuditoria(escenario, 0);
     assert.equal(fila[2], 'Vista previa de automatización');
     assert.equal(fila[4], 'Plantilla p-1');
+  });
+
+  test('CH-45 a report test row names its origin and, when saved, its report; an unsaved one reads Ad hoc', async () => {
+    const prueba = { ...REGISTRO_AUDITORIA, consultaGuardadaId: null, consultaVersion: null, consultaNombre: null, plantillaId: null, origen: 'reporte-prueba', resultado: 'ok', fase: null, categoria: null, filas: 3, duracionMs: 40 };
+    const escenario = await abrirAuditoria([{ ...prueba, reporteId: 'r-1' }, { ...prueba, reporteId: null }]);
+    const guardado = celdasAuditoria(escenario, 0);
+    assert.equal(guardado[2], 'Prueba de reporte');
+    assert.equal(guardado[4], 'Reporte r-1');
+    const sinGuardar = celdasAuditoria(escenario, 1);
+    assert.equal(sinGuardar[2], 'Prueba de reporte');
+    assert.equal(sinGuardar[4], 'Ad hoc');
   });
 
   test('CH-30e1 the filters go in the URL as the local day bounds and the result', async () => {

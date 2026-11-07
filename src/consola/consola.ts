@@ -144,7 +144,20 @@ function documentoConsola(nombreOperador: string): string {
     font-size: var(--text-body); color: var(--text-1); }
   #plantilla-textos, #plantilla-mensaje { white-space: pre-line; }
   #plantilla-f-agregar-parametro { margin-top: var(--space-4); }
-  #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar, #aj-confirmar, #plantilla-confirmar {
+  /* CH-45 (DEC-198): the report pop-up is wide like the template one; its entity boxes and column rows are built
+     by the script, so they take local classes (G3'). */
+  #reporte-dialogo .zd-dialog { width: min(900px, 100%); }
+  #reporte-entidades, #reporte-periodo, #reporte-textos, #reporte-columnas { white-space: pre-line; }
+  .columna-reporte { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); margin-top: var(--space-4); }
+  .columna-reporte label { display: flex; flex: 1 1 10rem; flex-direction: column; gap: var(--space-2); min-width: 0;
+    font-size: var(--text-label); font-weight: var(--weight-semibold); color: var(--text-1); }
+  .columna-reporte select, .columna-reporte input { width: 100%; min-height: var(--control-h); padding: 0 var(--space-4);
+    border: var(--border-width) solid var(--border-2); border-radius: var(--radius-md); background: var(--surface-card);
+    color: var(--text-1); font: inherit; font-size: var(--text-body); font-weight: var(--weight-regular); }
+  .columna-reporte select:focus-visible, .columna-reporte input:focus-visible {
+    outline: var(--focus-width) solid var(--focus-ring); outline-offset: 0; border-color: var(--focus-ring); }
+  #reporte-f-agregar-columna { margin-top: var(--space-4); }
+  #consulta-nueva-confirmar, #tenant-confirmar, #usuario-confirmar, #conexion-confirmar, #auto-confirmar, #aj-confirmar, #plantilla-confirmar, #reporte-confirmar {
     display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
   #guardadas { list-style: none; padding: 0; margin: var(--space-5) 0 0; }
   #guardadas li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0;
@@ -237,6 +250,7 @@ function documentoConsola(nombreOperador: string): string {
     <span class="zd-sidenav__heading">Global</span>
     <a id="nav-tenants" class="zd-sidenav__item" href="#tenants"><span>Tenants</span></a>
     <a id="nav-plantillas" class="zd-sidenav__item" href="#plantillas"><span>Plantillas</span></a>
+    <a id="nav-reportes" class="zd-sidenav__item" href="#reportes"><span>Reportes</span></a>
     <a id="nav-contrato" class="zd-sidenav__item" href="#contrato"><span>Contrato canónico</span></a>
   </div>
   <div class="zd-sidenav__scope">
@@ -613,6 +627,145 @@ function documentoConsola(nombreOperador: string): string {
       <button id="plantilla-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
       <button id="plantilla-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="plantilla-form" aria-describedby="plantilla-dialogo-estado" disabled>Guardar</button>
       <button id="plantilla-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
+</section>
+
+<!--
+  CH-45 (DEC-183, DEC-198, screen C-13): the report catalog, global like Plantillas. A report is a statement over
+  the canonical views with an optional period (one date parameter and the days P1 allows), a visualization and its
+  columns by role, each with a title for the client. The drawer tests a stored report on a connection of the active
+  tenant; the pop-up creates and edits, and «Guardar» opens only after a passing test of the same SQL, period,
+  entities and connection. The entity boxes, the column rows and the period options are built by the script.
+-->
+<section id="pantalla-reportes" aria-labelledby="titulo-reportes" data-change="CH-45" data-estado="existe" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span></div>
+    <h1 id="titulo-reportes" class="zd-h1">Reportes</h1>
+    <p class="zd-pagehead__desc">Los reportes que el cliente podrá ver en su tablero. Cada uno lee las vistas canónicas y muestra sus columnas como número, tabla, barras o línea.</p>
+  </div>
+  <div class="zd-pagehead__actions">
+    <button id="reporte-nuevo" class="zd-btn zd-btn--primary" type="button">Nuevo reporte</button>
+  </div>
+</header>
+<p id="reportes-aviso" class="ayuda" role="status"></p>
+<div class="zd-table-wrap zd-table-scroll">
+  <table class="zd-table">
+    <thead><tr><th>Nombre</th><th>Título para el cliente</th><th>Visualización</th><th></th></tr></thead>
+    <tbody id="reportes-cuerpo"></tbody>
+  </table>
+</div>
+<aside id="reporte-panel" class="zd-drawer" aria-labelledby="reporte-titulo" hidden>
+  <div class="zd-drawer__head"><h2 id="reporte-titulo" class="zd-h2"></h2></div>
+  <div class="zd-drawer__body">
+    <p id="reporte-entidades"></p>
+    <p id="reporte-periodo"></p>
+    <pre id="reporte-sql"></pre>
+    <p id="reporte-textos"></p>
+    <p id="reporte-visualizacion"></p>
+    <p id="reporte-columnas"></p>
+    <div class="zd-form-actions">
+      <button id="reporte-editar" class="zd-btn zd-btn--secondary" type="button">Editar</button>
+    </div>
+    <!-- The one tenant-scoped part of this screen: it runs the stored report on a connection of the active tenant. -->
+    <section id="reporte-prueba" aria-labelledby="reporte-prueba-titulo">
+      <h3 id="reporte-prueba-titulo" class="zd-h3">Probar en el tenant activo</h3>
+      <label for="reporte-prueba-conexion" class="zd-label">Conexión</label>
+      <select id="reporte-prueba-conexion" class="zd-select"></select>
+      <div id="reporte-prueba-periodo-caja" hidden>
+        <label for="reporte-prueba-periodo" class="zd-label">Período</label>
+        <select id="reporte-prueba-periodo" class="zd-select"></select>
+      </div>
+      <button id="reporte-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+      <p id="reporte-prueba-aviso" class="ayuda" role="status"></p>
+      <div class="zd-table-wrap zd-table-scroll"><table id="reporte-prueba-tabla" class="zd-table"></table></div>
+    </section>
+    <button id="reporte-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar</button>
+  </div>
+</aside>
+<!--
+  One pop-up for «Nuevo reporte» and «Editar» (DEC-173). The test (POST /reportes/prueba) saves nothing and sends no
+  columns: it is what produces them. A refusal, and the reason «Guardar» is closed, are written in #reporte-dialogo-estado.
+-->
+<div id="reporte-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="reporte-dialogo-titulo">
+    <h2 id="reporte-dialogo-titulo" class="zd-dialog__title">Nuevo reporte</h2>
+    <form id="reporte-form" class="zd-form">
+      <div>
+        <label for="reporte-f-nombre" class="zd-label">Nombre</label>
+        <input id="reporte-f-nombre" class="zd-input" type="text" maxlength="80" autocomplete="off">
+        <p class="ayuda">Hasta 80 caracteres. Lo ve solo la consola.</p>
+      </div>
+      <div>
+        <label for="reporte-f-titulo" class="zd-label">Título para el cliente</label>
+        <input id="reporte-f-titulo" class="zd-input" type="text" maxlength="80" autocomplete="off">
+        <p class="ayuda">Hasta 80 caracteres. Es lo que ve el cliente en su tablero; sin términos técnicos.</p>
+      </div>
+      <div>
+        <label for="reporte-f-descripcion" class="zd-label">Descripción para el cliente</label>
+        <textarea id="reporte-f-descripcion" class="zd-textarea" rows="3" maxlength="200"></textarea>
+        <p class="ayuda">Hasta 200 caracteres. Opcional.</p>
+      </div>
+      <fieldset id="reporte-f-entidades" class="entidades-plantilla"><legend class="zd-label">Entidades que lee</legend></fieldset>
+      <div>
+        <label for="reporte-f-sql" class="zd-label">Sentencia SQL</label>
+        <textarea id="reporte-f-sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false"></textarea>
+        <p class="ayuda">Leé las vistas canónicas por su nombre, por ejemplo v_pedido. Con período, la sentencia usa :desde (o el nombre que declares) como una fecha.</p>
+      </div>
+      <div>
+        <label for="reporte-f-periodo" class="zd-label">Período</label>
+        <select id="reporte-f-periodo" class="zd-select">
+          <option value="no">Sin período</option>
+          <option value="si">Con período</option>
+        </select>
+        <div id="reporte-f-periodo-campos" hidden>
+          <label for="reporte-f-parametro" class="zd-label">Nombre del parámetro</label>
+          <input id="reporte-f-parametro" class="zd-input" type="text" autocomplete="off" spellcheck="false" value="desde">
+          <label for="reporte-f-dias" class="zd-label">Días</label>
+          <input id="reporte-f-dias" class="zd-input" type="text" inputmode="numeric" autocomplete="off" placeholder="30, 7">
+          <p class="ayuda">De 1 a 6 cantidades de días, separadas por comas, cada una de 1 a 366. La primera es la que el cliente ve primero.</p>
+        </div>
+      </div>
+      <div>
+        <label for="reporte-f-visualizacion" class="zd-label">Visualización</label>
+        <select id="reporte-f-visualizacion" class="zd-select">
+          <option value="numero">Número</option>
+          <option value="tabla">Tabla</option>
+          <option value="barras">Barras</option>
+          <option value="linea">Línea</option>
+        </select>
+      </div>
+      <div>
+        <p class="zd-label">Columnas</p>
+        <p id="reporte-f-columnas-aviso" class="ayuda" role="status"></p>
+        <div id="reporte-f-columnas"></div>
+        <button id="reporte-f-agregar-columna" class="zd-btn zd-btn--secondary" type="button" hidden>Agregar columna</button>
+        <p class="ayuda">Cada título va al cliente: hasta 40 caracteres y sin términos técnicos. Una tabla lleva de 1 a 10 columnas.</p>
+      </div>
+      <div>
+        <h3 class="zd-h3">Probar antes de guardar</h3>
+        <label for="reporte-f-conexion" class="zd-label">Conexión</label>
+        <select id="reporte-f-conexion" class="zd-select"></select>
+        <div id="reporte-f-prueba-periodo-caja" hidden>
+          <label for="reporte-f-prueba-periodo" class="zd-label">Período de la prueba</label>
+          <select id="reporte-f-prueba-periodo" class="zd-select"></select>
+        </div>
+        <button id="reporte-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+        <p id="reporte-f-resultado" class="ayuda" role="status"></p>
+        <div class="zd-table-wrap zd-table-scroll"><table id="reporte-f-tabla" class="zd-table"></table></div>
+      </div>
+    </form>
+    <p id="reporte-dialogo-estado" class="ayuda" role="status"></p>
+    <div class="zd-dialog__actions">
+      <span id="reporte-confirmar" hidden>
+        Hay cambios sin guardar.
+        <button id="reporte-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+        <button id="reporte-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+      </span>
+      <button id="reporte-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="reporte-form" aria-describedby="reporte-dialogo-estado" disabled>Guardar</button>
+      <button id="reporte-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
   </div>
 </div>
@@ -4152,6 +4305,9 @@ function cambiarTenant(id) {
   // CH-35: a template test result belongs to the tenant it ran for; an open panel re-reads the new tenant's connections.
   limpiarPruebaPlantilla();
   if (!panelPlantilla.hidden) { cargarConexionesPrueba(); }
+  // CH-45: so does a report test result, and an open report panel re-reads the connections too.
+  limpiarPruebaReporte();
+  if (!panelReporte.hidden) { cargarConexionesPruebaReporte(); }
   pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, corte: null };
   // CH-32a: no connection of the tenant just left stays chosen; with no tenant the picker says so.
   conexionPrevia = '';
@@ -5708,6 +5864,689 @@ document.getElementById('plantilla-f-agregar-parametro').addEventListener('click
   control.addEventListener('change', alEditarPlantilla);
 });
 
+// ---- CH-45 (DEC-183, DEC-198, screen C-13): Reportes --------------------------------------------
+// The global report catalog: the list, the side panel with its test on the active tenant, and one pop-up to create
+// and edit. The catalog reads and writes carry no tenant header; both tests need the active tenant, so they go
+// through leerPrueba like the template ones. Every value, a column title included, reaches the page as text.
+
+var ETIQUETAS_VISUALIZACION = { numero: 'Número', tabla: 'Tabla', barras: 'Barras', linea: 'Línea' };
+// The roles each visualization takes, in order (DEC-198); a table is 1 to MAXIMO_COLUMNAS_REPORTE columna rows.
+var ROLES_VISUALIZACION = { numero: ['valor'], barras: ['etiqueta', 'valor'], linea: ['etiqueta', 'valor'], tabla: ['columna'] };
+var ETIQUETAS_ROL = { valor: 'Valor', etiqueta: 'Etiqueta', columna: 'Columna' };
+var MAXIMO_COLUMNAS_REPORTE = 10;
+var VISUALIZACION_INICIAL = 'tabla';
+var PARAMETRO_INICIAL = 'desde';
+var AVISO_PRUEBA_REPORTE_SIN_TENANT = 'Elegí un tenant para probar el reporte.';
+var AVISO_ELEGIR_COLUMNAS = 'Probá el reporte para elegir sus columnas.';
+
+var avisoReportes = document.getElementById('reportes-aviso');
+var cuerpoReportes = document.getElementById('reportes-cuerpo');
+var panelReporte = document.getElementById('reporte-panel');
+var selectorPruebaReporte = document.getElementById('reporte-prueba-conexion');
+var cajaPeriodoPruebaReporte = document.getElementById('reporte-prueba-periodo-caja');
+var selectorPeriodoPruebaReporte = document.getElementById('reporte-prueba-periodo');
+var botonProbarReporte = document.getElementById('reporte-probar');
+var avisoPruebaReporte = document.getElementById('reporte-prueba-aviso');
+var tablaPruebaReporte = document.getElementById('reporte-prueba-tabla');
+// The report open in the side panel: {id, periodo, columnas, datos}; null while the panel is closed.
+var reporteAbierto = null;
+// Drops a panel answer (connections, test) that arrives after it moved on: another report, closed, another tenant.
+var generacionPruebaReporte = 0;
+
+function etiquetaVisualizacion(valor) {
+  return Object.prototype.hasOwnProperty.call(ETIQUETAS_VISUALIZACION, valor) ? ETIQUETAS_VISUALIZACION[valor] : String(valor);
+}
+
+// «Valor», «Etiqueta», or «Columna N» for the row at indice of a table.
+function etiquetaRol(rol, indice) {
+  var base = Object.prototype.hasOwnProperty.call(ETIQUETAS_ROL, rol) ? ETIQUETAS_ROL[rol] : String(rol);
+  return rol === 'columna' ? base + ' ' + (indice + 1) : base;
+}
+
+function textoDias(dias) {
+  return dias === 1 ? 'Último día' : 'Últimos ' + dias + ' días';
+}
+
+// YYYY-MM-DD as dd/mm/aaaa, read as text: a calendar day with no time is never shifted by the browser zone.
+function fechaDelPeriodoTexto(iso) {
+  var partes = String(iso).split('-');
+  return partes.length === 3 ? partes[2] + '/' + partes[1] + '/' + partes[0] : String(iso);
+}
+
+// One option per declared number of days, starting on the first: the default (DEC-198).
+function opcionesDePeriodo(selector, dias) {
+  vaciar(selector);
+  dias.forEach(function (d) { selector.appendChild(opcionDe(String(d), textoDias(d))); });
+  if (dias.length > 0) { selector.value = String(dias[0]); }
+}
+
+// A stored period read back for the page: null when there is none or it is not an object with days.
+function periodoLeido(valor) {
+  if (valor === null || typeof valor !== 'object' || !Array.isArray(valor.dias)) { return null; }
+  return { parametro: String(valor.parametro), dias: valor.dias.map(Number) };
+}
+
+function columnasLeidas(valor) {
+  return (Array.isArray(valor) ? valor : []).filter(function (c) { return c !== null && typeof c === 'object'; })
+    .map(function (c) { return { rol: String(c.rol), columna: String(c.columna), titulo: String(c.titulo) }; });
+}
+
+// The active tenant's connections in selector, as the template blocks list them. vigente says whether the answer
+// still belongs to the block that asked for it.
+async function llenarConexionesReporte(selector, aviso, vigente) {
+  vaciar(selector);
+  if (tenantActivo === null) { aviso.textContent = AVISO_PRUEBA_REPORTE_SIN_TENANT; return; }
+  selector.appendChild(opcionDe('', 'Cargando conexiones…'));
+  var leido = await leerPrueba('/conexiones');
+  if (!vigente()) { return; }
+  vaciar(selector);
+  if (leido === null || leido.red || leido.status !== 200 || leido.cuerpo === null || !Array.isArray(leido.cuerpo.conexiones)) {
+    selector.appendChild(opcionDe('', 'Sin conexiones para elegir'));
+    aviso.textContent = 'No se pudieron cargar las conexiones.';
+    return;
+  }
+  var filas = leido.cuerpo.conexiones;
+  selector.appendChild(opcionDe('', filas.length === 0 ? 'No hay conexiones' : 'Elegí una conexión'));
+  filas.forEach(function (fila) {
+    var idConexion = String(fila.id);
+    selector.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+  });
+  selector.value = '';
+  if (filas.length === 0) { aviso.textContent = 'Registrá una conexión de este tenant para probar el reporte.'; }
+}
+
+var ETIQUETAS_CAMPO_REPORTE = {
+  nombre: 'nombre',
+  titulo: 'título para el cliente',
+  descripcion: 'descripción para el cliente',
+  sql: 'sentencia SQL',
+  entidades: 'entidades',
+  visualizacion: 'visualización',
+  columnas: 'columnas',
+  periodo: 'período',
+  columnasPrueba: 'columnas de la prueba',
+  conexionId: 'conexión',
+  dias: 'período de la prueba'
+};
+
+// '/columnas/1/titulo' is «título de la columna 2», '/periodo/dias' is «días del período»; an unknown path is
+// written as it came.
+function etiquetaDeCampoReporte(campo) {
+  var partes = String(campo).split('/');
+  if (partes[1] === 'columnas' && partes.length >= 3 && partes[2] !== '' && !isNaN(Number(partes[2]))) {
+    var numero = Number(partes[2]) + 1;
+    return partes[3] === 'titulo' ? 'título de la columna ' + numero : 'columna ' + numero;
+  }
+  if (partes[1] === 'periodo' && partes[2] === 'parametro') { return 'nombre del parámetro del período'; }
+  if (partes[1] === 'periodo' && partes[2] === 'dias') { return 'días del período'; }
+  return Object.prototype.hasOwnProperty.call(ETIQUETAS_CAMPO_REPORTE, partes[1]) ? ETIQUETAS_CAMPO_REPORTE[partes[1]] : String(campo);
+}
+
+// A 400 from the catalog or from a test: the offending fields, then the parameter problems, the glossary terms and
+// the assigned columns missing from the last test. Only known keys of the body are read.
+function mensajeDeRechazoReporte(cuerpo) {
+  var etiquetas = [];
+  (Array.isArray(cuerpo.campos) ? cuerpo.campos : []).forEach(function (campo) {
+    var etiqueta = etiquetaDeCampoReporte(campo);
+    if (etiquetas.indexOf(etiqueta) === -1) { etiquetas.push(etiqueta); }
+  });
+  var texto = 'Revisá estos campos: ' + (etiquetas.length === 0 ? 'el cuerpo enviado' : etiquetas.join(', ')) + '.';
+  var problemas = [];
+  (Array.isArray(cuerpo.problemas) ? cuerpo.problemas : []).forEach(function (problema) {
+    if (problema === null || typeof problema !== 'object') { return; }
+    var motivo = Object.prototype.hasOwnProperty.call(MENSAJES_PARAMETRO, problema.motivo) ? MENSAJES_PARAMETRO[problema.motivo] : 'no es válido';
+    problemas.push((typeof problema.parametro === 'string' ? '«' + problema.parametro + '» ' : 'La sentencia ') + motivo);
+  });
+  if (problemas.length > 0) { texto += ' ' + problemas.join('; ') + '.'; }
+  var terminos = (Array.isArray(cuerpo.terminos) ? cuerpo.terminos : []).map(function (termino) { return '«' + String(termino) + '»'; });
+  if (terminos.length > 0) { texto += ' Estos términos no se admiten en los textos para el cliente: ' + terminos.join(', ') + '.'; }
+  var faltantes = (Array.isArray(cuerpo.faltantes) ? cuerpo.faltantes : []).map(function (columna) { return String(columna); });
+  if (faltantes.length > 0) { texto += ' No están entre las columnas de la última prueba: ' + faltantes.join(', ') + '.'; }
+  return texto;
+}
+
+// The answer of a report test, written as text in nodo ({aviso, tabla}). asignadas: the report's columns, so the
+// table shows only them, under their titles and in their order (the side panel); null shows every column (the
+// pop-up, where P1 is still choosing them). True only for a 200 ok whose result has every assigned column.
+function mostrarResultadoReporte(nodo, leido, asignadas) {
+  var aviso = nodo.aviso;
+  var cuerpo = leido.cuerpo;
+  vaciar(nodo.tabla);
+  if (leido.red) { aviso.textContent = 'No se pudo contactar con la aplicación.'; return false; }
+  if (cuerpo === null || typeof cuerpo !== 'object') {
+    aviso.textContent = 'La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + leido.status + ').';
+    return false;
+  }
+  if (leido.status === 409 && cuerpo.error === 'vista-canonica-no-aprobada') {
+    var entidades = Array.isArray(cuerpo.entidades) ? cuerpo.entidades.map(String).join(', ') : '';
+    aviso.textContent = entidades === ''
+      ? 'Las vistas de este reporte no están aprobadas en esta conexión. Mapealas y validalas en Mapeo y validación.'
+      : 'Las vistas de estas entidades no están aprobadas en esta conexión: ' + entidades + '. Mapealas y validalas en Mapeo y validación.';
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) { aviso.textContent = MENSAJES_ERROR[cuerpo.error]; return false; }
+  if (leido.status === 404) { aviso.textContent = 'El reporte o la conexión ya no existen.'; return false; }
+  if (leido.status === 400) { aviso.textContent = mensajeDeRechazoReporte(cuerpo); return false; }
+  if (leido.status !== 200) { aviso.textContent = 'La aplicación respondió HTTP ' + leido.status + '.'; return false; }
+  if (cuerpo.resultado !== 'ok') { aviso.textContent = mensajeDeFallo(cuerpo); return false; }
+  var faltantes = Array.isArray(cuerpo.faltantes) ? cuerpo.faltantes.map(String) : [];
+  if (faltantes.length > 0) {
+    aviso.textContent = 'El resultado no trae estas columnas del reporte: ' + faltantes.join(', ') + '. Revisá la sentencia o las columnas asignadas.';
+    return false;
+  }
+  var columnas = Array.isArray(cuerpo.columnas) ? cuerpo.columnas.map(String) : [];
+  var filas = Array.isArray(cuerpo.filas) ? cuerpo.filas : [];
+  var titulos = columnas;
+  var indices = columnas.map(function (columna, indice) { return indice; });
+  if (asignadas !== null) {
+    titulos = asignadas.map(function (asignada) { return asignada.titulo; });
+    indices = asignadas.map(function (asignada) { return columnas.indexOf(asignada.columna); });
+  }
+  renderizarTabla(nodo.tabla, titulos, filas.map(function (fila) {
+    var celdas = Array.isArray(fila) ? fila : [];
+    return indices.map(function (indice) { return textoDeCelda(celdas[indice]); });
+  }), '');
+  var texto = filas.length === 1 ? '1 fila.' : filas.length + ' filas.';
+  if (cuerpo.periodo !== null && typeof cuerpo.periodo === 'object' && typeof cuerpo.periodo.desde === 'string') {
+    texto += ' Desde el ' + fechaDelPeriodoTexto(cuerpo.periodo.desde) + '.';
+  }
+  if (cuerpo.corte === 'tope-de-filas') {
+    var tope = cuerpo.paginacion && typeof cuerpo.paginacion.topeFilas === 'number' ? cuerpo.paginacion.topeFilas : filas.length;
+    texto += ' El resultado se cortó en el tope de ' + tope + (tope === 1 ? ' fila' : ' filas') + ' de esta visualización.';
+  }
+  aviso.textContent = texto;
+  return true;
+}
+
+function limpiarPruebaReporte() {
+  generacionPruebaReporte += 1;
+  botonProbarReporte.disabled = false;
+  vaciar(tablaPruebaReporte);
+  avisoPruebaReporte.textContent = '';
+}
+
+function cargarConexionesPruebaReporte() {
+  var g = generacionPruebaReporte;
+  return llenarConexionesReporte(selectorPruebaReporte, avisoPruebaReporte, function () { return g === generacionPruebaReporte; });
+}
+
+function textoPeriodo(periodo) {
+  if (periodo === null) { return 'Sin período'; }
+  return 'Período: parámetro ' + periodo.parametro + '; días: ' + periodo.dias.map(function (d, i) {
+    return i === 0 ? d + ' (predeterminado)' : String(d);
+  }).join(', ');
+}
+
+function textosClienteReporte(reporte) {
+  var descripcion = typeof reporte.descripcion === 'string' ? reporte.descripcion : '';
+  return 'Título para el cliente: ' + String(reporte.titulo) + '\\n'
+    + (descripcion === '' ? 'Sin descripción para el cliente' : 'Descripción para el cliente: ' + descripcion);
+}
+
+function textoColumnasReporte(columnas) {
+  if (columnas.length === 0) { return 'Sin columnas asignadas'; }
+  return ['Columnas asignadas:'].concat(columnas.map(function (columna, indice) {
+    return etiquetaRol(columna.rol, indice) + ': ' + columna.columna + ', con el título «' + columna.titulo + '»';
+  })).join('\\n');
+}
+
+async function verReporte(id) {
+  var cuerpo = await leerGlobal('/reportes/' + encodeURIComponent(id), avisoReportes);
+  if (cuerpo === null || cuerpo.reporte === null || typeof cuerpo.reporte !== 'object') { return; }
+  var reporte = cuerpo.reporte;
+  var periodo = periodoLeido(reporte.periodo);
+  var columnas = columnasLeidas(reporte.columnas);
+  var entidades = Array.isArray(reporte.entidades) ? reporte.entidades.map(String) : [];
+  document.getElementById('reporte-titulo').textContent = String(reporte.nombre);
+  document.getElementById('reporte-entidades').textContent = 'Entidades: ' + (entidades.length === 0 ? '—' : entidades.join(', '));
+  document.getElementById('reporte-periodo').textContent = textoPeriodo(periodo);
+  document.getElementById('reporte-sql').textContent = String(reporte.sql);
+  document.getElementById('reporte-textos').textContent = textosClienteReporte(reporte);
+  document.getElementById('reporte-visualizacion').textContent = 'Visualización: ' + etiquetaVisualizacion(reporte.visualizacion);
+  document.getElementById('reporte-columnas').textContent = textoColumnasReporte(columnas);
+  // The test block starts empty for this report, with the declared days and the default chosen.
+  reporteAbierto = { id: id, periodo: periodo, columnas: columnas, datos: reporte };
+  limpiarPruebaReporte();
+  cajaPeriodoPruebaReporte.hidden = periodo === null;
+  opcionesDePeriodo(selectorPeriodoPruebaReporte, periodo === null ? [] : periodo.dias);
+  panelReporte.hidden = false;
+  cargarConexionesPruebaReporte();
+}
+
+async function cargarPantallaReportes() {
+  var cuerpo = await leerGlobal('/reportes', avisoReportes);
+  if (cuerpo === null || !Array.isArray(cuerpo.reportes)) { return; }
+  vaciar(cuerpoReportes);
+  cuerpo.reportes.forEach(function (reporte) {
+    var fila = document.createElement('tr');
+    celdaTenant(fila, String(reporte.nombre));
+    celdaTenant(fila, String(reporte.titulo));
+    celdaTenant(fila, etiquetaVisualizacion(reporte.visualizacion));
+    celdaTenant(fila, '').appendChild(botonTenant('Ver', function () { verReporte(String(reporte.id)); }));
+    cuerpoReportes.appendChild(fila);
+  });
+  avisoReportes.textContent = cuerpo.truncado === true
+    ? 'Se muestran solo los primeros ' + cuerpo.reportes.length + ' reportes.'
+    : (cuerpo.reportes.length === 0 ? 'Todavía no hay reportes.' : '');
+}
+
+// The side-panel test: the stored report on the chosen connection, with one of its declared days.
+async function probarReporte() {
+  if (reporteAbierto === null) { return; }
+  if (tenantActivo === null) { avisoPruebaReporte.textContent = AVISO_PRUEBA_REPORTE_SIN_TENANT; return; }
+  if (selectorPruebaReporte.value === '') { avisoPruebaReporte.textContent = 'Elegí una conexión para probar el reporte.'; return; }
+  var pedido = { conexionId: selectorPruebaReporte.value };
+  if (reporteAbierto.periodo !== null && selectorPeriodoPruebaReporte.value !== '') {
+    pedido.dias = Number(selectorPeriodoPruebaReporte.value);
+  }
+  var abierto = reporteAbierto;
+  limpiarPruebaReporte();
+  var g = generacionPruebaReporte;
+  botonProbarReporte.disabled = true;
+  avisoPruebaReporte.textContent = AVISO_PROBANDO;
+  var leido = await leerPrueba('/reportes/' + encodeURIComponent(abierto.id) + '/prueba', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pedido)
+  });
+  if (g !== generacionPruebaReporte) { return; }
+  botonProbarReporte.disabled = false;
+  // null: the banner already says why (tenant refusal), and the block has nothing to add.
+  if (leido === null) { avisoPruebaReporte.textContent = ''; return; }
+  mostrarResultadoReporte({ aviso: avisoPruebaReporte, tabla: tablaPruebaReporte }, leido, abierto.columnas);
+}
+
+document.getElementById('reporte-cerrar').addEventListener('click', function () {
+  panelReporte.hidden = true;
+  reporteAbierto = null;
+  limpiarPruebaReporte();
+});
+botonProbarReporte.addEventListener('click', probarReporte);
+
+// The pop-up, for «Nuevo reporte» and «Editar». «Guardar» opens only for a passing test of the same SQL, period,
+// entities and connection (POST /reportes/prueba, which saves nothing and is sent with no columns: it is what
+// produces them). The name, the client texts, the visualization and the columns do not change what the
+// statement does, so editing them keeps the test.
+var entradaNombreReporte = document.getElementById('reporte-f-nombre');
+var entradaTituloReporte = document.getElementById('reporte-f-titulo');
+var entradaDescripcionReporte = document.getElementById('reporte-f-descripcion');
+var contenedorEntidadesReporte = document.getElementById('reporte-f-entidades');
+var entradaSqlReporte = document.getElementById('reporte-f-sql');
+var selectorPeriodoReporte = document.getElementById('reporte-f-periodo');
+var camposPeriodoReporte = document.getElementById('reporte-f-periodo-campos');
+var entradaParametroReporte = document.getElementById('reporte-f-parametro');
+var entradaDiasReporte = document.getElementById('reporte-f-dias');
+var selectorVisualizacionReporte = document.getElementById('reporte-f-visualizacion');
+var avisoColumnasReporte = document.getElementById('reporte-f-columnas-aviso');
+var contenedorColumnasReporte = document.getElementById('reporte-f-columnas');
+var botonAgregarColumnaReporte = document.getElementById('reporte-f-agregar-columna');
+var selectorConexionReporte = document.getElementById('reporte-f-conexion');
+var cajaPeriodoFormReporte = document.getElementById('reporte-f-prueba-periodo-caja');
+var selectorPeriodoFormReporte = document.getElementById('reporte-f-prueba-periodo');
+var botonProbarFormReporte = document.getElementById('reporte-f-probar');
+var avisoResultadoReporte = document.getElementById('reporte-f-resultado');
+var tablaResultadoReporte = document.getElementById('reporte-f-tabla');
+var estadoDialogoReporte = document.getElementById('reporte-dialogo-estado');
+var botonGuardarReporte = document.getElementById('reporte-dialogo-guardar');
+var tituloDialogoReporte = document.getElementById('reporte-dialogo-titulo');
+var formularioReporte = document.getElementById('reporte-form');
+
+// The id of the report being edited; '' for a new one.
+var reporteEditadoId = '';
+// {huella, ok, columnas} of the last test answer; null before any, and while one is on its way.
+var ultimaPruebaReporte = null;
+// The columns the selects offer: those of the last passing test, kept until the pop-up closes.
+var columnasOfrecidasReporte = [];
+var probandoReporte = false;
+var guardandoReporte = false;
+// The last refusal of a save, shown in the status line until the form changes.
+var rechazoReporte = '';
+var instantaneaReporte = '';
+// Drops an answer (connections, test) that arrives after the pop-up closed, reopened or tested again.
+var generacionFormReporte = 0;
+var casillasEntidadesReporte = [];
+// The column rows, in order: {rol, columna, titulo}. The selects and title inputs are drawn from it.
+var filasColumnasReporte = [];
+
+ENTIDADES_PLANTILLA.forEach(function (entidad) {
+  var rotulo = document.createElement('label');
+  rotulo.className = 'entidad-opcion';
+  var caja = document.createElement('input');
+  caja.type = 'checkbox';
+  var texto = document.createElement('span');
+  texto.textContent = entidad;
+  rotulo.appendChild(caja);
+  rotulo.appendChild(texto);
+  caja.addEventListener('change', alEditarReporte);
+  contenedorEntidadesReporte.appendChild(rotulo);
+  casillasEntidadesReporte.push({ valor: entidad, caja: caja });
+});
+
+function entidadesMarcadasReporte() {
+  return casillasEntidadesReporte.filter(function (casilla) { return casilla.caja.checked; }).map(function (casilla) { return casilla.valor; });
+}
+
+// The period as the form declares it: null without one. Each day goes as a number when it is an integer and as
+// typed otherwise, so the server names the field instead of the console guessing.
+function periodoDelFormulario() {
+  if (selectorPeriodoReporte.value !== 'si') { return null; }
+  var dias = entradaDiasReporte.value.split(',')
+    .map(function (dia) { return dia.trim(); })
+    .filter(function (dia) { return dia !== ''; })
+    .map(function (dia) { var numero = Number(dia); return Number.isInteger(numero) ? numero : dia; });
+  return { parametro: entradaParametroReporte.value.trim(), dias: dias };
+}
+
+// The days the test may choose: the whole positive numbers typed, in order, once each.
+function diasDeLaPruebaReporte() {
+  var periodo = periodoDelFormulario();
+  var dias = [];
+  (periodo === null ? [] : periodo.dias).forEach(function (dia) {
+    if (typeof dia === 'number' && dia >= 1 && dias.indexOf(dia) === -1) { dias.push(dia); }
+  });
+  return dias;
+}
+
+// The period fields show only with a period; the test block's select follows the days typed, keeping the chosen
+// one while it is still declared.
+function reflejarPeriodoReporte() {
+  var conPeriodo = selectorPeriodoReporte.value === 'si';
+  camposPeriodoReporte.hidden = !conPeriodo;
+  cajaPeriodoFormReporte.hidden = !conPeriodo;
+  var previo = selectorPeriodoFormReporte.value;
+  var dias = diasDeLaPruebaReporte();
+  opcionesDePeriodo(selectorPeriodoFormReporte, dias);
+  if (dias.map(String).indexOf(previo) !== -1) { selectorPeriodoFormReporte.value = previo; }
+}
+
+// What a passing test covers: the SQL, the period, the entities and the connection.
+function huellaReporte() {
+  return JSON.stringify([entradaSqlReporte.value, periodoDelFormulario(), entidadesMarcadasReporte(), selectorConexionReporte.value]);
+}
+
+function instantaneaDeFormularioReporte() {
+  return JSON.stringify([entradaNombreReporte.value, entradaTituloReporte.value, entradaDescripcionReporte.value, entidadesMarcadasReporte(),
+    entradaSqlReporte.value, selectorPeriodoReporte.value, entradaParametroReporte.value, entradaDiasReporte.value,
+    selectorVisualizacionReporte.value, filasColumnasReporte]);
+}
+
+// The report as the form holds it, without its columns: the test sends it like this, the save adds them.
+function cuerpoReporte() {
+  return {
+    nombre: entradaNombreReporte.value.trim(),
+    titulo: entradaTituloReporte.value,
+    descripcion: entradaDescripcionReporte.value,
+    sql: entradaSqlReporte.value,
+    entidades: entidadesMarcadasReporte(),
+    visualizacion: selectorVisualizacionReporte.value,
+    periodo: periodoDelFormulario()
+  };
+}
+
+function guardadoReporteHabilitado() {
+  return ultimaPruebaReporte !== null && ultimaPruebaReporte.ok && ultimaPruebaReporte.huella === huellaReporte();
+}
+
+// The reason «Guardar» is closed: no test yet, the report changed since the last test, or the last test failed.
+function motivoGuardadoReporte() {
+  if (guardandoReporte) { return 'Guardando…'; }
+  if (probandoReporte) { return 'Probando el reporte…'; }
+  if (tenantActivo === null) { return AVISO_PRUEBA_REPORTE_SIN_TENANT; }
+  if (ultimaPruebaReporte === null) { return 'Probá el reporte antes de guardarlo.'; }
+  if (ultimaPruebaReporte.huella !== huellaReporte()) { return 'Cambió el reporte desde la última prueba. Probalo de nuevo para poder guardarlo.'; }
+  return 'La última prueba falló. Corregí el reporte y probalo de nuevo para poder guardarlo.';
+}
+
+function actualizarGuardadoReporte() {
+  var cerrado = guardandoReporte || !guardadoReporteHabilitado();
+  botonGuardarReporte.disabled = cerrado;
+  estadoDialogoReporte.textContent = rechazoReporte !== '' ? rechazoReporte : (cerrado ? motivoGuardadoReporte() : '');
+}
+
+function alEditarReporte() {
+  rechazoReporte = '';
+  actualizarGuardadoReporte();
+}
+
+// The rows a visualization takes, keeping those whose role still exists and emptying the rest. A table keeps
+// every columna row, or starts with one.
+function filasParaVisualizacion(visualizacion, previas) {
+  if (visualizacion === 'tabla') {
+    var deTabla = previas.filter(function (fila) { return fila.rol === 'columna'; });
+    return deTabla.length > 0 ? deTabla : [{ rol: 'columna', columna: '', titulo: '' }];
+  }
+  var roles = Object.prototype.hasOwnProperty.call(ROLES_VISUALIZACION, visualizacion) ? ROLES_VISUALIZACION[visualizacion] : [];
+  return roles.map(function (rol) {
+    var previa = previas.filter(function (fila) { return fila.rol === rol; })[0];
+    return previa ? previa : { rol: rol, columna: '', titulo: '' };
+  });
+}
+
+// One row per role: a column select over the last passing test's columns (empty before one) and a title input.
+// A table row also carries «Quitar», disabled on the last row; «Agregar columna» stops at the maximum.
+function dibujarColumnasReporte() {
+  vaciar(contenedorColumnasReporte);
+  var esTabla = selectorVisualizacionReporte.value === 'tabla';
+  var ofrecidas = columnasOfrecidasReporte;
+  filasColumnasReporte.forEach(function (fila, indice) {
+    var etiqueta = etiquetaRol(fila.rol, indice);
+    var caja = document.createElement('div');
+    caja.className = 'columna-reporte';
+    var rotuloColumna = document.createElement('label');
+    var textoColumna = document.createElement('span');
+    textoColumna.textContent = etiqueta;
+    var selector = document.createElement('select');
+    selector.appendChild(opcionDe('', ofrecidas.length === 0 ? 'Sin columnas todavía' : 'Elegí una columna'));
+    ofrecidas.forEach(function (columna) { selector.appendChild(opcionDe(columna, columna)); });
+    selector.value = ofrecidas.indexOf(fila.columna) === -1 ? '' : fila.columna;
+    selector.disabled = ofrecidas.length === 0;
+    selector.addEventListener('change', function () {
+      fila.columna = selector.value;
+      alEditarReporte();
+    });
+    rotuloColumna.appendChild(textoColumna);
+    rotuloColumna.appendChild(selector);
+    var rotuloTitulo = document.createElement('label');
+    var textoTitulo = document.createElement('span');
+    textoTitulo.textContent = 'Título (' + etiqueta + ')';
+    var entrada = document.createElement('input');
+    entrada.type = 'text';
+    entrada.maxLength = 40;
+    entrada.value = fila.titulo;
+    entrada.addEventListener('input', function () {
+      fila.titulo = entrada.value;
+      alEditarReporte();
+    });
+    rotuloTitulo.appendChild(textoTitulo);
+    rotuloTitulo.appendChild(entrada);
+    caja.appendChild(rotuloColumna);
+    caja.appendChild(rotuloTitulo);
+    if (esTabla) {
+      var quitar = botonTenant('Quitar', function () {
+        if (filasColumnasReporte.length <= 1) { return; }
+        filasColumnasReporte.splice(indice, 1);
+        dibujarColumnasReporte();
+        alEditarReporte();
+      });
+      quitar.disabled = filasColumnasReporte.length <= 1;
+      caja.appendChild(quitar);
+    }
+    contenedorColumnasReporte.appendChild(caja);
+  });
+  botonAgregarColumnaReporte.hidden = !esTabla;
+  botonAgregarColumnaReporte.disabled = filasColumnasReporte.length >= MAXIMO_COLUMNAS_REPORTE;
+  avisoColumnasReporte.textContent = ofrecidas.length === 0 ? AVISO_ELEGIR_COLUMNAS : '';
+}
+
+function cargarConexionesReporte() {
+  var g = generacionFormReporte;
+  return llenarConexionesReporte(selectorConexionReporte, avisoResultadoReporte, function () { return g === generacionFormReporte; });
+}
+
+// Back to a blank state: used when the pop-up closes (also at a tenant switch) and before it fills.
+function reiniciarDialogoReporte() {
+  generacionFormReporte += 1;
+  ultimaPruebaReporte = null;
+  columnasOfrecidasReporte = [];
+  probandoReporte = false;
+  botonProbarFormReporte.disabled = false;
+  rechazoReporte = '';
+  vaciar(tablaResultadoReporte);
+  avisoResultadoReporte.textContent = '';
+}
+
+// Fills the form: blank for a new report, the stored one for an edit.
+function llenarFormularioReporte(reporte) {
+  var cargado = reporte !== null && reporte !== undefined;
+  tituloDialogoReporte.textContent = cargado ? 'Editar reporte' : 'Nuevo reporte';
+  entradaNombreReporte.value = cargado ? String(reporte.nombre) : '';
+  entradaTituloReporte.value = cargado ? String(reporte.titulo) : '';
+  entradaDescripcionReporte.value = cargado && typeof reporte.descripcion === 'string' ? reporte.descripcion : '';
+  var marcadas = cargado && Array.isArray(reporte.entidades) ? reporte.entidades.map(String) : [];
+  casillasEntidadesReporte.forEach(function (casilla) { casilla.caja.checked = marcadas.indexOf(casilla.valor) !== -1; });
+  entradaSqlReporte.value = cargado ? String(reporte.sql) : '';
+  var periodo = cargado ? periodoLeido(reporte.periodo) : null;
+  selectorPeriodoReporte.value = periodo === null ? 'no' : 'si';
+  entradaParametroReporte.value = periodo === null ? PARAMETRO_INICIAL : periodo.parametro;
+  entradaDiasReporte.value = periodo === null ? '' : periodo.dias.join(', ');
+  selectorVisualizacionReporte.value = cargado ? String(reporte.visualizacion) : VISUALIZACION_INICIAL;
+  filasColumnasReporte = filasParaVisualizacion(selectorVisualizacionReporte.value, cargado ? columnasLeidas(reporte.columnas) : []);
+  reflejarPeriodoReporte();
+  dibujarColumnasReporte();
+}
+
+var dialogoReporte = crearDialogo({
+  fondo: document.getElementById('reporte-dialogo'),
+  primerCampo: entradaNombreReporte,
+  cancelar: document.getElementById('reporte-dialogo-cancelar'),
+  confirmar: document.getElementById('reporte-confirmar'),
+  descartar: document.getElementById('reporte-descartar'),
+  seguir: document.getElementById('reporte-seguir'),
+  hayCambios: function () { return instantaneaDeFormularioReporte() !== instantaneaReporte; },
+  alCerrar: reiniciarDialogoReporte
+});
+
+function abrirDialogoReporte(reporte) {
+  reiniciarDialogoReporte();
+  reporteEditadoId = reporte ? String(reporte.id) : '';
+  llenarFormularioReporte(reporte);
+  instantaneaReporte = instantaneaDeFormularioReporte();
+  actualizarGuardadoReporte();
+  dialogoReporte.abrir();
+  cargarConexionesReporte();
+}
+
+// The pop-up test: every column of the result, so P1 can choose. A passing one fills the column selects; an
+// assigned column the result no longer has goes back to empty.
+async function probarEnDialogoReporte() {
+  if (tenantActivo === null) { avisoResultadoReporte.textContent = AVISO_PRUEBA_REPORTE_SIN_TENANT; return; }
+  if (selectorConexionReporte.value === '') { avisoResultadoReporte.textContent = 'Elegí una conexión para probar el reporte.'; return; }
+  vaciar(tablaResultadoReporte);
+  generacionFormReporte += 1;
+  var g = generacionFormReporte;
+  var huella = huellaReporte();
+  ultimaPruebaReporte = null;
+  probandoReporte = true;
+  rechazoReporte = '';
+  botonProbarFormReporte.disabled = true;
+  avisoResultadoReporte.textContent = AVISO_PROBANDO;
+  actualizarGuardadoReporte();
+  var cuerpo = cuerpoReporte();
+  cuerpo.conexionId = selectorConexionReporte.value;
+  if (cuerpo.periodo !== null && selectorPeriodoFormReporte.value !== '') { cuerpo.dias = Number(selectorPeriodoFormReporte.value); }
+  var leido = await leerPrueba('/reportes/prueba', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo)
+  });
+  if (g !== generacionFormReporte) { return; }
+  probandoReporte = false;
+  botonProbarFormReporte.disabled = false;
+  // null: the banner already says why (tenant refusal), and the block has nothing to add.
+  if (leido === null) { avisoResultadoReporte.textContent = ''; actualizarGuardadoReporte(); return; }
+  var ok = mostrarResultadoReporte({ aviso: avisoResultadoReporte, tabla: tablaResultadoReporte }, leido, null);
+  var columnas = ok && Array.isArray(leido.cuerpo.columnas) ? leido.cuerpo.columnas.map(String) : [];
+  ultimaPruebaReporte = { huella: huella, ok: ok, columnas: columnas };
+  if (ok) {
+    columnasOfrecidasReporte = columnas;
+    filasColumnasReporte.forEach(function (fila) { if (columnas.indexOf(fila.columna) === -1) { fila.columna = ''; } });
+    dibujarColumnasReporte();
+  }
+  actualizarGuardadoReporte();
+}
+
+// «Guardar»: POST for a new report, PUT for an edit, with the assigned columns and those of the last passing test.
+// guardandoReporte keeps a second press from saving twice. A refusal is written in the pop-up, which stays open; a
+// success closes it, reloads the list and opens the saved report in the side panel.
+formularioReporte.addEventListener('submit', async function (evento) {
+  evento.preventDefault();
+  if (guardandoReporte || !guardadoReporteHabilitado()) { return; }
+  var cuerpoGuardado = cuerpoReporte();
+  cuerpoGuardado.columnas = filasColumnasReporte.map(function (fila) { return { rol: fila.rol, columna: fila.columna, titulo: fila.titulo }; });
+  cuerpoGuardado.columnasPrueba = ultimaPruebaReporte.columnas;
+  var editando = reporteEditadoId !== '';
+  var g = generacionFormReporte;
+  guardandoReporte = true;
+  rechazoReporte = '';
+  actualizarGuardadoReporte();
+  var resultado = editando
+    ? await enviarGlobal('/reportes/' + encodeURIComponent(reporteEditadoId), 'PUT', cuerpoGuardado)
+    : await enviarGlobal('/reportes', 'POST', cuerpoGuardado);
+  guardandoReporte = false;
+  var cuerpo = resultado.cuerpo;
+  var guardado = !resultado.red && resultado.status === (editando ? 200 : 201) && cuerpo !== null && typeof cuerpo === 'object'
+    && cuerpo.reporte !== null && typeof cuerpo.reporte === 'object';
+  // The pop-up closed meanwhile (a tenant switch): it was saved all the same, so only the list is refreshed.
+  if (g !== generacionFormReporte) {
+    if (guardado) { cargarPantallaReportes(); }
+    return;
+  }
+  if (guardado) {
+    var idGuardado = String(cuerpo.reporte.id);
+    dialogoReporte.cerrar();
+    await cargarPantallaReportes();
+    await verReporte(idGuardado);
+    return;
+  }
+  if (resultado.red) {
+    rechazoReporte = 'No se pudo contactar con la aplicación.';
+  } else if (resultado.status === 400 && cuerpo !== null && typeof cuerpo === 'object') {
+    rechazoReporte = mensajeDeRechazoReporte(cuerpo);
+  } else if (resultado.status === 404 && editando) {
+    rechazoReporte = 'El reporte ya no existe en el catálogo.';
+  } else {
+    rechazoReporte = 'No se pudo guardar el reporte (HTTP ' + resultado.status + ').';
+  }
+  actualizarGuardadoReporte();
+});
+
+document.getElementById('reporte-nuevo').addEventListener('click', function () { abrirDialogoReporte(null); });
+document.getElementById('reporte-editar').addEventListener('click', function () {
+  if (reporteAbierto !== null) { abrirDialogoReporte(reporteAbierto.datos); }
+});
+botonProbarFormReporte.addEventListener('click', probarEnDialogoReporte);
+botonAgregarColumnaReporte.addEventListener('click', function () {
+  if (filasColumnasReporte.length >= MAXIMO_COLUMNAS_REPORTE) { return; }
+  filasColumnasReporte.push({ rol: 'columna', columna: '', titulo: '' });
+  dibujarColumnasReporte();
+  alEditarReporte();
+});
+selectorVisualizacionReporte.addEventListener('change', function () {
+  filasColumnasReporte = filasParaVisualizacion(selectorVisualizacionReporte.value, filasColumnasReporte);
+  dibujarColumnasReporte();
+  alEditarReporte();
+});
+[selectorPeriodoReporte, entradaDiasReporte].forEach(function (control) {
+  control.addEventListener(control === selectorPeriodoReporte ? 'change' : 'input', function () {
+    reflejarPeriodoReporte();
+    alEditarReporte();
+  });
+});
+[entradaNombreReporte, entradaTituloReporte, entradaDescripcionReporte, entradaSqlReporte, entradaParametroReporte].forEach(function (control) {
+  control.addEventListener('input', alEditarReporte);
+});
+selectorConexionReporte.addEventListener('change', alEditarReporte);
+
 // ---- CH-30d (DEC-21, screen C-04): Contrato -----------------------------------------------
 
 var avisoContrato = document.getElementById('contrato-aviso');
@@ -5962,7 +6801,9 @@ var ORIGENES_AUDITORIA = {
   'validacion-mapeo': 'Validación de mapeo',
   'conexion-prueba': 'Prueba de conexión',
   // CH-42 (DEC-195): the message preview; its Consulta cell names the template, like a template test.
-  'automatizacion-vista-previa': 'Vista previa de automatización'
+  'automatizacion-vista-previa': 'Vista previa de automatización',
+  // CH-45 (DEC-198): a report test; its Consulta cell names the report when it was a stored one.
+  'reporte-prueba': 'Prueba de reporte'
 };
 var cuerpoAuditoria = document.getElementById('auditoria-cuerpo');
 var avisoAuditoria = document.getElementById('auditoria-aviso');
@@ -6013,7 +6854,8 @@ function filaAuditoria(registro, nombres) {
   celdaTenant(fila, Object.prototype.hasOwnProperty.call(nombres, idConexion) ? nombres[idConexion] : idConexion.slice(0, 8));
   celdaTenant(fila, registro.consultaNombre
     ? String(registro.consultaNombre) + ' v' + String(registro.consultaVersion)
-    : (registro.plantillaId ? 'Plantilla ' + String(registro.plantillaId) : 'Ad hoc'));
+    : (registro.plantillaId ? 'Plantilla ' + String(registro.plantillaId)
+      : (registro.reporteId ? 'Reporte ' + String(registro.reporteId) : 'Ad hoc')));
   var sql = String(registro.sql);
   var detalle = document.createElement('details');
   var resumen = document.createElement('summary');
@@ -6199,7 +7041,7 @@ async function cargarPantallaTiempos() {
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'plantillas', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
+var PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -6212,6 +7054,7 @@ function mostrarPantalla() {
   // CH-30b: a screen that reads its own data loads it when it is shown.
   if (activa === 'tenants') { cargarTenantsPantalla(); }
   if (activa === 'plantillas') { cargarPantallaPlantillas(); }
+  if (activa === 'reportes') { cargarPantallaReportes(); }
   if (activa === 'contrato') { cargarPantallaContrato(); }
   if (activa === 'conexiones') { cargarPantallaConexiones(); }
   if (activa === 'agentes') { cargarPantallaAgentes(); }

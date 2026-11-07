@@ -20,6 +20,7 @@ Leyenda de estado: **EXISTE** = hay interfaz hoy (rediseñar manteniendo comport
 │ ◎ GLOBAL              │  Título · descripción             [acción primaria]  │
 │   Tenants        API  │──────────────────────────────────────────────────────│
 │   Plantillas     API  │ CONTENIDO                                            │
+│   Reportes            │                                                      │
 │   Contrato       API  │                                                      │
 │ ───────────────────── │                                                      │
 │ ▣ TENANT ACTIVO       │                                                      │
@@ -38,7 +39,7 @@ Leyenda de estado: **EXISTE** = hay interfaz hoy (rediseñar manteniendo comport
 ```
 
 **Global vs. tenant activo**
-- Global (no dependen del selector): Tenants, Plantillas, Contrato canónico. Encabezado con `ScopeTag scope="global"`: borde punteado + globo.
+- Global (no dependen del selector): Tenants, Plantillas, Reportes (CH-45), Contrato canónico. Encabezado con `ScopeTag scope="global"`: borde punteado + globo.
 - Del tenant activo: todo lo demás. Encabezado con `ScopeTag scope="tenant"`: borde sólido + edificio + nombre. En la navegación, el bloque del tenant lleva su nombre arriba.
 - El violeta queda solo en la barra de tenant. La distinción global/tenant se hace con borde e ícono, no con color.
 
@@ -52,7 +53,7 @@ Leyenda de estado: **EXISTE** = hay interfaz hoy (rediseñar manteniendo comport
 | Tenant activo | Violeta | Normales | Normales |
 | Tenant dado de baja | Violeta + chip "Dado de baja · congelado" | Banner neutro (ícono archivo): "X está dado de baja desde el dd/mm. La baja congela todo…"; **todas las acciones que crean, ejecutan o modifican quedan deshabilitadas**; lectura e historial disponibles | Normales |
 
-**Rutas del mockup** (hash; los nombres reales los decide el change): `#tenants`, `#plantillas`, `#contrato`, `#conexiones`, `#conexiones/agentes`, `#mapeo`, `#tiempos`, `#consultas`, `#automatizaciones`, `#automatizaciones/alta`, `#automatizaciones/{id}`, `#frescura`, `#auditoria`.
+**Rutas del mockup** (hash; los nombres reales los decide el change): `#tenants`, `#plantillas`, `#reportes`, `#contrato`, `#conexiones`, `#conexiones/agentes`, `#mapeo`, `#tiempos`, `#consultas`, `#automatizaciones`, `#automatizaciones/alta`, `#automatizaciones/{id}`, `#frescura`, `#auditoria`.
 
 **Reglas del esqueleto**
 - `<body class="zd-root" data-surface="consola">`. Barra de tenant → `.zd-shell` (navegación + `main.zd-page`).
@@ -161,6 +162,23 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 ### C-12 Auditoría — A5 · sin change · PENDIENTE
 - **Datos**: `fecha_hora` · `tenant` · `conexion` · `consulta` (nombre o "ad hoc") · `sql_resumen` (mono, truncado) · `filas` · `duracion` · `resultado` (OK / rechazada / timeout) · `operador` (columna reservada: "—" hasta que exista identidad).
 - Solo lectura, filtros por fecha y resultado.
+- **Prueba de reporte (CH-45)**: origen «Prueba de reporte»; la celda Consulta dice «Reporte <id>» con un reporte guardado y «Ad hoc» sin él.
+
+### C-13 Reportes — R1h · CH-45 · EXISTE
+- **Datos**: `id` · `nombre` (para P1) · `titulo` y `descripcion` (para el cliente) · `entidades` · `sql` · `periodo` (`parametro` + `dias`, el primero es el predeterminado, o ninguno) · `visualizacion` (número / tabla / barras / línea) · `columnas` (rol, columna del resultado y título, en orden).
+- Global, en «Global» después de Plantillas (`#reportes`). Misma composición que C-03: tabla («Nombre», «Título para el cliente», «Visualización», «Ver»), panel lateral y un pop-up para crear y editar (DEC-173, DEC-198). Lista cortada: «Se muestran solo los primeros N reportes».
+- **Visualización** siempre en palabras: «Número», «Tabla», «Barras», «Línea». Roles: número = «Valor»; barras y línea = «Etiqueta» y «Valor»; tabla = «Columna 1» a «Columna 10».
+- **Panel lateral**: entidades, período («parámetro desde; días: 30 (predeterminado), 7» o «Sin período»), SQL (mono), títulos para el cliente, visualización y columnas asignadas con su rol y título. Acción «Editar». No hay borrado ni duplicado (DEC-68).
+  - **«Probar en el tenant activo»**: conexión del tenant, select de período («Últimos N días», arranca en el predeterminado; no aparece sin período) y «Probar». Resultado pegado al botón, como texto:
+    - `ok`: tabla con **solo las columnas asignadas**, encabezadas por su título y en su orden; debajo, filas, la fecha usada («Desde el 30/10/2026») y, con `corte`, que se cortó en el tope de la visualización.
+    - `ok` con `faltantes`: qué columnas no trae el resultado; sin tabla.
+    - fallo, `409 vista-canonica-no-aprobada` (nombra las entidades y apunta a Mapeo y validación), `400`, `404` y credencial: un mensaje legible.
+    - Sin tenant: «Elegí un tenant para probar el reporte.» y no se envía nada. Otro reporte, cerrar el panel o cambiar de tenant limpian el resultado.
+- **Pop-up** («Nuevo reporte» en el encabezado, «Editar» en el panel): nombre (80) · título para el cliente (80) y descripción (200), con su tope visible · entidades (una casilla por entidad del contrato) · SQL (mono) · período: select «Sin período» / «Con período»; con período, «Nombre del parámetro» (`desde`) y «Días» (lista separada por comas, «30, 7») · visualización (select) · columnas: una fila por rol con un select de columna y un campo de título (40); en tabla, «Agregar columna» hasta 10 y «Quitar» hasta dejar 1 · bloque «Probar antes de guardar» (conexión, período sobre los días escritos, «Probar»; tabla con **todas** las columnas).
+  - Los selects de columna se llenan con las columnas de la última prueba exitosa; antes, vacíos y la ayuda «Probá el reporte para elegir sus columnas». Cambiar de visualización conserva las filas cuyo rol sigue existiendo.
+  - **Guardar** solo tras una prueba `ok` con la misma huella: SQL, período, entidades y conexión. Nombre, textos, visualización y columnas no la invalidan. Cerrado, dice por qué: sin prueba, la última falló o cambió desde la última prueba.
+  - Guarda con `columnasPrueba` (las columnas de esa prueba). Un `400` dice «Revisá estos campos» con los términos del glosario y las columnas que faltan. Éxito: cierra, recarga la lista y abre el panel del reporte guardado.
+  - Cancelar y Escape preguntan antes de descartar; cambiar de tenant lo cierra.
 
 ---
 
@@ -191,6 +209,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-39 | C-03 Plantillas: texto del mensaje (encabezado y línea por fila) | EXISTE |
 | CH-40 | C-09 Automatizaciones: mínimo de filas en el alta y en el ajuste · C-10 Ejecuciones: «No enviada: menos filas que el mínimo» | EXISTE |
 | CH-44 | C-09 Automatizaciones: canal en el alta, el ajuste y la vista previa · C-10 Ejecuciones: textos por canal de cada ejecución | EXISTE |
+| CH-45 | C-13 Reportes: catálogo, panel con prueba y pop-up de alta y edición · C-12 Auditoría: «Prueba de reporte» | EXISTE |
 
 ---
 
