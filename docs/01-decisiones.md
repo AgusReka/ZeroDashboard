@@ -4153,6 +4153,71 @@ Mensaje sin textos de plantilla:
 
 ---
 
+### DEC-198 — CH-45: el período son días que declara P1, las columnas se asignan por rol con un título y el tope de filas depende del tipo de visualización
+
+**Contexto.**
+- DEC-183 fija que P2 solo elige un período declarado por P1, que cada tipo de visualización fija las columnas que espera, que el panel recibe solo esas columnas y que el tope de filas está en el código. No dice cómo se declaran.
+- El vocabulario de parámetros tiene `fecha`, pero todo parámetro declarado es obligatorio y no hay fecha relativa (DEC-50).
+- Los nombres de columna salen del SQL y pueden ser técnicos, y R3h no admite términos técnicos en el panel.
+- El tope actual, `maxFilasPorConsulta`, es global y vale 200 por defecto.
+
+Quedan tres puntos que DEC-183 no resuelve.
+
+**Opciones.**
+
+Período:
+- (a) Un parámetro de fecha, con el nombre que elija P1, más la lista de días que P1 permite en cada reporte. El servidor calcula la fecha.
+- (b) Igual, con una lista cerrada de días en el código, común a todos los reportes.
+- (c) Dos parámetros de fecha, `desde` y `hasta`, de libre elección.
+
+Columnas esperadas:
+- (a) P1 asigna cada rol del tipo a una columna del resultado y le da un título para el cliente.
+- (b) Alias fijos en el SQL (`AS etiqueta`, `AS valor`), y una lista declarada solo para la tabla.
+
+Tope de filas:
+- (a) Una constante por tipo en el código.
+- (b) Un único tope de 200 para todos los tipos.
+
+**Decisión.** (a) en los tres puntos.
+- **Período (a).** Coincide con «los períodos que P1 declaró» (R4h), y lo que llega es un valor validado, nunca SQL. (b) impide que un reporte mensual ofrezca un año. (c) es en la práctica un filtro libre, que DEC-183 excluye.
+- **Columnas (a).** Una sola regla sirve para los cuatro tipos y para la regla 5, y da los títulos que R3h necesita. (b) no pide formulario, pero deja a P2 sin títulos de ejes y de columnas, y la tabla queda como caso aparte.
+- **Tope (a).** Un gráfico de barras con 200 barras no se puede leer, y un número usa una sola fila.
+
+**Forma.**
+- **Período.**
+  - Un reporte declara cero o un parámetro, y solo de tipo `fecha`. Con otro tipo o con más de uno, no se guarda.
+  - Con parámetro, lleva una lista no vacía de enteros positivos y distintos. Sin parámetro, no lleva lista. El primer valor es el predeterminado.
+  - La fecha es el día actual en la zona de DEC-77 menos los días elegidos. La calcula el servidor y llega a la consulta como parámetro del driver (regla 4).
+  - La prueba de la consola también elige uno de los días declarados, no una fecha libre, para que P1 vea lo mismo que va a ver el cliente.
+- **Roles.**
+  - Número: `valor`.
+  - Barras y línea: `etiqueta` y `valor`.
+  - Tabla: una lista ordenada de columnas, con al menos una.
+  - Cada columna asignada lleva su título, que pasa por el glosario del panel.
+- **Tope.**
+  - Número 1, barras 20, tabla 50 y línea 100.
+  - Si `maxFilasPorConsulta` es menor, rige el menor.
+  - Cuando el tope corta el resultado, se avisa con `corte`.
+
+**Criterios que siguen un precedente.** Los propuso el agente en la exploración y el usuario no los objetó.
+- **Ciclo de vida.** El reporte se reemplaza en el lugar por id y no se borra, como la plantilla (DEC-68). Qué pasa con un reporte que ya está en un tablero se decide en CH-46, donde esa relación empieza a existir.
+- **Auditoría.** La prueba registra el origen `reporte-prueba` y una columna nueva `RegistroEjecucion.reporteId`, nullable y sin clave foránea, como `plantillaId`.
+- **Guardado.** El cuerpo trae las columnas de la última prueba (`columnasPrueba`, CH-39) y las asignadas se comprueban contra ellas: un reporte global no tiene conexión con la que comprobarlas en el servidor. Cada ejecución las vuelve a comprobar, porque un reporte puede romperse para un solo tenant, y si falta una columna se ve el estado de error del reporte (DEC-184).
+
+**Alcance que no cambia.** El tablero por tenant (CH-46), la copia de Chart.js (CH-47) y la pantalla del panel (CH-48). La prueba de la consola muestra el resultado como tabla.
+
+**Se resigna.**
+- **Un formulario más largo en la consola**, por la asignación de columnas y sus títulos.
+- **Reportes diarios largos:** con datos diarios, una línea de más de 100 días queda cortada.
+- **Una comprobación de columnas que confía en la consola:** al guardar, el servidor no ejecuta nada y usa las columnas que le envían. El error real aparece al ejecutar, y P1 es de confianza.
+- **Filtrar lo que lee un reporte:** como en las plantillas, sin analizador de SQL (DEC-09) nada impide nombrar una tabla real de la réplica. Queda como límite del artefacto: P1 escribe el SQL y al panel solo llegan las columnas asignadas.
+
+**Decidido por:** el usuario, 2026-11-05, en la exploración de CH-45: eligió las tres opciones recomendadas. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
