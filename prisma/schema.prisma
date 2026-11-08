@@ -36,6 +36,7 @@ model Tenant {
   sesionesPanel                  SesionPanel[]
   vinculoTelegram                VinculoTelegram?
   codigoVinculoTelegram          CodigoVinculoTelegram?
+  tablero                        Tablero?
 }
 
 model Conexion {
@@ -57,6 +58,7 @@ model Conexion {
   // CH-19b (DEC-121): optional, set only at registration after a tenant-scoped check.
   agenteId         String?
   agente           Agente?          @relation(fields: [agenteId], references: [id], onDelete: Restrict)
+  tableros         Tablero[]
 
   @@index([tenantId])
 }
@@ -193,6 +195,19 @@ model Reporte {
   visualizacion String
   columnas      Json
   periodo       Json?
+}
+
+// CH-46 (DEC-199): one dashboard per tenant (`tenantId` unique). `reportes` holds report ids
+// in display order, at most 8, checked in code; no foreign key, because reports are never
+// deleted (DEC-68) and the save checks each id. Scoped like `VinculoTelegram`. It holds no
+// returned row (DEC-93). Both relations RESTRICT deletes.
+model Tablero {
+  id         String   @id @default(uuid())
+  tenantId   String   @unique
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conexionId String
+  conexion   Conexion @relation(fields: [conexionId], references: [id], onDelete: Restrict)
+  reportes   String[]
 }
 
 // CH-13 (DEC-74): an automation is a tenant's instance of a global `Plantilla`, bound to

@@ -266,6 +266,10 @@ const IDS = [
   'reporte-visualizacion',
   'reporte-columnas',
   'reporte-editar',
+  // CH-46 (DEC-199): the in-use notice and «Duplicar y editar», in the panel and in the pop-up after a 409.
+  'reporte-en-uso-aviso',
+  'reporte-duplicar',
+  'reporte-dialogo-duplicar',
   'reporte-cerrar',
   'reporte-prueba-conexion',
   'reporte-prueba-periodo-caja',
@@ -301,6 +305,18 @@ const IDS = [
   'reporte-seguir',
   'reporte-dialogo-guardar',
   'reporte-dialogo-cancelar',
+  // CH-46 (DEC-199, C-14): the Tablero del cliente screen.
+  'pantalla-tablero',
+  'nav-tablero',
+  'tablero-guardar',
+  'tablero-aviso',
+  'tablero-conexion',
+  'tablero-conexion-aviso',
+  'tablero-lista-aviso',
+  'tablero-lista',
+  'tablero-agregar-reporte',
+  'tablero-agregar',
+  'tablero-tope',
   'pantalla-contrato',
   'nav-contrato',
   'contrato-aviso',
@@ -503,7 +519,8 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
 const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar', 'auto-canal-ayuda', 'aj-canal-ayuda',
-  'pantalla-reportes', 'reporte-panel', 'reporte-prueba-periodo-caja', 'reporte-dialogo', 'reporte-confirmar', 'reporte-f-periodo-campos', 'reporte-f-agregar-columna', 'reporte-f-prueba-periodo-caja'];
+  'pantalla-reportes', 'reporte-panel', 'reporte-prueba-periodo-caja', 'reporte-dialogo', 'reporte-confirmar', 'reporte-f-periodo-campos', 'reporte-f-agregar-columna', 'reporte-f-prueba-periodo-caja',
+  'reporte-en-uso-aviso', 'reporte-editar', 'reporte-duplicar', 'reporte-dialogo-duplicar', 'pantalla-tablero'];
 
 /**
  * CH-21a G1: the ids the markup must keep for the script, each exactly once. `IDS` plus
@@ -795,7 +812,8 @@ describe('the console document, served by the real route', () => {
       // CH-21c: auto-conexion is a select from PR2b; auto-plantilla is the card picker's div from PR2c;
       // auto-frecuencia is a select from PR3; conexion is one from CH-32a (DEC-172).
       const nodo = new Nodo(['tenant', 'auto-conexion', 'auto-frecuencia', 'cx-via', 'mapeo-conexion', 'conexion', 'plantilla-prueba-conexion', 'plantilla-f-automatizacion', 'plantilla-f-formato', 'plantilla-f-conexion',
-        'reporte-prueba-conexion', 'reporte-prueba-periodo', 'reporte-f-periodo', 'reporte-f-visualizacion', 'reporte-f-conexion', 'reporte-f-prueba-periodo'].includes(id) ? 'select' : 'div');
+        'reporte-prueba-conexion', 'reporte-prueba-periodo', 'reporte-f-periodo', 'reporte-f-visualizacion', 'reporte-f-conexion', 'reporte-f-prueba-periodo',
+        'tablero-conexion', 'tablero-agregar-reporte'].includes(id) ? 'select' : 'div');
       nodo.id = id;
       nodo.hidden = IDS_OCULTOS.includes(id);
       nodos.set(id, nodo);
@@ -3956,7 +3974,7 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-30a (DEC-164, DEC-165): the shell, one screen at a time by hash ------------------
 
-  const PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'] as const;
+  const PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tablero', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'] as const;
 
   /** Changes the hash and fires the window's `hashchange` listeners, like a browser does. */
   function irA(escenario: Escenario, hash: string): void {
@@ -5580,6 +5598,8 @@ describe('the console document, served by the real route', () => {
   const REPORTE_CH45 = {
     ...REPORTE_LISTADO,
     descripcion: 'Las unidades vendidas por producto.',
+    // CH-46: a free report, so the panel offers «Editar».
+    enUso: false,
     sql: 'SELECT producto, unidades FROM v_item_pedido WHERE fecha >= :desde',
     entidades: ['pedido', 'item_pedido'],
     periodo: { parametro: 'desde', dias: [30, 7] },
@@ -6174,6 +6194,358 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true);
     assert.equal(nodo(escenario, 'reporte-f-tabla').hijos.length, 0);
     assert.equal(escenario.peticiones.filter((p) => p.url === '/reportes' && p.cuerpo !== null).length, 0);
+  });
+
+  // ---- CH-46 (DEC-199, screen C-14): the Tablero del cliente screen, and Reportes in use -------------------------
+
+  const CONEXIONES_CH46 = [{ id: 'c-1', nombre: 'food-store' }, { id: 'c-2', nombre: 'otra' }];
+  const VENTAS_CH46 = { id: 'r-1', nombre: 'Ventas', titulo: 'Ventas del mes', visualizacion: 'barras' };
+  const STOCK_CH46 = { id: 'r-2', nombre: 'Stock', titulo: 'Stock actual', visualizacion: 'tabla' };
+  const CLIENTES_CH46 = { id: 'r-3', nombre: 'Clientes', titulo: 'Clientes nuevos', visualizacion: 'numero' };
+  const entradaCH46 = (reporte: Record<string, unknown>, pendientes: string[] = []): Record<string, unknown> => ({ ...reporte, pendientes });
+  const TABLERO_CH46 = { conexionId: 'c-1', reportes: [entradaCH46(VENTAS_CH46), entradaCH46(STOCK_CH46)] };
+
+  /** What showing the screen reads, in request order: the dashboard, the tenant's connections, the catalog. */
+  function respuestasTableroCH46(
+    tablero: unknown = TABLERO_CH46,
+    catalogo: unknown[] = [VENTAS_CH46, STOCK_CH46, CLIENTES_CH46],
+    conexiones: unknown[] = CONEXIONES_CH46,
+  ): Array<{ status: number; cuerpo: unknown }> {
+    return [
+      { status: 200, cuerpo: tablero },
+      { status: 200, cuerpo: { conexiones, truncado: false } },
+      { status: 200, cuerpo: { reportes: catalogo, truncado: false } },
+    ];
+  }
+
+  /** Selects the tenant, then shows Tablero del cliente with `respuestas` queued as its three reads. */
+  async function abrirTableroCH46(respuestas = respuestasTableroCH46()): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otro' }]);
+    await elegirTenant(escenario);
+    escenario.respuestas.push(...respuestas);
+    irA(escenario, '#tablero');
+    await asentarVarias();
+    return escenario;
+  }
+
+  /** Each row as [position, title, name and visualization, pending line or ''], all as text. */
+  function filasTableroCH46(escenario: Escenario): string[][] {
+    return nodo(escenario, 'tablero-lista').hijos.map((fila) => {
+      const datos = fila.hijos[1].hijos.map((n) => n.textContent);
+      return [fila.hijos[0].textContent, datos[0], datos[1], datos[2] ?? ''];
+    });
+  }
+
+  function botonFilaCH46(escenario: Escenario, fila: number, texto: string): Nodo {
+    return botonesCon(nodo(escenario, 'tablero-lista').hijos[fila], texto)[0];
+  }
+
+  const guardarTableroAbierto = (escenario: Escenario): boolean => !nodo(escenario, 'tablero-guardar').disabled;
+
+  async function guardarTableroCH46(escenario: Escenario, respuesta: { status: number; cuerpo: unknown; falla?: boolean }): Promise<void> {
+    escenario.respuestas.push(respuesta);
+    nodo(escenario, 'tablero-guardar').disparar('click');
+    await asentarVarias();
+  }
+
+  test('CH-46 Tablero del cliente follows Usuarios del panel in Puesta en marcha, and starts hidden with Guardar closed', () => {
+    const html = marcado();
+    const en = (id: string): number => html.indexOf(`id="${id}"`);
+    assert.ok(en('nav-usuarios') < en('nav-tablero'));
+    assert.ok(en('nav-tablero') < en('nav-tiempos'));
+    assert.match(html, /<a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente<\/span><\/a>/);
+    assert.match(html, /<section id="pantalla-tablero"[^>]*data-change="CH-46"[^>]*hidden>/);
+    const seccion = html.slice(en('pantalla-tablero'), html.indexOf('</section>', en('pantalla-tablero')));
+    assert.match(seccion, /<span class="zd-scope zd-scope--tenant">/);
+    assert.match(seccion, /<button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar<\/button>/);
+    assert.ok(en('tablero-guardar') < en('tablero-aviso'), 'the primary action is in the header');
+    assert.ok(en('tablero-conexion') < en('tablero-lista') && en('tablero-lista') < en('tablero-agregar-reporte'));
+    assert.match(seccion, /<label for="tablero-agregar-reporte" class="zd-label">Agregar reporte<\/label>/);
+    for (const boton of seccion.match(/<button[^>]*>/g) ?? []) {
+      assert.match(boton, /type="button"/, boton);
+    }
+  });
+
+  test('CH-46 the hash shows only Tablero del cliente and marks its link current', async () => {
+    soloVisible(await arrancar(undefined, undefined, '#tablero'), 'tablero');
+  });
+
+  test('CH-46 with no tenant the screen asks for one and sends nothing', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    irA(escenario, '#tablero');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'tablero-aviso').textContent, 'Elegí un tenant para armar su tablero.');
+    assert.equal(nodo(escenario, 'tablero-lista').hijos.length, 0);
+    assert.equal(guardarTableroAbierto(escenario), false);
+    assert.equal(nodo(escenario, 'tablero-agregar').disabled, true);
+  });
+
+  test('CH-46 showing the screen reads the dashboard, the connections and the catalog, and lists the reports in order', async () => {
+    const escenario = await abrirTableroCH46();
+    const pedidos = escenario.peticiones.slice(-3).map((p) => [p.url, p.tenant]);
+    assert.deepEqual(pedidos, [['/tablero', 't-1'], ['/conexiones', 't-1'], ['/reportes', null]]);
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/tablero').length, 1, 'one GET /tablero');
+    assert.deepEqual(filasTableroCH46(escenario), [
+      ['1.', 'Ventas del mes', 'Ventas · Barras', ''],
+      ['2.', 'Stock actual', 'Stock · Tabla', ''],
+    ]);
+    assert.equal(nodo(escenario, 'tablero-conexion').value, 'c-1');
+    assert.deepEqual(nodo(escenario, 'tablero-conexion').options.map((o) => o.value), ['', 'c-1', 'c-2']);
+    // Only the catalog reports not already on the list can be added.
+    assert.deepEqual(nodo(escenario, 'tablero-agregar-reporte').options.map((o) => [o.value, o.textContent]), [
+      ['', 'Elegí un reporte'],
+      ['r-3', 'Clientes (Clientes nuevos)'],
+    ]);
+    assert.equal(botonFilaCH46(escenario, 0, 'Subir').disabled, true, 'the first row cannot go up');
+    assert.equal(botonFilaCH46(escenario, 0, 'Bajar').disabled, false);
+    assert.equal(botonFilaCH46(escenario, 1, 'Bajar').disabled, true, 'the last row cannot go down');
+    assert.equal(botonFilaCH46(escenario, 1, 'Subir').getAttribute('aria-label'), 'Subir Stock actual');
+    assert.equal(guardarTableroAbierto(escenario), false, 'nothing changed yet');
+    assert.equal(nodo(escenario, 'tablero-aviso').textContent, '');
+  });
+
+  test('CH-46 «Subir» on the second row and «Guardar» send one PUT /tablero in the new order, and the answer is drawn', async () => {
+    const escenario = await abrirTableroCH46();
+    botonFilaCH46(escenario, 1, 'Subir').disparar('click');
+    assert.deepEqual(filasTableroCH46(escenario).map((f) => f.slice(0, 2)), [['1.', 'Stock actual'], ['2.', 'Ventas del mes']]);
+    assert.equal(guardarTableroAbierto(escenario), true);
+    // Back to the saved order closes it again: nothing differs.
+    botonFilaCH46(escenario, 0, 'Bajar').disparar('click');
+    assert.equal(guardarTableroAbierto(escenario), false);
+    botonFilaCH46(escenario, 1, 'Subir').disparar('click');
+    const antes = escenario.peticiones.length;
+    await guardarTableroCH46(escenario, {
+      status: 200,
+      cuerpo: { conexionId: 'c-1', reportes: [entradaCH46(STOCK_CH46), entradaCH46(VENTAS_CH46, ['pedido'])] },
+    });
+    assert.equal(escenario.peticiones.length, antes + 1);
+    assert.deepEqual(escenario.peticiones[antes], { url: '/tablero', tenant: 't-1', cuerpo: { conexionId: 'c-1', reportes: ['r-2', 'r-1'] } });
+    assert.equal(nodo(escenario, 'tablero-aviso').textContent, 'Se guardó el tablero.');
+    assert.equal(filasTableroCH46(escenario)[1][3], 'Faltan vistas aprobadas en esta conexión: pedido');
+    assert.equal(guardarTableroAbierto(escenario), false, 'the saved dashboard is the new baseline');
+  });
+
+  test('CH-46 pending views are shown on their row and never close «Guardar»; changing the connection clears them', async () => {
+    const escenario = await abrirTableroCH46(respuestasTableroCH46({
+      conexionId: 'c-1',
+      reportes: [entradaCH46(VENTAS_CH46, ['pedido']), entradaCH46(STOCK_CH46)],
+    }));
+    assert.equal(filasTableroCH46(escenario)[0][3], 'Faltan vistas aprobadas en esta conexión: pedido');
+    assert.equal(filasTableroCH46(escenario)[1][3], '');
+    botonFilaCH46(escenario, 1, 'Quitar').disparar('click');
+    assert.equal(guardarTableroAbierto(escenario), true, 'pending views do not block a save');
+    assert.equal(filasTableroCH46(escenario)[0][3], 'Faltan vistas aprobadas en esta conexión: pedido');
+    escribirCH38(escenario, 'tablero-conexion', 'c-2');
+    assert.deepEqual(filasTableroCH46(escenario).map((f) => f[3]), [''], 'the server is the only source of pending views');
+    assert.equal(
+      nodo(escenario, 'tablero-conexion-aviso').textContent,
+      'Guardá para ver qué reportes tienen sus vistas aprobadas en esta conexión.',
+    );
+    assert.equal(guardarTableroAbierto(escenario), true);
+    const antes = escenario.peticiones.length;
+    await guardarTableroCH46(escenario, { status: 200, cuerpo: { conexionId: 'c-2', reportes: [entradaCH46(VENTAS_CH46)] } });
+    assert.deepEqual(escenario.peticiones[antes].cuerpo, { conexionId: 'c-2', reportes: ['r-1'] });
+    assert.equal(nodo(escenario, 'tablero-conexion-aviso').textContent, '');
+  });
+
+  test('CH-46 «Agregar» appends the chosen report at the end, and at 8 reports the select and «Agregar» close', async () => {
+    const siete = Array.from({ length: 7 }, (_, i) => ({ id: `r-${i + 10}`, nombre: `Reporte ${i + 10}`, titulo: `Título ${i + 10}`, visualizacion: 'numero' }));
+    const escenario = await abrirTableroCH46(respuestasTableroCH46(
+      { conexionId: 'c-1', reportes: siete.map((r) => entradaCH46(r)) },
+      [...siete, CLIENTES_CH46, VENTAS_CH46],
+    ));
+    assert.equal(nodo(escenario, 'tablero-agregar').disabled, false);
+    assert.equal(nodo(escenario, 'tablero-tope').textContent, '');
+    // Nothing chosen: it says so and adds nothing.
+    nodo(escenario, 'tablero-agregar').disparar('click');
+    assert.equal(nodo(escenario, 'tablero-tope').textContent, 'Elegí un reporte para agregar.');
+    assert.equal(filasTableroCH46(escenario).length, 7);
+    nodo(escenario, 'tablero-agregar-reporte').value = 'r-3';
+    nodo(escenario, 'tablero-agregar').disparar('click');
+    const filas = filasTableroCH46(escenario);
+    assert.equal(filas.length, 8);
+    assert.deepEqual(filas[7].slice(0, 3), ['8.', 'Clientes nuevos', 'Clientes · Número']);
+    assert.equal(nodo(escenario, 'tablero-agregar-reporte').disabled, true);
+    assert.equal(nodo(escenario, 'tablero-agregar').disabled, true);
+    assert.equal(nodo(escenario, 'tablero-tope').textContent, 'El tablero llegó al máximo de 8 reportes.');
+    assert.equal(guardarTableroAbierto(escenario), true);
+    // Removing one opens them again.
+    botonFilaCH46(escenario, 0, 'Quitar').disparar('click');
+    assert.equal(nodo(escenario, 'tablero-agregar').disabled, false);
+    assert.equal(nodo(escenario, 'tablero-tope').textContent, '');
+  });
+
+  test('CH-46 a tenant with no dashboard: empty list text, no connection, and «Guardar» opens once one is chosen', async () => {
+    const escenario = await abrirTableroCH46(respuestasTableroCH46({ conexionId: null, reportes: [] }));
+    assert.equal(nodo(escenario, 'tablero-lista-aviso').textContent, 'El tablero no tiene reportes: el cliente no ve ninguno.');
+    assert.equal(nodo(escenario, 'tablero-conexion').value, '');
+    assert.equal(guardarTableroAbierto(escenario), false, 'no connection chosen');
+    escribirCH38(escenario, 'tablero-conexion', 'c-2');
+    assert.equal(guardarTableroAbierto(escenario), true, 'an empty dashboard can be saved');
+    const antes = escenario.peticiones.length;
+    await guardarTableroCH46(escenario, { status: 200, cuerpo: { conexionId: 'c-2', reportes: [] } });
+    assert.deepEqual(escenario.peticiones[antes].cuerpo, { conexionId: 'c-2', reportes: [] });
+    assert.equal(nodo(escenario, 'tablero-lista-aviso').textContent, 'El tablero no tiene reportes: el cliente no ve ninguno.');
+  });
+
+  test('CH-46 a refused save is legible and keeps the screen as it was', async () => {
+    const escenario = await abrirTableroCH46();
+    botonFilaCH46(escenario, 1, 'Subir').disparar('click');
+    const aviso = (): string => nodo(escenario, 'tablero-aviso').textContent;
+    await guardarTableroCH46(escenario, { status: 404, cuerpo: { error: 'conexion-no-encontrada' } });
+    assert.equal(aviso(), 'La conexión elegida ya no existe en este tenant. Elegí otra y guardá de nuevo.');
+    await guardarTableroCH46(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/reportes'], desconocidos: ['r-2'] } });
+    assert.equal(aviso(), 'Estos reportes ya no están en el catálogo: Stock. Quitalos y guardá de nuevo.');
+    await guardarTableroCH46(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/conexionId', '/reportes/1'] } });
+    assert.equal(aviso(), 'Revisá estos campos: conexión, reportes.');
+    await guardarTableroCH46(escenario, { status: 500, cuerpo: { error: 'interno' } });
+    assert.equal(aviso(), 'No se pudo guardar el tablero (HTTP 500).');
+    await guardarTableroCH46(escenario, { status: 200, cuerpo: {}, falla: true });
+    assert.equal(aviso(), 'No se pudo contactar con la aplicación.');
+    assert.deepEqual(filasTableroCH46(escenario).map((f) => f[1]), ['Stock actual', 'Ventas del mes']);
+    assert.equal(guardarTableroAbierto(escenario), true, 'the changes are still there to save');
+  });
+
+  test('CH-46 failures to read are legible: the dashboard, and the connections or the catalog', async () => {
+    const fallido = await abrirTableroCH46([
+      { status: 500, cuerpo: { error: 'interno' } },
+      { status: 200, cuerpo: { conexiones: CONEXIONES_CH46, truncado: false } },
+      { status: 200, cuerpo: { reportes: [], truncado: false } },
+    ]);
+    assert.equal(nodo(fallido, 'tablero-aviso').textContent, 'No se pudo leer el tablero (HTTP 500).');
+    assert.equal(nodo(fallido, 'tablero-agregar').disabled, true);
+    const parcial = await abrirTableroCH46([
+      { status: 200, cuerpo: TABLERO_CH46 },
+      { status: 500, cuerpo: { error: 'interno' } },
+      { status: 500, cuerpo: { error: 'interno' } },
+    ]);
+    assert.equal(
+      nodo(parcial, 'tablero-aviso').textContent,
+      'No se pudieron cargar las conexiones. No se pudo leer el catálogo de reportes: no se pueden agregar reportes.',
+    );
+    assert.equal(filasTableroCH46(parcial).length, 2, 'the dashboard is still shown');
+    assert.equal(nodo(parcial, 'tablero-conexion').value, 'c-1', 'the saved connection stays choosable');
+  });
+
+  test('CH-46 a title with markup is shown verbatim, as text', async () => {
+    const escenario = await abrirTableroCH46(respuestasTableroCH46(
+      { conexionId: 'c-1', reportes: [entradaCH46({ ...VENTAS_CH46, titulo: '<b>Ventas</b>' })] },
+      [VENTAS_CH46, { ...CLIENTES_CH46, nombre: '<i>Clientes</i>' }],
+    ));
+    assert.equal(filasTableroCH46(escenario)[0][1], '<b>Ventas</b>');
+    assert.equal(buscar(nodo(escenario, 'tablero-lista'), (n) => n.tagName === 'b').length, 0);
+    assert.equal(nodo(escenario, 'tablero-agregar-reporte').options[1].textContent, '<i>Clientes</i> (Clientes nuevos)');
+    assert.equal(buscar(nodo(escenario, 'tablero-agregar-reporte'), (n) => n.tagName === 'i').length, 0);
+  });
+
+  test('CH-46 switching the tenant discards unsaved changes and reloads the dashboard of the new tenant', async () => {
+    const escenario = await abrirTableroCH46();
+    botonFilaCH46(escenario, 1, 'Quitar').disparar('click');
+    assert.equal(guardarTableroAbierto(escenario), true);
+    const cambio = respuestasDeTenant();
+    escenario.respuestas.push(
+      ...cambio.slice(0, 3),
+      ...respuestasTableroCH46({ conexionId: 'c-2', reportes: [entradaCH46(CLIENTES_CH46)] }),
+      ...cambio.slice(3),
+    );
+    nodo(escenario, 'tenant').value = 't-2';
+    nodo(escenario, 'tenant').disparar('change');
+    await asentarVarias();
+    const pedidos = escenario.peticiones.filter((p) => p.url === '/tablero');
+    assert.equal(pedidos.length, 2);
+    assert.equal(pedidos[1].tenant, 't-2');
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/tablero' && p.cuerpo !== null).length, 0, 'nothing was saved');
+    assert.deepEqual(filasTableroCH46(escenario).map((f) => f[1]), ['Clientes nuevos']);
+    assert.equal(nodo(escenario, 'tablero-conexion').value, 'c-2');
+    assert.equal(guardarTableroAbierto(escenario), false);
+  });
+
+  test('CH-46 a report in use offers only «Duplicar y editar» and says it is on a client dashboard; a missing enUso reads as in use', async () => {
+    for (const reporte of [{ ...REPORTE_CH45, enUso: true }, (({ enUso: _, ...resto }) => resto)(REPORTE_CH45)]) {
+      const escenario = await arrancar();
+      await abrirReportes(escenario);
+      await verReporteCH45(escenario, reporte, null);
+      assert.equal(nodo(escenario, 'reporte-duplicar').hidden, false);
+      assert.equal(nodo(escenario, 'reporte-editar').hidden, true);
+      assert.equal(nodo(escenario, 'reporte-en-uso-aviso').hidden, false);
+    }
+    assert.match(marcado(), /id="reporte-en-uso-aviso"[^>]*hidden>Está en el tablero de un cliente: se duplica en lugar de editarse\.</);
+    const libre = await arrancar();
+    await abrirReportes(libre);
+    await verReporteCH45(libre, REPORTE_CH45, null);
+    assert.equal(nodo(libre, 'reporte-editar').hidden, false);
+    assert.equal(nodo(libre, 'reporte-duplicar').hidden, true);
+    assert.equal(nodo(libre, 'reporte-en-uso-aviso').hidden, true);
+  });
+
+  test('CH-46 «Duplicar y editar» opens a copy with every field and « (copia)», writes nothing, and saves with one POST after its own test', async () => {
+    const escenario = await reporteListoParaProbar({ ...REPORTE_CH45, enUso: true });
+    const antes = escenario.peticiones.length;
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'reporte-duplicar').disparar('click');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/conexiones'], 'only the connections are read');
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Duplicar reporte');
+    assert.equal(nodo(escenario, 'reporte-f-nombre').value, 'Ventas por producto (copia)');
+    assert.equal(nodo(escenario, 'reporte-f-titulo').value, 'Lo que más se vende', 'the copy keeps the client texts');
+    assert.equal(nodo(escenario, 'reporte-f-descripcion').value, 'Las unidades vendidas por producto.');
+    assert.equal(nodo(escenario, 'reporte-f-sql').value, REPORTE_CH45.sql);
+    assert.equal(nodo(escenario, 'reporte-f-dias').value, '30, 7');
+    assert.equal(nodo(escenario, 'reporte-f-visualizacion').value, 'barras');
+    assert.deepEqual(filasColumnasCH45(escenario).map((f) => f.titulo.value), ['Producto', 'Unidades']);
+    assert.equal(guardarAbiertoCH45(escenario), false, 'a copy needs its own test');
+    escribirCH38(escenario, 'reporte-f-conexion', 'c-1');
+    await probarDialogoCH45(escenario);
+    escenario.respuestas.push({ status: 201, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-40', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reportes: [REPORTE_LISTADO], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-40', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    const inicio = escenario.peticiones.length;
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[inicio].url, '/reportes', 'a copy is a POST, never a PUT of the original');
+    assert.equal((escenario.peticiones[inicio].cuerpo as { nombre: string }).nombre, 'Ventas por producto (copia)');
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true);
+  });
+
+  test('CH-46 a 409 reporte-en-uso keeps the pop-up open and offers «Duplicar y editar», which turns the edit into a copy', async () => {
+    const escenario = await reporteListoParaProbar();
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'reporte-editar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'reporte-dialogo-duplicar').hidden, true);
+    escribirCH38(escenario, 'reporte-f-conexion', 'c-1');
+    await probarDialogoCH45(escenario);
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'reporte-en-uso' } });
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
+    assert.equal(
+      nodo(escenario, 'reporte-dialogo-estado').textContent,
+      'Este reporte ahora está en el tablero de un cliente y no se puede editar. Duplicalo para guardar tus cambios como un reporte nuevo.',
+    );
+    assert.equal(nodo(escenario, 'reporte-dialogo-duplicar').hidden, false);
+
+    nodo(escenario, 'reporte-dialogo-duplicar').disparar('click');
+    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Duplicar reporte');
+    assert.equal(nodo(escenario, 'reporte-f-nombre').value, 'Ventas por producto (copia)');
+    assert.equal(nodo(escenario, 'reporte-f-titulo').value, 'Lo que más se vende');
+    assert.equal(nodo(escenario, 'reporte-dialogo-duplicar').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, '');
+    assert.equal(guardarAbiertoCH45(escenario), true, 'the test of this same content still holds');
+
+    escenario.respuestas.push({ status: 201, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-41', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reportes: [], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-41', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
+    const inicio = escenario.peticiones.length;
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[inicio].url, '/reportes');
+    assert.equal((escenario.peticiones[inicio].cuerpo as { nombre: string }).nombre, 'Ventas por producto (copia)');
   });
 
   // ---- CH-30e1 (DEC-163, screen C-12): the Auditoría screen -----------------------------------

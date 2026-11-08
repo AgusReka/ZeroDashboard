@@ -374,6 +374,38 @@ describe('contexto de tenant — /reportes exemption rows (CH-45, DEC-183)', () 
   }
 });
 
+// ---- CH-46 the dashboard routes are scoped, with no exemption row (DEC-199) ----
+
+/**
+ * DEC-199: `GET /tablero` and `PUT /tablero` read and write the header tenant's dashboard, so
+ * neither is exempt. Stub routes give each request its real pattern; the throwing client
+ * proves the refusal comes before any lookup.
+ */
+describe('contexto de tenant — /tablero is not exempt (CH-46, DEC-199)', () => {
+  let app!: FastifyInstance;
+  const alcanzada = async (): Promise<{ alcanzada: true }> => ({ alcanzada: true });
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    app.get('/tablero', alcanzada);
+    app.put('/tablero', alcanzada);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  for (const method of ['GET', 'PUT'] as const) {
+    test(`CH-46 ${method} /tablero with no header is refused 400 tenant-no-indicado`, async () => {
+      const respuesta = await app.inject({ method, url: '/tablero' });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    });
+  }
+});
+
 // ---- CH-21a 1.4 the stylesheet exemption rows, still with no database in sight ----
 
 /**

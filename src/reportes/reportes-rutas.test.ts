@@ -3,13 +3,14 @@ import { randomBytes } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient, type Prisma } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { registrarGuardOperador } from '../consola/consola-auth.js';
 import { alcanzable, databaseUrl, motivoSkip } from '../consola/consola-auth-apoyo.js';
 import { LIMITE_LISTADO } from '../compartido/listados.js';
-import { registerReporteRoutes } from './reportes-rutas.js';
+import { registerTableroRoutes } from '../tablero/tablero-rutas.js';
+import { registerReporteRoutes, type UsoDeReportes } from './reportes-rutas.js';
 
 /**
  * CH-45 (DEC-183, DEC-198) task 5.4: the report catalog's create, list, get and in-place
@@ -49,13 +50,31 @@ interface CuerpoRechazo {
 }
 
 /**
- * Signature pin: the registrar takes the `reporte` delegate, never the client. Checked by
- * `tsc --noEmit`; never called.
+ * Signature pin: the registrar takes the `reporte` delegate and the use port (CH-46, DEC-199),
+ * never the client. Checked by `tsc --noEmit`; never called.
  */
-export function firmaSoloDelegado(app: FastifyInstance, cliente: PrismaAislado): void {
+export function firmaSoloDelegado(app: FastifyInstance, cliente: PrismaAislado, uso: UsoDeReportes): void {
   // @ts-expect-error — the full client is not a `reporte` delegate.
-  registerReporteRoutes(app, cliente);
-  registerReporteRoutes(app, cliente.reporte);
+  registerReporteRoutes(app, cliente, uso);
+  registerReporteRoutes(app, cliente.reporte, uso);
+}
+
+/** Port stand-in for suites where no request may reach the use rule. */
+const usoQueNuncaDebeConsultarse: UsoDeReportes = {
+  enUso: async () => {
+    throw new Error('un cuerpo rechazado consultó el uso');
+  },
+  reemplazarSiLibre: async () => {
+    throw new Error('un cuerpo rechazado llegó a reemplazarSiLibre');
+  },
+};
+
+/** The port as `src/app/rutas.ts` builds it, over the extended client. */
+function usoDeReportes(aislado: PrismaAislado): UsoDeReportes {
+  return {
+    enUso: (id) => aislado.tablero.reporteEnUso(id),
+    reemplazarSiLibre: (id, datos) => aislado.tablero.reemplazarReporteLibre(id, datos),
+  };
 }
 
 /** Every method throws: a rejected body that reached the table fails the case loudly. */
@@ -72,7 +91,7 @@ describe('CH-45 report catalog — save-time refusals, in check order (DEC-198)'
     app = Fastify({ logger: false });
     // The hooks get a client that throws too: an exempt route must not resolve a tenant.
     registrarContextoTenant(app, reportesQueNuncaDebenEscribirse as unknown as PrismaAislado);
-    registerReporteRoutes(app, reportesQueNuncaDebenEscribirse);
+    registerReporteRoutes(app, reportesQueNuncaDebenEscribirse, usoQueNuncaDebeConsultarse);
     await app.ready();
   });
 
@@ -209,7 +228,7 @@ describe('CH-45 report catalog — operator guard (DEC-152)', () => {
     const cliente = reportesQueNuncaDebenEscribirse as unknown as PrismaAislado;
     registrarGuardOperador(app, cliente);
     registrarContextoTenant(app, cliente);
-    registerReporteRoutes(app, reportesQueNuncaDebenEscribirse);
+    registerReporteRoutes(app, reportesQueNuncaDebenEscribirse, usoQueNuncaDebeConsultarse);
     await app.ready();
   });
 
@@ -242,7 +261,7 @@ describe('CH-45 report catalog — create, list, get, replace (DEC-68, DEC-198)'
     const aislado = extenderConAislamiento(prisma);
     app = Fastify({ logger: false });
     registrarContextoTenant(app, aislado);
-    registerReporteRoutes(app, aislado.reporte);
+    registerReporteRoutes(app, aislado.reporte, usoDeReportes(aislado));
     await app.ready();
     tenantId = (await prisma.tenant.create({ data: { nombre: `${marca} tenant` } })).id;
   });
@@ -263,7 +282,9 @@ describe('CH-45 report catalog — create, list, get, replace (DEC-68, DEC-198)'
 
   test('a headerless create persists every field it echoes back, and not columnasPrueba', async () => {
     const creado = await crear({ nombre: `  ${marca} alta  `, titulo: ' Lo más vendido ', descripcion: '   ' });
-    const { id, ...campos } = creado;
+    // CH-46 (DEC-199): `enUso` is computed, never stored; a new report is on no dashboard.
+    const { id, enUso, ...campos } = creado;
+    assert.equal(enUso, false);
     assert.ok(typeof id === 'string' && id.length > 0);
     const { columnasPrueba: _ignorado, ...sinPrueba } = VALIDO;
     assert.deepEqual(campos, { ...sinPrueba, nombre: `${marca} alta`, titulo: 'Lo más vendido', descripcion: null });
@@ -390,5 +411,344 @@ describe('CH-45 report catalog — create, list, get, replace (DEC-68, DEC-198)'
     });
     assert.equal(respuesta.statusCode, 404, respuesta.body);
     assert.ok(await prisma.reporte.findUnique({ where: { id: String(creado.id) } }));
+  });
+});
+
+// ---- CH-46 (DEC-199) task 4.3: a report on a dashboard is in use and is not replaced ----
+
+describe('CH-46 report catalog — the use port (DEC-199)', () => {
+  const FILA = {
+    id: 'r-1',
+    nombre: 'CH-46 puerto',
+    titulo: 'Lo más vendido',
+    descripcion: null,
+    sql: VALIDO.sql,
+    entidades: VALIDO.entidades,
+    visualizacion: 'barras',
+    columnas: VALIDO.columnas,
+    periodo: null,
+  };
+  let app!: FastifyInstance;
+  let enUso = false;
+  let resultadoReemplazo: 'no-encontrado' | 'en-uso' | typeof FILA = FILA;
+  const llamadas: string[] = [];
+
+  before(async () => {
+    const reportes = {
+      findUnique: async () => FILA,
+      create: async () => FILA,
+    } as unknown as PrismaAislado['reporte'];
+    app = Fastify({ logger: false });
+    registerReporteRoutes(app, reportes, {
+      enUso: async (id) => (llamadas.push(`enUso:${id}`), enUso),
+      reemplazarSiLibre: async (id) => (llamadas.push(`reemplazar:${id}`), resultadoReemplazo as never),
+    });
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  test('GET /:id carries enUso from the port, and nothing else about use', async () => {
+    for (const valor of [true, false]) {
+      enUso = valor;
+      const respuesta = await app.inject({ method: 'GET', url: '/reportes/r-1' });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      assert.deepEqual(respuesta.json(), { reporte: { ...FILA, enUso: valor } });
+    }
+  });
+
+  test('POST answers 201 with enUso false and never asks the port', async () => {
+    llamadas.length = 0;
+    const respuesta = await app.inject({ method: 'POST', url: '/reportes', payload: VALIDO });
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    assert.deepEqual(respuesta.json(), { reporte: { ...FILA, enUso: false } });
+    assert.deepEqual(llamadas, []);
+  });
+
+  test('PUT maps the three outcomes of the port to 404, 409 and 200', async () => {
+    resultadoReemplazo = 'no-encontrado';
+    const noEncontrado = await app.inject({ method: 'PUT', url: '/reportes/r-1', payload: VALIDO });
+    assert.equal(noEncontrado.statusCode, 404, noEncontrado.body);
+    assert.deepEqual(noEncontrado.json(), { error: 'reporte-no-encontrado' });
+
+    resultadoReemplazo = 'en-uso';
+    const ocupado = await app.inject({ method: 'PUT', url: '/reportes/r-1', payload: VALIDO });
+    assert.equal(ocupado.statusCode, 409, ocupado.body);
+    assert.deepEqual(ocupado.json(), { error: 'reporte-en-uso' });
+
+    resultadoReemplazo = FILA;
+    const libre = await app.inject({ method: 'PUT', url: '/reportes/r-1', payload: VALIDO });
+    assert.equal(libre.statusCode, 200, libre.body);
+    assert.deepEqual(libre.json(), { reporte: { ...FILA, enUso: false } });
+  });
+
+  test('a 400 body never reaches the port, even for a report in use', async () => {
+    llamadas.length = 0;
+    resultadoReemplazo = 'en-uso';
+    const respuesta = await app.inject({
+      method: 'PUT',
+      url: '/reportes/r-1',
+      payload: { ...VALIDO, visualizacion: 'torta' },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(llamadas, []);
+  });
+});
+
+describe('CH-46 report catalog — in use on a live PostgreSQL target (DEC-199)', { skip: alcanzable ? false : motivoSkip }, () => {
+  let app!: FastifyInstance;
+  /** The raw client: fixtures and cleanup only. The app gets the extended one. */
+  let prisma!: PrismaClient;
+  const marca = `CH-46 uso ${Date.now()}-${randomBytes(3).toString('hex')}`;
+  const tenantIds: string[] = [];
+  const conexionIds: string[] = [];
+
+  before(async () => {
+    prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    const aislado = extenderConAislamiento(prisma);
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, aislado);
+    registerReporteRoutes(app, aislado.reporte, usoDeReportes(aislado));
+    registerTableroRoutes(app, aislado);
+    await app.ready();
+    for (const clave of ['A', 'B']) {
+      const tenant = await prisma.tenant.create({ data: { nombre: `${marca} ${clave}` } });
+      tenantIds.push(tenant.id);
+      const conexion = await prisma.conexion.create({
+        data: {
+          tenantId: tenant.id,
+          nombre: `CH-46 ${clave}`,
+          motor: 'postgres',
+          host: 'localhost',
+          puerto: 5432,
+          baseDeDatos: 'ninguna',
+          usuarioDb: 'nadie',
+          credencial: 'no-es-un-sobre',
+        },
+      });
+      conexionIds.push(conexion.id);
+    }
+  });
+
+  after(async () => {
+    // RESTRICT everywhere: dashboards, then connections, tenants and reports.
+    await prisma.tablero.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await prisma.conexion.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await prisma.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+    await prisma.reporte.deleteMany({ where: { nombre: { startsWith: marca } } });
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  async function crear(etiqueta: string): Promise<Record<string, unknown>> {
+    const respuesta = await app.inject({ method: 'POST', url: '/reportes', payload: { ...VALIDO, nombre: `${marca} ${etiqueta}` } });
+    assert.equal(respuesta.statusCode, 201, respuesta.body);
+    return (respuesta.json() as { reporte: Record<string, unknown> }).reporte;
+  }
+
+  /** Saves tenant B's dashboard through the route, as the console does. */
+  async function guardarEnB(reportes: string[]) {
+    const respuesta = await app.inject({
+      method: 'PUT',
+      url: '/tablero',
+      headers: { 'x-tenant-id': tenantIds[1] },
+      payload: { conexionId: conexionIds[1], reportes },
+    });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+  }
+
+  async function leerEnUso(id: string, headers: Record<string, string> = {}): Promise<unknown> {
+    const respuesta = await app.inject({ method: 'GET', url: `/reportes/${id}`, headers });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    return (respuesta.json() as { reporte: { enUso: unknown } }).reporte.enUso;
+  }
+
+  test('enUso is false on no dashboard, then true once one holds it, with nothing else about use', async () => {
+    const creado = await crear('lectura');
+    const id = String(creado.id);
+    assert.equal(await leerEnUso(id), false);
+    await guardarEnB([id]);
+    const respuesta = await app.inject({ method: 'GET', url: `/reportes/${id}` });
+    const { reporte } = respuesta.json() as { reporte: Record<string, unknown> };
+    assert.equal(reporte.enUso, true);
+    assert.deepEqual(Object.keys(reporte).sort(), Object.keys(creado).sort());
+    assert.ok(!respuesta.body.includes(tenantIds[1]), 'no tenant id may reach the body');
+    assert.ok(!respuesta.body.includes(conexionIds[1]), 'no connection id may reach the body');
+  });
+
+  test("a report on another tenant's dashboard is 409 with tenant A or none, and stays unchanged", async () => {
+    const creado = await crear('ocupado');
+    const id = String(creado.id);
+    await guardarEnB([id]);
+    for (const headers of [{}, { 'x-tenant-id': tenantIds[0] }]) {
+      const respuesta = await app.inject({
+        method: 'PUT',
+        url: `/reportes/${id}`,
+        headers,
+        payload: { ...CON_PERIODO, nombre: `${marca} ocupado cambiado` },
+      });
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'reporte-en-uso' });
+    }
+    const { enUso: _enUso, ...columnas } = creado;
+    assert.deepEqual(await prisma.reporte.findUnique({ where: { id } }), columnas);
+  });
+
+  test('a report that left every dashboard is replaced again, 200', async () => {
+    const creado = await crear('liberado');
+    const id = String(creado.id);
+    await guardarEnB([id]);
+    await guardarEnB([]);
+    assert.equal(await leerEnUso(id), false);
+    const respuesta = await app.inject({
+      method: 'PUT',
+      url: `/reportes/${id}`,
+      payload: { ...CON_PERIODO, nombre: `${marca} liberado 2` },
+    });
+    assert.equal(respuesta.statusCode, 200, respuesta.body);
+    const { reporte } = respuesta.json() as { reporte: Record<string, unknown> };
+    assert.equal(reporte.sql, CON_PERIODO.sql);
+    assert.equal(reporte.enUso, false);
+  });
+
+  test('an invalid body on a report in use is 400, not 409', async () => {
+    const creado = await crear('invalido');
+    await guardarEnB([String(creado.id)]);
+    const respuesta = await app.inject({
+      method: 'PUT',
+      url: `/reportes/${String(creado.id)}`,
+      payload: { ...VALIDO, visualizacion: 'torta' },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual((respuesta.json() as CuerpoRechazo).campos, ['/visualizacion']);
+  });
+
+  /** A promise that rejects after `ms`, so a lock that never frees fails the case instead of hanging. */
+  const limite = (ms: number, mensaje: string) =>
+    new Promise<never>((_resolver, rechazar) => setTimeout(() => rechazar(new Error(mensaje)), ms).unref());
+
+  /** Whether `promesa` is still pending after 750 ms. */
+  async function sigueEsperando(promesa: Promise<unknown>): Promise<boolean> {
+    const primero = await Promise.race([
+      promesa.then(() => 'resuelto'),
+      new Promise<string>((resolver) => setTimeout(() => resolver('espera'), 750)),
+    ]);
+    return primero === 'espera';
+  }
+
+  /**
+   * Opens a transaction on the raw client that runs `bloquear`, then holds it until `liberar`.
+   * `tomado` resolves once the lock is held.
+   */
+  function sostener(bloquear: (tx: Prisma.TransactionClient) => Promise<unknown>) {
+    let liberar!: () => void;
+    const compuerta = new Promise<void>((resolver) => {
+      liberar = resolver;
+    });
+    let marcarTomado!: () => void;
+    const tomado = new Promise<void>((resolver) => {
+      marcarTomado = resolver;
+    });
+    const transaccion = prisma.$transaction(
+      async (tx) => {
+        await bloquear(tx);
+        marcarTomado();
+        await compuerta;
+      },
+      { timeout: 30_000 },
+    );
+    return { liberar, tomado, transaccion };
+  }
+
+  test('a dashboard save in flight makes a replace wait, then answer 409 with the report unchanged', async () => {
+    const creado = await crear('carrera guardado');
+    const id = String(creado.id);
+    // What `PUT /tablero` does inside its transaction: FOR KEY SHARE on the report, then the write.
+    const sostenido = sostener(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Reporte" WHERE "id" = ANY(${[id]}) FOR KEY SHARE`;
+      await tx.tablero.create({ data: { tenantId: tenantIds[0], conexionId: conexionIds[0], reportes: [id] } });
+    });
+    try {
+      await Promise.race([sostenido.tomado, sostenido.transaccion, limite(10_000, 'the save never ran')]);
+      const reemplazo = app.inject({
+        method: 'PUT',
+        url: `/reportes/${id}`,
+        payload: { ...CON_PERIODO, nombre: `${marca} carrera guardado 2` },
+      });
+      assert.equal(await sigueEsperando(reemplazo), true, 'the replace must wait on the row lock');
+      sostenido.liberar();
+      await sostenido.transaccion;
+      const respuesta = await Promise.race([reemplazo, limite(10_000, 'the replace hung')]);
+      assert.equal(respuesta.statusCode, 409, respuesta.body);
+      assert.equal((await prisma.reporte.findUnique({ where: { id } }))?.sql, VALIDO.sql);
+    } finally {
+      sostenido.liberar();
+      await sostenido.transaccion.catch(() => undefined);
+      await prisma.tablero.deleteMany({ where: { tenantId: tenantIds[0] } });
+    }
+  });
+
+  test('a replace in flight makes a dashboard save wait; the save then holds the replaced report', async () => {
+    const creado = await crear('carrera reemplazo');
+    const id = String(creado.id);
+    // What `reemplazarReporteLibre` does: FOR UPDATE on the report, then the write.
+    const sostenido = sostener(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Reporte" WHERE "id" = ${id} FOR UPDATE`;
+      await tx.reporte.update({ where: { id }, data: { sql: CON_PERIODO.sql } });
+    });
+    try {
+      await Promise.race([sostenido.tomado, sostenido.transaccion, limite(10_000, 'the replace never ran')]);
+      const guardado = app.inject({
+        method: 'PUT',
+        url: '/tablero',
+        headers: { 'x-tenant-id': tenantIds[0] },
+        payload: { conexionId: conexionIds[0], reportes: [id] },
+      });
+      assert.equal(await sigueEsperando(guardado), true, 'the save must wait on the row lock');
+      sostenido.liberar();
+      await sostenido.transaccion;
+      const respuesta = await Promise.race([guardado, limite(10_000, 'the save hung')]);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      // Replaced before being added: the dashboard holds the new statement, and now blocks edits.
+      assert.equal((await prisma.reporte.findUnique({ where: { id } }))?.sql, CON_PERIODO.sql);
+      assert.equal(await leerEnUso(id), true);
+    } finally {
+      sostenido.liberar();
+      await sostenido.transaccion.catch(() => undefined);
+      await prisma.tablero.deleteMany({ where: { tenantId: tenantIds[0] } });
+    }
+  });
+
+  test('a save and a replace started together end consistent', async () => {
+    for (let vuelta = 0; vuelta < 5; vuelta += 1) {
+      const creado = await crear(`juntos ${vuelta}`);
+      const id = String(creado.id);
+      const [guardado, reemplazo] = await Promise.all([
+        app.inject({
+          method: 'PUT',
+          url: '/tablero',
+          headers: { 'x-tenant-id': tenantIds[0] },
+          payload: { conexionId: conexionIds[0], reportes: [id] },
+        }),
+        app.inject({
+          method: 'PUT',
+          url: `/reportes/${id}`,
+          payload: { ...CON_PERIODO, nombre: `${marca} juntos ${vuelta} b` },
+        }),
+      ]);
+      assert.equal(guardado.statusCode, 200, guardado.body);
+      const sql = (await prisma.reporte.findUnique({ where: { id } }))?.sql;
+      // Either the replace lost and the report is unchanged, or it ran before the report was added.
+      if (reemplazo.statusCode === 409) {
+        assert.equal(sql, VALIDO.sql);
+      } else {
+        assert.equal(reemplazo.statusCode, 200, reemplazo.body);
+        assert.equal(sql, CON_PERIODO.sql);
+      }
+      assert.equal(await leerEnUso(id), true);
+      await prisma.tablero.deleteMany({ where: { tenantId: tenantIds[0] } });
+    }
   });
 });

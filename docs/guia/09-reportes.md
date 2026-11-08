@@ -2,7 +2,7 @@
 
 Un reporte es una consulta escrita contra las vistas canónicas, como una plantilla, que en lugar de mandar un aviso se muestra en el tablero del cliente: un número, una tabla, un gráfico de barras o uno de línea (DEC-183). Declara a lo sumo un período, que el cliente elige entre los que permite P1, y asigna las columnas del resultado a los roles de su visualización, cada una con un título para el cliente (DEC-198). El catálogo es **global**: lo comparten todos los tenants. Pantalla: **Reportes**, en Global, después de Plantillas.
 
-Este change (CH-45) define y prueba los reportes en la consola. Elegir qué reportes ve cada cliente es CH-46, y la pantalla del panel es CH-48: hasta entonces, ningún cliente ve un reporte.
+CH-45 define y prueba los reportes en la consola, y CH-46 arma el tablero de cada cliente: qué reportes ve y en qué orden ([El tablero del cliente](#el-tablero-del-cliente)). La pantalla del panel es CH-48: hasta entonces, ningún cliente ve un reporte.
 
 ## Camino rápido
 
@@ -81,13 +81,40 @@ El pop-up trae «Probar antes de guardar»: una conexión del tenant activo, un 
 
 ### Probar en el tenant activo
 
-El panel lateral de «Ver» muestra el reporte guardado como texto: entidades, período, SQL, textos para el cliente, visualización y columnas asignadas con su rol y título. Trae «Editar» y un bloque «Probar en el tenant activo»: conexión, período («Últimos 30 días», arranca en el predeterminado; no aparece sin período) y «Probar».
+El panel lateral de «Ver» muestra el reporte guardado como texto: entidades, período, SQL, textos para el cliente, visualización y columnas asignadas con su rol y título. Trae «Editar», o «Duplicar y editar» si el reporte está en un tablero ([Un reporte en uso](#un-reporte-en-uso)), y un bloque «Probar en el tenant activo»: conexión, período («Últimos 30 días», arranca en el predeterminado; no aparece sin período) y «Probar».
 
 - Muestra **solo las columnas asignadas**, en su orden y con su título: lo más parecido a lo que va a ver el cliente. Debajo, las filas, la fecha usada y el corte, si hubo.
 - Si el resultado ya no trae una columna asignada, por ejemplo porque se renombró en la réplica de ese tenant, el bloque nombra la columna que falta y no muestra la tabla. Es el estado de error del reporte (DEC-184): el reporte puede romperse para un solo tenant.
 - Otro reporte, cerrar el panel o cambiar de tenant limpian el resultado.
 
 Las dos pruebas quedan en **Auditoría** con origen «Prueba de reporte». La de un reporte guardado dice «Reporte <id>» en la columna Consulta; la del pop-up, «Ad hoc». La fila guarda la sentencia compuesta, sin la fecha.
+
+## El tablero del cliente
+
+Pantalla **Tablero del cliente**, en Puesta en marcha, después de Usuarios del panel. Es del tenant activo: sin tenant dice «Elegí un tenant para armar su tablero.» y no pide nada (DEC-199).
+
+1. **Conexión.** Se elige una sola para todo el tablero: todos sus reportes leen esa réplica. Tiene que ser del tenant activo; si ya no existe, guardar responde `404` y la pantalla lo dice.
+2. **Orden.** La lista muestra cada reporte con su posición, el título para el cliente, el nombre y la visualización. «Subir» y «Bajar» lo mueven un lugar (están deshabilitados en los extremos) y «Quitar» lo saca. El cliente ve los reportes en ese orden.
+3. **Agregar.** «Agregar reporte» ofrece los reportes del catálogo que no están en la lista; «Agregar» suma el elegido al final. Un reporte aparece una sola vez.
+4. **Tope.** Hasta **8** reportes, porque cada vez que el cliente abre el tablero se ejecutan todos en vivo (DEC-183). Con 8, el select y «Agregar» se deshabilitan y la pantalla dice «El tablero llegó al máximo de 8 reportes.»
+5. **«Guardar».** Envía `PUT /tablero` con la conexión y los reportes en el orden de la pantalla. Se habilita solo con una conexión elegida y algún cambio respecto de lo último cargado o guardado. Nada se envía al mover, agregar o quitar.
+
+Un tablero vacío se puede guardar: dice «El tablero no tiene reportes: el cliente no ve ninguno.» Cambiar de tenant descarta lo que no se guardó, sin preguntar.
+
+### Vistas pendientes
+
+Si las entidades de un reporte no tienen vistas «Válida» en la conexión del tablero, la fila dice «Faltan vistas aprobadas en esta conexión: pedido». **Es un aviso, no un bloqueo:** el tablero se guarda igual, y así se puede armar antes de terminar el mapeo. Mientras falten, el cliente ve ese reporte en su estado de error (CH-48).
+
+Lo calcula el servidor al leer y al guardar. Al cambiar la conexión, las líneas se borran y la pantalla dice «Guardá para ver qué reportes tienen sus vistas aprobadas en esta conexión.»: vuelven con la respuesta del guardado.
+
+### Un reporte en uso
+
+Un reporte está **en uso** si figura en el tablero de cualquier tenant. Un reporte en uso no se edita, igual que una plantilla con automatizaciones activas (DEC-191): editar un artefacto global cambiaría lo que ya ven otros clientes.
+
+- El panel lateral muestra «Duplicar y editar» y el aviso «Está en el tablero de un cliente: se duplica en lugar de editarse.», en lugar de «Editar».
+- La copia abre el mismo pop-up con **todos** los campos del original, textos para el cliente incluidos, y « (copia)» en el nombre. Necesita su propia prueba y se guarda como un reporte nuevo (`POST /reportes`).
+- Para que un cliente vea la copia, P1 la agrega a su tablero y quita el original. Eso se hace en cada tablero que lo usa.
+- Si el reporte entra en un tablero mientras P1 lo edita, «Guardar» responde `409 reporte-en-uso`: el pop-up sigue abierto, lo explica y ofrece «Duplicar y editar», que convierte lo escrito en una copia.
 
 ## Las rutas
 
@@ -96,9 +123,11 @@ Con sesión de operador. Las del catálogo no piden `X-Tenant-Id`; las de prueba
 | Ruta | Qué hace |
 |---|---|
 | `GET /reportes` | Lista `id`, `nombre`, `titulo` y `visualizacion`, por nombre, con `truncado` |
-| `GET /reportes/:id` | El reporte completo, o `404 reporte-no-encontrado` |
+| `GET /reportes/:id` | El reporte completo con `enUso` (booleano), o `404 reporte-no-encontrado` |
 | `POST /reportes` | Crea (`201`) |
-| `PUT /reportes/:id` | Reemplaza en el lugar (`200`), sin versiones (DEC-68) |
+| `PUT /reportes/:id` | Reemplaza en el lugar (`200`), sin versiones (DEC-68). Después de los `400`, `404 reporte-no-encontrado` o `409 reporte-en-uso` si está en un tablero |
+| `GET /tablero` | El tablero del tenant: `conexionId` (o `null`) y `reportes` en orden, cada uno con `id`, `nombre`, `titulo`, `visualizacion` y `pendientes`. Pide `X-Tenant-Id` |
+| `PUT /tablero` | Reemplaza el tablero entero: `{ conexionId, reportes }`, hasta 8 ids sin repetir. Pide `X-Tenant-Id`. `400` con `campos`, `404 conexion-no-encontrada`, o `400` con `desconocidos` si un id no es un reporte; si no, `200` con el mismo cuerpo que `GET` |
 | `POST /reportes/prueba` | Prueba un reporte sin guardar: el cuerpo de `POST /reportes` sin `columnas`, más `conexionId` y `dias` |
 | `POST /reportes/:id/prueba` | Prueba uno guardado: `conexionId` y, opcional, `dias` |
 
@@ -124,7 +153,8 @@ La prueba sin guardar no pide `columnasPrueba` (salta el paso 5) y salta el paso
 - **Límite.** Al guardar, la aplicación no ejecuta nada: comprueba las columnas asignadas contra las que le envía la consola. El error real aparece al ejecutar, en la prueba o en el tablero (DEC-198).
 - **Límite.** Un período es siempre «los últimos N días»: no hay rango libre, ni mes calendario, ni un segundo parámetro.
 - **Límite.** Con datos diarios, una línea de más de 100 días queda cortada.
-- **Límite.** No existe un borrado de reportes (DEC-68). Qué pasa con un reporte que ya está en un tablero se decide en CH-46.
+- **Límite.** No existe un borrado de reportes (DEC-68). Un reporte en un tablero no se edita: se duplica y se reemplaza a mano en cada tablero que lo usa (DEC-199).
+- **Límite.** Un tablero usa una sola conexión: un tenant con datos en dos réplicas no puede mezclarlas en el mismo tablero (DEC-199).
 - **Límite.** La prueba de la consola muestra el resultado como tabla, sea cual sea la visualización. El gráfico llega con CH-47 y CH-48.
 
 ## Siguiente paso
