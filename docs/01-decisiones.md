@@ -4218,6 +4218,57 @@ Tope de filas:
 
 ---
 
+### DEC-199 — CH-46: el tablero usa una sola conexión, un reporte en un tablero no se edita y las vistas no aprobadas solo se avisan
+
+**Contexto.**
+- DEC-183 fija que P1 elige, por tenant, qué reportes ve el cliente y en qué orden, y que el tablero se guarda como configuración del tenant, sin filas.
+- Un tenant puede tener varias conexiones (`Conexion` no tiene `tenantId` único) y ninguna está marcada como principal. Todo lo que ejecuta hoy recibe su conexión de forma explícita, y la frescura es por tenant (CH-24).
+- DEC-198 dejó para CH-46 qué pasa con un reporte que ya está en un tablero. Para las plantillas, DEC-191 bloquea la edición de una plantilla en uso, para que editar un artefacto global no cambie lo que corre en otros tenants (DEC-182).
+- La compuerta de DEC-71 depende de la conexión: un reporte puede tener sus vistas aprobadas en una conexión y no en otra.
+
+Quedan tres puntos que DEC-183 y DEC-198 no resuelven.
+
+**Opciones.**
+
+Conexión:
+- (a) Una por tablero, que P1 elige al armarlo.
+- (b) Una por reporte del tablero.
+- (c) Una marca de conexión principal en `Conexion`.
+
+Reporte en un tablero:
+- (a) Como las plantillas (DEC-191): no se edita y se ofrece «Duplicar y editar».
+- (b) Se edita en el lugar y la consola solo avisa que está en tableros.
+
+Vistas no aprobadas en la conexión del tablero:
+- (a) Solo aviso, y se puede guardar.
+- (b) El guardado se rechaza.
+
+**Decisión.** (a) en los tres puntos.
+- **Conexión (a).** Un tenant suele tener una sola réplica, la frescura ya es por tenant y alcanza con un select. (b) complica el formulario y la frescura de CH-48. (c) suma un concepto para todo el tenant que hoy nada más necesita.
+- **En uso (a).** Es el mismo criterio que DEC-191: editar un artefacto global no cambia lo que otros tenants ya ven.
+- **Vistas (a).** Sigue el precedente de DEC-127, la disponibilidad como aviso, y deja armar el tablero antes de terminar el mapeo. Una vista puede dejar de ser válida después de guardar, así que CH-48 necesita igual el estado de error del reporte.
+
+**Forma.**
+- **Modelo.** Un modelo `Tablero` con alcance de tenant (DEC-13): `tenantId` único, `conexionId` con relación a `Conexion`, y `reportes`, la lista ordenada de ids de `Reporte`. Entra en `MODELOS_AISLADOS`, como `VinculoTelegram`. La lista conserva el orden sin una columna de posición, y como los reportes no se borran (DEC-68), un id no queda colgado.
+- **Contenido.** Como máximo 8 reportes, con el tope en el código, porque cada vista del tablero los ejecuta todos en vivo (DEC-183). Un reporte aparece una sola vez. Un tablero vacío se puede guardar y significa que el cliente no ve reportes.
+- **Conexión.** Se comprueba que sea del tenant activo (404). El tenant sale del encabezado en la consola y de la sesión en el panel (regla 2, DEC-135).
+- **En uso.** Un reporte está en uso si figura en el tablero de cualquier tenant. `PUT /reportes/:id` responde 409 `reporte-en-uso`, y `GET /reportes/:id` devuelve `enUso` (booleano). El uso se lee con un método tipado de la extensión de aislamiento, como en DEC-191: responde sí o no, sin filas, cantidades ni ids de tenant, y llega a las rutas del catálogo como un puerto armado en `rutas.ts`.
+- **Duplicar y editar.** La copia lleva todo el reporte, con « (copia)» en el nombre. Para reemplazar el original, P1 cambia el reporte en cada tablero.
+- **Vistas.** La pantalla del tablero marca los reportes cuyas entidades no tienen vistas aprobadas en la conexión elegida. No bloquea el guardado.
+
+**Alcance que no cambia.** La ejecución en vivo, el período y la pantalla del panel (CH-48), y Chart.js (CH-47). CH-46 no agrega rutas al panel.
+
+**Se resigna.**
+- **Corregir un reporte en uso cuesta más:** hay que duplicarlo y reemplazarlo en cada tablero que lo usa.
+- **Una sola conexión por tablero:** un tenant con datos repartidos en dos réplicas no puede mezclarlas en el mismo tablero.
+- **Un reporte sin vistas aprobadas puede llegar al cliente:** se ve como el estado de error del reporte hasta que se apruebe el mapeo.
+
+**Decidido por:** el usuario, 2026-11-08, en la exploración de CH-46: eligió las tres opciones recomendadas y no objetó la forma propuesta. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
