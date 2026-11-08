@@ -53,7 +53,7 @@ Leyenda de estado: **EXISTE** = hay interfaz hoy (rediseñar manteniendo comport
 | Tenant activo | Violeta | Normales | Normales |
 | Tenant dado de baja | Violeta + chip "Dado de baja · congelado" | Banner neutro (ícono archivo): "X está dado de baja desde el dd/mm. La baja congela todo…"; **todas las acciones que crean, ejecutan o modifican quedan deshabilitadas**; lectura e historial disponibles | Normales |
 
-**Rutas del mockup** (hash; los nombres reales los decide el change): `#tenants`, `#plantillas`, `#reportes`, `#contrato`, `#conexiones`, `#conexiones/agentes`, `#mapeo`, `#tiempos`, `#consultas`, `#automatizaciones`, `#automatizaciones/alta`, `#automatizaciones/{id}`, `#frescura`, `#auditoria`.
+**Rutas del mockup** (hash; los nombres reales los decide el change): `#tenants`, `#plantillas`, `#reportes`, `#contrato`, `#conexiones`, `#conexiones/agentes`, `#mapeo`, `#tablero`, `#tiempos`, `#consultas`, `#automatizaciones`, `#automatizaciones/alta`, `#automatizaciones/{id}`, `#frescura`, `#auditoria`.
 
 **Reglas del esqueleto**
 - `<body class="zd-root" data-surface="consola">`. Barra de tenant → `.zd-shell` (navegación + `main.zd-page`).
@@ -168,7 +168,8 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 - **Datos**: `id` · `nombre` (para P1) · `titulo` y `descripcion` (para el cliente) · `entidades` · `sql` · `periodo` (`parametro` + `dias`, el primero es el predeterminado, o ninguno) · `visualizacion` (número / tabla / barras / línea) · `columnas` (rol, columna del resultado y título, en orden).
 - Global, en «Global» después de Plantillas (`#reportes`). Misma composición que C-03: tabla («Nombre», «Título para el cliente», «Visualización», «Ver»), panel lateral y un pop-up para crear y editar (DEC-173, DEC-198). Lista cortada: «Se muestran solo los primeros N reportes».
 - **Visualización** siempre en palabras: «Número», «Tabla», «Barras», «Línea». Roles: número = «Valor»; barras y línea = «Etiqueta» y «Valor»; tabla = «Columna 1» a «Columna 10».
-- **Panel lateral**: entidades, período («parámetro desde; días: 30 (predeterminado), 7» o «Sin período»), SQL (mono), títulos para el cliente, visualización y columnas asignadas con su rol y título. Acción «Editar». No hay borrado ni duplicado (DEC-68).
+- **Panel lateral**: entidades, período («parámetro desde; días: 30 (predeterminado), 7» o «Sin período»), SQL (mono), títulos para el cliente, visualización y columnas asignadas con su rol y título. No hay borrado (DEC-68).
+  - **En uso (CH-46, DEC-199)**: «Editar» si el reporte no está en ningún tablero; «Duplicar y editar» con el aviso «Está en el tablero de un cliente: se duplica en lugar de editarse.» si lo está. Nunca las dos; sin `enUso`, se lee como en uso (igual que C-03).
   - **«Probar en el tenant activo»**: conexión del tenant, select de período («Últimos N días», arranca en el predeterminado; no aparece sin período) y «Probar». Resultado pegado al botón, como texto:
     - `ok`: tabla con **solo las columnas asignadas**, encabezadas por su título y en su orden; debajo, filas, la fecha usada («Desde el 30/10/2026») y, con `corte`, que se cortó en el tope de la visualización.
     - `ok` con `faltantes`: qué columnas no trae el resultado; sin tabla.
@@ -179,6 +180,25 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
   - **Guardar** solo tras una prueba `ok` con la misma huella: SQL, período, entidades y conexión. Nombre, textos, visualización y columnas no la invalidan. Cerrado, dice por qué: sin prueba, la última falló o cambió desde la última prueba.
   - Guarda con `columnasPrueba` (las columnas de esa prueba). Un `400` dice «Revisá estos campos» con los términos del glosario y las columnas que faltan. Éxito: cierra, recarga la lista y abre el panel del reporte guardado.
   - Cancelar y Escape preguntan antes de descartar; cambiar de tenant lo cierra.
+  - **Duplicar (CH-46)**: el mismo pop-up, titulado «Duplicar reporte», con el nombre seguido de « (copia)» y **todos** los demás campos, textos para el cliente incluidos (a diferencia de C-03). Nada se escribe hasta «Guardar», que envía `POST`; la copia necesita su propia prueba.
+  - **`409 reporte-en-uso`** al guardar una edición: el pop-up sigue abierto, dice «Este reporte ahora está en el tablero de un cliente y no se puede editar. Duplicalo para guardar tus cambios como un reporte nuevo.» y ofrece «Duplicar y editar», que lo convierte en copia con lo escrito.
+
+### C-14 Tablero del cliente — R2h · CH-46 · EXISTE
+- **Fuente**: `GET /tablero` y `PUT /tablero` del tenant activo (DEC-199); `GET /conexiones` y `GET /reportes` llenan los selects. Las tres lecturas salen juntas cada vez que se muestra la pantalla y al cambiar de tenant con la pantalla visible.
+- Del tenant activo, en «Puesta en marcha» después de Usuarios del panel (`#tablero`). Encabezado con `ScopeTag scope="tenant"`; la acción primaria es «Guardar», en el encabezado, y su resultado va en la línea de estado de abajo.
+- **Contenido**, de arriba abajo:
+  - **Conexión**: select con las conexiones del tenant; arranca en la del tablero, o vacío si el tenant no tiene tablero. Ayuda: «Todos los reportes del tablero leen esta conexión.»
+  - **Lista ordenada** de reportes (patrón de orden, sección 4): posición, título para el cliente, nombre y visualización, como texto. Si la respuesta nombra entidades pendientes, la fila suma «Faltan vistas aprobadas en esta conexión: pedido» (aviso, color warn y texto; nunca bloquea).
+  - **«Agregar reporte»**: select con los reportes del catálogo que no están en la lista, y «Agregar» (secundario), que suma el elegido al final.
+- **Estados**:
+  - sin tenant: «Elegí un tenant para armar su tablero.» y no se pide nada;
+  - vacío: «El tablero no tiene reportes: el cliente no ve ninguno.»;
+  - tope: con 8 reportes, el select y «Agregar» se deshabilitan y la pantalla dice «El tablero llegó al máximo de 8 reportes.»;
+  - conexión cambiada: se borran las líneas de vistas pendientes y la pantalla dice «Guardá para ver qué reportes tienen sus vistas aprobadas en esta conexión.» (el servidor es la única fuente);
+  - «Guardar» se habilita solo con una conexión elegida y algo distinto de lo último cargado o guardado. Las vistas pendientes nunca lo cierran;
+  - guardado: «Se guardó el tablero.» y la lista se redibuja con la respuesta;
+  - `400` nombra el problema (campos o reportes que ya no están en el catálogo); `404 conexion-no-encontrada` dice que la conexión ya no existe; red y tenant, legibles.
+- Cambiar de tenant descarta lo no guardado, sin preguntar: la pantalla no es un pop-up.
 
 ---
 
@@ -210,6 +230,7 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | CH-40 | C-09 Automatizaciones: mínimo de filas en el alta y en el ajuste · C-10 Ejecuciones: «No enviada: menos filas que el mínimo» | EXISTE |
 | CH-44 | C-09 Automatizaciones: canal en el alta, el ajuste y la vista previa · C-10 Ejecuciones: textos por canal de cada ejecución | EXISTE |
 | CH-45 | C-13 Reportes: catálogo, panel con prueba y pop-up de alta y edición · C-12 Auditoría: «Prueba de reporte» | EXISTE |
+| CH-46 | C-14 Tablero del cliente · C-13 Reportes: en uso, «Duplicar y editar» y `409 reporte-en-uso` | EXISTE |
 
 ---
 
@@ -227,6 +248,14 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | (CSS sin componente) | `.zd-statusline` · `.zd-compare` · `.zd-cron` · `.zd-split` · `.zd-list` `__item[aria-current]` · `.zd-badge--pending` · `.zd-template__why` · `.zd-tenantbar__flag` · `.zd-operator` · `.zd-page` | — |
 
 Todos usan los tokens existentes; ninguno usa violeta.
+
+**Patrón de orden (CH-46, C-14).** Para una lista corta que P1 ordena a mano, sin arrastrar:
+- Cada fila lleva, al final, «Subir», «Bajar» y «Quitar» como botones secundarios chicos (los botones que arma el script, sin clase `zd-*`). Cada uno tiene un `aria-label` con el título de la fila («Subir Ventas del mes»).
+- «Subir» está deshabilitado en la primera fila y «Bajar» en la última; nunca se ocultan, para que las columnas no salten.
+- La posición se escribe como texto («1.»), no solo con el número de la lista.
+- Tras mover, el foco sigue al botón pulsado en la nueva posición (o al otro, si quedó en un extremo).
+- El tope se dice en una línea propia junto al control de agregar, y ese control se deshabilita al llegar.
+- Nada se envía al mover: el orden viaja completo al pulsar «Guardar».
 
 ---
 

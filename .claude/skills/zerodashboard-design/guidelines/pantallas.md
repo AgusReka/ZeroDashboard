@@ -119,6 +119,13 @@ Superficie densa, escritorio primero. Toda pantalla vive bajo la **barra de tena
 - **Datos**: `nombre` · `titulo` y `descripcion` para el cliente · `entidades` · `sql` · `periodo` (parámetro de fecha y días declarados, o ninguno) · `visualizacion` (Número / Tabla / Barras / Línea) · `columnas` por rol con su título.
 - **Estados**: sin tenant (el bloque de prueba dice «Elegí un tenant para probar el reporte.») · prueba ok (tabla con las columnas asignadas bajo sus títulos y «Desde el dd/mm/aaaa») · columnas faltantes (las nombra, sin tabla) · cortado en el tope de la visualización · `409` de vistas no aprobadas · `400` con los campos.
 - **Acciones**: Nuevo reporte, Editar, Probar, Guardar (solo tras una prueba ok de la misma huella).
+- **En uso (CH-46, DEC-199)**: un reporte que está en el tablero de un cliente ofrece «Duplicar y editar» en lugar de «Editar»; la copia lleva todos los campos y « (copia)» en el nombre.
+
+### C-24 Tablero del cliente — R2h · CH-46 · EXISTE
+- **Propósito**: elegir qué reportes ve el cliente del tenant activo, en qué orden y sobre qué conexión (DEC-183, DEC-199). La especificación completa está en `consola.md`, C-14.
+- **Datos**: `conexionId` · `reportes` (lista ordenada, hasta 8, sin repetidos), cada uno con `titulo`, `nombre`, `visualizacion` y las entidades sin vistas aprobadas en esa conexión.
+- **Estados**: sin tenant · vacío («el cliente no ve ninguno») · tope de 8 · vistas pendientes (aviso, no bloquea) · conexión cambiada (las líneas de vistas se borran hasta guardar) · guardado · `400` · `404` de conexión.
+- **Acciones**: Subir, Bajar, Quitar, Agregar, Guardar.
 
 ---
 
@@ -197,6 +204,7 @@ Reporte HTML compatible con clientes de correo: tablas, estilos inline, 600 px, 
 | CH-43 | P-07 Avisos por Telegram | EXISTE |
 | CH-44 | P-02 Aviso sin chat · P-04 Enviar por | EXISTE |
 | CH-45 | C-23 Reportes (consola, ver `consola.md` C-13) | EXISTE |
+| CH-46 | C-24 Tablero del cliente (consola, ver `consola.md` C-14) · C-23 Reportes: en uso | EXISTE |
 
 ## Componentes → change
 | Componente | Historia · Change · Estado |

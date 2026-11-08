@@ -219,6 +219,24 @@ function documentoConsola(nombreOperador: string): string {
   #tiempos-lista dt { color: var(--text-3); }
   #tiempos-lista dd { margin: 0; }
   .etapa-pendiente { display: inline-flex; align-items: center; height: 22px; margin-inline-start: var(--space-3); padding: 0 var(--space-4); border-radius: var(--radius-pill); border: 1px solid var(--neutral-border); background: var(--neutral-soft); color: var(--neutral-text); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+  /* CH-46 (DEC-199, C-14): the dashboard's ordered list. The rows are built by the script, so local classes
+     instead of zd-* ones (G3'); the row buttons take the small secondary look of every script-built button. */
+  #tablero-conexion { width: min(28rem, 100%); }
+  .tablero-bloque { margin-top: var(--space-6); }
+  #tablero-lista { list-style: none; margin: var(--space-4) 0 0; padding: 0; border: var(--border-width) solid var(--border-1);
+    border-radius: var(--radius-md); }
+  #tablero-lista:empty { display: none; }
+  .tablero-fila { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); padding: var(--space-4) var(--space-5);
+    border-bottom: var(--border-width) solid var(--border-1); }
+  .tablero-fila:last-child { border-bottom: 0; }
+  .tablero-posicion { min-width: 2ch; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .tablero-datos { display: flex; flex: 1 1 16rem; flex-direction: column; gap: var(--space-2); min-width: 0; }
+  .tablero-titulo { font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+  .tablero-detalle { font-size: var(--text-sm); color: var(--text-2); overflow-wrap: anywhere; }
+  .tablero-pendientes { font-size: var(--text-help); color: var(--warn-text); }
+  .tablero-acciones { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+  .tablero-agregar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); }
+  .tablero-agregar > div { flex: 1 1 18rem; max-width: 28rem; }
 </style>
 </head>
 <body class="zd-root">
@@ -259,6 +277,7 @@ function documentoConsola(nombreOperador: string): string {
     <a id="nav-agentes" class="zd-sidenav__item" href="#agentes"><span>Agentes</span></a>
     <a id="nav-mapeo" class="zd-sidenav__item" href="#mapeo"><span>Mapeo y validación</span></a>
     <a id="nav-usuarios" class="zd-sidenav__item" href="#usuarios"><span>Usuarios del panel</span></a>
+    <a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente</span></a>
     <a id="nav-tiempos" class="zd-sidenav__item" href="#tiempos"><span>Tiempos de alta</span></a>
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
@@ -478,6 +497,44 @@ function documentoConsola(nombreOperador: string): string {
 </section>
 
 <!--
+  CH-46 (DEC-183, DEC-199, screen C-14): which reports the active tenant's client sees, in which order and over
+  which connection. Nothing is sent while editing: «Guardar» sends the whole dashboard (PUT /tablero). The rows,
+  the connection options and the catalog options are built by the script, as text.
+-->
+<section id="pantalla-tablero" aria-labelledby="titulo-tablero" data-change="CH-46" data-estado="existe" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <h1 id="titulo-tablero" class="zd-h1">Tablero del cliente</h1>
+    <p class="zd-pagehead__desc">Qué reportes ve el cliente en su panel y en qué orden. Hasta 8, todos sobre la misma conexión.</p>
+  </div>
+  <div class="zd-pagehead__actions">
+    <button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar</button>
+  </div>
+</header>
+<p id="tablero-aviso" class="ayuda" role="status"></p>
+<div class="tablero-bloque">
+  <label for="tablero-conexion" class="zd-label">Conexión</label>
+  <select id="tablero-conexion" class="zd-select"></select>
+  <p class="ayuda">Todos los reportes del tablero leen esta conexión.</p>
+  <p id="tablero-conexion-aviso" class="ayuda" role="status"></p>
+</div>
+<div class="tablero-bloque">
+  <h2 class="zd-h3">Reportes, en el orden en que los ve el cliente</h2>
+  <p id="tablero-lista-aviso" class="ayuda" role="status"></p>
+  <ol id="tablero-lista"></ol>
+</div>
+<div class="tablero-bloque tablero-agregar">
+  <div>
+    <label for="tablero-agregar-reporte" class="zd-label">Agregar reporte</label>
+    <select id="tablero-agregar-reporte" class="zd-select"></select>
+  </div>
+  <button id="tablero-agregar" class="zd-btn zd-btn--secondary" type="button">Agregar</button>
+</div>
+<p id="tablero-tope" class="ayuda" role="status"></p>
+</section>
+
+<!--
   CH-30e2 (DEC-178, screen C-07): which stage each connection of the active tenant has reached and when,
   over GET /tiempos-alta. Read only. The blocks are built by the script as text, one per connection.
 -->
@@ -666,8 +723,11 @@ function documentoConsola(nombreOperador: string): string {
     <p id="reporte-textos"></p>
     <p id="reporte-visualizacion"></p>
     <p id="reporte-columnas"></p>
+    <!-- CH-46 (DEC-199): a report on a client dashboard is duplicated, not edited; the script shows one action. -->
+    <p id="reporte-en-uso-aviso" class="ayuda" hidden>Está en el tablero de un cliente: se duplica en lugar de editarse.</p>
     <div class="zd-form-actions">
-      <button id="reporte-editar" class="zd-btn zd-btn--secondary" type="button">Editar</button>
+      <button id="reporte-editar" class="zd-btn zd-btn--secondary" type="button" hidden>Editar</button>
+      <button id="reporte-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
     </div>
     <!-- The one tenant-scoped part of this screen: it runs the stored report on a connection of the active tenant. -->
     <section id="reporte-prueba" aria-labelledby="reporte-prueba-titulo">
@@ -686,8 +746,9 @@ function documentoConsola(nombreOperador: string): string {
   </div>
 </aside>
 <!--
-  One pop-up for «Nuevo reporte» and «Editar» (DEC-173). The test (POST /reportes/prueba) saves nothing and sends no
-  columns: it is what produces them. A refusal, and the reason «Guardar» is closed, are written in #reporte-dialogo-estado.
+  One pop-up for «Nuevo reporte», «Editar» and, since CH-46, «Duplicar y editar» (DEC-173, DEC-199). The test
+  (POST /reportes/prueba) saves nothing and sends no columns: it is what produces them. A refusal, and the reason
+  «Guardar» is closed, are written in #reporte-dialogo-estado; a 409 reporte-en-uso also shows #reporte-dialogo-duplicar.
 -->
 <div id="reporte-dialogo" class="zd-dialog-backdrop" hidden>
   <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="reporte-dialogo-titulo">
@@ -764,6 +825,7 @@ function documentoConsola(nombreOperador: string): string {
         <button id="reporte-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
         <button id="reporte-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
       </span>
+      <button id="reporte-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
       <button id="reporte-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="reporte-form" aria-describedby="reporte-dialogo-estado" disabled>Guardar</button>
       <button id="reporte-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
@@ -4326,6 +4388,8 @@ function cambiarTenant(id) {
   if (!document.getElementById('pantalla-usuarios').hidden) { cargarPantallaUsuarios(); }
   if (!document.getElementById('pantalla-auditoria').hidden) { cargarPantallaAuditoria(); }
   if (!document.getElementById('pantalla-tiempos').hidden) { cargarPantallaTiempos(); }
+  // CH-46: the dashboard belongs to the tenant it was read for; unsaved changes are discarded, never sent to another.
+  if (!document.getElementById('pantalla-tablero').hidden) { cargarPantallaTablero(); } else { limpiarTablero(); }
 }
 
 selectorTenant.addEventListener('change', function () {
@@ -6104,6 +6168,12 @@ async function verReporte(id) {
   document.getElementById('reporte-textos').textContent = textosClienteReporte(reporte);
   document.getElementById('reporte-visualizacion').textContent = 'Visualización: ' + etiquetaVisualizacion(reporte.visualizacion);
   document.getElementById('reporte-columnas').textContent = textoColumnasReporte(columnas);
+  // CH-46 (DEC-199): «Editar» or «Duplicar y editar» by use, never both. A missing enUso reads as in use, as for
+  // templates: duplicating loses nothing, editing would be refused anyway.
+  var enUso = reporte.enUso !== false;
+  document.getElementById('reporte-en-uso-aviso').hidden = !enUso;
+  document.getElementById('reporte-editar').hidden = enUso;
+  document.getElementById('reporte-duplicar').hidden = !enUso;
   // The test block starts empty for this report, with the declared days and the default chosen.
   reporteAbierto = { id: id, periodo: periodo, columnas: columnas, datos: reporte };
   limpiarPruebaReporte();
@@ -6190,9 +6260,12 @@ var estadoDialogoReporte = document.getElementById('reporte-dialogo-estado');
 var botonGuardarReporte = document.getElementById('reporte-dialogo-guardar');
 var tituloDialogoReporte = document.getElementById('reporte-dialogo-titulo');
 var formularioReporte = document.getElementById('reporte-form');
+var botonDuplicarDialogoReporte = document.getElementById('reporte-dialogo-duplicar');
 
-// The id of the report being edited; '' for a new one.
+// The id of the report being edited; '' for a new one and for a copy (CH-46), which are both a POST.
 var reporteEditadoId = '';
+// CH-46 (DEC-199): 'nueva', 'editar' or 'duplicar'.
+var modoReporte = 'nueva';
 // {huella, ok, columnas} of the last test answer; null before any, and while one is on its way.
 var ultimaPruebaReporte = null;
 // The columns the selects offer: those of the last passing test, kept until the pop-up closes.
@@ -6303,8 +6376,10 @@ function actualizarGuardadoReporte() {
   estadoDialogoReporte.textContent = rechazoReporte !== '' ? rechazoReporte : (cerrado ? motivoGuardadoReporte() : '');
 }
 
+// Any edit of the form: a refusal shown for the old content goes, and so does the offer to duplicate (CH-46).
 function alEditarReporte() {
   rechazoReporte = '';
+  botonDuplicarDialogoReporte.hidden = true;
   actualizarGuardadoReporte();
 }
 
@@ -6391,15 +6466,20 @@ function reiniciarDialogoReporte() {
   probandoReporte = false;
   botonProbarFormReporte.disabled = false;
   rechazoReporte = '';
+  botonDuplicarDialogoReporte.hidden = true;
   vaciar(tablaResultadoReporte);
   avisoResultadoReporte.textContent = '';
 }
 
-// Fills the form: blank for a new report, the stored one for an edit.
-function llenarFormularioReporte(reporte) {
+var TITULOS_DIALOGO_REPORTE = { nueva: 'Nuevo reporte', editar: 'Editar reporte', duplicar: 'Duplicar reporte' };
+
+// Fills the form for a mode. nueva: blank. editar: the stored report. duplicar (CH-46, DEC-199): the stored report
+// named «… (copia)», with every other field, client texts included: a report's title is required, and the copy is on
+// no dashboard until P1 puts it there.
+function llenarFormularioReporte(modo, reporte) {
   var cargado = reporte !== null && reporte !== undefined;
-  tituloDialogoReporte.textContent = cargado ? 'Editar reporte' : 'Nuevo reporte';
-  entradaNombreReporte.value = cargado ? String(reporte.nombre) : '';
+  tituloDialogoReporte.textContent = TITULOS_DIALOGO_REPORTE[modo];
+  entradaNombreReporte.value = !cargado ? '' : String(reporte.nombre) + (modo === 'duplicar' ? SUFIJO_COPIA : '');
   entradaTituloReporte.value = cargado ? String(reporte.titulo) : '';
   entradaDescripcionReporte.value = cargado && typeof reporte.descripcion === 'string' ? reporte.descripcion : '';
   var marcadas = cargado && Array.isArray(reporte.entidades) ? reporte.entidades.map(String) : [];
@@ -6426,14 +6506,26 @@ var dialogoReporte = crearDialogo({
   alCerrar: reiniciarDialogoReporte
 });
 
-function abrirDialogoReporte(reporte) {
+function abrirDialogoReporte(modo, reporte) {
   reiniciarDialogoReporte();
-  reporteEditadoId = reporte ? String(reporte.id) : '';
-  llenarFormularioReporte(reporte);
+  modoReporte = modo;
+  reporteEditadoId = modo === 'editar' && reporte ? String(reporte.id) : '';
+  llenarFormularioReporte(modo, reporte);
   instantaneaReporte = instantaneaDeFormularioReporte();
   actualizarGuardadoReporte();
   dialogoReporte.abrir();
   cargarConexionesReporte();
+}
+
+// CH-46 (DEC-199): the save found the report on a client dashboard. The pop-up stays open and becomes a copy, with
+// what is in the form now; the test of this same content still holds, so «Guardar» sends it as a POST.
+function pasarAduplicarReporte() {
+  modoReporte = 'duplicar';
+  reporteEditadoId = '';
+  tituloDialogoReporte.textContent = TITULOS_DIALOGO_REPORTE.duplicar;
+  var nombre = entradaNombreReporte.value;
+  if (nombre.slice(-SUFIJO_COPIA.length) !== SUFIJO_COPIA) { entradaNombreReporte.value = nombre + SUFIJO_COPIA; }
+  alEditarReporte();
 }
 
 // The pop-up test: every column of the result, so P1 can choose. A passing one fills the column selects; an
@@ -6512,6 +6604,9 @@ formularioReporte.addEventListener('submit', async function (evento) {
     rechazoReporte = 'No se pudo contactar con la aplicación.';
   } else if (resultado.status === 400 && cuerpo !== null && typeof cuerpo === 'object') {
     rechazoReporte = mensajeDeRechazoReporte(cuerpo);
+  } else if (resultado.status === 409 && editando && cuerpo !== null && typeof cuerpo === 'object' && cuerpo.error === 'reporte-en-uso') {
+    rechazoReporte = 'Este reporte ahora está en el tablero de un cliente y no se puede editar. Duplicalo para guardar tus cambios como un reporte nuevo.';
+    botonDuplicarDialogoReporte.hidden = false;
   } else if (resultado.status === 404 && editando) {
     rechazoReporte = 'El reporte ya no existe en el catálogo.';
   } else {
@@ -6520,10 +6615,14 @@ formularioReporte.addEventListener('submit', async function (evento) {
   actualizarGuardadoReporte();
 });
 
-document.getElementById('reporte-nuevo').addEventListener('click', function () { abrirDialogoReporte(null); });
+document.getElementById('reporte-nuevo').addEventListener('click', function () { abrirDialogoReporte('nueva', null); });
 document.getElementById('reporte-editar').addEventListener('click', function () {
-  if (reporteAbierto !== null) { abrirDialogoReporte(reporteAbierto.datos); }
+  if (reporteAbierto !== null) { abrirDialogoReporte('editar', reporteAbierto.datos); }
 });
+document.getElementById('reporte-duplicar').addEventListener('click', function () {
+  if (reporteAbierto !== null) { abrirDialogoReporte('duplicar', reporteAbierto.datos); }
+});
+botonDuplicarDialogoReporte.addEventListener('click', pasarAduplicarReporte);
 botonProbarFormReporte.addEventListener('click', probarEnDialogoReporte);
 botonAgregarColumnaReporte.addEventListener('click', function () {
   if (filasColumnasReporte.length >= MAXIMO_COLUMNAS_REPORTE) { return; }
@@ -7038,10 +7137,328 @@ async function cargarPantallaTiempos() {
     : (cuerpo.truncado === true ? 'Se muestran las primeras 200 conexiones.' : '');
 }
 
+// ---- CH-46 (DEC-199, screen C-14): Tablero del cliente ------------------------------------------------
+// The active tenant's dashboard: one connection and up to TOPE_TABLERO reports, in order. Nothing is sent while
+// editing; «Guardar» sends the whole dashboard (PUT /tablero). The pending views come only from the server, so a
+// changed connection clears them until the next save. Switching the tenant reloads the screen and discards what was
+// not saved: it is not a pop-up, so there is nothing to ask. Every value reaches the page as text.
+
+var TOPE_TABLERO = 8;
+var AVISO_TABLERO_SIN_TENANT = 'Elegí un tenant para armar su tablero.';
+var AVISO_TABLERO_VACIO = 'El tablero no tiene reportes: el cliente no ve ninguno.';
+var AVISO_TABLERO_TOPE = 'El tablero llegó al máximo de ' + TOPE_TABLERO + ' reportes.';
+var AVISO_TABLERO_CONEXION = 'Guardá para ver qué reportes tienen sus vistas aprobadas en esta conexión.';
+
+var avisoTablero = document.getElementById('tablero-aviso');
+var selectorConexionTablero = document.getElementById('tablero-conexion');
+var avisoConexionTablero = document.getElementById('tablero-conexion-aviso');
+var avisoListaTablero = document.getElementById('tablero-lista-aviso');
+var listaTablero = document.getElementById('tablero-lista');
+var selectorAgregarTablero = document.getElementById('tablero-agregar-reporte');
+var botonAgregarTablero = document.getElementById('tablero-agregar');
+var avisoTopeTablero = document.getElementById('tablero-tope');
+var botonGuardarTablero = document.getElementById('tablero-guardar');
+
+// {conexionId, ids} as last loaded or saved; null until a load succeeds. '' is no connection.
+var tableroGuardado = null;
+// {conexionId, ids} as the screen holds it.
+var tableroActual = { conexionId: '', ids: [] };
+// id -> {nombre, titulo, visualizacion}, from the dashboard answer and from the catalog.
+var reportesTablero = Object.create(null);
+// The catalog's ids in its order, for «Agregar reporte».
+var catalogoTablero = [];
+// id -> the entities the last server answer names as pending on the saved connection.
+var pendientesTablero = Object.create(null);
+// The row buttons as drawn, so a move can keep the focus on the button pressed.
+var botonesFilasTablero = [];
+var guardandoTablero = false;
+// Drops an answer (the three reads, a save) that arrives after the screen reloaded or the tenant changed.
+var generacionTablero = 0;
+
+function mismosIdsTablero(a, b) {
+  return a.length === b.length && a.every(function (id, indice) { return id === b[indice]; });
+}
+
+function tableroCambiado() {
+  return tableroGuardado !== null
+    && (tableroActual.conexionId !== tableroGuardado.conexionId || !mismosIdsTablero(tableroActual.ids, tableroGuardado.ids));
+}
+
+// «Guardar»: a connection chosen and something different from the last load or save. Pending views never close it.
+function actualizarGuardadoTablero() {
+  botonGuardarTablero.disabled = guardandoTablero || tenantActivo === null || tableroActual.conexionId === '' || !tableroCambiado();
+}
+
+function respuestaTableroValida(cuerpo) {
+  return cuerpo !== null && typeof cuerpo === 'object' && Array.isArray(cuerpo.reportes);
+}
+
+// A GET or PUT /tablero answer: the saved dashboard, each report's texts and its pending entities.
+function leerRespuestaTablero(cuerpo) {
+  pendientesTablero = Object.create(null);
+  var ids = [];
+  cuerpo.reportes.forEach(function (entrada) {
+    if (entrada === null || typeof entrada !== 'object') { return; }
+    var id = String(entrada.id);
+    ids.push(id);
+    reportesTablero[id] = { nombre: String(entrada.nombre), titulo: String(entrada.titulo), visualizacion: String(entrada.visualizacion) };
+    pendientesTablero[id] = Array.isArray(entrada.pendientes) ? entrada.pendientes.map(String) : [];
+  });
+  var conexionId = typeof cuerpo.conexionId === 'string' ? cuerpo.conexionId : '';
+  tableroGuardado = { conexionId: conexionId, ids: ids.slice() };
+  tableroActual = { conexionId: conexionId, ids: ids.slice() };
+}
+
+function datosReporteTablero(id) {
+  return reportesTablero[id] || { nombre: id, titulo: id, visualizacion: '' };
+}
+
+function textoTablero(etiqueta, clase, texto) {
+  var nodo = document.createElement(etiqueta);
+  nodo.className = clase;
+  nodo.textContent = texto;
+  return nodo;
+}
+
+// One row: position, client title, name and visualization, the pending views when the answer names them, and
+// «Subir» (closed on the first row), «Bajar» (closed on the last) and «Quitar».
+function filaTablero(id, indice, total) {
+  var datos = datosReporteTablero(id);
+  var fila = document.createElement('li');
+  fila.className = 'tablero-fila';
+  fila.appendChild(textoTablero('span', 'tablero-posicion', (indice + 1) + '.'));
+  var columna = document.createElement('div');
+  columna.className = 'tablero-datos';
+  columna.appendChild(textoTablero('span', 'tablero-titulo', datos.titulo));
+  columna.appendChild(textoTablero('span', 'tablero-detalle', datos.nombre + ' · ' + etiquetaVisualizacion(datos.visualizacion)));
+  var pendientes = pendientesTablero[id];
+  if (pendientes && pendientes.length > 0) {
+    columna.appendChild(textoTablero('span', 'tablero-pendientes', 'Faltan vistas aprobadas en esta conexión: ' + pendientes.join(', ')));
+  }
+  fila.appendChild(columna);
+  var acciones = document.createElement('div');
+  acciones.className = 'tablero-acciones';
+  var subir = botonTenant('Subir', function () { moverTablero(indice, -1); });
+  var bajar = botonTenant('Bajar', function () { moverTablero(indice, 1); });
+  var quitar = botonTenant('Quitar', function () { quitarTablero(indice); });
+  subir.disabled = indice === 0;
+  bajar.disabled = indice === total - 1;
+  subir.setAttribute('aria-label', 'Subir ' + datos.titulo);
+  bajar.setAttribute('aria-label', 'Bajar ' + datos.titulo);
+  quitar.setAttribute('aria-label', 'Quitar ' + datos.titulo);
+  acciones.appendChild(subir);
+  acciones.appendChild(bajar);
+  acciones.appendChild(quitar);
+  fila.appendChild(acciones);
+  botonesFilasTablero.push({ subir: subir, bajar: bajar });
+  return fila;
+}
+
+function dibujarTablero() {
+  vaciar(listaTablero);
+  botonesFilasTablero = [];
+  var ids = tableroActual.ids;
+  ids.forEach(function (id, indice) { listaTablero.appendChild(filaTablero(id, indice, ids.length)); });
+  var cargado = tableroGuardado !== null;
+  avisoListaTablero.textContent = cargado && ids.length === 0 ? AVISO_TABLERO_VACIO : '';
+  vaciar(selectorAgregarTablero);
+  var libres = catalogoTablero.filter(function (id) { return ids.indexOf(id) === -1; });
+  if (cargado) {
+    selectorAgregarTablero.appendChild(opcionDe('', libres.length === 0 ? 'No hay más reportes en el catálogo' : 'Elegí un reporte'));
+    libres.forEach(function (id) {
+      var datos = datosReporteTablero(id);
+      selectorAgregarTablero.appendChild(opcionDe(id, datos.nombre + ' (' + datos.titulo + ')'));
+    });
+  }
+  selectorAgregarTablero.value = '';
+  var lleno = ids.length >= TOPE_TABLERO;
+  selectorAgregarTablero.disabled = !cargado || lleno || libres.length === 0;
+  botonAgregarTablero.disabled = !cargado || lleno || libres.length === 0;
+  avisoTopeTablero.textContent = lleno ? AVISO_TABLERO_TOPE : '';
+  selectorConexionTablero.disabled = !cargado;
+  actualizarGuardadoTablero();
+}
+
+// Any edit: the line of the last save no longer describes the screen.
+function alEditarTablero() {
+  avisoTablero.textContent = '';
+  dibujarTablero();
+}
+
+// Swaps a row with its neighbour; the focus stays on the pressed button in the row's new place, or on the other
+// one when the row reached an end.
+function moverTablero(indice, paso) {
+  var destino = indice + paso;
+  var ids = tableroActual.ids;
+  if (destino < 0 || destino >= ids.length) { return; }
+  var movido = ids[indice];
+  ids[indice] = ids[destino];
+  ids[destino] = movido;
+  alEditarTablero();
+  var botones = botonesFilasTablero[destino];
+  var pulsado = paso < 0 ? botones.subir : botones.bajar;
+  (pulsado.disabled ? (paso < 0 ? botones.bajar : botones.subir) : pulsado).focus();
+}
+
+function quitarTablero(indice) {
+  tableroActual.ids.splice(indice, 1);
+  alEditarTablero();
+  selectorAgregarTablero.focus();
+}
+
+function opcionesConexionTablero(conexiones) {
+  vaciar(selectorConexionTablero);
+  selectorConexionTablero.appendChild(opcionDe('', conexiones.length === 0 ? 'No hay conexiones' : 'Elegí una conexión'));
+  var ids = [];
+  conexiones.forEach(function (fila) {
+    var idConexion = String(fila.id);
+    ids.push(idConexion);
+    selectorConexionTablero.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+  });
+  // The saved connection stays choosable even when the list could not name it.
+  var guardada = tableroActual.conexionId;
+  if (guardada !== '' && ids.indexOf(guardada) === -1) { selectorConexionTablero.appendChild(opcionDe(guardada, guardada.slice(0, 8) + '…')); }
+  selectorConexionTablero.value = guardada;
+}
+
+// Back to an empty, unloaded screen; also what a tenant switch does while the screen is hidden.
+function limpiarTablero() {
+  generacionTablero += 1;
+  guardandoTablero = false;
+  tableroGuardado = null;
+  tableroActual = { conexionId: '', ids: [] };
+  reportesTablero = Object.create(null);
+  catalogoTablero = [];
+  pendientesTablero = Object.create(null);
+  vaciar(selectorConexionTablero);
+  avisoTablero.textContent = '';
+  avisoConexionTablero.textContent = '';
+  dibujarTablero();
+}
+
+// The three reads leave together, the dashboard first: GET /tablero and GET /conexiones with the tenant header,
+// GET /reportes (the global catalog) without it.
+async function cargarPantallaTablero() {
+  limpiarTablero();
+  var g = generacionTablero;
+  if (tenantActivo === null) {
+    avisoTablero.textContent = AVISO_TABLERO_SIN_TENANT;
+    return;
+  }
+  avisoTablero.textContent = 'Cargando el tablero…';
+  var sinUso = { textContent: '' };
+  var lecturas = await Promise.all([leerPrueba('/tablero'), leerPrueba('/conexiones'), leerGlobal('/reportes', sinUso)]);
+  if (g !== generacionTablero) { return; }
+  var tablero = lecturas[0];
+  // null: the banner already says why (tenant refusal).
+  if (tablero === null) { avisoTablero.textContent = ''; return; }
+  if (tablero.red) { avisoTablero.textContent = 'No se pudo contactar con la aplicación.'; return; }
+  if (tablero.status !== 200 || !respuestaTableroValida(tablero.cuerpo)) {
+    avisoTablero.textContent = 'No se pudo leer el tablero (HTTP ' + tablero.status + ').';
+    return;
+  }
+  leerRespuestaTablero(tablero.cuerpo);
+  var conexiones = lecturas[1];
+  var listaConexiones = conexiones !== null && !conexiones.red && conexiones.status === 200 && conexiones.cuerpo !== null
+    && typeof conexiones.cuerpo === 'object' && Array.isArray(conexiones.cuerpo.conexiones) ? conexiones.cuerpo.conexiones : null;
+  opcionesConexionTablero(listaConexiones === null ? [] : listaConexiones);
+  var catalogo = lecturas[2];
+  var catalogoLeido = catalogo !== null && Array.isArray(catalogo.reportes);
+  if (catalogoLeido) {
+    catalogo.reportes.forEach(function (reporte) {
+      if (reporte === null || typeof reporte !== 'object') { return; }
+      var id = String(reporte.id);
+      if (!reportesTablero[id]) {
+        reportesTablero[id] = { nombre: String(reporte.nombre), titulo: String(reporte.titulo), visualizacion: String(reporte.visualizacion) };
+      }
+      catalogoTablero.push(id);
+    });
+  }
+  dibujarTablero();
+  var problemas = [];
+  if (listaConexiones === null) {
+    problemas.push('No se pudieron cargar las conexiones.');
+  } else if (listaConexiones.length === 0) {
+    problemas.push('Registrá una conexión de este tenant para armar su tablero.');
+  }
+  if (!catalogoLeido) { problemas.push('No se pudo leer el catálogo de reportes: no se pueden agregar reportes.'); }
+  avisoTablero.textContent = problemas.join(' ');
+}
+
+var ETIQUETAS_CAMPO_TABLERO = { conexionId: 'conexión', reportes: 'reportes' };
+
+// A refused save, as one legible line.
+function mensajeDeRechazoTablero(leido) {
+  var cuerpo = leido.cuerpo !== null && typeof leido.cuerpo === 'object' ? leido.cuerpo : {};
+  if (leido.red) { return 'No se pudo contactar con la aplicación.'; }
+  if (leido.status === 404 && cuerpo.error === 'conexion-no-encontrada') {
+    return 'La conexión elegida ya no existe en este tenant. Elegí otra y guardá de nuevo.';
+  }
+  if (leido.status === 400 && Array.isArray(cuerpo.desconocidos) && cuerpo.desconocidos.length > 0) {
+    var nombres = cuerpo.desconocidos.map(function (id) { return datosReporteTablero(String(id)).nombre; });
+    return 'Estos reportes ya no están en el catálogo: ' + nombres.join(', ') + '. Quitalos y guardá de nuevo.';
+  }
+  if (leido.status === 400) {
+    var etiquetas = [];
+    (Array.isArray(cuerpo.campos) ? cuerpo.campos : []).forEach(function (campo) {
+      var clave = String(campo).split('/')[1];
+      var etiqueta = Object.prototype.hasOwnProperty.call(ETIQUETAS_CAMPO_TABLERO, clave) ? ETIQUETAS_CAMPO_TABLERO[clave] : String(campo);
+      if (etiquetas.indexOf(etiqueta) === -1) { etiquetas.push(etiqueta); }
+    });
+    return 'Revisá estos campos: ' + (etiquetas.length === 0 ? 'el cuerpo enviado' : etiquetas.join(', ')) + '.';
+  }
+  return 'No se pudo guardar el tablero (HTTP ' + leido.status + ').';
+}
+
+// «Guardar»: the connection and the ids in screen order. guardandoTablero keeps a second press from saving twice.
+async function guardarTablero() {
+  actualizarGuardadoTablero();
+  if (botonGuardarTablero.disabled) { return; }
+  var g = generacionTablero;
+  var pedido = { conexionId: tableroActual.conexionId, reportes: tableroActual.ids.slice() };
+  guardandoTablero = true;
+  actualizarGuardadoTablero();
+  avisoTablero.textContent = 'Guardando…';
+  var leido = await leerPrueba('/tablero', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pedido)
+  });
+  if (g !== generacionTablero) { return; }
+  guardandoTablero = false;
+  if (leido === null) { avisoTablero.textContent = ''; actualizarGuardadoTablero(); return; }
+  if (!leido.red && leido.status === 200 && respuestaTableroValida(leido.cuerpo)) {
+    leerRespuestaTablero(leido.cuerpo);
+    avisoConexionTablero.textContent = '';
+    selectorConexionTablero.value = tableroActual.conexionId;
+    dibujarTablero();
+    avisoTablero.textContent = 'Se guardó el tablero.';
+    return;
+  }
+  avisoTablero.textContent = mensajeDeRechazoTablero(leido);
+  actualizarGuardadoTablero();
+}
+
+selectorConexionTablero.addEventListener('change', function () {
+  tableroActual.conexionId = selectorConexionTablero.value;
+  pendientesTablero = Object.create(null);
+  avisoConexionTablero.textContent = AVISO_TABLERO_CONEXION;
+  alEditarTablero();
+});
+botonAgregarTablero.addEventListener('click', function () {
+  var id = selectorAgregarTablero.value;
+  if (tableroGuardado === null || tableroActual.ids.length >= TOPE_TABLERO) { return; }
+  if (id === '') { avisoTopeTablero.textContent = 'Elegí un reporte para agregar.'; return; }
+  if (tableroActual.ids.indexOf(id) !== -1) { return; }
+  tableroActual.ids.push(id);
+  alEditarTablero();
+});
+botonGuardarTablero.addEventListener('click', guardarTablero);
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
-var PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
+var PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tablero', 'tiempos','consultas', 'automatizaciones', 'frescura', 'auditoria'];
 function mostrarPantalla() {
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
@@ -7060,6 +7477,7 @@ function mostrarPantalla() {
   if (activa === 'agentes') { cargarPantallaAgentes(); }
   if (activa === 'mapeo') { cargarPantallaMapeo(); }
   if (activa === 'usuarios') { cargarPantallaUsuarios(); }
+  if (activa === 'tablero') { cargarPantallaTablero(); }
   if (activa === 'auditoria') { cargarPantallaAuditoria(); }
   if (activa === 'tiempos') { cargarPantallaTiempos(); }
   // CH-32a: the picker reads the tenant's connections each time Consultas is shown.
