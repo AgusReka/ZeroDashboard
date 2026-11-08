@@ -1137,6 +1137,41 @@ describe(
       }
     });
 
+    // ---- CH-45 Reporte is a global catalog too, outside the filter (DEC-183) ----------
+
+    test('CH-45 Reporte reads and writes pass through with no active tenant, unfiltered inside one', async () => {
+      // The same two claims as for `Plantilla`: outside any context the operations run
+      // (a scoped model would throw ErrorSinTenantActivo), and inside a tenant's context
+      // both tenants see the same row (a scoped model would show it to neither).
+      const aislado = extenderConAislamiento(db);
+      const marca = `CH-45 reporte global ${Date.now()}`;
+      const creado = await aislado.reporte.create({
+        data: {
+          nombre: marca,
+          titulo: 'Productos',
+          sql: 'SELECT id FROM v_producto',
+          entidades: ['producto'],
+          visualizacion: 'tabla',
+          columnas: [{ rol: 'columna', columna: 'id', titulo: 'Número' }],
+        },
+      });
+      try {
+        assert.ok(!('tenantId' in creado), 'Reporte must carry no tenantId column');
+        assert.equal(creado.periodo, null);
+        const reemplazado = await aislado.reporte.update({ where: { id: creado.id }, data: { visualizacion: 'numero' } });
+        assert.equal(reemplazado.id, creado.id);
+        for (const fixture of [a, b]) {
+          const vistos = await conTenantActivo(
+            { id: fixture.tenantId, nombre: fixture.nombre },
+            () => aislado.reporte.findMany({ where: { nombre: marca } }),
+          );
+          assert.deepEqual(vistos.map((r) => r.id), [creado.id], `tenant ${fixture.nombre} must see the global report`);
+        }
+      } finally {
+        await db.reporte.delete({ where: { id: creado.id } });
+      }
+    });
+
     // ---- CH-12 5.8 T2 through the template test route ---------------------------------
 
     test("CH-12 5.8 composing the other tenant's views through the test route is 404, nothing read", async () => {
@@ -1294,6 +1329,7 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     // fail-closed cases below, so this list pins them *in*, not out. CH-29 (DEC-151) adds
     // `Operador` and `SesionConsola`, global like `Plantilla` (see the case below). CH-43
     // (DEC-185, DEC-196) adds `VinculoTelegram` and `CodigoVinculoTelegram`, both scoped.
+    // CH-45 (DEC-183) adds `Reporte`, global like `Plantilla` (see the case below).
     assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
       'Agente',
       'Automatizacion',
@@ -1305,6 +1341,7 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
       'Operador',
       'Plantilla',
       'RegistroEjecucion',
+      'Reporte',
       'SesionConsola',
       'SesionPanel',
       'Tenant',
@@ -1339,6 +1376,22 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     ]);
     // The control: a scoped model does carry it, so the absence above is meaningful.
     assert.ok(Object.values(Prisma.ConsultaGuardadaScalarFieldEnum).includes('tenantId'));
+  });
+
+  test('CH-45 Reporte carries no tenantId column and no relation, and is not a scoped model', () => {
+    assert.deepEqual(Object.values(Prisma.ReporteScalarFieldEnum).sort(), [
+      'columnas',
+      'descripcion',
+      'entidades',
+      'id',
+      'nombre',
+      'periodo',
+      'sql',
+      'titulo',
+      'visualizacion',
+    ]);
+    // `RegistroEjecucion.reporteId` is a plain column beside `plantillaId` (DEC-198).
+    assert.ok(Object.values(Prisma.RegistroEjecucionScalarFieldEnum).includes('reporteId'));
   });
 });
 

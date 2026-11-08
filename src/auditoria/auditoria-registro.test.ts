@@ -176,6 +176,8 @@ describe(
       assert.equal(fila.resultado, 'ok');
       assert.equal(fila.filas, 2);
       assert.equal(fila.consultaGuardadaId, null);
+      // CH-45: the paths before reports never name one.
+      assert.equal(fila.reporteId, null);
       assert.ok(fila.tenantNombre.startsWith('CH-20 registro'));
     });
 
@@ -217,6 +219,7 @@ describe(
       const fila = (await registros()).at(-1)!;
       assert.equal(fila.origen, 'plantilla-prueba');
       assert.equal(fila.plantillaId, plantillaId);
+      assert.equal(fila.reporteId, null);
       assert.match(fila.sql, /^WITH v_producto AS/);
       assert.match(fila.sql, /SELECT count\(\*\) AS n FROM v_producto/);
       assert.equal(fila.resultado, r.json().resultado);

@@ -1,6 +1,6 @@
 # Guía de ZeroDashboard
 
-Ocho guías sobre lo que la aplicación hace hoy, escritas contra el código y las decisiones registradas (`docs/01-decisiones.md`). Se muestran las etiquetas de la consola tal como aparecen. Lo que el producto no hace figura como **Límite**.
+Nueve guías sobre lo que la aplicación hace hoy, escritas contra el código y las decisiones registradas (`docs/01-decisiones.md`). Se muestran las etiquetas de la consola tal como aparecen. Lo que el producto no hace figura como **Límite**.
 
 Los lectores son quienes usan la consola, que corresponde al usuario P1 de `docs/00-contexto.md`. La columna «Para» sigue la navegación de la consola: *Implementador* es quien pone en marcha un tenant (grupo «Puesta en marcha»); *Operador* es quien trabaja con él a diario (grupo «Trabajo diario»). Puede ser la misma persona.
 
@@ -14,6 +14,7 @@ Los lectores son quienes usan la consola, que corresponde al usuario P1 de `docs
 | [06 Automatizaciones](06-automatizaciones.md) | Horario, correo, ejecuciones, ajuste en el lugar y frescura. | Operador |
 | [07 Usuarios y permisos](07-usuarios-y-permisos.md) | Operadores, usuarios del panel, secretos de un solo uso, baja de tenant, auditoría. | Implementador |
 | [08 Diagnóstico](08-diagnostico.md) | Catálogo de errores con su causa y qué hacer. | Operador, cuando algo falla |
+| [09 Reportes](09-reportes.md) | Catálogo global de reportes sobre las vistas canónicas: período, columnas por rol, topes y prueba. | Implementador |
 
 ## Orden de lectura para una puesta en marcha
 

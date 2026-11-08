@@ -51,6 +51,8 @@ describe('CH-20 audit row — pure (DEC-160)', () => {
       consultaVersion: null,
       consultaNombre: null,
       plantillaId: null,
+      // CH-45: a context written before reports existed names no report.
+      reporteId: null,
       resultado: 'ok',
       fase: null,
       categoria: null,
@@ -86,6 +88,21 @@ describe('CH-20 audit row — pure (DEC-160)', () => {
       { resultado: 'ok', fase: null, categoria: null, codigo: null, filas: 2, duracionMs: 1 },
     );
     assert.deepEqual([vistaPrevia.origen, vistaPrevia.plantillaId], ['automatizacion-vista-previa', 'p-1']);
+    assert.equal(vistaPrevia.reporteId, null);
+  });
+
+  test('CH-45 a report test has its own origin and names its report, or null when unsaved', () => {
+    const veredicto = { resultado: 'ok', fase: null, categoria: null, codigo: null, filas: 1, duracionMs: 1 } as const;
+    const guardado = filaDeAuditoria(
+      { origen: 'reporte-prueba', conexionId: 'c-1', sql: 'SELECT :desde', operador: OPERADOR, consulta: null, plantillaId: null, reporteId: 'r-1' },
+      veredicto,
+    );
+    assert.deepEqual([guardado.origen, guardado.reporteId, guardado.plantillaId], ['reporte-prueba', 'r-1', null]);
+    const sinGuardar = filaDeAuditoria(
+      { origen: 'reporte-prueba', conexionId: 'c-1', sql: 'SELECT 1', operador: OPERADOR, consulta: null, plantillaId: null, reporteId: null },
+      veredicto,
+    );
+    assert.equal(sinGuardar.reporteId, null);
   });
 });
 

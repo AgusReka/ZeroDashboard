@@ -114,6 +114,12 @@ Superficie densa, escritorio primero. Toda pantalla vive bajo la **barra de tena
 - **Datos**: por tenant `ultima_actualizacion` (relativo, "hace 3 h 10 min") y `ventana_desactualizacion`; por plantilla `tolerancia` (minutos). Badge `desactualizada` cuando ventana > tolerancia.
 - Sin mockup.
 
+### C-23 Reportes — R1h · CH-45 · EXISTE
+- **Propósito**: definir y probar los reportes globales que después verá el cliente en su tablero (DEC-183, DEC-198). La especificación completa está en `consola.md`, C-13.
+- **Datos**: `nombre` · `titulo` y `descripcion` para el cliente · `entidades` · `sql` · `periodo` (parámetro de fecha y días declarados, o ninguno) · `visualizacion` (Número / Tabla / Barras / Línea) · `columnas` por rol con su título.
+- **Estados**: sin tenant (el bloque de prueba dice «Elegí un tenant para probar el reporte.») · prueba ok (tabla con las columnas asignadas bajo sus títulos y «Desde el dd/mm/aaaa») · columnas faltantes (las nombra, sin tabla) · cortado en el tope de la visualización · `409` de vistas no aprobadas · `400` con los campos.
+- **Acciones**: Nuevo reporte, Editar, Probar, Guardar (solo tras una prueba ok de la misma huella).
+
 ---
 
 ## PANEL (P2 · Administrador PYME) — toda la superficie es nueva
@@ -190,6 +196,7 @@ Reporte HTML compatible con clientes de correo: tablas, estilos inline, 600 px, 
 | CH-27 | P-06 Último resultado | FUERA DE ALCANCE (DEC-93) |
 | CH-43 | P-07 Avisos por Telegram | EXISTE |
 | CH-44 | P-02 Aviso sin chat · P-04 Enviar por | EXISTE |
+| CH-45 | C-23 Reportes (consola, ver `consola.md` C-13) | EXISTE |
 
 ## Componentes → change
 | Componente | Historia · Change · Estado |

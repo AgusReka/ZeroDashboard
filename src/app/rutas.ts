@@ -13,6 +13,8 @@ import { registerEstilosRoutes, type EstilosCargados } from '../compartido/estil
 import { registerTenantRoutes } from '../tenants/tenants.js';
 import { registerPlantillaRoutes } from '../plantillas/plantillas-rutas.js';
 import { registerPlantillaPruebaRoute } from '../plantillas/plantilla-prueba.js';
+import { registerReporteRoutes } from '../reportes/reportes-rutas.js';
+import { registerReportePruebaRoutes } from '../reportes/reporte-prueba.js';
 import { registerAutomatizacionRoutes } from '../automatizaciones/automatizaciones-rutas.js';
 import { registerPanelAuthRoutes } from '../panel/panel-auth.js';
 import { registerPanelAjustesRoutes } from '../panel/panel-ajustes.js';
@@ -96,6 +98,12 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // The template test route is NOT exempt (DEC-62): it resolves a tenant-owned connection,
   // so it gets the full scoped client, like the tenant-scoped registrars above.
   registerPlantillaPruebaRoute(app, prisma, registro);
+  // CH-45 (DEC-183, DEC-198): the report catalog is global and exempt by exact row, like the
+  // template catalog, so it receives the `reporte` delegate alone. Its test routes are NOT
+  // exempt: they resolve a tenant-owned connection, so they get the full scoped client, the
+  // deployment zone (DEC-77) for the period's date, the row cap and the agent registry.
+  registerReporteRoutes(app, prisma.reporte);
+  registerReportePruebaRoutes(app, prisma, zonaHoraria, topeFilas, registro);
   // CH-13: automations are tenant-owned, so the full scoped client, like the test route.
   // The deployment zone (DEC-77) comes from this file's one `loadConfig()`, so a schedule
   // is accepted only in the zone the scheduler will read it in, and a minimum of rows only

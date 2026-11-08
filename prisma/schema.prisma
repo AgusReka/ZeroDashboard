@@ -179,6 +179,22 @@ model Plantilla {
   automatizaciones          Automatizacion[]
 }
 
+// CH-45 (DEC-183, DEC-198): a report is global like `Plantilla` (no `tenantId`), and absent
+// from `MODELOS_AISLADOS` for the same reason. Values of `visualizacion`, `columnas` and
+// `periodo` are checked in code, never by a DB enum. Replaced in place, never deleted
+// (DEC-68). It holds no rows (DEC-93): every execution is live.
+model Reporte {
+  id            String  @id @default(uuid())
+  nombre        String
+  titulo        String
+  descripcion   String?
+  sql           String
+  entidades     Json
+  visualizacion String
+  columnas      Json
+  periodo       Json?
+}
+
 // CH-13 (DEC-74): an automation is a tenant's instance of a global `Plantilla`, bound to
 // one of that tenant's own `Conexion` rows, a set of parameter values and a standard
 // 5-field cron schedule. `tenantId` is a direct column so the isolation extension scopes
@@ -402,6 +418,8 @@ model RegistroEjecucion {
   consultaVersion    Int?
   consultaNombre     String?
   plantillaId        String?
+  // CH-45 (DEC-198): the report a report test ran, like `plantillaId`: no foreign key.
+  reporteId          String?
   sql                String
   resultado          String
   fase               String?

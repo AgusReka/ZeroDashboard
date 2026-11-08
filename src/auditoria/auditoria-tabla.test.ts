@@ -47,6 +47,12 @@ describe(
       assert.equal((await db.registroEjecucion.findUniqueOrThrow({ where: { id: filaId } })).sql, 'SELECT 1');
     });
 
+    test('CH-45 an update of reporteId is refused too: the new column did not open the table', async () => {
+      assert.equal((await db.registroEjecucion.findUniqueOrThrow({ where: { id: filaId } })).reporteId, null);
+      await assert.rejects(db.registroEjecucion.update({ where: { id: filaId }, data: { reporteId: 'r-1' } }), /inmutable/);
+      assert.equal((await db.registroEjecucion.findUniqueOrThrow({ where: { id: filaId } })).reporteId, null);
+    });
+
     test('a delete is refused by the database and the row survives', async () => {
       await assert.rejects(db.registroEjecucion.delete({ where: { id: filaId } }), /inmutable/);
       await assert.rejects(db.$executeRawUnsafe('DELETE FROM "RegistroEjecucion" WHERE id = $1', filaId), /inmutable/);
