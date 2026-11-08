@@ -130,7 +130,7 @@ No route SHALL delete a report. Every route SHALL require an operator session. T
 - **THEN** the answer SHALL be 401
 
 ### Requirement: Row Cap by Visualization (DEC-198)
-Every report execution SHALL use, as both page size and row ceiling, the smaller of the visualization's cap and `maxFilasPorConsulta`. The caps are `numero` 1, `barras` 20, `tabla` 50 and `linea` 100. It SHALL ask for the first page only. A result ended by the ceiling SHALL carry `corte`, as any execution does (DEC-18).
+Every report execution SHALL use, as its row ceiling, the smaller of the visualization's cap and `maxFilasPorConsulta`, and SHALL ask for one row more than that ceiling, so that the engine reports the cut. The caps are `numero` 1, `barras` 20, `tabla` 50 and `linea` 100. It SHALL ask for the first page only. A result ended by the ceiling SHALL carry `corte`, as any execution does (DEC-18).
 
 #### Scenario: Bars are cut at twenty
 - **GIVEN** a `barras` report whose statement returns 35 rows

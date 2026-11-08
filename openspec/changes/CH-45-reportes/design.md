@@ -164,7 +164,7 @@ Both routes then do the following before calling `ejecutarSobreVistas`:
 - Check `dias` against the period (400 `/dias`).
 - Compute `desde = fechaDelPeriodo(new Date(), zonaHoraria, dias)`.
 - Use `valores = { [parametro]: desde }`, or `{}` with no period.
-- Use `limite = topeFilas = Math.min(TOPE_FILAS[v], topeFilas)` and `desplazamiento = 0`.
+- Use `topeFilas = tope`, with `tope = Math.min(TOPE_FILAS[v], topeFilas)`, and `limite = tope + 1` with `desplazamiento = 0`. The engine reports `corte` only when the requested page is larger than the ceiling (DEC-18), so asking for one more row is what makes the cut visible.
 
 On a 200 `ok`, they add `periodo` and `faltantes`.
 
