@@ -167,7 +167,7 @@ How the pop-up closes:
 - Cancel and Escape SHALL ask before discarding changes.
 - Switching the active tenant SHALL close the pop-up.
 
-«Duplicar y editar» SHALL open the pop-up with the original's name followed by « (copia)» and every other field of the original. Nothing SHALL be written until «Guardar», and the copy SHALL need its own passing test like a new report. A `409 reporte-en-uso` on an edit SHALL say that the report is now on a client dashboard and offer «Duplicar y editar», keeping the pop-up open.
+«Duplicar y editar» SHALL open the pop-up with the original's name followed by « (copia)» and every other field of the original. Nothing SHALL be written until «Guardar», and a copy opened from the side panel SHALL need its own passing test like a new report. A `409 reporte-en-uso` on an edit SHALL say that the report is now on a client dashboard and offer «Duplicar y editar», keeping the pop-up open. Choosing it there SHALL turn the open pop-up into a copy of what was just tested, so a passing test whose fingerprint still matches keeps «Guardar» enabled, as for templates (CH-38).
 (Previously: the pop-up served only create and edit, and an edit could not be refused for use.)
 
 #### Scenario: Creating a bar report after a passing test
