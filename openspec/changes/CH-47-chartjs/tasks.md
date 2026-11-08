@@ -75,7 +75,7 @@ The exception covers the vendored file only: it is one 205 KiB minified blob tha
   Update the comment that says "five closed-over buffers".
 
 ## 4. Docs
-- [ ] 4.1 `docs/02-mapa-de-changes.md`: the CH-47 row with the PR number.
+- [x] 4.1 `docs/02-mapa-de-changes.md`: the CH-47 row with the PR number.
 
 ## 5. Verification
 - [x] 5.1 The focused command of unit 1, then `npx tsc -p tsconfig.json --noEmit`, `npm run build` and `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`. Only the 4 known `conexiones.test.ts` failures (5.1, 5.3, 5.4, CH-07) may remain.

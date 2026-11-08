@@ -1,8 +1,8 @@
 # Apply progress: CH-47 — Chart.js vendored in `public/ui/vendor/`
 
-## Unit 1: tasks 1.1 to 5.2, done except 4.1
+## Unit 1: tasks 1.1 to 5.2, all done
 
-Task 4.1 (the PR number in `docs/02-mapa-de-changes.md`) stays open: the number is only known once the PR is opened, and it is added then.
+Task 4.1 (the PR number in `docs/02-mapa-de-changes.md`) was done after the PR was opened: PR #243.
 
 ### Tasks done
 
