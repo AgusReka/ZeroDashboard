@@ -4267,6 +4267,46 @@ Vistas no aprobadas en la conexión del tablero:
 
 **Estado:** firme.
 
+### DEC-200 — CH-47: Chart.js 4.6.1 entra a mano en la misma lista fija de DEC-124, con su hash fijado en una prueba
+
+**Contexto.**
+- DEC-184 eligió Chart.js 4 en su build UMD, copiado en forma literal en `public/ui/vendor/` como una nueva fila de la lista fija de DEC-124, con una versión exacta. No fijó la versión, cómo entra el archivo al repositorio ni cómo se comprueba.
+- La lista fija es `ARCHIVOS_ESTILOS` en `src/compartido/estilos-rutas.ts`. Una sola lista arma el cargador, las rutas exactas y la exención del encabezado de tenant (`ESTILOS_EXENTOS`), y hoy fija `text/css` para todas sus filas.
+- El repositorio usa `core.autocrlf=true`, y `.gitattributes` solo cubre `*.sh`: un archivo de texto copiado tal cual cambia sus finales de línea en Windows.
+
+**Opciones.**
+
+Versión:
+- (a) 4.6.1, la última de la rama 4.
+- (b) 4.5.1.
+
+Lista:
+- (a) La misma lista cerrada, con el tipo de contenido por fila.
+- (b) Una segunda lista solo para archivos de terceros, con su propio registrador.
+
+Entrada al repositorio:
+- (a) Se copia a mano `dist/chart.umd.js` del paquete publicado, con el procedimiento escrito.
+- (b) `chart.js` como dependencia de desarrollo y un script que copia el archivo.
+
+**Decisión.** (a) en los tres puntos.
+- **Versión (a).** `chart.umd.js` de Chart.js 4.6.1, sin el mapa de fuentes. No usa `eval` y expone `Chart.version`.
+- **Lista (a).** Una sola fuente de verdad para las rutas, el cargador y la exención: una segunda lista tendría que mantenerse en sincronía con `ESTILOS_EXENTOS`. Cada fila declara su tipo de contenido; el JS se sirve como `text/javascript; charset=utf-8`.
+- **Entrada (a).** El archivo se commitea tal cual sale de `npm pack chart.js@4.6.1`. No suma una dependencia ni un paso de build que hoy no existen, y actualizarlo es un change propio.
+
+**Forma.**
+- **Integridad.** Una prueba fija el sha256 del archivo y la versión que expone al cargarlo en un contexto de `node:vm`. No hay atributo SRI, porque no hay CDN (DEC-184).
+- **Finales de línea.** `.gitattributes` marca `public/ui/vendor/*` como `-text`, para que ningún checkout cambie los bytes que fija la prueba.
+- **Licencia y origen.** La licencia MIT de Chart.js va en `public/ui/vendor/`. El origen (versión, sha256 y procedimiento de copia) queda junto a la fila de la lista.
+- **Sin consumidor.** CH-47 solo sirve el archivo. El `<script>` del panel y el dibujo de los gráficos son de CH-48.
+
+**Se resigna.**
+- **Actualizar es a mano:** cambiar de versión exige copiar el archivo de nuevo y actualizar el hash de la prueba.
+- **La lista deja de ser solo de estilos:** sus nombres actuales se conservan, aunque ahora también sirve un script.
+
+**Decidido por:** el usuario, 2026-11-08, en la exploración de CH-47: eligió las tres opciones recomendadas y no objetó la forma propuesta. No inferido por el agente.
+
+**Estado:** firme.
+
 ---
 
 ## Compuertas abiertas
