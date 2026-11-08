@@ -1,6 +1,7 @@
 import { CONTRATO_CANONICO } from '../contrato/contrato.js';
 import { terminosProhibidosEn } from '../compartido/glosario-panel.js';
 import { validarDeclaracion, type DeclaracionParametro } from '../ejecucion/parametros.js';
+import type { Prisma } from '../generated/prisma/client.js';
 
 /**
  * CH-45 (DEC-183, DEC-198): the pure half of reports. The closed lists, the row cap by
@@ -12,6 +13,33 @@ import { validarDeclaracion, type DeclaracionParametro } from '../ejecucion/para
  * from `periodo`, never stored, so there is one source of truth and the CH-11 checks
  * (DEC-56, DEC-57, DEC-59) and the bind path run on it unchanged.
  */
+
+/**
+ * The list projection: a list renders names, the whole report is a second, explicit get.
+ *
+ * CH-46: the two selects live here, not in `reportes-rutas.ts`, so the isolation extension can
+ * import them without a cycle (`reportes-rutas.ts` reaches `aislamiento-prisma.ts` through
+ * `plantillas-rutas.ts`), as `PlantillaCompleta` does. `reportes-rutas.ts` re-exports them.
+ */
+export const ReporteResumen = {
+  id: true,
+  nombre: true,
+  titulo: true,
+  visualizacion: true,
+} as const;
+
+/** Every column: create, get-by-id and replace. */
+export const ReporteCompleto = {
+  ...ReporteResumen,
+  descripcion: true,
+  sql: true,
+  entidades: true,
+  columnas: true,
+  periodo: true,
+} as const;
+
+/** The row `ReporteCompleto` selects (type only: this module still imports no Prisma at runtime). */
+export type ReporteCompletoFila = Prisma.ReporteGetPayload<{ select: typeof ReporteCompleto }>;
 
 export const VISUALIZACIONES = ['numero', 'tabla', 'barras', 'linea'] as const;
 export type Visualizacion = (typeof VISUALIZACIONES)[number];

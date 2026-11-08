@@ -23,6 +23,7 @@ import { registerPanelTelegramRoutes, type PuertoTelegram } from '../panel/panel
 import { registerPanelRoutes } from '../panel/panel.js';
 import { registerAgenteRoutes } from '../agente/agentes-rutas.js';
 import { registerUsuarioPanelRoutes } from '../usuarios/usuarios-panel.js';
+import { registerTableroRoutes } from '../tablero/tablero-rutas.js';
 import { registerAuditoriaRoutes } from '../auditoria/auditoria.js';
 import { registerTiemposAltaRoutes } from '../conexiones/tiempos-alta.js';
 import { registrarServidorAgentes } from '../agente/agente-servidor.js';
@@ -102,7 +103,12 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // template catalog, so it receives the `reporte` delegate alone. Its test routes are NOT
   // exempt: they resolve a tenant-owned connection, so they get the full scoped client, the
   // deployment zone (DEC-77) for the period's date, the row cap and the agent registry.
-  registerReporteRoutes(app, prisma.reporte);
+  // CH-46 (DEC-199): like the template catalog, it gets two answers about use as a port built
+  // from the isolation extension's audited unscoped operations, never a client.
+  registerReporteRoutes(app, prisma.reporte, {
+    enUso: (id) => prisma.tablero.reporteEnUso(id),
+    reemplazarSiLibre: (id, datos) => prisma.tablero.reemplazarReporteLibre(id, datos),
+  });
   registerReportePruebaRoutes(app, prisma, zonaHoraria, topeFilas, registro);
   // CH-13: automations are tenant-owned, so the full scoped client, like the test route.
   // The deployment zone (DEC-77) comes from this file's one `loadConfig()`, so a schedule
@@ -121,6 +127,9 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-28 (DEC-155 to DEC-158): the client panel's users, managed from the console. Scoped
   // by the header and guarded by the operator, like the agent routes above.
   registerUsuarioPanelRoutes(app, prisma);
+  // CH-46 (DEC-199): the tenant's dashboard, scoped by the header and guarded by the operator,
+  // like the user routes above; neither route is exempt.
+  registerTableroRoutes(app, prisma);
   // CH-20 (DEC-163): the console execution audit, read-only, scoped by the header.
   registerAuditoriaRoutes(app, prisma);
   // CH-30e2 (DEC-178): the active tenant's onboarding marks, read-only, scoped by the header.

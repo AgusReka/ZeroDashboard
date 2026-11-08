@@ -13,6 +13,8 @@ import {
   LARGO_MAXIMO_REPORTE,
   MAXIMO_COLUMNAS_TABLA,
   ROLES,
+  ReporteCompleto,
+  ReporteResumen,
   VISUALIZACIONES,
   declaracionDelPeriodo,
   faltantesEn,
@@ -21,6 +23,7 @@ import {
   rechazoDeTitulos,
   type ColumnaAsignada,
   type Periodo,
+  type ReporteCompletoFila,
   type Visualizacion,
 } from './reportes.js';
 
@@ -32,6 +35,9 @@ import {
  * which need a tenant, live in `reporte-prueba.ts`.
  *
  * There is no delete: a report is replaced in place by id (DEC-68).
+ *
+ * CH-46 (DEC-199): a report on any tenant's dashboard is in use and is not replaced. The
+ * registrar gets that fact as a port (`UsoDeReportes`), never a client or a scoped model.
  */
 
 export interface RegistroReporteBody {
@@ -55,23 +61,8 @@ interface ReporteParams {
   id: string;
 }
 
-/** The list projection: a list renders names, the whole report is a second, explicit get. */
-export const ReporteResumen = {
-  id: true,
-  nombre: true,
-  titulo: true,
-  visualizacion: true,
-} as const;
-
-/** Every column: create, get-by-id and replace. */
-export const ReporteCompleto = {
-  ...ReporteResumen,
-  descripcion: true,
-  sql: true,
-  entidades: true,
-  columnas: true,
-  periodo: true,
-} as const;
+/** The two selects live in `reportes.ts` (CH-46), so the isolation extension can import them. */
+export { ReporteCompleto, ReporteResumen };
 
 /**
  * Strict body, `propertyNames` included at every level for the reason
@@ -245,7 +236,27 @@ export function datosDeReporte(cuerpo: RegistroReporteBody) {
   };
 }
 
-export function registerReporteRoutes(app: FastifyInstance, reportes: PrismaAislado['reporte']): void {
+/**
+ * CH-46 (DEC-199): the only cross-tenant facts the catalog routes may know, as `UsoDePlantillas`
+ * is for templates (DEC-191). Whether a report is in use is a property of every tenant's
+ * dashboard; the two answers come from the isolation extension's audited unscoped operations
+ * (`tablero.reporteEnUso`, `tablero.reemplazarReporteLibre`), wired in `src/app/rutas.ts`.
+ */
+export interface UsoDeReportes {
+  /** Whether any tenant's dashboard holds the report. A boolean, nothing else. */
+  enUso(reporteId: string): Promise<boolean>;
+  /** Replaces the report only if no dashboard holds it; the check and write are atomic. */
+  reemplazarSiLibre(
+    id: string,
+    datos: ReturnType<typeof datosDeReporte>,
+  ): Promise<'no-encontrado' | 'en-uso' | ReporteCompletoFila>;
+}
+
+export function registerReporteRoutes(
+  app: FastifyInstance,
+  reportes: PrismaAislado['reporte'],
+  uso: UsoDeReportes,
+): void {
   app.post<{ Body: RegistroReporteBody }>(
     '/reportes',
     { schema: { body: registroReporteSchema }, attachValidation: true },
@@ -255,7 +266,8 @@ export function registerReporteRoutes(app: FastifyInstance, reportes: PrismaAisl
         return reply.code(400).send(motivo);
       }
       const reporte = await reportes.create({ data: datosDeReporte(request.body), select: ReporteCompleto });
-      return reply.code(201).send({ reporte });
+      // A report that was just created is on no dashboard (CH-46, DEC-199).
+      return reply.code(201).send({ reporte: { ...reporte, enUso: false } });
     },
   );
 
@@ -277,12 +289,15 @@ export function registerReporteRoutes(app: FastifyInstance, reportes: PrismaAisl
     if (reporte === null) {
       return reply.code(404).send({ error: 'reporte-no-encontrado' });
     }
-    return reply.code(200).send({ reporte });
+    // CH-46 (DEC-199): a boolean computed at request time, never a tenant, dashboard or count.
+    return reply.code(200).send({ reporte: { ...reporte, enUso: await uso.enUso(request.params.id) } });
   });
 
   /**
    * Replace in place by id (DEC-68): the same body and checks as create, then one write of
-   * every column. `updateMany` counts instead of throwing, so an unknown id is a plain `404`.
+   * every column. CH-46 (DEC-199): the write goes through `uso.reemplazarSiLibre`, which locks
+   * the row, checks that no dashboard holds the report and writes in one transaction. The body
+   * checks run first, so an invalid body is `400` whatever the report's use.
    */
   app.put<{ Params: ReporteParams; Body: RegistroReporteBody }>(
     '/reportes/:id',
@@ -292,16 +307,14 @@ export function registerReporteRoutes(app: FastifyInstance, reportes: PrismaAisl
       if (motivo !== null) {
         return reply.code(400).send(motivo);
       }
-      const { count } = await reportes.updateMany({
-        where: { id: request.params.id },
-        data: datosDeReporte(request.body),
-      });
-      const reporte =
-        count === 0 ? null : await reportes.findUnique({ where: { id: request.params.id }, select: ReporteCompleto });
-      if (reporte === null) {
+      const resultado = await uso.reemplazarSiLibre(request.params.id, datosDeReporte(request.body));
+      if (resultado === 'no-encontrado') {
         return reply.code(404).send({ error: 'reporte-no-encontrado' });
       }
-      return reply.code(200).send({ reporte });
+      if (resultado === 'en-uso') {
+        return reply.code(409).send({ error: 'reporte-en-uso' });
+      }
+      return reply.code(200).send({ reporte: { ...resultado, enUso: false } });
     },
   );
 }

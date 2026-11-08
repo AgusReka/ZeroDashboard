@@ -92,6 +92,13 @@ describe('CH-29 route table — every registered route is guarded or listed (DEC
     assert.ok(!rutas.has('DELETE /reportes/:id'));
   });
 
+  test('CH-46 the two dashboard routes are registered, and neither is exempt from the guard', () => {
+    for (const fila of ['GET /tablero', 'PUT /tablero']) {
+      assert.ok(rutas.has(fila), `${fila} is not registered`);
+      assert.ok(!EXENCIONES_OPERADOR.has(fila), `${fila} must need an operator`);
+    }
+  });
+
   test('every exempt row names a registered route', () => {
     for (const fila of EXENCIONES_OPERADOR) {
       assert.ok(rutas.has(fila), `${fila} is exempt but no such route is registered`);

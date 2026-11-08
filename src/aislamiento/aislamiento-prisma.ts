@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import { PlantillaCompleta, type PlantillaCompletaFila } from '../plantillas/plantillas.js';
+import { ReporteCompleto, type ReporteCompletoFila } from '../reportes/reportes.js';
 import { exigirTenantActivo } from './contexto-tenant.js';
 
 /**
@@ -51,6 +52,12 @@ import { exigirTenantActivo } from './contexto-tenant.js';
  * fourth unscoped operation on a scoped model: `codigoVinculoTelegram.buscarPorHash`. A
  * Telegram `/start <code>` arrives with no tenant, so the code row is found by its hash
  * and the tenant comes from that row, never from the update (rule 2).
+ *
+ * CH-46 adds `Tablero` (DEC-199), and the fifth and sixth unscoped operations on a scoped
+ * model: `tablero.reporteEnUso` and `tablero.reemplazarReporteLibre`, the mirror of the CH-38
+ * pair for the global report catalog. Both take a report id and never a tenant id, and answer
+ * a boolean, an outcome or the replaced report: no dashboard, tenant id, connection or count
+ * of `Tablero` leaves this module. Every other `Tablero` operation still fails closed.
  */
 const MODELOS_AISLADOS = new Set([
   'Conexion',
@@ -69,6 +76,8 @@ const MODELOS_AISLADOS = new Set([
   // CH-43 (DEC-185, DEC-196): the tenant's Telegram chat and its one live linking code.
   'VinculoTelegram',
   'CodigoVinculoTelegram',
+  // CH-46 (DEC-199): the tenant's one dashboard.
+  'Tablero',
   // CH-29 (DEC-151): `Operador` and `SesionConsola` are absent on purpose. They carry no
   // `tenantId`: an operator works across every tenant, like `Tenant` and `Plantilla`.
 ]);
@@ -226,6 +235,45 @@ export function extenderConAislamiento(prisma: PrismaClient) {
             });
             if (activa !== null) return 'en-uso';
             return tx.plantilla.update({ where: { id }, data: datos, select: PlantillaCompleta });
+          });
+        },
+      },
+      tablero: {
+        /**
+         * CH-46 (DEC-199): whether any tenant's dashboard holds the report. Unscoped on purpose,
+         * like `plantillaEnUso`: the catalog routes are global and exempt, and use is a
+         * cross-tenant property. It returns a boolean, so nothing of another tenant leaves the
+         * boundary, and runs on the raw client this function closes over.
+         */
+        async reporteEnUso(reporteId: string): Promise<boolean> {
+          const fila = await prisma.tablero.findFirst({
+            where: { reportes: { has: reporteId } },
+            select: { id: true },
+          });
+          return fila !== null;
+        },
+        /**
+         * CH-46 (DEC-199): replace a report only if no dashboard holds it. `reportes` is an array
+         * with no foreign key, so the dashboard save takes `FOR KEY SHARE` on each named report
+         * itself (`src/tablero/tablero-rutas.ts`); this `FOR UPDATE` conflicts with it, so no
+         * dashboard can add the report between the check and the write. The lock is a tagged
+         * `$queryRaw`: `id` is a driver parameter, never text (rule 4), and it touches `Reporte`,
+         * which is not a scoped model.
+         */
+        async reemplazarReporteLibre(
+          id: string,
+          datos: Prisma.ReporteUpdateInput,
+        ): Promise<'no-encontrado' | 'en-uso' | ReporteCompletoFila> {
+          return prisma.$transaction(async (tx) => {
+            const bloqueado = await tx.$queryRaw<{ id: string }[]>`
+              SELECT "id" FROM "Reporte" WHERE "id" = ${id} FOR UPDATE`;
+            if (bloqueado.length === 0) return 'no-encontrado';
+            const tablero = await tx.tablero.findFirst({
+              where: { reportes: { has: id } },
+              select: { id: true },
+            });
+            if (tablero !== null) return 'en-uso';
+            return tx.reporte.update({ where: { id }, data: datos, select: ReporteCompleto });
           });
         },
       },

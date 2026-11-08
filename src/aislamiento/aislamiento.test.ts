@@ -8,6 +8,7 @@ import { Prisma, PrismaClient } from '../generated/prisma/client.js';
 import {
   ErrorAislamientoNoSoportado,
   aplicarAlcance,
+  conTenantInyectado,
   extenderConAislamiento,
 } from './aislamiento-prisma.js';
 import {
@@ -1329,7 +1330,8 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
     // fail-closed cases below, so this list pins them *in*, not out. CH-29 (DEC-151) adds
     // `Operador` and `SesionConsola`, global like `Plantilla` (see the case below). CH-43
     // (DEC-185, DEC-196) adds `VinculoTelegram` and `CodigoVinculoTelegram`, both scoped.
-    // CH-45 (DEC-183) adds `Reporte`, global like `Plantilla` (see the case below).
+    // CH-45 (DEC-183) adds `Reporte`, global like `Plantilla` (see the case below). CH-46
+    // (DEC-199) adds `Tablero`, scoped.
     assert.deepEqual(Object.values(Prisma.ModelName).sort(), [
       'Agente',
       'Automatizacion',
@@ -1344,6 +1346,7 @@ describe('domain data model — Plantilla joins as a global model (CH-12, DEC-61
       'Reporte',
       'SesionConsola',
       'SesionPanel',
+      'Tablero',
       'Tenant',
       'Usuario',
       'VinculoTelegram',
@@ -1509,6 +1512,35 @@ describe('aislamiento — Automatizacion and Ejecucion fail closed outside a ten
       ErrorSinTenantActivo,
     );
     await assert.rejects(() => aislado.codigoVinculoTelegram.deleteMany({}), ErrorSinTenantActivo);
+  });
+
+  test('CH-46 Tablero reads and writes with no active tenant throw ErrorSinTenantActivo', async () => {
+    // It carries a direct `tenantId` and joins `MODELOS_AISLADOS` (DEC-199). The report use
+    // pair is a separate, explicit exception, not a pass-through.
+    await assert.rejects(() => aislado.tablero.findMany({}), ErrorSinTenantActivo);
+    await assert.rejects(() => aislado.tablero.findFirst({}), ErrorSinTenantActivo);
+    await assert.rejects(() => aislado.tablero.findUnique({ where: { tenantId: 't' } }), ErrorSinTenantActivo);
+    await assert.rejects(
+      () => aislado.tablero.create({ data: { conexionId: 'c', reportes: [] } } as never),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(
+      () => aislado.tablero.update({ where: { id: 'x' }, data: { reportes: [] } }),
+      ErrorSinTenantActivo,
+    );
+    await assert.rejects(() => aislado.tablero.deleteMany({}), ErrorSinTenantActivo);
+    // `upsert` stays outside the closed map even inside a context.
+    await assert.rejects(
+      () =>
+        conTenantActivo({ id: 't', nombre: 'T' }, async () => {
+          return await aislado.tablero.upsert({
+            where: { tenantId: 't' },
+            create: { conexionId: 'c', reportes: [] } as never,
+            update: { reportes: [] },
+          });
+        }),
+      ErrorAislamientoNoSoportado,
+    );
   });
 
   test('inside a tenant context the same query is scoped and handed on, not refused', async () => {
@@ -1879,5 +1911,138 @@ describe('aislamiento — codigoVinculoTelegram.buscarPorHash on a live PostgreS
       () => aislado.codigoVinculoTelegram.findUnique({ where: { codigoHash: hashes.a } }),
       ErrorSinTenantActivo,
     );
+  });
+});
+
+// ---- CH-46 2.2 Tablero is scoped, and the report use pair is its only unscoped access (DEC-199) ----
+
+describe('aislamiento — Tablero, tablero.reporteEnUso and reemplazarReporteLibre on a live PostgreSQL target (CH-46)', {
+  skip: alcanzable ? false : motivoSkip,
+}, () => {
+  let db!: PrismaClient;
+  const sufijo = `${Date.now()}-${randomBytes(3).toString('hex')}`;
+  const tenantIds: string[] = [];
+  const conexionIds: string[] = [];
+  const reporteIds: string[] = [];
+
+  const BASE = {
+    titulo: 'Total',
+    sql: 'SELECT 1 AS total',
+    entidades: ['producto'],
+    visualizacion: 'numero',
+    columnas: [{ rol: 'valor', columna: 'total', titulo: 'Total' }],
+  };
+
+  async function reporte(etiqueta: string): Promise<string> {
+    const fila = await db.reporte.create({ data: { ...BASE, nombre: `CH-46 aislamiento ${etiqueta} ${sufijo}` } });
+    reporteIds.push(fila.id);
+    return fila.id;
+  }
+
+  /** Tenant `i`'s dashboard, written on the raw client: a fixture, not the path under test. */
+  async function tablero(i: number, reportes: string[]): Promise<void> {
+    await db.tablero.deleteMany({ where: { tenantId: tenantIds[i] } });
+    await db.tablero.create({ data: { tenantId: tenantIds[i], conexionId: conexionIds[i], reportes } });
+  }
+
+  before(async () => {
+    db = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    for (const clave of ['A', 'B']) {
+      const tenant = await db.tenant.create({ data: { nombre: `CH-46 ${clave} ${sufijo}` } });
+      tenantIds.push(tenant.id);
+      const conexion = await db.conexion.create({
+        data: {
+          tenantId: tenant.id,
+          nombre: `CH-46 ${clave}`,
+          motor: 'postgres',
+          host: 'localhost',
+          puerto: 5432,
+          baseDeDatos: 'ninguna',
+          usuarioDb: 'nadie',
+          credencial: 'no-es-un-sobre',
+        },
+      });
+      conexionIds.push(conexion.id);
+    }
+  });
+
+  after(async () => {
+    // RESTRICT everywhere: dashboards, then connections, tenants and reports.
+    await db.tablero.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.conexion.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    await db.tenant.deleteMany({ where: { id: { in: tenantIds } } });
+    await db.reporte.deleteMany({ where: { id: { in: reporteIds } } });
+    await db.$disconnect();
+  });
+
+  test('2.2 a create takes the tenant from the context, and each tenant reads and writes only its own row', async () => {
+    const aislado = extenderConAislamiento(db);
+    const r = await reporte('alcance');
+    await db.tablero.deleteMany({ where: { tenantId: { in: tenantIds } } });
+    const creado = await conTenantActivo({ id: tenantIds[0], nombre: 'A' }, async () => {
+      // No `tenantId` in the data: the extension injects it from the context.
+      return await aislado.tablero.create({ data: conTenantInyectado({ conexionId: conexionIds[0], reportes: [r] }) });
+    });
+    assert.equal((await db.tablero.findUniqueOrThrow({ where: { id: creado.id } })).tenantId, tenantIds[0]);
+    await tablero(1, []);
+    const deB = await db.tablero.findUniqueOrThrow({ where: { tenantId: tenantIds[1] } });
+
+    const desdeA = await conTenantActivo({ id: tenantIds[0], nombre: 'A' }, async () => {
+      return {
+        propio: await aislado.tablero.findFirst({ select: { id: true } }),
+        todos: await aislado.tablero.count(),
+        // B's row by its own unique id is out of reach, for a read and for a write.
+        ajeno: await aislado.tablero.findUnique({ where: { id: deB.id }, select: { id: true } }),
+        escritos: (await aislado.tablero.updateMany({ where: { id: deB.id }, data: { reportes: [r] } })).count,
+      };
+    });
+    assert.deepEqual(desdeA, { propio: { id: creado.id }, todos: 1, ajeno: null, escritos: 0 });
+    assert.deepEqual((await db.tablero.findUniqueOrThrow({ where: { id: deB.id } })).reportes, []);
+  });
+
+  test("2.2 with or without a context, the use read answers a bare boolean across tenants", async () => {
+    const aislado = extenderConAislamiento(db);
+    const deB = await reporte('de B');
+    const libre = await reporte('libre');
+    await tablero(1, [deB]);
+    assert.strictEqual(await aislado.tablero.reporteEnUso(deB), true);
+    assert.strictEqual(await aislado.tablero.reporteEnUso(libre), false);
+    assert.strictEqual(await aislado.tablero.reporteEnUso('no-existe'), false);
+    const desdeA = await conTenantActivo({ id: tenantIds[0], nombre: 'A' }, async () => {
+      return {
+        uso: await aislado.tablero.reporteEnUso(deB),
+        // The scoped view of the same table still shows A none of B's rows.
+        propios: await aislado.tablero.count({ where: { reportes: { has: deB } } }),
+      };
+    });
+    assert.deepEqual(desdeA, { uso: true, propios: 0 });
+  });
+
+  test("2.2 reemplazarReporteLibre answers 'no-encontrado', 'en-uso' or the replaced report, and nothing else", async () => {
+    const aislado = extenderConAislamiento(db);
+    const datos = { ...BASE, nombre: `CH-46 reemplazado ${sufijo}`, sql: 'SELECT 2 AS total' };
+
+    assert.equal(await aislado.tablero.reemplazarReporteLibre('no-existe', datos), 'no-encontrado');
+
+    const ocupado = await reporte('ocupado');
+    await tablero(1, [ocupado]);
+    assert.equal(await aislado.tablero.reemplazarReporteLibre(ocupado, datos), 'en-uso');
+    assert.equal((await db.reporte.findUnique({ where: { id: ocupado } }))?.sql, BASE.sql, 'nothing was written');
+
+    const libre = await reporte('libre para reemplazo');
+    const reemplazado = await aislado.tablero.reemplazarReporteLibre(libre, datos);
+    assert.ok(typeof reemplazado !== 'string');
+    assert.deepEqual(Object.keys(reemplazado).sort(), [
+      'columnas',
+      'descripcion',
+      'entidades',
+      'id',
+      'nombre',
+      'periodo',
+      'sql',
+      'titulo',
+      'visualizacion',
+    ]);
+    assert.deepEqual({ id: reemplazado.id, sql: reemplazado.sql }, { id: libre, sql: 'SELECT 2 AS total' });
   });
 });
