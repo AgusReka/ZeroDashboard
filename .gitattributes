@@ -1,2 +1,4 @@
 # CH-31: shell scripts run inside Linux containers; a CRLF checkout on Windows breaks them.
 *.sh text eol=lf
+# CH-47: vendored files are pinned by sha256; a CRLF checkout must not rewrite their bytes.
+public/ui/vendor/* -text

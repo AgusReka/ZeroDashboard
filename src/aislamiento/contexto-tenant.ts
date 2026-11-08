@@ -117,7 +117,8 @@ export function conTenantActivo<T>(tenant: TenantActivo, fn: () => Promise<T>): 
  * and must stay scoped (DEC-62). `DELETE` and `PATCH` are not listed because a template
  * is replaced in place and never deleted (DEC-68).
  *
- * The shared stylesheet joins under DEC-124 with five exact `GET` rows, one per file,
+ * The shared stylesheet joins under DEC-124 with five exact `GET` rows, one per file, and
+ * the vendored chart script under DEC-200 with a sixth (`GET /ui/vendor/chart.umd.js`),
  * built from `RUTAS_ESTILOS`: the same list `src/compartido/estilos-rutas.ts` registers the routes
  * from, so a route and its row cannot diverge and a new file inherits nothing. The assets
  * are identical for every tenant and their registrar receives no database client, the
@@ -173,8 +174,9 @@ export const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The stylesheet rows (DEC-124 A3). Exported only so `src/compartido/estilos-rutas.test.ts` can
- * assert they equal the registered routes exactly; nothing else reads it.
+ * The stylesheet rows and the vendored chart script row (DEC-124 A3, DEC-200). Exported
+ * only so `src/compartido/estilos-rutas.test.ts` can assert they equal the registered routes
+ * exactly; nothing else reads it.
  */
 export const ESTILOS_EXENTOS: ReadonlySet<string> = new Set(
   RUTAS_ESTILOS.map((ruta) => 'GET ' + ruta),
@@ -208,7 +210,8 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
   if (REPORTES_EXENTOS.has(`${metodo} ${patron}`)) {
     return true;
   }
-  // The shared stylesheet is the same for every tenant (DEC-124); see ESTILOS_EXENTOS.
+  // The shared stylesheet and the vendored chart script are the same for every tenant
+  // (DEC-124, DEC-200); see ESTILOS_EXENTOS.
   if (ESTILOS_EXENTOS.has(`${metodo} ${patron}`)) {
     return true;
   }

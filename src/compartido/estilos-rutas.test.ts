@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { after, before, describe, test } from 'node:test';
+import vm from 'node:vm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import {
   ARCHIVOS_ESTILOS,
@@ -14,15 +17,23 @@ import {
 import { ESTILOS_EXENTOS } from '../aislamiento/contexto-tenant.js';
 
 /**
- * CH-21a tasks 1.2-1.3 (spec `shared-visual-system`, DEC-124): the fixed-list stylesheet
- * registrar, tests R1-R7 of `design.md`.
+ * CH-21a tasks 1.2-1.3 (spec `shared-visual-system`, DEC-124): the fixed-list registrar,
+ * tests R1-R7 of `design.md`. CH-47 (DEC-184, DEC-200) adds the vendored Chart.js row:
+ * R5b and V1-V4 pin that file by version and hash.
  *
  * The app under test registers **only** this registrar: no tenant hooks and no database
  * client. That is the claim being tested, like `contrato-rutas.test.ts` does for
- * `/contrato`: the five assets are identical for every tenant, so an app that carries
+ * `/contrato`: the six assets are identical for every tenant, so an app that carries
  * nothing else must still serve them in full. The exemption half (the tenant hooks in
  * front of these routes) is proven in `contexto-tenant.test.ts`.
  */
+
+const CSS = 'text/css; charset=utf-8';
+const JS = 'text/javascript; charset=utf-8';
+
+/** The pinned release of the vendored script (CH-47). A new version edits these two. */
+const CHART_VERSION = '4.6.1';
+const CHART_SHA256 = '338399fb5bafe598d21cfc471b0590b61ceb321a985fade4f68499b151f67fbf';
 
 /** The vendored folder the production loader reads, resolved the same way it is. */
 const DIRECTORIO_REAL = new URL('../../public/ui/', import.meta.url);
@@ -31,12 +42,13 @@ function bytesEnDisco(archivo: string): Buffer {
   return readFileSync(new URL(archivo, DIRECTORIO_REAL));
 }
 
-/** A temp copy of the five files, optionally without one, as a directory `URL`. */
+/** A temp copy of the six files, optionally without one, as a directory `URL`. */
 function copiaTemporal(omitir?: string): { dir: URL; ruta: string } {
   const ruta = mkdtempSync(join(tmpdir(), 'zd-estilos-'));
-  for (const archivo of ARCHIVOS_ESTILOS) {
+  for (const { archivo } of ARCHIVOS_ESTILOS) {
     if (archivo === omitir) continue;
     const destino = join(ruta, archivo);
+    // Creates `tokens/`, `components/` and `vendor/` as the rows need them.
     mkdirSync(join(destino, '..'), { recursive: true });
     writeFileSync(destino, bytesEnDisco(archivo));
   }
@@ -45,7 +57,7 @@ function copiaTemporal(omitir?: string): { dir: URL; ruta: string } {
   return { dir: new URL(pathToFileURL(ruta).href + '/'), ruta };
 }
 
-describe('stylesheet registrar — the five vendored files (CH-21a, DEC-124)', () => {
+describe('asset registrar — the six listed files (CH-21a, DEC-124; CH-47, DEC-200)', () => {
   let app!: FastifyInstance;
 
   before(async () => {
@@ -58,14 +70,14 @@ describe('stylesheet registrar — the five vendored files (CH-21a, DEC-124)', (
     await app.close();
   });
 
-  test('R1 each route answers 200 text/css, no-cache, a strong ETag and the file bytes', async () => {
-    assert.equal(RUTAS_ESTILOS.length, 5);
-    for (const archivo of ARCHIVOS_ESTILOS) {
+  test('R1 each route answers 200 with its row content type, no-cache, a strong ETag and the file bytes', async () => {
+    assert.equal(RUTAS_ESTILOS.length, 6);
+    for (const { archivo, tipo } of ARCHIVOS_ESTILOS) {
       const url = '/ui/' + archivo;
       const respuesta = await app.inject({ method: 'GET', url });
 
       assert.equal(respuesta.statusCode, 200, `${url}: ${respuesta.body}`);
-      assert.equal(respuesta.headers['content-type'], 'text/css; charset=utf-8', url);
+      assert.equal(respuesta.headers['content-type'], tipo, url);
       assert.equal(respuesta.headers['cache-control'], 'no-cache', url);
       const etag = respuesta.headers.etag;
       assert.equal(typeof etag, 'string', `${url} carries no ETag`);
@@ -76,6 +88,24 @@ describe('stylesheet registrar — the five vendored files (CH-21a, DEC-124)', (
 
       const otraVez = await app.inject({ method: 'GET', url });
       assert.equal(otraVez.headers.etag, etag, `${url} ETag changed between requests`);
+    }
+  });
+
+  test('R1 the stylesheets are text/css and the vendored script is text/javascript, named explicitly', async () => {
+    // Named here rather than read from the row, so a wrong type in the list cannot pass.
+    const script = await app.inject({ method: 'GET', url: '/ui/vendor/chart.umd.js' });
+    assert.equal(script.statusCode, 200, script.body);
+    assert.equal(script.headers['content-type'], JS);
+
+    for (const url of [
+      '/ui/styles.css',
+      '/ui/tokens/colors.css',
+      '/ui/tokens/typography.css',
+      '/ui/tokens/spacing.css',
+      '/ui/components/components.css',
+    ]) {
+      const hoja = await app.inject({ method: 'GET', url });
+      assert.equal(hoja.headers['content-type'], CSS, url);
     }
   });
 
@@ -95,20 +125,22 @@ describe('stylesheet registrar — the five vendored files (CH-21a, DEC-124)', (
     }
   });
 
-  test('R4 every @import in styles.css resolves to one of the other four routes', async () => {
+  test('R4 every @import in styles.css resolves to one of the other four stylesheet routes', async () => {
     const respuesta = await app.inject({ method: 'GET', url: '/ui/styles.css' });
     const importados = [...respuesta.body.matchAll(/@import\s+url\("([^"]+)"\)/g)].map(
       (coincidencia) => new URL(coincidencia[1] as string, 'http://zd.invalid/ui/styles.css').pathname,
     );
 
-    assert.deepEqual(
-      [...importados].sort(),
-      RUTAS_ESTILOS.filter((ruta) => ruta !== '/ui/styles.css').sort(),
-    );
+    // The CSS rows minus `styles.css`: the script row never enters the expected set.
+    const esperados = ARCHIVOS_ESTILOS.filter(
+      ({ archivo, tipo }) => tipo === CSS && archivo !== 'styles.css',
+    ).map(({ archivo }) => '/ui/' + archivo);
+    assert.equal(esperados.length, 4);
+    assert.deepEqual([...importados].sort(), [...esperados].sort());
   });
 });
 
-describe('stylesheet registrar — route table and exemption rows (R3)', () => {
+describe('asset registrar — route table and exemption rows (R3)', () => {
   test('R3 the registered /ui/ routes are exactly GET RUTAS_ESTILOS, and so are the exempt rows', async () => {
     const app = Fastify({ logger: false });
     const capturadas: string[] = [];
@@ -137,7 +169,7 @@ describe('stylesheet registrar — route table and exemption rows (R3)', () => {
   });
 });
 
-describe('stylesheet registrar — boot-time load (R5, R6)', () => {
+describe('asset registrar — boot-time load (R5, R6)', () => {
   const temporales: string[] = [];
 
   after(() => {
@@ -154,6 +186,17 @@ describe('stylesheet registrar — boot-time load (R5, R6)', () => {
       () => cargarEstilos(dir),
       (error: unknown) =>
         error instanceof Error && error.message.includes('public/ui/tokens/spacing.css'),
+    );
+  });
+
+  test('R5b a missing vendor/chart.umd.js makes cargarEstilos throw naming the script', () => {
+    const { dir, ruta } = copiaTemporal('vendor/chart.umd.js');
+    temporales.push(ruta);
+
+    assert.throws(
+      () => cargarEstilos(dir),
+      (error: unknown) =>
+        error instanceof Error && error.message.includes('public/ui/vendor/chart.umd.js'),
     );
   });
 
@@ -180,8 +223,72 @@ describe('stylesheet registrar — boot-time load (R5, R6)', () => {
   });
 });
 
-describe('stylesheet registrar — no database dependency (R7)', () => {
-  test('R7 the registrar takes the app and the loaded sheets, and the module names no database client', () => {
+describe('asset registrar — the vendored Chart.js is pinned (V1-V4, CH-47, DEC-184, DEC-200)', () => {
+  test('V1 the file sha256 equals the pinned hash and its banner names Chart.js v4.6.1', () => {
+    const bytes = bytesEnDisco('vendor/chart.umd.js');
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), CHART_SHA256);
+
+    // The banner is a `/*!` block: the version sits on the first line that names Chart.js.
+    const cabecera = bytes.subarray(0, 200).toString('utf8');
+    assert.ok(
+      cabecera.split(/\r?\n/).some((linea) => linea.includes(`Chart.js v${CHART_VERSION}`)),
+      `banner does not name Chart.js v${CHART_VERSION}: ${cabecera}`,
+    );
+  });
+
+  test('V2 the file runs in a bare node:vm context and exposes Chart with version 4.6.1', () => {
+    const codigo = bytesEnDisco('vendor/chart.umd.js').toString('utf8');
+    const contexto = vm.createContext({});
+    vm.runInContext(codigo, contexto, { filename: 'chart.umd.js' });
+
+    const chart = (contexto as { Chart?: unknown }).Chart;
+    assert.equal(typeof chart, 'function', 'the UMD build must define a global Chart function');
+    assert.equal((chart as { version?: unknown }).version, CHART_VERSION);
+  });
+
+  test('V3 vendor/ holds exactly the script and its MIT license, and no route serves the license', async () => {
+    const vendor = new URL('vendor/', DIRECTORIO_REAL);
+    assert.deepEqual(readdirSync(vendor).sort(), ['LICENSE-chartjs.md', 'chart.umd.js']);
+
+    const licencia = readFileSync(new URL('LICENSE-chartjs.md', vendor), 'utf8');
+    assert.ok(licencia.startsWith('The MIT License'), licencia.slice(0, 80));
+    assert.match(licencia, /Chart\.js Contributors/);
+
+    assert.ok(!RUTAS_ESTILOS.some((ruta) => ruta.includes('LICENSE')), 'the license must not be listed');
+    const app = Fastify({ logger: false });
+    registerEstilosRoutes(app, cargarEstilos());
+    await app.ready();
+    try {
+      const respuesta = await app.inject({ method: 'GET', url: '/ui/vendor/LICENSE-chartjs.md' });
+      assert.equal(respuesta.statusCode, 404, respuesta.body);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('V4 .gitattributes leaves the script binary-safe: git check-attr text answers unset', (t) => {
+    const raiz = fileURLToPath(new URL('../../', import.meta.url));
+    let salida: string;
+    try {
+      // Fixed arguments and no shell: nothing here comes from input.
+      salida = execFileSync('git', ['check-attr', 'text', '--', 'public/ui/vendor/chart.umd.js'], {
+        cwd: raiz,
+        encoding: 'utf8',
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        // The production image carries no `git`; the attribute is a repository property.
+        t.skip('git is not on the PATH, so the attribute cannot be read here');
+        return;
+      }
+      throw error;
+    }
+    assert.equal(salida.trim(), 'public/ui/vendor/chart.umd.js: text: unset');
+  });
+});
+
+describe('asset registrar — no database dependency (R7)', () => {
+  test('R7 the registrar takes the app and the loaded files, and the module names no database client', () => {
     // DEC-124 rests on the DEC-24 argument: the handlers hold no database handle, so an
     // exempt route has nothing tenant-scoped within reach. The signature pins it.
     assert.equal(registerEstilosRoutes.length, 2);

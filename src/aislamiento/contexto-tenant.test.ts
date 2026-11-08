@@ -409,8 +409,8 @@ describe('contexto de tenant — /tablero is not exempt (CH-46, DEC-199)', () =>
 // ---- CH-21a 1.4 the stylesheet exemption rows, still with no database in sight ----
 
 /**
- * DEC-124 exempts the five stylesheet routes by one exact `GET` row each, built from the
- * same list that registers them. The real registrar is mounted here, not stubs, so the
+ * DEC-124 exempts the five stylesheet routes, and DEC-200 the vendored chart script, by one
+ * exact `GET` row each, built from the same list that registers them. The real registrar is mounted here, not stubs, so the
  * rows are matched against the patterns production actually registers. The client handed
  * to the hooks is the same throwing stub: an exempt asset never resolves a tenant, and a
  * refused URL is refused before it could.
@@ -459,12 +459,19 @@ describe('contexto de tenant — /ui/ stylesheet exemption rows (CH-21a, DEC-124
     // Look-alikes: a name that merely starts with `/ui` is scoped like everything else.
     { method: 'GET', url: '/ui-falso/styles.css' },
     { method: 'GET', url: '/uix/styles.css' },
-    // Traversal: there is no path to the filesystem, only five closed-over buffers.
+    // CH-47 (DEC-200): the vendored script is one exact row, not its folder; the source
+    // map is not shipped, so its URL is scoped like any other unlisted name.
+    { method: 'GET', url: '/ui/vendor/' },
+    { method: 'GET', url: '/ui/vendor/chart.umd.js.map' },
+    // Traversal: there is no path to the filesystem, only six closed-over buffers.
     { method: 'GET', url: '/ui/../package.json' },
     { method: 'GET', url: '/ui/%2e%2e/package.json' },
+    { method: 'GET', url: '/ui/vendor/../../package.json' },
     // Only `GET` is exempt: no automatic `HEAD`, and no write verb.
     { method: 'HEAD', url: '/ui/styles.css' },
     { method: 'POST', url: '/ui/styles.css' },
+    { method: 'HEAD', url: '/ui/vendor/chart.umd.js' },
+    { method: 'POST', url: '/ui/vendor/chart.umd.js' },
   ] as const;
 
   for (const { method, url } of rechazadas) {
