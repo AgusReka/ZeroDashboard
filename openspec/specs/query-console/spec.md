@@ -915,11 +915,11 @@ Below the tenant bar, the console document SHALL hold a shell with a side naviga
 ### Requirement: Navigation by Hash
 The side navigation SHALL link, in this order:
 - a "Global" group with `#tenants`, `#plantillas`, `#reportes` and `#contrato`;
-- a "Puesta en marcha" group with `#conexiones`, `#agentes`, `#mapeo`, `#usuarios` and `#tiempos`;
+- a "Puesta en marcha" group with `#conexiones`, `#agentes`, `#mapeo`, `#usuarios`, `#tablero` and `#tiempos`;
 - a "Trabajo diario" group with `#consultas`, `#automatizaciones`, `#frescura` and `#auditoria`.
 
 On load and on every `hashchange`, exactly one screen SHALL be visible: the one named by the hash, or Consultas when the hash is empty or names no screen. The link of the visible screen SHALL carry `aria-current="page"` and no other link SHALL.
-(Previously: the "Global" group had no `#reportes`.)
+(Previously: the "Puesta en marcha" group had no `#tablero`.)
 
 #### Scenario: Default screen
 - **GIVEN** the page is opened with no hash
@@ -936,6 +936,10 @@ On load and on every `hashchange`, exactly one screen SHALL be visible: the one 
 #### Scenario: The reports screen
 - **WHEN** the hash becomes `#reportes`
 - **THEN** only Reportes is visible and its link is current
+
+#### Scenario: The dashboard screen
+- **WHEN** the hash becomes `#tablero`
+- **THEN** only Tablero del cliente is visible and its link is current
 
 ### Requirement: Result Next to the Execute Button
 Inside the query pop-up, the status line, the results table and the pager SHALL come right after the query form and before the pop-up's actions («Probar» and the save control); the pop-up comes before the saved queries section in the document.
@@ -1193,7 +1197,7 @@ The header SHALL hold the primary action «Nuevo reporte». «Ver» SHALL load t
 - its visualization;
 - its assigned columns, each with its role and title, in order.
 
-The side panel SHALL hold «Editar».
+The side panel SHALL hold «Editar» when the report has `enUso: false`, and «Duplicar y editar» with a line saying that it is on a client dashboard when `enUso: true`; never both. A missing `enUso` SHALL be read as in use.
 
 The side panel SHALL also hold a «Probar en el tenant activo» block. It SHALL contain:
 - a connection select filled from the active tenant's connections;
@@ -1213,6 +1217,8 @@ The answers SHALL be shown as follows, all inside the block and written as text:
 | `400`, `404`, `409 credencial-ilegible` and tenant failures | A legible message. |
 
 With no active tenant, the block SHALL say «Elegí un tenant para probar el reporte» and send nothing. Loading another report, closing the panel or switching the active tenant SHALL clear the result.
+
+(Previously: the side panel always offered «Editar»; a report could not be in use.)
 
 #### Scenario: Viewing a report
 - **WHEN** the operator presses «Ver» on "Ventas por producto"
@@ -1237,8 +1243,13 @@ With no active tenant, the block SHALL say «Elegí un tenant para probar el rep
 - **WHEN** a column title contains `<b>`
 - **THEN** it is shown verbatim and no element is created from it
 
+#### Scenario: A report in use offers only duplication
+- **GIVEN** a report with `enUso: true`
+- **WHEN** the operator opens it
+- **THEN** the panel shows «Duplicar y editar» and says it is on a client dashboard, and shows no «Editar»
+
 ### Requirement: Report Pop-Up for Create and Edit (DEC-173, DEC-198)
-One pop-up SHALL serve «Nuevo reporte» and «Editar». Its fields SHALL be, each with a visible label:
+One pop-up SHALL serve «Nuevo reporte», «Editar» and «Duplicar y editar». Its fields SHALL be, each with a visible label:
 - name;
 - client title and client description, with their length caps shown;
 - entities, one checkbox per canonical entity in contract order, at least one;
@@ -1256,7 +1267,7 @@ It SHALL hold a test block with:
 
 «Guardar» SHALL be enabled only when the last test answered `200` with `resultado: "ok"` and its fingerprint equals the form's current one. The fingerprint SHALL be the SQL, the period, the entities and the connection. Changing the name, the client texts, the visualization or the columns SHALL NOT clear it. While «Guardar» is disabled, the pop-up SHALL say why: no test yet, the last test failed, or the report changed since the last test.
 
-«Guardar» SHALL send `POST /reportes` for a new report and `PUT /reportes/:id` for an edit, with `columnasPrueba` holding the last test's columns. Changing the visualization SHALL keep the rows whose role still exists and empty the rest.
+«Guardar» SHALL send `POST /reportes` for a new report or a duplicate and `PUT /reportes/:id` for an edit, with `columnasPrueba` holding the last test's columns. Changing the visualization SHALL keep the rows whose role still exists and empty the rest.
 
 How the answers are shown:
 - A `400` SHALL be shown in the pop-up, naming the offending fields («Revisá estos campos»), with the glossary terms and the missing columns when present.
@@ -1266,6 +1277,9 @@ How the pop-up closes:
 - With no active tenant, the test block SHALL say «Elegí un tenant para probar el reporte» and «Guardar» SHALL stay disabled.
 - Cancel and Escape SHALL ask before discarding changes.
 - Switching the active tenant SHALL close the pop-up.
+
+«Duplicar y editar» SHALL open the pop-up with the original's name followed by « (copia)» and every other field of the original. Nothing SHALL be written until «Guardar», and a copy opened from the side panel SHALL need its own passing test like a new report. A `409 reporte-en-uso` on an edit SHALL say that the report is now on a client dashboard and offer «Duplicar y editar», keeping the pop-up open. Choosing it there SHALL turn the open pop-up into a copy of what was just tested, so a passing test whose fingerprint still matches keeps «Guardar» enabled, as for templates (CH-38).
+(Previously: the pop-up served only create and edit, and an edit could not be refused for use.)
 
 #### Scenario: Creating a bar report after a passing test
 - **GIVEN** an active tenant with connection "food-store" whose views are approved
@@ -1286,6 +1300,59 @@ How the pop-up closes:
 #### Scenario: A table with too many columns
 - **GIVEN** a «Tabla» report with 10 column rows
 - **THEN** «Agregar columna» is disabled
+
+#### Scenario: Duplicating a report in use
+- **GIVEN** a report "Ventas por producto" with `enUso: true`
+- **WHEN** the operator presses «Duplicar y editar»
+- **THEN** the pop-up opens with name "Ventas por producto (copia)" and the original's fields
+- **AND** no request that writes is sent until «Guardar», which sends `POST /reportes`
+
+#### Scenario: The report became in use while editing
+- **GIVEN** the operator edits a report that was free
+- **WHEN** «Guardar» answers `409 reporte-en-uso`
+- **THEN** the pop-up says the report is now on a client dashboard and offers «Duplicar y editar», and stays open
+
+### Requirement: Tenant Dashboard Screen (R2h, DEC-199)
+The «Tablero del cliente» screen (`pantalla-tablero`) SHALL be scoped to the active tenant. Each time it is shown, and when the active tenant changes while it is shown, it SHALL read `GET /tablero`, `GET /conexiones` and `GET /reportes`. Switching the tenant SHALL discard unsaved changes. With no active tenant it SHALL say «Elegí un tenant para armar su tablero.» and send nothing.
+
+The screen SHALL hold:
+- a connection select over the tenant's connections, starting on the dashboard's connection, or empty when the tenant has no dashboard;
+- the ordered list of the dashboard's reports. Each row shows its position, client title, name and visualization, as text. When the answer names pending entities for that report, the row also says «Faltan vistas aprobadas en esta conexión:» followed by them;
+- per row, «Subir» (disabled on the first row), «Bajar» (disabled on the last row) and «Quitar»;
+- «Agregar reporte»: a select over the catalog reports not already on the list, and «Agregar», which appends the chosen report at the end. At 8 reports both SHALL be disabled and the screen SHALL say «El tablero llegó al máximo de 8 reportes.»;
+- «Guardar».
+
+An empty list SHALL say «El tablero no tiene reportes: el cliente no ve ninguno.» Changing the connection SHALL clear the pending-views lines and say «Guardá para ver qué reportes tienen sus vistas aprobadas en esta conexión.»
+
+«Guardar» SHALL be enabled only when a connection is chosen and the screen differs from the last loaded or saved dashboard. It SHALL send `PUT /tablero` with the active tenant, the `conexionId` and the report ids in screen order, and render the answer. A `400` SHALL name the problem, a `404 conexion-no-encontrada` SHALL say the connection no longer exists, and network and tenant failures SHALL be legible. Pending views never disable «Guardar».
+
+#### Scenario: Loading a tenant's dashboard
+- **GIVEN** tenant A with a dashboard on "food-store" holding reports "Ventas" and "Stock", in that order
+- **WHEN** the hash becomes `#tablero`
+- **THEN** one `GET /tablero` is sent with tenant A, and the list shows "Ventas" first and "Stock" second, with "food-store" selected
+
+#### Scenario: Reordering and saving
+- **GIVEN** the list "Ventas", "Stock"
+- **WHEN** the operator presses «Subir» on "Stock" and then «Guardar»
+- **THEN** one `PUT /tablero` is sent with the reports in the order "Stock", "Ventas"
+
+#### Scenario: Pending views are shown but do not block
+- **GIVEN** the answer names `pedido` as pending for "Ventas"
+- **THEN** the "Ventas" row says «Faltan vistas aprobadas en esta conexión: pedido»
+- **AND** «Guardar» stays enabled once there are changes
+
+#### Scenario: The cap
+- **GIVEN** a list with 8 reports
+- **THEN** «Agregar reporte» and «Agregar» are disabled and the screen says the dashboard reached its maximum
+
+#### Scenario: No active tenant
+- **GIVEN** no tenant is selected
+- **WHEN** the hash becomes `#tablero`
+- **THEN** the screen says «Elegí un tenant para armar su tablero.» and no request is sent
+
+#### Scenario: Markup in a title is text
+- **WHEN** a report title contains `<b>`
+- **THEN** it is shown verbatim and no element is created from it
 
 ### Requirement: Contract Screen
 The Contrato screen SHALL show the canonical contract (`GET /contrato`): one block per entity with its name and whether it is obligatory, and under it each field with its name, type, whether it is obligatory and the automations that use it.
