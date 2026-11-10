@@ -18,7 +18,7 @@ La versión 1.0 está cerrada: tag `v1.0.0`. Su mapa, con CH-01 a CH-35 y la sec
 
 **Después de cada change:** entrada en la bitácora con fecha, fricciones encontradas y tiempo invertido.
 
-**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-50 y la próxima decisión, DEC-201. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
+**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-50 y la próxima decisión, DEC-203. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
 
 ---
 
@@ -67,7 +67,7 @@ Orden de ejecución pensado para grabar el video cuanto antes: primero las autom
 | 9 | CH-45 | Reportes: modelo, catálogo global sobre `v_*` con tipo de visualización y pantalla de definición y prueba en la consola | R1h | CH-36 | DEC-183, DEC-198. Guía `docs/guia/09-reportes.md`. Un solo PR con `size:exception`. PR #237 |
 | 10 | CH-46 | Tablero del tenant: P1 elige qué reportes ve el cliente y en qué orden | R2h | CH-45 | DEC-183, DEC-199. Una conexión por tablero, hasta 8 reportes, un reporte en uso se duplica en lugar de editarse y las vistas no aprobadas solo se avisan. Guía en `docs/guia/09-reportes.md`. Un solo PR con `size:exception`. PR #240 |
 | 11 | CH-47 | Chart.js copiado en `public/ui/vendor/`, con su fila en la lista fija de DEC-124 | — | CH-36 | DEC-184, DEC-200. Excepción de tamaño por el archivo de terceros, como la copia de la skill en CH-21a. Un solo PR con `size:exception`. PR #243 |
-| 12 | CH-48 | Panel: tablero con ejecución en vivo, período declarado, frescura y tabla accesible por gráfico | R3h, R4h, R5h | CH-46, CH-47 | ⚠ DEC-183, DEC-184. Prueba automatizada con dos tenants (regla 2) |
+| 12 | CH-48 | Panel: tablero con ejecución en vivo, período declarado, frescura y tabla accesible por gráfico | R3h, R4h, R5h | CH-46, CH-47 | ⚠ DEC-183, DEC-184, DEC-201, DEC-202. Prueba automatizada con dos tenants (regla 2). Una llamada por reporte con hasta 3 ejecuciones a la vez por tenant, y sin fila de auditoría. Tres PRs encadenados: CH-48a (API del panel), CH-48b (pantalla, números y tablas) y CH-48c (gráficos) |
 | 13 | CH-49 | Datos de demo: segundo tenant, una automatización cada minuto, Telegram vinculado y tablero con reportes | — | CH-44, CH-48 | Reemplaza el pendiente de datos de demo. Es la base del guion del video |
 
 **Independientes entre sí:** CH-40, CH-41, CH-43, CH-45 y CH-47 solo dependen de CH-36, así que pueden adelantarse si uno se traba.
