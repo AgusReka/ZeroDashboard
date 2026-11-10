@@ -106,7 +106,7 @@ Chain strategy: feature-branch-chain
 
 ### 9. Docs
 - [x] 9.1 `docs/guia/09-reportes.md`: the panel section (what the client sees, period, states, freshness, the run limit, and why panel runs leave no audit row).
-- [ ] 9.2 `docs/02-mapa-de-changes.md`: the CH-48 row with the three PR numbers.
+- [x] 9.2 `docs/02-mapa-de-changes.md`: the CH-48 row with the three PR numbers.
 
 ### 10. Verification (CH-48c)
 - [x] 10.1 `npm run build`, `npm run build:agente`, `npx tsc -p tsconfig.json --noEmit` and `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`.
