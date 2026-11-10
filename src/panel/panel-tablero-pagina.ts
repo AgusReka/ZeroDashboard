@@ -10,7 +10,9 @@
  * defaults. Every value from the server enters the page through `textContent`. The tenant
  * is never named: the routes take it from the session cookie (rule 2).
  *
- * Charts come in CH-48c. Until then, a bar or line report shows its table, open.
+ * Bar and line reports draw with the vendored Chart.js (CH-48c, DEC-184, DEC-200), loaded by
+ * the shell before this script, with the token colors read through `getComputedStyle`. The
+ * table of the same rows stays in the card, folded; without `Chart` it shows open instead.
  */
 
 /** Panel-local rules, tokens only, with the `panel-` prefix (the shared sheets stay verbatim). */
@@ -37,6 +39,7 @@ export const ESTILOS_TABLERO = `
   .panel-reporte .zd-table .is-num { font-size: inherit; }
   .panel-reporte .zd-table th.is-num { font-family: inherit; font-size: var(--text-xs); }
   .panel-reporte .zd-state { padding: var(--space-6) var(--space-4); }
+  .panel-grafico { position: relative; height: 220px; min-width: 0; }
   .panel-datos > summary { cursor: pointer; padding: var(--space-3) 0; font-weight: var(--weight-semibold); color: var(--text-2); }
   .panel-datos[open] > summary { margin-bottom: var(--space-4); }
   .panel-notas { display: grid; gap: var(--space-2); }
@@ -167,14 +170,42 @@ function fechaHora(iso) {
   formato.formatToParts(new Date(iso)).forEach(function (parte) { partes[parte.type] = parte.value; });
   return relleno(partes.day) + '/' + relleno(partes.month) + ', ' + relleno(partes.hour) + ':' + relleno(partes.minute);
 }
-var DIA = /^[0-9]{4}-([0-9]{2})-([0-9]{2})$/;
+var DIA = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
 var INSTANTE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T/;
+// A whole or decimal number as text, as the driver returns a COUNT or a SUM ("26", "1520.50").
+// A leading zero ("007") or an exponent keeps the value as text: codes are never numbers.
+var NUMERO_TEXTO = /^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$/;
 function diaMes(texto) {
   var partes = DIA.exec(texto);
-  return partes ? partes[2] + '/' + partes[1] : texto;
+  return partes ? partes[3] + '/' + partes[2] : texto;
+}
+function anioActual() {
+  var ahora = new Date(Date.now());
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: zona, year: 'numeric' }).format(ahora);
+  } catch (e) {
+    return String(ahora.getFullYear());
+  }
+}
+// «Desde el dd/mm», with the year when it is not the current one in the business's time zone.
+function fechaDesde(texto) {
+  var partes = DIA.exec(texto);
+  if (!partes) { return texto; }
+  return partes[3] + '/' + partes[2] + (partes[1] === anioActual() ? '' : '/' + partes[1]);
+}
+function comoNumero(valor) {
+  if (typeof valor === 'number') { return isFinite(valor) ? valor : null; }
+  if (typeof valor === 'string' && NUMERO_TEXTO.test(valor)) {
+    var numero = Number(valor);
+    return isFinite(numero) ? numero : null;
+  }
+  return null;
+}
+function vacio(valor) {
+  return valor === null || valor === undefined || valor === '';
 }
 function textoDeValor(valor) {
-  if (valor === null || valor === undefined || valor === '') { return '\\u2014'; }
+  if (vacio(valor)) { return '\\u2014'; }
   if (typeof valor === 'number') { return NUMEROS.format(valor); }
   if (typeof valor === 'boolean') { return valor ? 'Sí' : 'No'; }
   var texto = String(valor);
@@ -200,7 +231,15 @@ function pintarFrescura(iso) {
   lineaFrescura.textContent = 'Datos de tu negocio actualizados hace ' + hace + ' \\u00b7 ' + fechaHora(iso);
 }
 // ---- Card bodies ---------------------------------------------------------------------------
+function soltarGrafico(tarjeta) {
+  if (tarjeta.grafico) {
+    var grafico = tarjeta.grafico;
+    tarjeta.grafico = null;
+    grafico.destroy();
+  }
+}
 function vaciar(tarjeta) {
+  soltarGrafico(tarjeta);
   tarjeta.cuerpo.textContent = '';
   tarjeta.cuerpo.removeAttribute('aria-busy');
 }
@@ -233,6 +272,16 @@ function pintarEstado(tarjeta, estado) {
   }
   tarjeta.cuerpo.appendChild(caja);
 }
+// A column is numeric when it has a value and every value is a number or a number as text.
+function columnaNumerica(filas, c) {
+  var presentes = 0;
+  var todas = filas.every(function (fila) {
+    if (vacio(fila[c])) { return true; }
+    presentes += 1;
+    return comoNumero(fila[c]) !== null;
+  });
+  return todas && presentes > 0;
+}
 function tablaDe(titulo, columnas, filas) {
   var envoltura = nodo('div', 'zd-table-wrap');
   var desplazable = nodo('div', 'zd-table-scroll');
@@ -242,7 +291,7 @@ function tablaDe(titulo, columnas, filas) {
   var cabeza = nodo('thead');
   var filaCabeza = nodo('tr');
   for (var c = 0; c < columnas.length; c++) {
-    numericas.push(filas.every(function (fila) { return typeof fila[c] === 'number'; }));
+    numericas.push(columnaNumerica(filas, c));
     var celdaCabeza = nodo('th', numericas[c] ? 'is-num zd-num' : '', String(columnas[c].titulo));
     celdaCabeza.setAttribute('scope', 'col');
     filaCabeza.appendChild(celdaCabeza);
@@ -253,7 +302,9 @@ function tablaDe(titulo, columnas, filas) {
   for (var f = 0; f < filas.length; f++) {
     var fila = nodo('tr');
     for (var k = 0; k < columnas.length; k++) {
-      fila.appendChild(nodo('td', numericas[k] ? 'is-num zd-num' : '', textoDeValor(filas[f][k])));
+      var valor = filas[f][k];
+      var texto = numericas[k] && !vacio(valor) ? NUMEROS.format(comoNumero(valor)) : textoDeValor(valor);
+      fila.appendChild(nodo('td', numericas[k] ? 'is-num zd-num' : '', texto));
     }
     cuerpo.appendChild(fila);
   }
@@ -267,6 +318,102 @@ function numeroDe(columnas, filas) {
   caja.appendChild(nodo('p', 'panel-numero__etiqueta', String(columnas[0].titulo)));
   caja.appendChild(nodo('p', 'panel-numero__valor', NUMEROS.format(filas[0][0])));
   return caja;
+}
+// ---- Charts: Chart.js on a canvas, one series, colored from the design tokens --------------
+function colores() {
+  var estilo = window.getComputedStyle(document.body);
+  return {
+    serie: estilo.getPropertyValue('--accent').trim(),
+    texto: estilo.getPropertyValue('--text-2').trim(),
+    grilla: estilo.getPropertyValue('--border-1').trim(),
+    fuente: estilo.getPropertyValue('--font-sans').trim()
+  };
+}
+function indiceDe(columnas, rol, otro) {
+  for (var i = 0; i < columnas.length; i++) {
+    if (columnas[i].rol === rol) { return i; }
+  }
+  return otro;
+}
+// Writes the token colors on a chart's series and options: when it is drawn and on a theme change.
+function tintar(serie, opciones, c) {
+  serie.backgroundColor = c.serie;
+  serie.borderColor = c.serie;
+  serie.pointBackgroundColor = c.serie;
+  var ejes = [opciones.scales.x, opciones.scales.y];
+  for (var i = 0; i < ejes.length; i++) {
+    ejes[i].ticks.color = c.texto;
+    ejes[i].ticks.font = { family: c.fuente };
+    ejes[i].grid.color = c.grilla;
+    ejes[i].border.color = c.grilla;
+  }
+  opciones.scales.y.title.color = c.texto;
+  opciones.scales.y.title.font = { family: c.fuente };
+  opciones.plugins.tooltip.titleFont = { family: c.fuente };
+  opciones.plugins.tooltip.bodyFont = { family: c.fuente };
+}
+function retintar() {
+  var c = null;
+  for (var i = 0; i < tarjetas.length; i++) {
+    var grafico = tarjetas[i].grafico;
+    if (grafico) {
+      c = c || colores();
+      tintar(grafico.data.datasets[0], grafico.options, c);
+      grafico.update();
+    }
+  }
+}
+// On a narrow chart a long bar label is cut, so the bars keep their height; the tooltip and the
+// table keep the whole text. Chart.js calls it with the scale as this.
+var ANGOSTO = 600;
+var LARGO_ETIQUETA = 12;
+function etiquetaCorta(valor) {
+  var texto = String(this.getLabelForValue(valor));
+  return this.chart.width < ANGOSTO && texto.length > LARGO_ETIQUETA ? texto.slice(0, LARGO_ETIQUETA - 1) + '\\u2026' : texto;
+}
+// Draws the chart into the card body; answers false when it cannot, so the table shows open.
+function graficoDe(tarjeta, columnas, filas) {
+  var columnaEtiqueta = indiceDe(columnas, 'etiqueta', 0);
+  var columnaValor = indiceDe(columnas, 'valor', 1);
+  if (columnaValor >= columnas.length) { return false; }
+  var valores = filas.map(function (fila) { return fila[columnaValor]; });
+  if (!valores.every(function (v) { return typeof v === 'number' && isFinite(v); })) { return false; }
+  var linea = tarjeta.reporte.visualizacion === 'linea';
+  var caja = nodo('div', 'panel-grafico');
+  var lienzo = nodo('canvas');
+  lienzo.setAttribute('role', 'img');
+  lienzo.setAttribute('aria-label', tarjeta.reporte.titulo + ': valores de ' + NUMEROS.format(Math.min.apply(null, valores)) +
+    ' a ' + NUMEROS.format(Math.max.apply(null, valores)) + '.');
+  caja.appendChild(lienzo);
+  tarjeta.cuerpo.appendChild(caja);
+  var serie = linea
+    ? { label: String(columnas[columnaValor].titulo), data: valores, borderWidth: 2, pointRadius: 3, tension: 0, fill: false }
+    : { label: String(columnas[columnaValor].titulo), data: valores, borderWidth: 0, borderRadius: 4, maxBarThickness: 48 };
+  var opciones = {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    locale: 'es-AR',
+    plugins: { legend: { display: false }, tooltip: {} },
+    scales: {
+      x: { ticks: {}, grid: { display: false }, border: {} },
+      y: { beginAtZero: true, title: { display: true, text: String(columnas[columnaValor].titulo) }, ticks: {}, grid: {}, border: { display: false } }
+    }
+  };
+  if (!linea) { opciones.scales.x.ticks.callback = etiquetaCorta; }
+  tintar(serie, opciones, colores());
+  try {
+    tarjeta.grafico = new Chart(lienzo, {
+      type: linea ? 'line' : 'bar',
+      data: { labels: filas.map(function (fila) { return textoDeValor(fila[columnaEtiqueta]); }), datasets: [serie] },
+      options: opciones
+    });
+  } catch (e) {
+    tarjeta.grafico = null;
+    caja.hidden = true;
+    return false;
+  }
+  return true;
 }
 function pintarResultado(tarjeta, respuesta) {
   var estado = respuesta && typeof respuesta.estado === 'string' ? respuesta.estado : 'error';
@@ -288,9 +435,10 @@ function pintarResultado(tarjeta, respuesta) {
   if (vista === 'numero') {
     tarjeta.cuerpo.appendChild(numeroDe(columnas, filas));
   } else if (vista === 'barras' || vista === 'linea') {
-    // CH-48c draws the chart above this table and folds it; until then the table is the body.
+    // The chart goes above the table, which folds; without Chart.js the table is the body, open.
+    var dibujado = typeof Chart === 'function' && graficoDe(tarjeta, columnas, filas);
     var datos = nodo('details', 'panel-datos');
-    datos.open = true;
+    datos.open = !dibujado;
     datos.appendChild(nodo('summary', '', 'Ver los datos en una tabla'));
     datos.appendChild(tablaDe(titulo, columnas, filas));
     tarjeta.cuerpo.appendChild(datos);
@@ -299,7 +447,7 @@ function pintarResultado(tarjeta, respuesta) {
   }
   var notas = nodo('div', 'panel-notas');
   if (respuesta.periodo && typeof respuesta.periodo.desde === 'string') {
-    notas.appendChild(nodo('p', 'panel-nota', 'Desde el ' + diaMes(respuesta.periodo.desde)));
+    notas.appendChild(nodo('p', 'panel-nota', 'Desde el ' + fechaDesde(respuesta.periodo.desde)));
   }
   if (respuesta.corte === true && vista !== 'numero') {
     notas.appendChild(nodo('p', 'panel-nota', 'Mostramos solo los primeros ' + filas.length + ' resultados.'));
@@ -402,7 +550,8 @@ function crearTarjeta(reporte) {
     dias: periodo ? (reporte.periodo.dias.indexOf(predeterminado) === -1 ? reporte.periodo.dias[0] : predeterminado) : null,
     generacion: 0,
     pendiente: false,
-    descartada: false
+    descartada: false,
+    grafico: null
   };
   var articulo = nodo('article', 'zd-card panel-reporte');
   articulo.setAttribute('aria-labelledby', prefijo + '-titulo');
@@ -427,6 +576,7 @@ function pintarTablero(cuerpo) {
   for (var i = 0; i < tarjetas.length; i++) {
     tarjetas[i].descartada = true;
     tarjetas[i].pendiente = false;
+    soltarGrafico(tarjetas[i]);
   }
   cola = [];
   tarjetas = [];
@@ -472,6 +622,14 @@ function cargarTablero() {
 }
 botonActualizar.addEventListener('click', function () { cargarTablero(); });
 window.addEventListener('hashchange', aplicarSeccion);
+// A theme change, from the system or from data-theme, re-reads the tokens of every live chart.
+if (typeof window.matchMedia === 'function') {
+  var esquema = window.matchMedia('(prefers-color-scheme: dark)');
+  if (esquema && typeof esquema.addEventListener === 'function') { esquema.addEventListener('change', retintar); }
+}
+if (typeof window.MutationObserver === 'function') {
+  new window.MutationObserver(retintar).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+}
 cargarTablero();
 })();
 `;

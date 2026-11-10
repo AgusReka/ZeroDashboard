@@ -327,7 +327,8 @@ document.getElementById('boton-salir').addEventListener('click', function () {
   });
 });
 </script>
-<!-- P-08 Tablero (CH-48): before the automations script, which stays the last one on the page. -->
+<!-- P-08 Tablero (CH-48): the vendored Chart.js (DEC-184, DEC-200) first, then the dashboard script, both before the automations script, which stays the last one on the page. -->
+<script src="/ui/vendor/chart.umd.js"></script>
 <script>
 ${SCRIPT_TABLERO}</script>
 <script>

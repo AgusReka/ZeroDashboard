@@ -78,7 +78,40 @@ const AHORA = Date.parse('2026-11-10T15:00:00.000Z');
 const ZONA = 'America/Argentina/Buenos_Aires';
 const esperar = () => new Promise((r) => setImmediate(r));
 
-function montar(hash = '') {
+/** A stub of Chart.js: records every chart, its config, and each destroy and update, in order. */
+function chartFalso() {
+  const eventos: string[] = [];
+  const creados: GraficoFalso[] = [];
+  class GraficoFalso {
+    data: { labels: unknown[]; datasets: Array<Record<string, unknown>> };
+    options: any;
+    destruido = false;
+    actualizaciones = 0;
+    constructor(
+      public lienzo: Nodo,
+      public config: { type: string; data: GraficoFalso['data']; options: unknown },
+    ) {
+      this.data = config.data;
+      this.options = config.options;
+      creados.push(this);
+      eventos.push(`nuevo ${creados.length}`);
+    }
+    destroy(): void {
+      this.destruido = true;
+      eventos.push(`destroy ${creados.indexOf(this) + 1}`);
+    }
+    update(): void {
+      this.actualizaciones += 1;
+    }
+  }
+  return { Chart: GraficoFalso, creados, eventos };
+}
+
+/** The design tokens the page reads, padded as `getPropertyValue` returns them. */
+const TOKENS_CLAROS: Record<string, string> = { '--accent': ' #0d9488', '--text-2': ' #4b5563', '--border-1': ' #e5e7eb', '--font-sans': ' system-ui, sans-serif' };
+const TOKENS_OSCUROS: Record<string, string> = { '--accent': ' #2dd4bf', '--text-2': ' #d1d5db', '--border-1': ' #1f2937', '--font-sans': ' system-ui, sans-serif' };
+
+function montar(hash = '', opciones: { Chart?: unknown; ahora?: number } = {}) {
   const fijos = new Map<string, Nodo>();
   for (const id of ['nav-panel', 'nav-tablero', 'nav-avisos', 'seccion-tablero', 'seccion-avisos', 'lista-tablero', 'tablero-frescura', 'boton-actualizar', 'tablero-aviso']) {
     const nodo = new Nodo();
@@ -96,6 +129,8 @@ function montar(hash = '') {
     },
     createElement: (tag: string) => new Nodo(tag),
     createElementNS: (_ns: string, tag: string) => new Nodo(tag),
+    body: new Nodo('body'),
+    documentElement: new Nodo('html'),
   };
   const pedidos: Pedido[] = [];
   const buscar = (url: string, init?: unknown) =>
@@ -117,16 +152,34 @@ function montar(hash = '') {
     });
   const recargas: number[] = [];
   const oyentesVentana: Record<string, Array<() => void>> = {};
+  const tokens = { ...TOKENS_CLAROS };
+  const oyentesEsquema: Array<() => void> = [];
+  const observadores: Array<{ alCambiar: () => void; nodo: unknown; config: unknown }> = [];
   const ventana = {
     location: { hash, reload: () => recargas.push(1) },
     addEventListener: (tipo: string, oyente: () => void) => (oyentesVentana[tipo] ??= []).push(oyente),
+    getComputedStyle: (nodo: unknown) => {
+      assert.equal(nodo, documento.body, 'the tokens are read from the body');
+      return { getPropertyValue: (nombre: string) => tokens[nombre] ?? '' };
+    },
+    matchMedia: (consulta: string) => {
+      assert.equal(consulta, '(prefers-color-scheme: dark)');
+      return { addEventListener: (_tipo: string, oyente: () => void) => oyentesEsquema.push(oyente) };
+    },
+    MutationObserver: class {
+      constructor(private alCambiar: () => void) {}
+      observe(nodo: unknown, config: unknown): void {
+        observadores.push({ alCambiar: this.alCambiar, nodo, config });
+      }
+    },
   };
+  const ahora = opciones.ahora ?? AHORA;
   class Reloj extends Date {
     static override now(): number {
-      return AHORA;
+      return ahora;
     }
   }
-  new Function('document', 'fetch', 'window', 'Date', SCRIPT_TABLERO)(documento, buscar, ventana, Reloj);
+  new Function('document', 'fetch', 'window', 'Date', 'Chart', SCRIPT_TABLERO)(documento, buscar, ventana, Reloj, opciones.Chart);
 
   const el = (id: string) => documento.getElementById(id);
   const tarjetas = () => el('lista-tablero').children;
@@ -155,6 +208,18 @@ function montar(hash = '') {
       await esperar();
     },
     ultimo,
+    documento,
+    observadores,
+    /** Switches the stubbed tokens to dark and fires the data-theme observer. */
+    oscurecer: () => {
+      Object.assign(tokens, TOKENS_OSCUROS);
+      for (const observador of observadores) observador.alCambiar();
+    },
+    /** Switches the stubbed tokens back to light and fires the system scheme listener. */
+    aclararPorSistema: () => {
+      Object.assign(tokens, TOKENS_CLAROS);
+      for (const oyente of oyentesEsquema) oyente();
+    },
     cambiarHash: (nuevo: string) => {
       ventana.location.hash = nuevo;
       for (const oyente of oyentesVentana.hashchange ?? []) oyente();
@@ -185,8 +250,8 @@ const TABLA_OK = {
 };
 
 /** Loads the page with `reportes` and answers the configuration. */
-async function conTablero(reportes: unknown[], hash = '', actualizadosEn: string | null = null) {
-  const pagina = montar(hash);
+async function conTablero(reportes: unknown[], hash = '', actualizadosEn: string | null = null, opciones: { Chart?: unknown; ahora?: number } = {}) {
+  const pagina = montar(hash, opciones);
   await pagina.responder(CONFIG, 200, configuracion(reportes, actualizadosEn));
   return pagina;
 }
@@ -437,7 +502,43 @@ describe('CH-48b P-08 dashboard script (fake DOM)', () => {
       assert.deepEqual(celdas.map((n) => n.className.includes('zd-num')), [false, true, false, false, false, true, false, false]);
     });
 
-    test('a bar or line card shows its table open in this slice, under «Ver los datos en una tabla»', async () => {
+    test('numbers as text (a COUNT or a SUM) are numbers in a table column; codes and labels stay text', async () => {
+      const pagina = await conTablero([reporte('r-1')]);
+      await pagina.responder(ruta('r-1'), 200, {
+        ...TABLA_OK,
+        columnas: ['Producto', 'Pedidos', 'Total', 'Código', 'Talle', 'Nota', 'Mixta'].map((titulo) => ({ rol: 'columna', titulo })),
+        filas: [
+          ['Yerba', '26', '1520.50', '007', '42', null, 3],
+          ['Mate', '1240', null, '12', 'XL', null, '-4.5'],
+        ],
+      });
+      const tabla = pagina.cuerpo(0).todos().find((n) => n.tagName === 'table')!;
+      const encabezados = tabla.todos().filter((n) => n.tagName === 'th');
+      assert.deepEqual(encabezados.map((n) => n.className), ['', 'is-num zd-num', 'is-num zd-num', '', '', '', 'is-num zd-num']);
+      const celdas = tabla.todos().filter((n) => n.tagName === 'td');
+      assert.deepEqual(celdas.map((n) => n.textContent), [
+        'Yerba', '26', '1.520,5', '007', '42', '—', '3',
+        'Mate', '1.240', '—', '12', 'XL', '—', '-4,5',
+      ]);
+      assert.deepEqual(celdas.slice(0, 7).map((n) => n.className.includes('zd-num')), [false, true, true, false, false, false, true]);
+    });
+
+    test('«Desde el» shows the year only when it is not the current one in the business time zone', async () => {
+      const casos: Array<[string, number, string]> = [
+        ['2025-11-09', AHORA, 'Desde el 09/11/2025'],
+        ['2026-11-03', AHORA, 'Desde el 03/11'],
+        // 01:00 UTC of 1 January 2027 is still 31 December 2026 in Buenos Aires.
+        ['2026-12-01', Date.parse('2027-01-01T01:00:00.000Z'), 'Desde el 01/12'],
+        ['2026-12-01', Date.parse('2027-01-01T03:00:00.000Z'), 'Desde el 01/12/2026'],
+      ];
+      for (const [desde, ahora, linea] of casos) {
+        const pagina = await conTablero([reporte('r-1', 'tabla', { dias: [366], predeterminado: 366 })], '', null, { ahora });
+        await pagina.responder(ruta('r-1', 366), 200, { ...TABLA_OK, periodo: { dias: 366, desde } });
+        assert.ok(pagina.textos(pagina.cuerpo(0)).includes(linea), `${desde}: ${pagina.textos(pagina.cuerpo(0)).join(' | ')}`);
+      }
+    });
+
+    test('without Chart.js a bar or line card shows its table open, under «Ver los datos en una tabla», and no canvas', async () => {
       for (const vista of ['barras', 'linea']) {
         const pagina = await conTablero([reporte('r-1', vista)]);
         await pagina.responder(ruta('r-1'), 200, { ...TABLA_OK, columnas: [{ rol: 'etiqueta', titulo: 'Día' }, { rol: 'valor', titulo: 'Ventas' }], filas: [['2026-11-03', 10], ['2026-11-04', 12], ['2026-11-05', 9]] });
@@ -464,6 +565,148 @@ describe('CH-48b P-08 dashboard script (fake DOM)', () => {
       await pagina.responder(ruta('r-2'), 200, { estado: 'ok', columnas: [], filas: 'nada' });
       assert.ok(pagina.textos(pagina.cuerpo(0)).includes('No pudimos cargar este reporte.'));
       assert.ok(pagina.textos(pagina.cuerpo(1)).includes('No pudimos cargar este reporte.'));
+    });
+  });
+
+  describe('charts (CH-48c, stub Chart)', () => {
+    const SERIE = {
+      ...TABLA_OK,
+      columnas: [{ rol: 'etiqueta', titulo: 'Día' }, { rol: 'valor', titulo: 'Ventas' }],
+      filas: [['2026-11-03', 10], ['2026-11-04', 1240], ['2026-11-05', 9.5]],
+    };
+    const conGrafico = async (vista: string, periodo: { dias: number[]; predeterminado: number } | null = null) => {
+      const chart = chartFalso();
+      const pagina = await conTablero([reporte('r-1', vista, periodo)], '', null, { Chart: chart.Chart });
+      return { pagina, chart };
+    };
+
+    test('a bar card draws on a canvas with role img and a label, above a folded table of the same rows', async () => {
+      const { pagina, chart } = await conGrafico('barras');
+      await pagina.responder(ruta('r-1'), 200, SERIE);
+      const [caja, detalles] = pagina.cuerpo(0).children;
+      assert.equal(caja.className, 'panel-grafico');
+      const lienzo = caja.children[0];
+      assert.equal(lienzo.tagName, 'canvas');
+      assert.equal(lienzo.atributos.role, 'img');
+      assert.equal(lienzo.atributos['aria-label'], 'Reporte r-1: valores de 9,5 a 1.240.');
+      assert.equal(detalles.tagName, 'details');
+      assert.equal(detalles.open, false, 'the table is folded when the chart is drawn');
+      assert.equal(detalles.children[0].textContent, 'Ver los datos en una tabla');
+      assert.equal(detalles.todos().filter((n) => n.tagName === 'tr').length, 4, 'header and three rows');
+      assert.ok(detalles.todos().some((n) => n.tagName === 'caption'));
+
+      assert.equal(chart.creados.length, 1);
+      const [grafico] = chart.creados;
+      assert.equal(grafico.lienzo, lienzo, 'Chart.js draws on that canvas');
+      assert.equal(grafico.config.type, 'bar');
+      assert.deepEqual(grafico.data.labels, ['03/11', '04/11', '05/11']);
+      assert.equal(grafico.data.datasets.length, 1, 'one series');
+      assert.deepEqual(grafico.data.datasets[0].data, [10, 1240, 9.5]);
+      const opciones = grafico.options;
+      assert.equal(opciones.animation, false);
+      assert.equal(opciones.maintainAspectRatio, false);
+      assert.equal(opciones.locale, 'es-AR');
+      assert.equal(opciones.plugins.legend.display, false);
+      assert.equal(opciones.scales.y.title.text, 'Ventas');
+    });
+
+    test('a long bar label is cut only on a narrow chart; a line chart keeps its date labels', async () => {
+      const { pagina, chart } = await conGrafico('barras');
+      await pagina.responder(ruta('r-1'), 200, SERIE);
+      const corta = chart.creados[0].options.scales.x.ticks.callback as (this: unknown, valor: number) => string;
+      const escala = (width: number) => ({ chart: { width }, getLabelForValue: () => 'Hamburguesa BBQ Bacon' });
+      assert.equal(corta.call(escala(390), 0), 'Hamburguesa…');
+      assert.equal(corta.call(escala(900), 0), 'Hamburguesa BBQ Bacon');
+      assert.equal(corta.call({ chart: { width: 390 }, getLabelForValue: () => 'Mate' }, 0), 'Mate');
+      const linea = await conGrafico('linea');
+      await linea.pagina.responder(ruta('r-1'), 200, SERIE);
+      assert.equal(linea.chart.creados[0].options.scales.x.ticks.callback, undefined);
+    });
+
+    test('a line card draws a line chart', async () => {
+      const { pagina, chart } = await conGrafico('linea');
+      await pagina.responder(ruta('r-1'), 200, SERIE);
+      assert.equal(chart.creados[0].config.type, 'line');
+      assert.equal(pagina.cuerpo(0).children[1].open, false);
+    });
+
+    test('the colors are the token values, trimmed, never a library palette', async () => {
+      const { pagina, chart } = await conGrafico('barras');
+      await pagina.responder(ruta('r-1'), 200, SERIE);
+      const { data, options } = chart.creados[0];
+      const serie = data.datasets[0];
+      assert.equal(serie.backgroundColor, '#0d9488');
+      assert.equal(serie.borderColor, '#0d9488');
+      for (const eje of [options.scales.x, options.scales.y]) {
+        assert.equal(eje.ticks.color, '#4b5563');
+        assert.equal(eje.grid.color, '#e5e7eb');
+        assert.equal(eje.ticks.font.family, 'system-ui, sans-serif');
+      }
+      assert.equal(options.scales.y.title.color, '#4b5563');
+      assert.equal(options.plugins.tooltip.bodyFont.family, 'system-ui, sans-serif');
+    });
+
+    test('a theme change, from data-theme or from the system, re-reads the tokens and updates the chart', async () => {
+      const { pagina, chart } = await conGrafico('linea');
+      await pagina.responder(ruta('r-1'), 200, SERIE);
+      assert.equal(pagina.observadores.length, 1);
+      assert.equal(pagina.observadores[0].nodo, pagina.documento.documentElement);
+      assert.deepEqual(pagina.observadores[0].config, { attributes: true, attributeFilter: ['data-theme'] });
+      const [grafico] = chart.creados;
+
+      pagina.oscurecer();
+      assert.equal(grafico.actualizaciones, 1);
+      assert.equal(grafico.data.datasets[0].borderColor, '#2dd4bf');
+      assert.equal(grafico.options.scales.x.ticks.color, '#d1d5db');
+      assert.equal(grafico.options.scales.y.grid.color, '#1f2937');
+
+      pagina.aclararPorSistema();
+      assert.equal(grafico.actualizaciones, 2);
+      assert.equal(grafico.data.datasets[0].borderColor, '#0d9488');
+    });
+
+    test('a period change destroys the chart before the new one is drawn, and a destroyed chart is not updated', async () => {
+      const { pagina, chart } = await conGrafico('barras', { dias: [30, 7], predeterminado: 30 });
+      await pagina.responder(ruta('r-1', 30), 200, SERIE);
+      const select = pagina.tarjetas()[0].todos().find((n) => n.tagName === 'select')!;
+      select.value = '7';
+      select.disparar('change');
+      assert.deepEqual(chart.eventos, ['nuevo 1', 'destroy 1'], 'destroyed as soon as the card re-runs');
+      await pagina.responder(ruta('r-1', 7), 200, SERIE);
+      assert.deepEqual(chart.eventos, ['nuevo 1', 'destroy 1', 'nuevo 2']);
+      pagina.oscurecer();
+      assert.equal(chart.creados[0].actualizaciones, 0);
+      assert.equal(chart.creados[1].actualizaciones, 1);
+    });
+
+    test('«Actualizar» destroys the charts of the cards it replaces', async () => {
+      const { pagina, chart } = await conGrafico('linea');
+      await pagina.responder(ruta('r-1'), 200, SERIE);
+      pagina.el('boton-actualizar').disparar('click');
+      await pagina.responder(CONFIG, 200, configuracion([reporte('r-1', 'linea')]));
+      assert.deepEqual(chart.eventos, ['nuevo 1', 'destroy 1']);
+      await pagina.responder(ruta('r-1'), 200, SERIE);
+      assert.equal(chart.creados.length, 2);
+    });
+
+    test('a value that is not a number, or a Chart.js that throws, leaves the table open and no live chart', async () => {
+      const { pagina, chart } = await conGrafico('barras');
+      await pagina.responder(ruta('r-1'), 200, { ...SERIE, filas: [['Yerba', '12'], ['Mate', 3]] });
+      assert.equal(chart.creados.length, 0);
+      assert.ok(!pagina.cuerpo(0).todos().some((n) => n.tagName === 'canvas'));
+      assert.equal(pagina.cuerpo(0).children[0].open, true);
+
+      const roto = class {
+        constructor() {
+          throw new Error('sin lienzo');
+        }
+      };
+      const otra = await conTablero([reporte('r-1', 'linea')], '', null, { Chart: roto });
+      await otra.responder(ruta('r-1'), 200, SERIE);
+      const [caja, detalles] = otra.cuerpo(0).children;
+      assert.equal(caja.hidden, true, 'the empty box is hidden');
+      assert.equal(detalles.open, true);
+      assert.ok(!otra.textos(otra.cuerpo(0)).some((t) => /error|chart/i.test(t)), 'no technical message');
     });
   });
 

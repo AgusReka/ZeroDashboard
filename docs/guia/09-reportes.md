@@ -103,7 +103,7 @@ Un tablero vacío se puede guardar: dice «El tablero no tiene reportes: el clie
 
 ### Vistas pendientes
 
-Si las entidades de un reporte no tienen vistas «Válida» en la conexión del tablero, la fila dice «Faltan vistas aprobadas en esta conexión: pedido». **Es un aviso, no un bloqueo:** el tablero se guarda igual, y así se puede armar antes de terminar el mapeo. Mientras falten, el cliente ve ese reporte en su estado de error (CH-48).
+Si las entidades de un reporte no tienen vistas «Válida» en la conexión del tablero, la fila dice «Faltan vistas aprobadas en esta conexión: pedido». **Es un aviso, no un bloqueo:** el tablero se guarda igual, y así se puede armar antes de terminar el mapeo. Mientras falten, el cliente ve en esa tarjeta «No podemos mostrar este reporte por ahora.» (CH-48).
 
 Lo calcula el servidor al leer y al guardar. Al cambiar la conexión, las líneas se borran y la pantalla dice «Guardá para ver qué reportes tienen sus vistas aprobadas en esta conexión.»: vuelven con la respuesta del guardado.
 
@@ -115,6 +115,25 @@ Un reporte está **en uso** si figura en el tablero de cualquier tenant. Un repo
 - La copia abre el mismo pop-up con **todos** los campos del original, textos para el cliente incluidos, y « (copia)» en el nombre. Necesita su propia prueba y se guarda como un reporte nuevo (`POST /reportes`).
 - Para que un cliente vea la copia, P1 la agrega a su tablero y quita el original. Eso se hace en cada tablero que lo usa.
 - Si el reporte entra en un tablero mientras P1 lo edita, «Guardar» responde `409 reporte-en-uso`: el pop-up sigue abierto, lo explica y ofrece «Duplicar y editar», que convierte lo escrito en una copia.
+
+## Lo que ve el cliente
+
+En el panel, con su sesión, el cliente ve dos pestañas: **Tablero** y **Avisos** (CH-48, DEC-201). Las pestañas aparecen solo si su tablero tiene algún reporte; sin reportes, o si el tablero no carga, el panel es el de siempre, solo con Avisos.
+
+- **Tarjetas.** Una por reporte, en el orden del tablero, con el título y la descripción para el cliente. El número va grande y con formato argentino (1.520,5). La tabla muestra solo las columnas asignadas, con sus títulos; una columna es numérica (alineada a la derecha y con formato) cuando todos sus valores son números, también si la réplica los devuelve como texto, como un `COUNT` o un `SUM`. Barras y línea se dibujan con el Chart.js de CH-47, en los colores del sistema de diseño, y debajo tienen, plegada, «Ver los datos en una tabla» con las mismas filas. Si el gráfico no se puede dibujar, la tabla se ve abierta.
+- **En vivo.** Cada reporte se ejecuta al abrir la página, sobre la conexión del tablero y con las mismas vistas, fecha y tope que la prueba de la consola. El resultado no se guarda en ningún lado (DEC-93): recargar vuelve a ejecutar.
+- **Período.** Si el reporte declara días, la tarjeta tiene un select «Período» con «Últimos N días», empezando por el primero declarado. Cambiarlo vuelve a ejecutar solo esa tarjeta y no se recuerda al recargar. Debajo del resultado dice «Desde el dd/mm» (con el año si no es el actual).
+- **Estados.** Cada tarjeta tiene el suyo y las demás siguen: sin datos («No hay datos para este período.»), no disponible (faltan vistas aprobadas, una columna asignada que ya no existe o un reporte roto: «No podemos mostrar este reporte por ahora.»), tiempo agotado, sin conexión y error, estos tres con «Reintentar». Con más filas que el tope dice «Mostramos solo los primeros N resultados.»
+- **Frescura.** Arriba de las tarjetas: «Datos de tu negocio actualizados hace 3 h · 10/11, 09:15», con la última actualización de la réplica del tenant, o «Todavía no tenemos la fecha de actualización de tus datos.». Es solo informativa: no frena ningún reporte.
+- **«Actualizar».** Vuelve a leer el tablero y a ejecutar todo. No hay refresco automático.
+
+### El límite de ejecuciones
+
+Abrir el tablero ejecuta todos sus reportes, hasta 8. Un agente atiende hasta 8 sesiones a la vez y las automatizaciones programadas usan las mismas, así que el servidor deja correr **3 ejecuciones a la vez por tenant**; las demás esperan en una cola de hasta **8** y, más allá, la respuesta es `429` y la tarjeta muestra el error con «Reintentar». Dos pedidos iguales (mismo tenant, reporte y días) comparten una sola ejecución mientras dura. La página, a su vez, pide de a 3. Un tenant no ocupa los lugares de otro.
+
+### Por qué no hay fila de auditoría
+
+Las ejecuciones del tablero no escriben en **Auditoría** (DEC-202). Auditoría registra lo que hace un operador en la consola, y una ejecución del panel no tiene operador; además, cada visita del cliente sumaría hasta 8 filas a un registro que no se poda y taparía lo que hace P1. El servidor deja, en cambio, una línea de log por ejecución con el tenant, el reporte, la conexión, el estado, la cantidad de filas y la duración, sin valores ni SQL. Un reporte roto deja además una línea de error.
 
 ## Las rutas
 
@@ -155,7 +174,8 @@ La prueba sin guardar no pide `columnasPrueba` (salta el paso 5) y salta el paso
 - **Límite.** Con datos diarios, una línea de más de 100 días queda cortada.
 - **Límite.** No existe un borrado de reportes (DEC-68). Un reporte en un tablero no se edita: se duplica y se reemplaza a mano en cada tablero que lo usa (DEC-199).
 - **Límite.** Un tablero usa una sola conexión: un tenant con datos en dos réplicas no puede mezclarlas en el mismo tablero (DEC-199).
-- **Límite.** La prueba de la consola muestra el resultado como tabla, sea cual sea la visualización. El gráfico llega con CH-47 y CH-48.
+- **Límite.** La prueba de la consola muestra el resultado como tabla, sea cual sea la visualización. El gráfico se ve solo en el panel del cliente (CH-48).
+- **Límite.** Una columna de códigos que la réplica devuelve como números (por ejemplo, `1234`) se muestra como número en el tablero (1.234). Un código con cero adelante (`007`) queda como texto.
 
 ## Siguiente paso
 

@@ -113,3 +113,48 @@ Branch `ch48b/pantalla`, from `master` after CH-48a (PR #250). CH-48c (tasks 8 t
 - The page test runs the script with `new Function('document', 'fetch', 'window', 'Date', SCRIPT_TABLERO)`; add a `Chart` parameter and stub it there. The fake DOM's `Nodo` has no `getComputedStyle`: `colores()` needs a stubbed global or a parameter too.
 - Values in a `tabla` column arrive as the driver returns them: a `COUNT` or `SUM` over `bigint` is a string ("26"), so that column is neither right-aligned nor formatted es-AR. The `valor` of a chart is always a number (the server converts it).
 - «Desde el dd/mm» drops the year, which reads oddly for 366 days («Desde el 09/11» means last year).
+
+## CH-48c (charts): tasks 8.1 to 10.1, done; 9.2 open
+
+Branch `ch48c/graficos`, from `master` after CH-48a (PR #250) and CH-48b (PR #251). Task 9.2 stays open: the map row has PRs #250 and #251, and CH-48c's number goes in when its PR exists.
+
+### Tasks done
+
+- 8.1: `documentoShell` loads `<script src="/ui/vendor/chart.umd.js"></script>` right before the `<script>` that holds `SCRIPT_TABLERO`. The login page does not.
+- 8.2: `barras` and `linea` cards draw a `<div class="panel-grafico">` (220 px) with a `<canvas role="img" aria-label="<título>: valores de <mín> a <máx>.">`, then the `<details>` folded. One dataset; `animation: false`, `maintainAspectRatio: false`, `locale: 'es-AR'`, legend hidden, y axis titled with the `valor` column. `colores()` reads `--accent`, `--text-2`, `--border-1` and `--font-sans` from `getComputedStyle(document.body)`; `tintar` writes them on the series, ticks, grid, border, y title and tooltip fonts. A `matchMedia('(prefers-color-scheme: dark)')` listener and a `MutationObserver` on `data-theme` re-tint every live chart and call `update()`. `vaciar` destroys the card's chart, so a re-run or a period change destroys it before the new one; «Actualizar» destroys the old cards' charts in `pintarTablero`. No `Chart`, a non-number value or a `Chart` that throws leaves the table open (the empty box hidden).
+- Follow-up 1 (from CH-48b): a table column is numeric (`is-num zd-num`, `es-AR`) when it has a value and every non-empty value is a number or a decimal number as text without a leading zero (`/^-?(0|[1-9][0-9]*)(\.[0-9]+)?$/`). "007", "1e5", "XL" keep the column as text.
+- Follow-up 2: «Desde el dd/mm/aaaa» when the year of `periodo.desde` is not the current year in the tenant's time zone (`Intl.DateTimeFormat('en-US', { timeZone, year })` on `Date.now()`).
+- 8.3: `src/panel/panel-tablero-pagina.test.ts`: a `Chart` stub that records configs, `destroy` and `update` in order; the fake `window` has `getComputedStyle`, `matchMedia` and `MutationObserver`. New cases: bar card (canvas, label, folded table, config), line type, token colors trimmed, both theme paths, destroy on period change before the new chart, «Actualizar» destroying, non-number value and throwing `Chart`, narrow-label cut, numeric text columns, «Desde el» with and without the year (including 31 December in Buenos Aires after midnight UTC).
+- 8.4: `src/panel/panel.test.ts`: the shell holds the script once, right before the dashboard script, and no other external script after it; the login page has none. The console page already has a test for exactly one script element.
+- 9.1: `docs/guia/09-reportes.md`: «Lo que ve el cliente», «El límite de ejecuciones» and «Por qué no hay fila de auditoría»; the pending-views line names the real state; two limits updated.
+- Guide and spec: P-08 (both copies, `diff -rq` empty) and the `client-panel-dashboard` delta spec state the two follow-ups.
+
+### Files touched
+
+| File | Action | Lines (+/-) |
+|---|---|---|
+| `src/panel/panel-tablero-pagina.ts` | Modify | +165 / -13 |
+| `src/panel/panel.ts` | Modify | +2 / -1 |
+| `src/panel/panel-tablero-pagina.test.ts` | Modify | +251 / -4 |
+| `src/panel/panel.test.ts` | Modify | +15 |
+| `docs/guia/09-reportes.md` | Modify | +22 / -2 |
+| `docs/02-mapa-de-changes.md` | Modify | +1 / -1 |
+| `.claude/` and `.agents/` `skills/zerodashboard-design/guidelines/pantallas.md` | Modify | +2 / -2 each |
+| `openspec/changes/CH-48-tablero-panel/specs/client-panel-dashboard/spec.md` | Modify | +2 / -2 |
+
+### Deviations from the design, with reasons
+
+- **`window.getComputedStyle`, `window.matchMedia`, `window.MutationObserver`**, not the bare globals: the same objects in the browser, and the page test stubs them on its fake `window`.
+- **Fonts go per element** (ticks, y title, tooltip title and body), not through `Chart.defaults`: nothing global is changed, and a theme change patches the same keys.
+- **A long bar label is cut on a chart narrower than 600 px** (11 characters and «…»), through a `ticks.callback` on the bar x axis. Seen at 390 px: the rotated product names took most of the 220 px and left the bars short. The tooltip and the table keep the whole label. Line charts keep their `dd/mm` labels.
+- **A `Chart` that throws, or a non-number `valor`, falls back to the open table**, like a missing `Chart`. The server already turns a non-number `valor` into `no-disponible`; this is a guard.
+- **The x grid is hidden and the y border too**; the y grid carries `--border-1`. Less ink, the same token.
+- **Numeric text excludes leading zeros and exponents**, so codes stay text. A code column made only of plain numbers ("1234") reads as a number (1.234); this is in the guide's limits.
+
+### Verification
+
+- `npx tsc -p tsconfig.json --noEmit`: exit 0.
+- `npm run build`: exit 0. `npm run build:agente`: exit 0.
+- Focused command of unit c (`src/panel/panel-tablero-pagina.test.ts src/panel/panel.test.ts src/compartido/estilos-rutas.test.ts`, with the `TEST_DB_*` variables and `DATABASE_URL` on port 5434): 89 tests, 89 pass.
+- `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`: 2148 tests, 2144 pass, 4 fail: the known `src/conexiones/conexiones.test.ts` 5.1, 5.3, 5.4 and CH-07. It ran before the narrow-label cut, which the focused run covers.
+- Browser (demo container, headless Chrome, 1280 and 390 px, light and dark): a number, «Lo más vendido» as bars, a table and «Pedidos por día» as a line, drawn in the token colors (light `#0f6b5c` / ticks `#4a535c` / grid `#d1d7dc`; dark `#3ea38e` / `#b2bbc3` / `#22282e`), both theme paths re-tinting, the tables folded, «Pedidos» and «Unidades» of the text table right-aligned, «Desde el 09/11/2025» on the 366-day cards. A period change with no data destroys the line chart (2 live charts to 1). With the script blocked: no canvas, both tables open. No page exceptions.
