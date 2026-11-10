@@ -65,6 +65,14 @@ describe('CH-29 operator guard exemptions (DEC-152)', () => {
     assert.equal(EXENCIONES_OPERADOR.size, 4 + ESTILOS_EXENTOS.size + RUTAS_PANEL_PUBLICAS.size);
   });
 
+  test('CH-48 the two panel dashboard rows are exempt, and only they: another method or a longer path is guarded', () => {
+    assert.equal(requiereOperador('GET', '/api/panel/tablero'), false);
+    assert.equal(requiereOperador('GET', '/api/panel/tablero/:reporteId/resultado'), false);
+    assert.equal(requiereOperador('POST', '/api/panel/tablero'), true);
+    assert.equal(requiereOperador('GET', '/api/panel/tablero/:reporteId/resultado/extra'), true);
+    assert.equal(requiereOperador('GET', '/api/panel/tablero/:reporteId'), true);
+  });
+
   test('logout and the routes exempt only from the tenant header stay guarded', () => {
     for (const [metodo, patron] of [
       ['POST', '/consola/salir'],

@@ -20,6 +20,7 @@ import { registerPanelAuthRoutes } from '../panel/panel-auth.js';
 import { registerPanelAjustesRoutes } from '../panel/panel-ajustes.js';
 import { registerPanelAutomatizacionesRoutes } from '../panel/panel-automatizaciones.js';
 import { registerPanelTelegramRoutes, type PuertoTelegram } from '../panel/panel-telegram.js';
+import { registerPanelTableroRoutes } from '../panel/panel-tablero-rutas.js';
 import { registerPanelRoutes } from '../panel/panel.js';
 import { registerAgenteRoutes } from '../agente/agentes-rutas.js';
 import { registerUsuarioPanelRoutes } from '../usuarios/usuarios-panel.js';
@@ -150,6 +151,10 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // CH-43 (DEC-185, DEC-196): the «Avisos por Telegram» card's API, session-guarded and
   // exempt by three exact rows in `RUTAS_PANEL_PUBLICAS`, like the panel routes above.
   registerPanelTelegramRoutes(app, { prisma, telegram });
+  // CH-48 (DEC-201, DEC-202): the client's dashboard, session-guarded and exempt by two exact
+  // rows in `RUTAS_PANEL_PUBLICAS`. Its runs dial like the report test, so it gets the same
+  // zone, row cap and agent registry, and the one per-process run gate.
+  registerPanelTableroRoutes(app, { prisma, zonaHoraria, topeFilas, canales: registro });
   // CH-22a PR3: `GET /panel` serves the P-01 login screen without a session or the panel
   // shell with the tenant name once `levantarSesionPanel` resolves one (DEC-135). The page
   // route is exempt from the `X-Tenant-Id` header hooks by exact GET row in

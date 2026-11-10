@@ -99,6 +99,14 @@ describe('CH-29 route table — every registered route is guarded or listed (DEC
     }
   });
 
+  test('CH-48 the two panel dashboard routes are registered and exempt from the guard by exact row', () => {
+    for (const fila of ['GET /api/panel/tablero', 'GET /api/panel/tablero/:reporteId/resultado']) {
+      assert.ok(rutas.has(fila), `${fila} is not registered`);
+      assert.ok(EXENCIONES_OPERADOR.has(fila), `${fila} must not need an operator`);
+    }
+    assert.ok(!EXENCIONES_OPERADOR.has('POST /api/panel/tablero'));
+  });
+
   test('every exempt row names a registered route', () => {
     for (const fila of EXENCIONES_OPERADOR) {
       assert.ok(rutas.has(fila), `${fila} is exempt but no such route is registered`);
