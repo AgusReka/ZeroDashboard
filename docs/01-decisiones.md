@@ -4395,6 +4395,125 @@ Límite:
 
 ---
 
+### DEC-203 — Revisión de UX: `GET /` sirve una página estática con dos puertas, y `/consola/` y `/panel/` redirigen a su ruta
+
+**Contexto.**
+- `GET /` responde hoy `401 {"error":"sesion-invalida"}` en JSON. No hay ruta en `/`: la cabecera de `registerConsolaRoute` lo dice («`/` is left unclaimed»), y el guard de DEC-152 contesta 401 a toda URL sin ruta (`requiereOperador` con patrón indefinido). Fastify no ignora la barra final por defecto, así que `/consola/` y `/panel/` son otras URL sin ruta y reciben el mismo JSON. Solo `/consola` y `/panel`, exactos, devuelven HTML (revisión de UX del 2026-11-10, sección 6.1).
+- La separación de superficies viene de DEC-04 y de DEC-136, que ya reconoce como consecuencia «dos puntos de entrada HTML». Ninguna DEC cubre la ruta raíz (sección 6.2 de la revisión).
+- Hay dos listas cerradas de exenciones, ambas por fila exacta de método y patrón de ruta: `EXENCIONES_OPERADOR` (guard, `src/consola/consola-auth.ts`) y `esExenta` (cabecera de tenant, `src/aislamiento/contexto-tenant.ts`). `src/app/rutas.test.ts` exige que cada ruta registrada esté protegida o figure en la lista, y que cada fila exenta nombre una ruta registrada.
+- La pregunta del usuario que origina el punto: tener `/consola` y `/panel` por separado confunde, y se propuso una puerta común que luego se divida. La revisión analizó tres opciones (sección 6.4).
+
+**Opciones.**
+- (A) Dejar como está: `/` sigue en JSON 401.
+- (B) Una página estática en `GET /` con dos puertas, sin datos ni sesión.
+- (C) Un ingreso único que enruta por tipo de cuenta (operador a `/consola`, usuario del panel a `/panel`).
+
+Barra final (solo si se elige B):
+- (a) Dejar `/consola/` y `/panel/` como hoy, en JSON 401.
+- (b) Servir la misma pantalla en las dos URL.
+- (c) Redirigir `/consola/` a `/consola` y `/panel/` a `/panel`.
+- (d) Activar `ignoreTrailingSlash` en toda la aplicación.
+
+**Decisión.** (B), y para la barra final, (c).
+- **(A) se descarta:** deja el JSON crudo en `/`, y nadie le dice a P2 por dónde entrar.
+- **(C) se descarta por las razones de seguridad de la sección 6.3 de la revisión.** Un mismo formulario consultaría dos tablas de cuentas distintas (`Operador` y `Usuario`): abre la enumeración por tiempo o por mensaje entre las dos clases de cuenta, la ambigüedad de identidad (la guía no prohíbe `@` en el nombre de operador y el panel entra por correo), y junta en una ruta políticas distintas (12 horas la consola, 30 días el panel), donde un error de enrutamiento emite la cookie equivocada. Además esconde la estructura que sostiene la regla 2. Reemplazaría en parte a DEC-136 y a DEC-151, y P2 recibe su enlace directo, así que se gana poco.
+- **Barra final (c).** Una sola URL canónica por pantalla, y el manejador de `/consola` y `/panel`, que sí lee la cookie de sesión, sigue siendo uno solo. Las filas nuevas atienden manejadores que no leen sesión ni datos, así que se justifican con el mismo argumento que `/` y no agregan un segundo camino que toque la sesión. (b) duplicaría ese manejador. (d) es global: cambia el ruteo de toda la API para resolver un caso de dos pantallas, y se aleja de la lista cerrada por fila exacta.
+
+**Forma.**
+- **Ruta.** `GET /` exacta. HTML estático con la hoja compartida (DEC-124), sin datos, sin leer la cookie y sin base: su registrador no recibe cliente ni resolver de sesión, como el de `/contrato` (DEC-24). Esa ausencia estructural es lo que hace segura la exención.
+- **Puertas.** «Ir a mi panel» es la principal y se dirige a quien administra un negocio (P2). «Ir a la consola» es la secundaria y se dirige a quien configura ZeroDashboard para un cliente (P1). Los enlaces van a `/panel` y a `/consola`. El resto del texto y la jerarquía visual los fija la guía de diseño.
+- **Exención.** Fila exacta `GET /` en las dos listas (`EXENCIONES_OPERADOR` y la de la cabecera de tenant). Ni prefijo ni otro método: una URL parecida y cualquier otro método siguen protegidos.
+- **Barra final.** `GET /consola/` y `GET /panel/` responden `308` con `Location` a `/consola` y `/panel`, y cada una es una fila exacta en las dos listas. Se elige `308` por sobre `301`: para un `GET` el efecto es el mismo y `308` deja explícito que el método se conserva. Esta elección la propuso el agente al registrar la decisión; lo que decidió el usuario es que estas URL sirvan su pantalla en lugar del JSON 401.
+- **Pruebas.** `src/app/rutas.test.ts` lista las tres filas nuevas como exentas del guard, y comprueba que `GET /` responde HTML sin cookie y que las dos barras finales redirigen sin pasar por la sesión.
+- **Diseño primero.** La pantalla de aterrizaje se agrega a la guía de diseño (`pantallas.md`) antes de implementarla.
+- **Fuera de alcance.** Entregar a P1 la dirección del panel al crear un usuario (C-14) y decir en el ingreso del panel a quién pedir la clave (P-02) no dependen de esta decisión.
+
+**Se resigna.**
+- **La consola queda anunciada en una página pública.** Ya era alcanzable en `/consola`, y la página no muestra nada de ella salvo el enlace.
+- **Tres filas más en las listas cerradas** que mantener y probar.
+- **Siguen siendo dos ingresos separados.** Quien elige la puerta equivocada vuelve a la página de inicio.
+- **Un `308` lo guarda el navegador:** si algún día cambiara la ruta canónica, habría que contar con esa caché.
+
+**Decidido por:** el usuario, 2026-11-10, tras la revisión de UX: eligió (B) con la puerta del panel como principal, rechazó (A) y (C), y pidió que `/consola/` y `/panel/` sirvan su pantalla. El agente propuso el `308`. No inferido por el agente, salvo ese punto.
+
+**Estado:** firme.
+
+---
+
+### DEC-204 — Revisión de UX, C-07: la consola rechaza antes de enviar una sentencia cuya primera palabra es de escritura, con un mensaje de solo lectura
+
+**Contexto.**
+- C-07 de la revisión: `UPDATE producto SET stock = 0` en la consola produce «La sentencia es inválida, o contiene más de una sentencia en un mismo envío. Solo se admite una por ejecución. (SQLSTATE 42601)», el mismo texto que un error de sintaxis. P1 no se entera de que la regla aplicada es «solo lectura».
+- La causa está en la ejecución: `POST /consultas/ejecutar` envuelve la sentencia en `SELECT * FROM (<sql>) AS _consulta_usuario LIMIT $n OFFSET $m` (`sentenciaPaginada`, `src/ejecucion/consulta-ejecucion.ts`). El motor rechaza el `UPDATE` dentro de la subconsulta con `42601`, y `classifyExecutionError` lo clasifica como `error-sintaxis` (rama 5). Ese código es el mismo del texto con más de una sentencia, y solo se distinguen por el mensaje del servidor, que depende del idioma y que el código se prohíbe leer (el comentario de esa rama lo cita como «rule 7»; la regla 7 de `AGENTS.md` es otra, la de secretos, así que lo que se cita acá es el comentario).
+- DEC-09 fija que la garantía de solo lectura la da el motor (transacción `READ ONLY` y protocolo extendido), sin parser de SQL, y descarta el chequeo por palabra clave como protección porque es evadible. La regla 3 exige las dos capas: rechazo en la aplicación y usuario de base sin permisos de escritura (DEC-08).
+- La guía (`lenguaje.md`) fija la fórmula del error de consola: qué se rechazó, la regla y el dato técnico.
+
+**Opciones.**
+- (a) Dejarlo como está.
+- (b) Solo reescribir el texto de `42601`.
+- (c) Un pre-chequeo de la primera palabra de la sentencia antes de enviarla.
+
+**Decisión.** (c).
+- **(a) se descarta:** P1 pierde tiempo buscando una sentencia duplicada que no existe.
+- **(b) se descarta:** `42601` es también el código del texto con más de una sentencia y del error de sintaxis, y distinguirlos exigiría leer el mensaje del servidor. Decir «solo lectura» para esos casos sería falso.
+
+**Forma.**
+- **Dónde.** En `POST /consultas/ejecutar`, después de `sanearSql` y antes de buscar la conexión: una sentencia rechazada no se envía al destino ni abre una conexión.
+- **Cómo se lee.** Se descartan los espacios iniciales y los comentarios (`--` hasta el fin de la línea y `/* … */`) y se toma la primera palabra, sin distinguir mayúsculas. No analiza el resto de la sentencia, así que no es un parser (DEC-09). Si no se puede determinar la primera palabra (un comentario sin cerrar, o ninguna palabra), no rechaza y la sentencia sigue por el camino de hoy.
+- **Lista cerrada.** `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`, `CREATE`, `ALTER`, `DROP`, `GRANT`, `REVOKE`, `COPY`, `CALL`, `DO`, `COMMENT`, `REINDEX`, `REFRESH`, `VACUUM` y `CLUSTER`. El usuario enumeró las diez primeras y dejó el cierre de la lista al registro; las ocho siguientes son lo que completó el agente. Ampliarla es un cambio de esta decisión.
+- **Mensaje.** «La consulta fue rechazada: solo se permiten lecturas. Se encontró UPDATE.», con la palabra encontrada en mayúsculas. No lleva número de línea. El texto de la guía lo ejemplifica con «en la línea 3», y la revisión lo propone sin él.
+- **No lee el mensaje del servidor** y no cambia ninguna otra protección: el rol de solo lectura y su verificación (DEC-08), la transacción `READ ONLY` y el envoltorio (DEC-09), y la clasificación de `42601`, `25006` y `0A000` siguen igual.
+- **Es un pre-chequeo de experiencia, no una garantía.** Que una sentencia lo pase no significa que sea una lectura: `WITH x AS (DELETE …)`, `SELECT … INTO` o una función con efectos siguen su camino y quedan en manos del motor. La respuesta del servidor conserva la forma de un veredicto del intento, no la de un error de la solicitud (como el resto de los rechazos de ejecución). Si reutiliza la categoría `no-es-lectura` o suma una nueva, y cómo viaja la palabra (que sale de una lista cerrada), lo fija la especificación del change.
+- **Alcance.** Solo `POST /consultas/ejecutar`. Las pruebas de plantillas y de reportes y la validación del mapeo no cambian, y las protege el motor.
+
+**Se resigna.**
+- **Una lista de palabras que mantener** dentro de la aplicación, que se parece a la protección que DEC-09 descartó. Por eso queda escrito que es un pre-chequeo de experiencia, y que la garantía sigue siendo el motor.
+- **Solo cubre la primera palabra.** Una escritura dentro de un `WITH` conserva el mensaje general de `no-es-lectura`.
+- **Queda para la especificación del change** si un intento rechazado antes de enviarse deja fila de auditoría. DEC-159 audita los caminos que ejecutan SQL contra la base de un cliente, y este no llega a ejecutar nada. No se decide acá.
+
+**Decidido por:** el usuario, 2026-11-10, tras la revisión de UX: eligió (c) y fijó el texto del mensaje; eligió la primera palabra como criterio, y descartó dejarlo como está y solo reescribir `42601`. El agente completó la lista cerrada. No inferido por el agente, salvo ese punto.
+
+**Estado:** firme.
+
+---
+
+### DEC-205 — Revisión de UX, P-06: el servidor exige que `umbral` sea un entero mayor o igual a 0, y afina DEC-60 para ese parámetro
+
+**Contexto.**
+- DEC-60 fija que `numero` es un número JSON, sin conversiones. En el código es `typeof valor === 'number' && Number.isFinite(valor)` (`FORMA.numero`, `src/ejecucion/parametros.ts`), así que `2.5` es válido.
+- P-06 de la revisión: con `2.5` el panel guardó el cambio («Guardamos tus cambios») aunque la guía define el umbral como entero (`pantallas.md`, P-04) y la unidad es «unidades». Un valor imposible para un conteo llegó al motor.
+- El cliente del panel ya lo rechaza (`umbralValido` y `ERRORES_CAMPO.umbral`: «Escribí un número entero, 0 o más.»), pero DEC-141 deja al servidor como única fuente de validación.
+- `umbral` se escribe por tres rutas, todas validadas con `prepararSentencia` contra la declaración de la plantilla: `PUT /api/panel/automatizaciones/:id/ajustes` (`resolverAjustes`, que mezcla `umbral` en `valores`), y en la consola `POST /automatizaciones` y `PUT /automatizaciones/:id/ajustes` (`resolverAjusteOperador`, que recibe `valores` completo). `umbral` es el nombre que declaran las dos plantillas del catálogo inicial. `prepararSentencia` es genérico: lo usan consultas, plantillas y reportes con cualquier parámetro `numero`.
+- El catálogo se escribió admitiendo decimales: `stock-fisico` compara `"stockDisponible"::numeric` «so a decimal `umbral` binds against an integer column» (`src/plantillas/catalogo-inicial.ts`).
+
+**Opciones.**
+- (a) Dejar DEC-60 como está y confiar en el cliente.
+- (b) Exigir el entero en el servidor para el parámetro `umbral`, en las tres rutas que lo escriben.
+- (c) Endurecer `numero` para todos los parámetros.
+
+**Decisión.** (b). Es un afinado de DEC-60 limitado a `umbral`, no un cambio del tipo `numero`.
+- **(a) se descarta:** el cliente no es una frontera de validación (DEC-141), y las rutas de la consola aceptan hoy cualquier número finito.
+- **(c) se descarta:** cambiaría lo que acepta todo parámetro `numero` de consultas, plantillas y reportes, y DEC-60 se fijó para eso.
+
+**Forma.**
+- **Regla.** El valor de `umbral` debe ser un entero mayor o igual a 0 (`Number.isInteger` y `>= 0`), además de la forma de DEC-60. Un número escrito como texto sigue rechazado, sin conversión (`"3"` no es válido).
+- **Dónde.** Las tres rutas de arriba, con la regla en un solo lugar compartido por las tres, no copiada en cada una.
+- **Forma del error**, la misma de hoy para un valor inválido:
+  - Panel: `400 solicitud-invalida` con `campos: ['umbral']`, en nombre de negocio (DEC-141), sin texto. El mensaje «Escribí un número entero, 0 o más.» lo muestra el cliente.
+  - Consola: `400 solicitud-invalida` con `campos: ['/valores/umbral']` y `problemas` con `motivo: 'valor-invalido'`, como el resto de los rechazos de `prepararSentencia`.
+- **Lo ya guardado.** Esta decisión no migra ni reescribe nada.
+
+**Se resigna.**
+- **Pueden existir valores guardados no enteros.** Durante la revisión el panel guardó `2.5` en la automatización de la demo (se restauró a `5`; la semilla usa `UMBRAL_DEMO = 5`), y la consola lo aceptaba. No se verificó ninguna base real. No se decide qué hacer con ellos; queda como punto de la implementación, con esta orientación: se siguen leyendo (la lectura de ajustes expone cualquier número finito) y se siguen ejecutando (`::numeric`), y solo se rechazan las escrituras nuevas.
+- **Un caso de borde para esa implementación:** el `PUT` de la consola reemplaza `valores` completo cuando lo recibe, así que un operador que reenvíe un `umbral` decimal ya guardado, sin cambiarlo, recibiría el rechazo. El panel no lo sufre, porque solo envía lo que cambió.
+- **Una plantilla que de verdad quisiera un `umbral` decimal ya no puede usarlo.** Las dos del catálogo no lo necesitan: cuentan unidades.
+
+**Decidido por:** el usuario, 2026-11-10, tras la revisión de UX: el servidor exige un entero mayor o igual a 0 para `umbral`, como afinado de DEC-60. El agente verificó en el código qué rutas lo escriben. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
