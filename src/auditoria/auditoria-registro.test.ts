@@ -11,6 +11,8 @@ import { registerConexionRoutes } from '../conexiones/conexiones.js';
 import { registerConsultaRoutes } from '../consultas/consultas.js';
 import { registerPlantillaPruebaRoute } from '../plantillas/plantilla-prueba.js';
 import { registerValidacionMapeoRoutes } from '../mapeo/validacion-mapeo-rutas.js';
+import { ejecutarSobreVistas } from '../ejecucion/ejecucion-sobre-vistas.js';
+import { SIN_AGENTES } from '../agente/canal-agente.js';
 import {
   alcanzable,
   borrarOperadores,
@@ -416,6 +418,52 @@ describe(
         assert.equal(JSON.parse(lineas[0]).level, 50);
       } finally {
         await sinGuard.close();
+      }
+    });
+
+    test('CH-48 auditoria null writes no row and logs no error; a console path still writes one', async () => {
+      const partes: string[] = [];
+      const stream = new Writable({
+        write(trozo, _codificacion, listo) {
+          partes.push(String(trozo));
+          listo();
+        },
+      });
+      // No operator guard, like the panel: the engine path runs with no operator at all.
+      const panel = Fastify({ logger: { level: 'info', stream } });
+      registrarContextoTenant(panel, prisma);
+      panel.post('/prueba-panel', async (request) =>
+        ejecutarSobreVistas(panel, prisma, request, {
+          conexionId,
+          sql: 'SELECT count(*) AS n FROM v_producto',
+          parametros: [],
+          entidades: ['producto'],
+          valores: {},
+          limite: 2,
+          desplazamiento: 0,
+          topeFilas: 1,
+          auditoria: null,
+          mensajeFallo: 'panel test failed',
+        }, SIN_AGENTES),
+      );
+      await panel.ready();
+      // The mapping validation case above re-validates the view; the DEC-71 gate needs it approved.
+      await db.vistaCanonica.updateMany({ where: { tenantId, conexionId }, data: { estadoValidacion: 'valida' } });
+      try {
+        const antes = (await registros()).length;
+        const r = await panel.inject({ method: 'POST', url: '/prueba-panel', headers: { 'x-tenant-id': tenantId } });
+        assert.equal(r.statusCode, 200, r.body);
+        assert.equal((r.json() as { codigo: number; cuerpo: { resultado: string } }).cuerpo.resultado, 'ok', r.body);
+        assert.equal((await registros()).length, antes, 'a panel run writes no audit row');
+        const lineas = partes.join('').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l) as { level: number; msg?: string });
+        assert.ok(!lineas.some((l) => l.level >= 50), 'no error line, and no "audit skipped" line');
+        assert.ok(!lineas.some((l) => l.msg === 'audit skipped: no operator'));
+
+        const consola = await post('/consultas/ejecutar', { conexionId, sql: SQL_V1 });
+        assert.equal(consola.statusCode, 200, consola.body);
+        assert.equal((await registros()).length, antes + 1, 'the console path still records');
+      } finally {
+        await panel.close();
       }
     });
 

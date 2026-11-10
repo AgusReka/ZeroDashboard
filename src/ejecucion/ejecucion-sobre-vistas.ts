@@ -17,7 +17,8 @@ import { prepararSentencia } from './parametros.js';
  *
  * Every refusal answers before anything is dialed: ownership (`404`), the DEC-71 gate
  * (`409`), the values against the declaration (`400`), the credential (`409` or `404`). Then
- * it executes, logs a sanitized `warn` on failure, writes one audit row and answers `200`.
+ * it executes, logs a sanitized `warn` on failure, writes one audit row (none for a panel run,
+ * CH-48) and answers `200`.
  */
 
 export interface PedidoSobreVistas {
@@ -34,7 +35,11 @@ export interface PedidoSobreVistas {
   desplazamiento: number;
   /** Row ceiling (DEC-19). Absent means `loadConfig().maxFilasPorConsulta`, read at execution. */
   topeFilas?: number;
-  auditoria: { origen: OrigenEjecucion; plantillaId: string | null; reporteId: string | null };
+  /**
+   * The audit row's fields. `null` only for a client panel run (CH-48, DEC-202): no row is
+   * written and no "audit skipped" line is logged. Every console path passes an object.
+   */
+  auditoria: { origen: OrigenEjecucion; plantillaId: string | null; reporteId: string | null } | null;
   /** The `warn` line's message, kept per caller so existing logs do not change. */
   mensajeFallo: string;
 }
@@ -132,14 +137,17 @@ export async function ejecutarSobreVistas(
     );
   }
   // CH-20 (DEC-159, DEC-160): the composed statement as executed, never the values.
-  await registrarEjecucion(prisma, app.log, request, {
-    origen: pedido.auditoria.origen,
-    conexionId: destino.id,
-    sql,
-    consulta: null,
-    plantillaId: pedido.auditoria.plantillaId,
-    reporteId: pedido.auditoria.reporteId,
-  }, veredictoDeEjecucion(ejecucion));
+  // CH-48 (DEC-202): a panel run passes `null` and leaves no row.
+  if (pedido.auditoria !== null) {
+    await registrarEjecucion(prisma, app.log, request, {
+      origen: pedido.auditoria.origen,
+      conexionId: destino.id,
+      sql,
+      consulta: null,
+      plantillaId: pedido.auditoria.plantillaId,
+      reporteId: pedido.auditoria.reporteId,
+    }, veredictoDeEjecucion(ejecucion));
+  }
   // A completed attempt is `200` whatever its verdict (the CH-04 contract).
   return { codigo: 200, cuerpo: ejecucion };
 }

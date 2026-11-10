@@ -171,6 +171,10 @@ export const RUTAS_PANEL_PUBLICAS: ReadonlySet<string> = new Set([
   'GET /api/panel/telegram',
   'POST /api/panel/telegram/codigo',
   'DELETE /api/panel/telegram/vinculo',
+  // CH-48 (DEC-201): the dashboard's configuration and the run of one of its reports. The
+  // tenant comes from the session; the report id is checked against that tenant's dashboard.
+  'GET /api/panel/tablero',
+  'GET /api/panel/tablero/:reporteId/resultado',
 ]);
 
 /**

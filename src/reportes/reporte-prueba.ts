@@ -2,18 +2,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { SIN_AGENTES, type AbridorDeCanales } from '../agente/canal-agente.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
-import { ejecutarSobreVistas } from '../ejecucion/ejecucion-sobre-vistas.js';
+import { ejecutarReporte, type ContextoReporte, type ReporteAEjecutar } from './reporte-ejecucion.js';
 import { rechazoDeReporte, registroReporteSchema, type RegistroReporteBody } from './reportes-rutas.js';
-import {
-  declaracionDelPeriodo,
-  faltantesEn,
-  fechaDelPeriodo,
-  leerReporte,
-  topeEfectivo,
-  type ColumnaAsignada,
-  type Periodo,
-  type Visualizacion,
-} from './reportes.js';
+import { faltantesEn, leerReporte, type ColumnaAsignada } from './reportes.js';
 
 /**
  * CH-45 (DEC-183, DEC-198): `POST /reportes/:id/prueba` tests a stored report and
@@ -73,26 +64,15 @@ interface PruebaSinGuardarBody extends RegistroReporteBody {
 }
 
 /** What a test runs: a stored report read back fail-closed, or the form's validated body. */
-interface ReporteAProbar {
-  id: string | null;
-  sql: string;
-  entidades: unknown;
-  visualizacion: Visualizacion;
+interface ReporteAProbar extends ReporteAEjecutar {
   columnas: readonly ColumnaAsignada[];
-  periodo: Periodo | null;
 }
 
 /**
- * The days to use: the requested value when it is declared, the first declared value when
- * none is requested. A value on a report with no period, or one it did not declare, is
- * refused (`null`).
+ * CH-48: the days, the date, the cap and the engine call are `ejecutarReporte`, shared with the
+ * client panel. This caller keeps its answers (`400 /dias`, `periodo`, `faltantes`) and its
+ * `reporte-prueba` audit row.
  */
-function diasDeLaPrueba(periodo: Periodo | null, dias: number | undefined): number | null | 'rechazo' {
-  if (periodo === null) return dias === undefined ? null : 'rechazo';
-  if (dias === undefined) return periodo.dias[0];
-  return periodo.dias.includes(dias) ? dias : 'rechazo';
-}
-
 async function probarReporte(
   app: FastifyInstance,
   prisma: PrismaAislado,
@@ -100,31 +80,22 @@ async function probarReporte(
   reply: FastifyReply,
   reporte: ReporteAProbar,
   cuerpo: PruebaBody,
-  contexto: { zonaHoraria: string; topeFilas: number; canales: AbridorDeCanales },
+  contexto: ContextoReporte,
 ) {
-  const dias = diasDeLaPrueba(reporte.periodo, cuerpo.dias);
-  if (dias === 'rechazo') {
+  const resultado = await ejecutarReporte(
+    app,
+    prisma,
+    request,
+    reporte,
+    { conexionId: cuerpo.conexionId, dias: cuerpo.dias },
+    contexto,
+    { origen: 'reporte-prueba', plantillaId: null, reporteId: reporte.id },
+    'report test execution failed',
+  );
+  if (resultado.tipo === 'dias-rechazados') {
     return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/dias'] });
   }
-  const periodo = dias === null ? null : { dias, desde: fechaDelPeriodo(new Date(), contexto.zonaHoraria, dias) };
-  const valores: Record<string, unknown> =
-    reporte.periodo === null || periodo === null ? {} : { [reporte.periodo.parametro]: periodo.desde };
-  const tope = topeEfectivo(reporte.visualizacion, contexto.topeFilas);
-
-  const respuesta = await ejecutarSobreVistas(app, prisma, request, {
-    conexionId: cuerpo.conexionId,
-    sql: reporte.sql,
-    parametros: declaracionDelPeriodo(reporte.periodo),
-    entidades: reporte.entidades,
-    valores,
-    // One more than the cap is asked for, so the engine reports `corte` when the cap is what
-    // ended the result (DEC-18): the page served and the ceiling are both `tope`.
-    limite: tope + 1,
-    desplazamiento: 0,
-    topeFilas: tope,
-    auditoria: { origen: 'reporte-prueba', plantillaId: null, reporteId: reporte.id },
-    mensajeFallo: 'report test execution failed',
-  }, contexto.canales);
+  const { respuesta, periodo } = resultado;
   if (respuesta.codigo !== 200) {
     return reply.code(respuesta.codigo).send(respuesta.cuerpo);
   }

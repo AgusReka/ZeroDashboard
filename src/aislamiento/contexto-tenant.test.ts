@@ -765,6 +765,47 @@ describe('contexto de tenant — GET /api/panel/automatizaciones es una fila exa
   }
 });
 
+// ---- CH-48 the two dashboard rows are exact, still with no database --------------------
+
+describe('contexto de tenant — GET /api/panel/tablero y su resultado son filas exactas (CH-48, DEC-201)', () => {
+  let app!: FastifyInstance;
+  const alcanzada = async (): Promise<{ alcanzada: true }> => ({ alcanzada: true });
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, prismaQueNuncaDebeConsultarse);
+    app.get('/api/panel/tablero', alcanzada);
+    app.post('/api/panel/tablero', alcanzada);
+    app.get('/api/panel/tablero/:reporteId/resultado', alcanzada);
+    app.post('/api/panel/tablero/:reporteId/resultado', alcanzada);
+    app.get('/api/panel/tablero/:reporteId/resultado/extra', alcanzada);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  for (const url of ['/api/panel/tablero', '/api/panel/tablero/r-1/resultado']) {
+    test(`CH-48 GET ${url} reaches its handler with no header`, async () => {
+      const respuesta = await app.inject({ method: 'GET', url });
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+    });
+  }
+
+  for (const { method, url } of [
+    { method: 'POST', url: '/api/panel/tablero' },
+    { method: 'POST', url: '/api/panel/tablero/r-1/resultado' },
+    { method: 'GET', url: '/api/panel/tablero/r-1/resultado/extra' },
+  ] as const) {
+    test(`CH-48 ${method} ${url} with no header is refused 400 tenant-no-indicado`, async () => {
+      const respuesta = await app.inject({ method, url });
+      assert.equal(respuesta.statusCode, 400, respuesta.body);
+      assert.deepEqual(respuesta.json(), { error: 'tenant-no-indicado' });
+    });
+  }
+});
+
 // ---- CH-23 the two adjust rows are exact, still with no database ---------------------
 
 describe('contexto de tenant — GET y PUT /api/panel/automatizaciones/:id/ajustes son filas exactas (CH-23, DEC-141)', () => {
