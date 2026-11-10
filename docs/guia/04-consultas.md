@@ -6,7 +6,7 @@ La pantalla **Consultas** ejecuta SQL de solo lectura contra la réplica de un t
 
 1. Elegir un tenant en la barra superior.
 2. **Consultas** → «Nueva consulta».
-3. Completar «Conexión» y «Sentencia SQL», y pulsar «Probar».
+3. Completar «Conexión» y «Sentencia SQL», y pulsar «Ejecutar consulta».
 4. Si la prueba salió bien, escribir «Nombre» y pulsar «Guardar consulta».
 
 ## Ejecutar una consulta
@@ -21,7 +21,7 @@ El pop-up de «Nueva consulta» tiene todos los campos del registro:
 | Parámetros | «Agregar parámetro» declara un `:nombre` con su tipo y su valor. |
 | Filas por página | 50 por defecto. |
 
-«Probar» ejecuta la sentencia y muestra la tabla, con «Página anterior» y «Página siguiente». La línea de estado dice cuántas filas se ven y cuánto tardó.
+«Ejecutar consulta» ejecuta la sentencia y muestra la tabla, con «Página anterior» y «Página siguiente». Las columnas de números se alinean a la derecha; el texto, y un código con ceros a la izquierda como `007`, a la izquierda. La línea de estado dice cuántas filas se ven y cuánto tardó.
 
 **Reglas de ejecución**
 
@@ -79,7 +79,7 @@ Una automatización siempre parte de una plantilla, nunca de una consulta guarda
 
 ## Registro
 
-Cada «Probar» queda en **Auditoría** con la sentencia ejecutada, la conexión y el operador, nunca los valores ni las filas ([Usuarios y permisos](07-usuarios-y-permisos.md)).
+Cada «Ejecutar consulta» queda en **Auditoría** con la sentencia ejecutada, la conexión y el operador, nunca los valores ni las filas ([Usuarios y permisos](07-usuarios-y-permisos.md)).
 
 ## Siguiente paso
 

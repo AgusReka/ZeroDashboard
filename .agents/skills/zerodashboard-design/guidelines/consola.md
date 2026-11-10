@@ -107,6 +107,8 @@ Pestañas **Conexiones | Agentes** (dos maneras de llegar a la réplica del mism
   - Acciones: Nueva conexión (panel lateral: nombre, host, puerto, base, usuario, contraseña → «Guardar y probar») · Probar (por fila o en el detalle) · clic en fila → panel lateral de detalle.
   - Credenciales: la contraseña **nunca se muestra de vuelta**; el detalle dice "Guardada cifrada · no se muestra".
   - Estados: sin conexiones (EmptyState: primer paso de la puesta en marcha) · probando (badge "Probando…") · OK (latencia, motor, tablas) · falla (mensaje + SQLSTATE).
+  - **Ayuda del formulario (UX review C-06)**: cada campo de «Nueva conexión» trae su ayuda corta (`.zd-help`): Servidor advierte que `localhost` no sirve dentro de Docker; Usuario pide un rol de solo lectura. La validación es en línea: el formulario lleva `novalidate` y el pop-up nombra los campos que faltan («Completá: Servidor, Usuario.») en su propia línea, como «Nuevo tenant», sin enviar nada; un puerto fuera de 1 a 65535 tiene su frase.
+  - **Botones**: «Probar conexión» en la fila; «Copiar token» en el aviso del agente.
 - **Agentes (CH-19b · API)**
   - Datos: `id` · `nombre` · `token_parcial` (zd_ag_••••8f2c) · `alta` · `revocado`.
   - Acciones: Nuevo agente (diálogo: nombre) → Banner ok con el token completo en mono, «Copiar token», "no se vuelve a mostrar" · Revocar (diálogo «Revocar token»; explica impacto en las automatizaciones).
@@ -143,10 +145,12 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
   - Vista previa (CH-42, DEC-195): pop-up «Vista previa del mensaje» que corre la consulta una vez y muestra la decisión («Se enviaría a: …» o «No se enviaría: …»), «Para», las filas, el «Asunto», el texto en un `pre` y el HTML en un `iframe` con `sandbox` vacío. Solo «Cerrar»: no envía ni guarda nada.
   - Vista previa por Telegram (CH-44, DEC-197): «Se enviaría al chat vinculado.» o por qué no, «Para: chat vinculado» y el texto en el `pre`, sin «Asunto» ni `iframe`. Nunca muestra el identificador del chat.
   - Vacío: "Este tenant no tiene automatizaciones" + «Nueva automatización».
+  - **Estado (UX review C-19)**: «Activa» / «Desactivada» como badge, ícono + texto. La explicación de la pantalla va una sola vez, en el encabezado, y breve; la tabla no repite el título.
+  - **Parámetros con nombre (UX review C-13)**: cada parámetro de la plantilla se rotula con su nombre en palabras y una ayuda corta, no con la clave (`umbral`); las plantillas del catálogo traen el suyo («Stock mínimo por producto»: «Avisa cuando un producto llega a esta cantidad de stock o menos…»), y una plantilla propia muestra el nombre tal cual. La ayuda de «Mínimo de filas para avisar» dice que cuenta productos, con un ejemplo.
 - **Alta en dos pasos** (`#automatizaciones/alta`), con `Stepper`:
   1. Conexión (select) + plantilla en tarjetas (`TemplatePicker`). Las no disponibles: deshabilitadas, borde punteado, candado + motivo (`.zd-template__why`), enlazado con `aria-describedby`.
   2. Parámetros de la plantilla · frecuencia + hora → **cron resultante en vivo** (`.zd-cron`: expresión + texto) · «Correos de los destinatarios (opcional)» (un solo campo de texto con teclado de correo; coma, punto y coma o espacio separan; hasta 5; la vista previa lista las direcciones en «Para») · «Mínimo de filas para avisar» (número, 1 por defecto, sin máximo en el cliente: el tope lo valida el servidor) · vista previa del correo al costado, con «Se envía con: N filas o más». «Volver» / «Crear automatización».
-     «Canal» (CH-44, DEC-197): con «Telegram» se ocultan los destinatarios y el esquema del correo, y la ayuda del mínimo dice «El mensaje sale…». Sin vínculo se puede crear igual: la ejecución queda «Sin vínculo».
+     «Canal» (CH-44, DEC-197): con «Telegram» se ocultan los destinatarios y el esquema del correo, y la ayuda del mínimo dice «El mensaje sale…». Sin vínculo se puede crear igual: la ejecución queda «Sin vínculo». El botón del paso 1 es «Completar parámetros».
 - **Estados**: creada → vuelve a la lista con Banner ok y la primera ejecución.
 
 ### C-10 Ejecuciones de una automatización — X2, X4, X5, X7 · CH-13, CH-17a, CH-17b · EXISTE — **con mockup**
@@ -161,8 +165,13 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 
 ### C-12 Auditoría — A5 · sin change · PENDIENTE
 - **Datos**: `fecha_hora` · `tenant` · `conexion` · `consulta` (nombre o "ad hoc") · `sql_resumen` (mono, truncado) · `filas` · `duracion` · `resultado` (OK / rechazada / timeout) · `operador` (columna reservada: "—" hasta que exista identidad).
-- Solo lectura, filtros por fecha y resultado.
-- **Prueba de reporte (CH-45)**: origen «Prueba de reporte»; la celda Consulta dice «Reporte <id>» con un reporte guardado y «Ad hoc» sin él.
+- Solo lectura, filtros por fecha y resultado, con «Filtrar auditoría».
+- **Nombres en la celda Consulta (UX review C-17)**: una prueba de plantilla o de reporte dice «Plantilla» o «Reporte» con el nombre y un fragmento del id como dato secundario (el id completo, al pasar el cursor); si no se pueden leer los nombres, el rótulo y el id.
+- **Prueba de reporte (CH-45)**: origen «Prueba de reporte»; la celda Consulta dice «Reporte» con el nombre del reporte guardado y «Ad hoc» sin él.
+
+### Usuarios del panel — CH-30c · API
+- Del tenant activo, en «Puesta en marcha». Tabla de usuarios y «Nuevo usuario» (pop-up: correo y nombre opcional).
+- **«Qué enviarle al usuario» (UX review C-14)**: al crear un usuario o reponer su clave, el aviso de un solo uso reúne la dirección del panel (la de la consola más `/panel`), el correo y la clave. «Copiar datos de acceso» copia las tres líneas juntas, «Copiar clave» solo la clave y «Ya la guardé» cierra el bloque y borra los tres datos.
 
 ### C-13 Reportes — R1h · CH-45 · EXISTE
 - **Datos**: `id` · `nombre` (para P1) · `titulo` y `descripcion` (para el cliente) · `entidades` · `sql` · `periodo` (`parametro` + `dias`, el primero es el predeterminado, o ninguno) · `visualizacion` (número / tabla / barras / línea) · `columnas` (rol, columna del resultado y título, en orden).
@@ -248,6 +257,12 @@ Dos columnas: **Guardadas** (220 px) | **Editor + resultado**. El resultado est�
 | (CSS sin componente) | `.zd-statusline` · `.zd-compare` · `.zd-cron` · `.zd-split` · `.zd-list` `__item[aria-current]` · `.zd-badge--pending` · `.zd-template__why` · `.zd-tenantbar__flag` · `.zd-operator` · `.zd-page` | — |
 
 Todos usan los tokens existentes; ninguno usa violeta.
+
+**Detalles de pantalla (UX review C-18, C-19).**
+- **Botones**: verbo + objeto en todo botón («Ejecutar consulta», «Probar conexión», «Probar plantilla», «Probar reporte», «Guardar mapeo», «Guardar tablero», «Ver plantilla», «Ver reporte», «Filtrar auditoría»). La excepción son los botones de fila del patrón de orden, que llevan `aria-label` con el título de la fila.
+- **Pestaña**: el título del documento nombra la pantalla abierta («Consultas — ZeroDashboard»). El favicon es un ícono vacío (`data:,`) para que el navegador no pida `/favicon.ico` al servidor.
+- **Etiqueta de alcance**: «Del tenant activo: {nombre}».
+- **Números**: en un resultado de consulta, una columna cuyos valores son todos números (también si llegan como texto, sin ceros a la izquierda) se alinea a la derecha en mono tabular.
 
 **Patrón de orden (CH-46, C-14).** Para una lista corta que P1 ordena a mano, sin arrastrar:
 - Cada fila lleva, al final, «Subir», «Bajar» y «Quitar» como botones secundarios chicos (los botones que arma el script, sin clase `zd-*`). Cada uno tiene un `aria-label` con el título de la fila («Subir Ventas del mes»).

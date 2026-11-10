@@ -185,8 +185,10 @@ describe(
       const n = await negocio('crea');
       const primero = await crear(n);
       assert.equal(primero.statusCode, 201, primero.body);
-      const cuerpo = primero.json() as { codigo: string; enlace: string; venceEn: string };
-      assert.deepEqual(Object.keys(cuerpo).sort(), ['codigo', 'enlace', 'venceEn']);
+      const cuerpo = primero.json() as { codigo: string; enlace: string; venceEn: string; bot: string };
+      // P-05 (UX review): the bot's public name rides along, so the card can say which bot to send the code to.
+      assert.deepEqual(Object.keys(cuerpo).sort(), ['bot', 'codigo', 'enlace', 'venceEn']);
+      assert.equal(cuerpo.bot, BOT);
       assert.match(cuerpo.codigo, /^[0-9A-HJKMNP-TV-Z]{8}$/);
       assert.equal(cuerpo.enlace, `https://t.me/${BOT}?start=${cuerpo.codigo}`);
       assert.equal(cuerpo.venceEn, new Date(RELOJ.getTime() + 600_000).toISOString());

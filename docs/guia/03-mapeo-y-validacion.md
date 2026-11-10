@@ -8,7 +8,7 @@ La pantalla trae una guía plegable, «Cómo mapear», con los mismos pasos:
 
 1. Elegir la conexión del tenant en «Conexión».
 2. Por cada entidad, escribir un `SELECT` que devuelva los campos del contrato con esos nombres y tipos.
-3. «Guardar» cada entidad.
+3. «Guardar mapeo» en cada entidad.
 4. «Validar mapeo» y revisar el resultado de cada campo.
 5. Leer la tabla **Automatizaciones**: dice cuáles quedan habilitadas y por qué.
 
@@ -45,7 +45,7 @@ Cualquier otro tipo (arreglos, `money`, `json`, enumerados) falla como `tipo-inc
 
 ## Ejemplo de partida (CH-34)
 
-Cada entidad trae «Ejemplo sobre la réplica de demo (food_store)». «Usar de punto de partida» lo copia al editor **solo si está vacío**; si ya hay SQL, avisa «El editor de producto ya tiene SQL. Vacialo para usar el ejemplo.». No guarda nada: hay que adaptarlo y pulsar «Guardar».
+Cada entidad trae «Ejemplo sobre la réplica de demo (food_store)». «Usar de punto de partida» lo copia al editor **solo si está vacío**; si ya hay SQL, avisa «El editor de producto ya tiene SQL. Vacialo para usar el ejemplo.». No guarda nada: hay que adaptarlo y pulsar «Guardar mapeo».
 
 **Límite.** La consola no genera SQL ni lee la réplica para armarlo; el ejemplo es texto fijo de la réplica de demo (DEC-176).
 

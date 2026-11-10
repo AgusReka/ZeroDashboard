@@ -201,6 +201,10 @@ const IDS = [
   'usuario-secreto',
   'usuario-secreto-valor',
   'usuario-copiar',
+  // C-14: the «Qué enviarle al usuario» block: the panel address, the email and the one-click copy of the three.
+  'usuario-secreto-url',
+  'usuario-secreto-correo',
+  'usuario-copiar-todo',
   'usuario-guardado',
   'usuarios-cuerpo',
   // CH-30d: the Plantillas and Contrato screens.
@@ -527,6 +531,8 @@ const IDS = [
   'tc-cancelar',
   // C-02, C-11: the empty state of each screen of the tenant, with its button, and the automations' own.
   ...PANTALLAS_DEL_TENANT.flatMap((nombre) => ['sin-tenant-' + nombre, 'sin-tenant-' + nombre + '-elegir']),
+  // C-19: the scope tag of each of those screens, which names the active tenant.
+  ...PANTALLAS_DEL_TENANT.map((nombre) => 'alcance-' + nombre),
   'auto-listado',
   'auto-vacio',
   'auto-vacio-nueva',
@@ -578,6 +584,8 @@ interface Escenario {
   /** CH-30a: the page's `location.hash`, and the window listeners the script registered. */
   ubicacion: { hash: string };
   oyentesVentana: Map<string, Array<() => void>>;
+  /** C-19: what the script last wrote to `document.title`. */
+  titulo?: string;
 }
 
 /**
@@ -607,6 +615,10 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
     // CH-24: the state badge's icon is an SVG; the fake treats it as any other node.
     createElementNS(_espacio: string, tagName: string): Nodo {
       return new Nodo(tagName);
+    },
+    // C-19: the tab's title is written per screen.
+    set title(valor: string) {
+      escenario.titulo = valor;
     },
   };
 
@@ -1466,9 +1478,13 @@ describe('the console document, served by the real route', () => {
 
     const [fila] = filasDe(escenario, 'auto-lista', 'automatizacion');
     // CH-32b: the connection by its name (not its id) and the schedule in words, then the expression.
-    for (const texto of ['Stock diario', 'food-store', 'Todos los días a las 06:00 0 6 * * *', 'activa']) {
+    for (const texto of ['Stock diario', 'food-store', 'Todos los días a las 06:00 0 6 * * *', 'Activa']) {
       assert.ok(fila.textContent.includes(texto), texto);
     }
+    // C-19: the state is a badge (an icon and a word), not a bare lowercase word.
+    const insignia = fila.porClase('estado-auto estado-auto--activa');
+    assert.equal(insignia.length, 1);
+    assert.equal(insignia[0].textContent, 'Activa');
     assert.ok(!fila.textContent.includes('c-1'), 'the connection id is not shown');
     // DEC-79, DEC-174: an active automation is adjusted or deactivated; never deleted or reactivated.
     // CH-42 (DEC-195): and previewed, before «Ajustar».
@@ -1485,7 +1501,8 @@ describe('the console document, served by the real route', () => {
     assert.equal(baja.url, '/automatizaciones/a-1/desactivar');
     assert.equal(baja.tenant, 't-1');
     const [desactivada] = filasDe(escenario, 'auto-lista', 'automatizacion');
-    assert.ok(desactivada.textContent.includes('desactivada'));
+    assert.ok(desactivada.textContent.includes('Desactivada'));
+    assert.equal(desactivada.porClase('estado-auto').length, 1, 'the deactivated badge has the plain look');
     assert.deepEqual(botones(desactivada).map((nodo) => nodo.textContent), ['Ver ejecuciones']);
   });
 
@@ -4337,7 +4354,7 @@ describe('the console document, served by the real route', () => {
     for (const texto of ['Réplica principal', 'postgres', 'db.cliente.test:5432', 'tienda', 'lector']) {
       assert.ok(fila.textContent.includes(texto), texto);
     }
-    assert.equal(botonesCon(fila, 'Probar').length, 1);
+    assert.equal(botonesCon(fila, 'Probar conexión').length, 1);
   });
 
   test('CH-30b Guardar y probar registers, empties the password, tests and reloads the list', async () => {
@@ -4385,7 +4402,7 @@ describe('the console document, served by the real route', () => {
       cuerpo: { resultado: 'fallo', categoria: 'credenciales-invalidas', codigo: '28P01', host: 'db.cliente.test', puerto: 5432, duracionMs: 30 },
     });
     const fila = nodo(escenario, 'conexiones-cuerpo').hijos[0];
-    botonesCon(fila, 'Probar')[0].disparar('click');
+    botonesCon(fila, 'Probar conexión')[0].disparar('click');
     await asentarVarias();
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones/c-1/prueba');
     assert.match(fila.textContent, /credenciales-invalidas/);
@@ -4680,7 +4697,7 @@ describe('the console document, served by the real route', () => {
       status: 200,
       cuerpo: { plantilla: { ...PLANTILLA_LISTADA, sql: 'SELECT <b>x</b> FROM v_producto', parametros: [{ nombre: 'umbral', tipo: 'numero' }], entidades: ['producto', 'insumo'] } },
     });
-    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[0], 'Ver')[0].disparar('click');
+    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[0], 'Ver plantilla')[0].disparar('click');
     await asentarVarias();
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/plantillas/p-9');
     assert.equal(nodo(escenario, 'plantilla-panel').hidden, false);
@@ -4719,7 +4736,7 @@ describe('the console document, served by the real route', () => {
     if (conexiones !== null) {
       escenario.respuestas.push({ status: 200, cuerpo: { conexiones, truncado: false } });
     }
-    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[fila], 'Ver')[0].disparar('click');
+    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[fila], 'Ver plantilla')[0].disparar('click');
     await asentarVarias();
   }
 
@@ -4910,7 +4927,7 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     escenario.respuestas.push({ status: 200, cuerpo: { plantilla } });
     if (conTenant) escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
-    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[0], 'Ver')[0].disparar('click');
+    botonesCon(nodo(escenario, 'plantillas-cuerpo').hijos[0], 'Ver plantilla')[0].disparar('click');
     await asentarVarias();
   }
 
@@ -5687,7 +5704,7 @@ describe('the console document, served by the real route', () => {
   ): Promise<void> {
     escenario.respuestas.push({ status: 200, cuerpo: { reporte } });
     if (conexiones !== null) escenario.respuestas.push({ status: 200, cuerpo: { conexiones, truncado: false } });
-    botonesCon(nodo(escenario, 'reportes-cuerpo').hijos[0], 'Ver')[0].disparar('click');
+    botonesCon(nodo(escenario, 'reportes-cuerpo').hijos[0], 'Ver reporte')[0].disparar('click');
     await asentarVarias();
   }
 
@@ -5760,7 +5777,7 @@ describe('the console document, served by the real route', () => {
     return nodo(escenario, 'reporte-f-columnas').hijos.map((fila) => ({
       selector: buscar(fila, (n) => n.tagName === 'select')[0],
       titulo: buscar(fila, (n) => n.tagName === 'input')[0],
-      quitar: botonesCon(fila, 'Quitar')[0],
+      quitar: botonesCon(fila, 'Quitar columna')[0],
       texto: buscar(fila, (n) => n.tagName === 'span').map((n) => n.textContent).join(' | '),
     }));
   }
@@ -6306,8 +6323,8 @@ describe('the console document, served by the real route', () => {
     assert.match(html, /<a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente<\/span><\/a>/);
     assert.match(html, /<section id="pantalla-tablero"[^>]*data-change="CH-46"[^>]*hidden>/);
     const seccion = html.slice(en('pantalla-tablero'), html.indexOf('</section>', en('pantalla-tablero')));
-    assert.match(seccion, /<span class="zd-scope zd-scope--tenant">/);
-    assert.match(seccion, /<button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar<\/button>/);
+    assert.match(seccion, /<span id="alcance-tablero" class="zd-scope zd-scope--tenant">/);
+    assert.match(seccion, /<button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar tablero<\/button>/);
     assert.ok(en('tablero-guardar') < en('tablero-aviso'), 'the primary action is in the header');
     assert.ok(en('tablero-conexion') < en('tablero-lista') && en('tablero-lista') < en('tablero-agregar-reporte'));
     assert.match(seccion, /<label for="tablero-agregar-reporte" class="zd-label">Agregar reporte<\/label>/);
@@ -7112,7 +7129,7 @@ describe('the console document, served by the real route', () => {
     const producto = bloqueEntidad(escenario, 'producto');
     editorDe(producto).value = 'SELECT 1 AS id';
     escenario.respuestas.push({ status: 200, cuerpo: { vistaCanonica: { id: 'v-1', entidad: 'producto', sql: 'SELECT 1 AS id' } } });
-    botonesCon(producto, 'Guardar')[0].disparar('click');
+    botonesCon(producto, 'Guardar mapeo')[0].disparar('click');
     await asentarVarias();
     const ultima = escenario.peticiones[escenario.peticiones.length - 1];
     assert.equal(ultima.url, '/conexiones/c-1/vistas-canonicas/producto');
@@ -7641,7 +7658,7 @@ describe('the console document, served by the real route', () => {
     for (const id of ['nombre', 'descripcion', 'version-campos', 'ejecutar', 'guardar']) assert.ok(!formulario.includes('id="' + id + '"'), id + ' is not');
 
     const acciones = d.slice(d.indexOf('<div class="zd-dialog__actions">'));
-    assert.match(acciones, /<button id="ejecutar"[^>]*type="submit"[^>]*form="formulario"[^>]*>Probar<\/button>/);
+    assert.match(acciones, /<button id="ejecutar"[^>]*type="submit"[^>]*form="formulario"[^>]*>Ejecutar consulta<\/button>/);
     assert.match(acciones, /<button id="guardar"[^>]*zd-btn--primary[^>]*type="button"[^>]*\bdisabled\b[^>]*>Guardar consulta<\/button>/);
     assert.match(acciones, /<button id="version-boton"[^>]*type="button"[^>]*\bhidden\b[^>]*>Guardar como versión nueva<\/button>/);
     assert.match(acciones, /<button id="consulta-cancelar"[^>]*zd-btn--ghost[^>]*type="button">Cancelar<\/button>/);
@@ -7825,7 +7842,7 @@ describe('the console document, served by the real route', () => {
       ['a new parameter', (e) => void declarar(e, 'otro', 'texto')],
       ['a parameter name', (e) => { en(filas(e)[0], 'parametro-nombre').value = 'renombrado'; en(filas(e)[0], 'parametro-nombre').disparar('input'); }],
       ['a parameter type', (e) => { en(filas(e)[0], 'parametro-tipo').value = 'numero'; en(filas(e)[0], 'parametro-tipo').disparar('change'); }],
-      ['removing a parameter', (e) => botonesCon(filas(e)[0], 'Quitar')[0].disparar('click')],
+      ['removing a parameter', (e) => botonesCon(filas(e)[0], 'Quitar parámetro')[0].disparar('click')],
     ];
     for (const [que, editar] of ediciones) {
       const escenario = await conConexiones();
@@ -9195,6 +9212,225 @@ describe('the console document, served by the real route', () => {
     // The tone is chosen by the bridge style from the attribute; no shared class is assigned by the script.
     for (const tono of ['ok', 'warn', 'error']) assert.ok(html.includes(`.aviso-resultado[data-tono="${tono}"] {`), tono);
   });
+
+  // ---- Lote 3 of the UX review (2026-11-10): C-06, C-13, C-14, C-17, C-18, C-19 ----------------------------------
+
+  test('C-06 «Nueva conexión» says what goes in Servidor and Usuario, and hands the check of the form to the script', () => {
+    const html = marcado();
+    const formulario = html.slice(html.indexOf('<form id="conexion-alta"'), html.indexOf('</form>', html.indexOf('<form id="conexion-alta"')));
+    assert.match(formulario, /^<form id="conexion-alta" class="zd-form" novalidate>/, 'no browser bubble');
+    assert.match(formulario, /<p id="cx-host-ayuda" class="zd-help">[^<]*localhost no sirve[^<]*host\.docker\.internal/, 'the Docker caveat under Servidor');
+    assert.match(formulario, /<p id="cx-usuario-ayuda" class="zd-help">[^<]*solo lectura/, 'the read-only role under Usuario');
+    assert.match(formulario, /id="cx-host"[^>]*aria-describedby="cx-host-ayuda"/);
+    assert.match(formulario, /id="cx-usuario"[^>]*aria-describedby="cx-usuario-ayuda"/);
+    for (const campo of ['cx-nombre', 'cx-puerto', 'cx-base', 'cx-clave']) assert.match(formulario, new RegExp(`id="${campo}"[^>]*aria-describedby="${campo}-ayuda"`), campo);
+  });
+
+  test('C-06 an incomplete form names the missing fields in the pop-up and sends nothing; the first one takes the focus', async () => {
+    const escenario = await abrirConexiones([]);
+    abrirDialogo(escenario, 'conexion-nueva');
+    await asentarVarias();
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'cx-nombre').value = 'Réplica';
+    nodo(escenario, 'cx-host').value = '   ';
+    nodo(escenario, 'cx-base').value = 'tienda';
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'nothing is sent');
+    assert.equal(nodo(escenario, 'cx-resultado').textContent, 'Completá: Servidor, Usuario, Contraseña.');
+    assert.equal(nodo(escenario, 'cx-host').getAttribute('aria-invalid'), 'true');
+    assert.equal(nodo(escenario, 'cx-nombre').getAttribute('aria-invalid'), null, 'a filled one is not marked');
+    assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), true, 'the pop-up stays open');
+
+    // A port outside the range is its own sentence.
+    for (const [id, valor] of [['cx-host', 'db.interna'], ['cx-usuario', 'lector'], ['cx-clave', 'secreta-123'], ['cx-puerto', '70000']]) nodo(escenario, id).value = valor;
+    nodo(escenario, 'conexion-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes);
+    assert.equal(nodo(escenario, 'cx-resultado').textContent, 'El puerto tiene que ser un número entero entre 1 y 65535.');
+    assert.equal(nodo(escenario, 'cx-host').getAttribute('aria-invalid'), null, 'the marks follow what is still wrong');
+    assert.equal(nodo(escenario, 'cx-clave').value, 'secreta-123', 'the password is kept until the form is sent');
+  });
+
+  /** C-13: the wizard on step 2 for a template of the catalog with this `automatizacion` label and these parameters. */
+  async function paso2ConPlantilla(automatizacion: string, parametros: unknown[]): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [], 't-1', [{ id: 'p-1', nombre: 'Stock diario', automatizacion }], [{ id: 'c-1', nombre: 'food-store' }]);
+    await abrirAlta(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { automatizacion, parametros, entidades: ['producto'] } } });
+    elegirTarjeta(escenario, 'p-1');
+    await asentar();
+    return escenario;
+  }
+
+  test('C-13 the built-in templates label their parameter in words and explain it; the request still names it umbral', async () => {
+    const fisico = await paso2ConPlantilla('stock-fisico', [{ nombre: 'umbral', tipo: 'numero' }]);
+    const [rotulo] = nodo(fisico, 'auto-valores').hijos;
+    const textos = rotulo.hijos.map((hijo) => hijo.textContent);
+    assert.equal(textos[0], 'Stock mínimo por producto', 'the label is a name, not the raw key');
+    assert.match(textos[2], /llega a esta cantidad de stock o menos/);
+    assert.match(textos[2], /Mínimo de filas para avisar/, 'the help tells the two thresholds apart');
+    assert.ok(!rotulo.textContent.startsWith('umbral'));
+    const control = rotulo.hijos[1];
+    assert.equal(control.getAttribute('aria-describedby'), rotulo.hijos[2].id, 'the help is attached to the control');
+
+    const producible = await paso2ConPlantilla('stock-producible', [{ nombre: 'umbral', tipo: 'numero' }]);
+    assert.equal(nodo(producible, 'auto-valores').hijos[0].hijos[0].textContent, 'Unidades armables mínimas por producto');
+  });
+
+  test('C-13 a template or a parameter with no words keeps its own name and gets no help', async () => {
+    const otra = await paso2ConPlantilla('otra', [{ nombre: 'umbral', tipo: 'numero' }, { nombre: 'deposito', tipo: 'texto' }]);
+    const rotulos = nodo(otra, 'auto-valores').hijos;
+    assert.deepEqual(rotulos.map((r) => r.hijos.map((h) => h.textContent)[0]), ['umbral', 'deposito']);
+    assert.ok(rotulos.every((r) => r.hijos.length === 2), 'no help span is invented');
+    const fisico = await paso2ConPlantilla('stock-fisico', [{ nombre: 'umbral', tipo: 'numero' }, { nombre: 'deposito', tipo: 'texto' }]);
+    assert.deepEqual(nodo(fisico, 'auto-valores').hijos.map((r) => r.hijos.length), [3, 2], 'only the known parameter gets its help');
+  });
+
+  test('C-13 the minimum of rows says what it counts, with an example', () => {
+    const ayuda = marcado().match(/<p id="auto-minimo-ayuda"[^>]*>([^<]*)<\/p>/)?.[1] ?? '';
+    assert.match(ayuda, /con 3, solo avisa cuando hay 3 o más productos/);
+  });
+
+  test('C-14 a new panel user comes with «Qué enviarle al usuario»: the panel address, the email and the password, cleared together', async () => {
+    const escenario = await abrirUsuarios([]);
+    abrirDialogo(escenario, 'usuario-nuevo');
+    nodo(escenario, 'usuario-correo').value = 'Ana@Negocio.com';
+    escenario.respuestas.push(
+      { status: 201, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO], truncado: false } },
+    );
+    nodo(escenario, 'usuario-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'usuario-secreto').hidden, false);
+    assert.equal(nodo(escenario, 'usuario-secreto-url').textContent, '/panel', 'the origin is the browser\'s: the path alone without one');
+    assert.equal(nodo(escenario, 'usuario-secreto-correo').textContent, 'ana@negocio.com', 'the email as the server stored it');
+    assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
+    // The copy of the three has no clipboard here: it asks to copy by hand, and the block is still there.
+    nodo(escenario, 'usuario-copiar-todo').disparar('click');
+    assert.equal(nodo(escenario, 'usuarios-aviso').textContent, 'Seleccioná el texto y copialo a mano.');
+    nodo(escenario, 'usuario-guardado').disparar('click');
+    for (const id of ['usuario-secreto-url', 'usuario-secreto-correo', 'usuario-secreto-valor']) assert.equal(nodo(escenario, id).textContent, '', id);
+    assert.equal(nodo(escenario, 'usuario-secreto').hidden, true);
+  });
+
+  test('C-14 Reponer clave shows the same block, with the email of the row', async () => {
+    const escenario = await abrirUsuarios();
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO, USUARIO_INACTIVO], truncado: false } },
+    );
+    const fila = filaUsuario(escenario, 'ana@negocio.com');
+    botonesCon(fila, 'Reponer clave')[0].disparar('click');
+    botonesCon(fila, 'Reponer clave de ana@negocio.com')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'usuario-secreto-correo').textContent, 'ana@negocio.com');
+    assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
+    const html = marcado();
+    const bloque = html.slice(html.indexOf('<div id="usuario-secreto"'), html.indexOf('<div class="zd-table-wrap', html.indexOf('<div id="usuario-secreto"')));
+    assert.ok(bloque.includes('Qué enviarle al usuario'));
+    assert.ok(bloque.includes('>Copiar datos de acceso</button>'));
+    assert.ok(bloque.includes('>Copiar clave</button>'));
+  });
+
+  test('C-17 Auditoría names the template or the report of a test, with a short id as a secondary datum', async () => {
+    const base = { ...REGISTRO_AUDITORIA, consultaGuardadaId: null, consultaVersion: null, consultaNombre: null, resultado: 'ok', fase: null, categoria: null, filas: 3, duracionMs: 40 };
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    const idPlantilla = '21b00000-0000-4000-8000-000000000001';
+    const idReporte = '478a136b-0000-4000-8000-000000000002';
+    escenario.respuestas.push(
+      ...respuestasAuditoria([
+        { ...base, plantillaId: idPlantilla, origen: 'plantilla-prueba' },
+        { ...base, plantillaId: null, reporteId: idReporte, origen: 'reporte-prueba' },
+        { ...base, plantillaId: null, reporteId: null, origen: 'reporte-prueba' },
+      ]),
+      { status: 200, cuerpo: { plantillas: [{ id: idPlantilla, nombre: 'Alerta de stock físico' }], truncado: false } },
+      { status: 200, cuerpo: { reportes: [{ id: idReporte, nombre: 'Lo más vendido' }], truncado: false } },
+    );
+    irA(escenario, '#auditoria');
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.slice(-4).map((p) => p.url), ['/conexiones', '/auditoria', '/plantillas', '/reportes']);
+    assert.equal(celdasAuditoria(escenario, 0)[4], 'Plantilla Alerta de stock físico 21b00000…');
+    assert.equal(celdasAuditoria(escenario, 1)[4], 'Reporte Lo más vendido 478a136b…');
+    assert.equal(celdasAuditoria(escenario, 2)[4], 'Ad hoc');
+    const codigo = nodo(escenario, 'auditoria-cuerpo').hijos[0].hijos[4].hijos[0].hijos[1];
+    assert.equal(codigo.getAttribute('title'), idPlantilla, 'the whole id stays one hover away');
+  });
+
+  test('C-17 when the names cannot be read the cell keeps the label and the id, and a table with no such row asks for nothing', async () => {
+    const base = { ...REGISTRO_AUDITORIA, consultaGuardadaId: null, consultaVersion: null, consultaNombre: null, resultado: 'ok', fase: null, categoria: null, filas: 3, duracionMs: 40 };
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push(
+      ...respuestasAuditoria([{ ...base, plantillaId: 'p-9', origen: 'plantilla-prueba' }]),
+      { status: 500, cuerpo: { error: 'interno' } },
+    );
+    irA(escenario, '#auditoria');
+    await asentarVarias();
+    assert.equal(celdasAuditoria(escenario)[4], 'Plantilla p-9');
+
+    const sinOrigen = await abrirAuditoria();
+    assert.deepEqual(sinOrigen.peticiones.slice(-2).map((p) => p.url), ['/conexiones', '/auditoria'], 'a saved query needs no template list');
+  });
+
+  test('C-18 the buttons say a verb and its object, and the parameters note speaks in voseo', () => {
+    const html = marcado();
+    const botonDe = (id: string): string => html.match(new RegExp(`<button id="${id}"[^>]*>([^<]*)</button>`))?.[1] ?? '';
+    assert.deepEqual(
+      ['ejecutar', 'auto-siguiente', 'aud-filtrar', 'tablero-guardar', 'tablero-agregar', 'plantilla-probar', 'plantilla-f-probar', 'plantilla-dialogo-guardar',
+        'reporte-probar', 'reporte-f-probar', 'reporte-dialogo-guardar', 'agente-copiar', 'usuario-copiar'].map(botonDe),
+      ['Ejecutar consulta', 'Completar parámetros', 'Filtrar auditoría', 'Guardar tablero', 'Agregar reporte', 'Probar plantilla', 'Probar plantilla', 'Guardar plantilla',
+        'Probar reporte', 'Probar reporte', 'Guardar reporte', 'Copiar token', 'Copiar clave'],
+    );
+    assert.ok(html.includes('declará cada :nombre'));
+    assert.ok(!html.includes('declare cada'));
+  });
+
+  test('C-19 each screen names the tab, and the title of the page is the first screen\'s', async () => {
+    assert.ok(documento.includes('<title>Consultas — ZeroDashboard</title>'));
+    const escenario = await arrancar();
+    assert.equal(escenario.titulo, 'Consultas — ZeroDashboard');
+    for (const [hash, titulo] of [['#usuarios', 'Usuarios del panel'], ['#frescura', 'Frescura de datos'], ['#auditoria', 'Auditoría'], ['#conexiones', 'Conexiones'], ['#nada', 'Consultas']]) {
+      irA(escenario, hash);
+      assert.equal(escenario.titulo, `${titulo} — ZeroDashboard`, hash);
+    }
+  });
+
+  test('C-19 the page asks for no favicon of its own and says so with an empty icon', () => {
+    assert.ok(documento.includes('<link rel="icon" href="data:,">'));
+  });
+
+  test('C-19 the scope tag of each screen of the tenant names the active tenant', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Panadería' }]);
+    for (const nombre of PANTALLAS_DEL_TENANT) assert.equal(nodo(escenario, 'alcance-' + nombre).textContent, 'Del tenant activo', nombre);
+    await elegirTenant(escenario);
+    for (const nombre of PANTALLAS_DEL_TENANT) assert.equal(nodo(escenario, 'alcance-' + nombre).textContent, 'Del tenant activo: Food Store', nombre);
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'alcance-auditoria').textContent, 'Del tenant activo: Panadería');
+  });
+
+  test('C-19 a column of numbers lines up on the right; text, codes with a leading zero and NULL do not', async () => {
+    const escenario = await arrancar();
+    await ejecutarCon(escenario, respuestaOk({
+      columnas: ['id', 'nombre', 'codigo', 'total', 'mixta'],
+      filas: [[1, 'a', '007', '12.50', 1], [2, 'b', '010', '-3', 'x'], [3, 'c', '9', null, 2]],
+    }));
+    const encabezados = escenario.encabezado.hijos[0].hijos.map((th) => th.className);
+    assert.deepEqual(encabezados, ['num', '', '', 'num', ''], 'text, a code with leading zeros and a mixed column stay on the left');
+    const filas = escenario.cuerpoTabla.hijos.map((tr) => tr.hijos.map((td) => td.className));
+    assert.deepEqual(filas, [['num', '', '', 'num', ''], ['num', '', '', 'num', ''], ['num', '', '', 'nulo', '']]);
+    assert.equal(escenario.cuerpoTabla.hijos[0].hijos[3].textContent, '12.50', 'the value itself is not reformatted');
+    assert.ok(documento.includes('.zd-table td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }'));
+  });
+
+  test('C-19 the automations page has no second «Automatizaciones» title and a short explanation under the real one', () => {
+    const html = marcado();
+    const pantalla = html.slice(html.indexOf('id="pantalla-automatizaciones"'), html.indexOf('id="pantalla-frescura"'));
+    assert.equal((pantalla.match(/>Automatizaciones<\/h[12]>/g) ?? []).length, 1);
+    const descripcion = pantalla.match(/<p class="zd-pagehead__desc">([^<]*)<\/p>/)?.[1] ?? '';
+    assert.ok(descripcion.split(/\s+/).length <= 40, 'the paragraph of sixty words is gone');
+  });
 });
 
 // ---- CH-29 (DEC-152, DEC-154): GET /consola serves the login screen or the console --------
@@ -9246,6 +9482,11 @@ describe('CH-29 the console page by session', () => {
     assert.ok(documento.includes('/consola/ingresar'));
     assert.ok(documento.includes('autocomplete="current-password"'));
     sinPeligros(documento);
+  });
+
+  test('C-19 the login screen carries the empty icon too, so no /favicon.ico request reaches the guard', async () => {
+    const { respuesta } = await servir(null);
+    assert.ok(respuesta.body.includes('<link rel="icon" href="data:,">'));
   });
 
   test('with a session it serves the console with the operator in the header', async () => {

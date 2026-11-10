@@ -8,7 +8,7 @@ Letting the client (P2, business administrator) see in the panel which automatio
 
 ### Requirement: Automations Read Route and Response Shape (DEC-137)
 
-The system SHALL expose `GET /api/panel/automatizaciones`, a read-only route that answers `200` with exactly the keys `activas`, `disponibles`, `zonaHoraria` and `truncado`. `activas` SHALL be an array of the tenant's automations, each with exactly `titulo`, `descripcion`, `estado`, `ultimaEjecucion`, `proximaEjecucion` and, only when applicable, `frecuencia` and `sinVinculo`. `disponibles` SHALL be an array of items with exactly `titulo` and `descripcion`. `zonaHoraria` SHALL be the deployment-wide IANA zone (DEC-77) that the schedules are resolved in. `truncado` SHALL be a boolean. The route SHALL NOT accept a body, a query parameter or a path parameter that influences its result.
+The system SHALL expose `GET /api/panel/automatizaciones`, a read-only route that answers `200` with exactly the keys `activas`, `disponibles`, `zonaHoraria` and `truncado`. `activas` SHALL be an array of the tenant's automations, each with exactly `titulo`, `descripcion`, `estado`, `ultimaEjecucion`, `proximaEjecucion` and, only when applicable, `frecuencia`, `sinVinculo`, `umbral`, `destinatarios` and `porTelegram` (UX review P-09: the rule in force and where the notice goes; `umbral` only when the template declares a numeric `umbral` and a finite one is stored, `destinatarios` only for an email automation with at least one address, `porTelegram` only for a Telegram one, never the chat nor the stored channel). `disponibles` SHALL be an array of items with exactly `titulo` and `descripcion`. `zonaHoraria` SHALL be the deployment-wide IANA zone (DEC-77) that the schedules are resolved in. `truncado` SHALL be a boolean. The route SHALL NOT accept a body, a query parameter or a path parameter that influences its result.
 (Previously: the only conditional key was `frecuencia`.)
 
 #### Scenario: Successful read with active and available entries
@@ -91,7 +91,7 @@ The response SHALL be built by an explicit allow-list projection of named output
 
 - **GIVEN** any non-empty response
 - **WHEN** the keys of each `activas` item and each `disponibles` item are listed
-- **THEN** `activas` items SHALL use only `id`, `titulo`, `descripcion`, `estado`, `frecuencia`, `ultimaEjecucion`, `proximaEjecucion`, `sinVinculo`
+- **THEN** `activas` items SHALL use only `id`, `titulo`, `descripcion`, `estado`, `frecuencia`, `ultimaEjecucion`, `proximaEjecucion`, `sinVinculo`, `umbral`, `destinatarios`, `porTelegram`
 - **AND** `disponibles` items SHALL use only `titulo` and `descripcion`
 
 ### Requirement: Business Status Includes Failure (DEC-137, CH-22c)

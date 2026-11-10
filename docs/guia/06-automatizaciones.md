@@ -16,8 +16,8 @@ Una automatización ejecuta una plantilla del catálogo contra una conexión de 
 
 1. Comprobar en **Mapeo y validación** que las entidades de la plantilla están «Válida».
 2. **Automatizaciones** → «Nueva automatización».
-3. Paso «Conexión y plantilla»: elegir la conexión y una tarjeta de plantilla → «Siguiente».
-4. Paso «Parámetros y horario»: valores, «Frecuencia», «Hora (24 horas)», «Canal» («Correo» si no se cambia) y, si se quiere correo, «Correos de los destinatarios (opcional)» (hasta 5, separados por comas, punto y coma o espacios) y «Mínimo de filas para avisar» (1 si no se cambia) → «Crear automatización». Con «Telegram», los destinatarios se ocultan: el aviso va al chat vinculado del tenant, y se puede elegir antes de que el cliente lo vincule.
+3. Paso «Conexión y plantilla»: elegir la conexión y una tarjeta de plantilla → «Completar parámetros».
+4. Paso «Parámetros y horario»: valores (cada uno con su nombre en palabras y una ayuda: en las dos plantillas del catálogo, el parámetro `umbral` es «Stock mínimo por producto» y «Unidades armables mínimas por producto»; una plantilla propia muestra el nombre del parámetro tal cual), «Frecuencia», «Hora (24 horas)», «Canal» («Correo» si no se cambia) y, si se quiere correo, «Correos de los destinatarios (opcional)» (hasta 5, separados por comas, punto y coma o espacios) y «Mínimo de filas para avisar» (1 si no se cambia; cuenta cuántos productos tienen que cumplir la condición, no el valor de la condición) → «Crear automatización». Con «Telegram», los destinatarios se ocultan: el aviso va al chat vinculado del tenant, y se puede elegir antes de que el cliente lo vincule.
 5. El aviso informa la primera ejecución programada y la zona horaria.
 
 Si la conexión elegida no puede correr una plantilla, su tarjeta aparece deshabilitada con el motivo: «No disponible con esta conexión: producto (vista sin validar), … Cada ejecución se frenaría antes de conectar.» (DEC-127).
@@ -55,7 +55,7 @@ En una automatización activa, «Ajustar» abre un pop-up con cinco cosas editab
 
 - «Desactivar» detiene la automatización; no se puede reactivar. Sus ejecuciones pasadas siguen disponibles (DEC-79).
 - El panel del cliente ajusta lo mismo, con menos opciones: «Cantidad mínima», «Hora de envío», días y correos, de 1 a 5: el panel no puede dejar la lista vacía (DEC-138, DEC-187, DEC-194).
-- Con Telegram disponible y un chat vinculado, el panel suma «Enviar por» («Correo» o «Telegram»). Sin vínculo o sin token no ofrece Telegram, salvo que ya esté elegido: una automatización en Telegram siempre puede volver a «Correo», con al menos un correo. Una automatización por Telegram sin vínculo muestra en su tarjeta «Este aviso no te está llegando» (DEC-197).
+- Con Telegram disponible y un chat vinculado, el panel suma «Enviar por» («Correo» o «Telegram»). Sin vínculo o sin token no ofrece Telegram, salvo que ya esté elegido: una automatización en Telegram siempre puede volver a «Correo», con al menos un correo. Una automatización por Telegram sin vínculo muestra en su tarjeta «Este aviso no te está llegando» (DEC-197). Cada tarjeta dice también la regla vigente («Te avisamos cuando un producto llegue a 5 unidades o menos») y a dónde va el aviso («Te lo enviamos a» los correos, o «Telegram»), sin abrir «Ajustar».
 
 ## Vista previa del mensaje
 
@@ -74,7 +74,7 @@ Cada vista previa que llega a correr la consulta queda en la **Auditoría** con 
 El panel del cliente trae la tarjeta «Avisos por Telegram», arriba de «Mis automatizaciones» (CH-43, DEC-185, DEC-196). Un solo bot, el del despliegue (`TELEGRAM_BOT_TOKEN`, ver el README), atiende a todos los tenants; cada tenant vincula un chat.
 
 1. El cliente pulsa «Vincular Telegram». La tarjeta muestra un código de 8 caracteres, «Abrir Telegram» y la hora en que vence: 10 minutos, en la zona del tenant.
-2. «Abrir Telegram» abre el chat con el bot y el código ya cargado; basta con «Iniciar». También sirve mandar el código a mano: `/start <código>` en un chat privado, o `/start@<bot> <código>` en un grupo. Se aceptan minúsculas, espacios y guiones.
+2. «Abrir Telegram» abre el chat con el bot y el código ya cargado; basta con «Iniciar». La tarjeta nombra al bot («@nombre_del_bot») junto al código, para encontrarlo si el enlace no abre. También sirve mandar el código a mano: `/start <código>` en un chat privado, o `/start@<bot> <código>` en un grupo. Se aceptan minúsculas, espacios y guiones.
 3. El bot responde y la tarjeta pasa a «Telegram vinculado» al recargar el panel.
 
 - «Generar otro código» reemplaza el anterior. El código se ve solo en la respuesta que lo crea: al volver al panel, la tarjeta muestra solo su vencimiento.

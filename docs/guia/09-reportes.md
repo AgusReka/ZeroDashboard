@@ -9,9 +9,9 @@ CH-45 define y prueba los reportes en la consola, y CH-46 arma el tablero de cad
 1. **Reportes** → «Nuevo reporte».
 2. Completar el nombre, el título para el cliente, las entidades, el SQL y, si hace falta, el período.
 3. Elegir la visualización.
-4. En «Probar antes de guardar», elegir una conexión del tenant activo y pulsar «Probar».
+4. En «Probar antes de guardar», elegir una conexión del tenant activo y pulsar «Probar reporte».
 5. Con la prueba exitosa, elegir en cada fila la columna del resultado y escribir su título.
-6. «Guardar».
+6. «Guardar reporte».
 
 ## Escribir el SQL
 
@@ -59,7 +59,7 @@ Cada visualización espera ciertas columnas. P1 asigna una columna del resultado
 | Línea | Etiqueta, Valor | 100 |
 
 - **Una columna no se asigna dos veces.**
-- **Tabla.** Lleva de 1 a 10 columnas, en el orden en que se muestran. «Agregar columna» suma una fila y «Quitar» saca una.
+- **Tabla.** Lleva de 1 a 10 columnas, en el orden en que se muestran. «Agregar columna» suma una fila y «Quitar columna» saca una.
 - **Títulos.** De 1 a 40 caracteres, sin espacios en los bordes. Pasan por el glosario del panel: no admiten `tenant`, `cron`, `sql`, `consulta`, `query`, `ejecución`, `réplica`, `parámetro`, `timeout` ni `plantilla`, sin distinguir mayúsculas.
 - **Cambiar de visualización** conserva las filas cuyo rol sigue existiendo (de barras a línea, las dos; de barras a número, el valor) y deja vacías las demás.
 - **Solo esas columnas llegan al cliente.** El resto del resultado no sale de la aplicación (regla 5).
@@ -72,22 +72,22 @@ Otros topes: nombre hasta 80 caracteres (solo lo ve la consola), título para el
 
 ## Probar y guardar
 
-El pop-up trae «Probar antes de guardar»: una conexión del tenant activo, un período entre los días escritos y «Probar». Envía `POST /reportes/prueba` y muestra **todas** las columnas y filas del resultado, la cantidad de filas y la fecha usada («Desde el 31/10/2026»). No guarda nada.
+El pop-up trae «Probar antes de guardar»: una conexión del tenant activo, un período entre los días escritos y «Probar reporte». Envía `POST /reportes/prueba` y muestra **todas** las columnas y filas del resultado, la cantidad de filas y la fecha usada («Desde el 31/10/2026»). No guarda nada.
 
 1. **Las columnas salen de la prueba.** Antes de una prueba exitosa, los selects de columna están vacíos y el pop-up dice «Probá el reporte para elegir sus columnas». Después, ofrecen las columnas de esa prueba. Una columna asignada que la prueba ya no trae vuelve a quedar vacía.
-2. **«Guardar» se habilita solo con una prueba exitosa de lo mismo que se guarda.** La huella es el SQL, el período, las entidades y la conexión. Cambiar el nombre, los textos, la visualización o las columnas no obliga a probar de nuevo. Mientras está cerrado, el pop-up dice por qué: no hay prueba, la última falló o el reporte cambió desde la última prueba.
-3. **«Guardar»** envía `POST /reportes` (nuevo) o `PUT /reportes/:id` («Editar»), con las columnas asignadas y `columnasPrueba`, las columnas de esa prueba. Un `400` nombra los campos («Revisá estos campos»), los términos del glosario y las columnas que no están en la prueba. Al guardar con éxito, el pop-up se cierra, la lista se recarga y el panel lateral muestra el reporte.
-4. **Sin tenant activo** el pop-up abre, pero la prueba dice «Elegí un tenant para probar el reporte.» y «Guardar» queda cerrado. Cancelar y Escape preguntan antes de descartar cambios; cambiar de tenant cierra el pop-up.
+2. **«Guardar reporte» se habilita solo con una prueba exitosa de lo mismo que se guarda.** La huella es el SQL, el período, las entidades y la conexión. Cambiar el nombre, los textos, la visualización o las columnas no obliga a probar de nuevo. Mientras está cerrado, el pop-up dice por qué: no hay prueba, la última falló o el reporte cambió desde la última prueba.
+3. **«Guardar reporte»** envía `POST /reportes` (nuevo) o `PUT /reportes/:id` («Editar»), con las columnas asignadas y `columnasPrueba`, las columnas de esa prueba. Un `400` nombra los campos («Revisá estos campos»), los términos del glosario y las columnas que no están en la prueba. Al guardar con éxito, el pop-up se cierra, la lista se recarga y el panel lateral muestra el reporte.
+4. **Sin tenant activo** el pop-up abre, pero la prueba dice «Elegí un tenant para probar el reporte.» y «Guardar reporte» queda cerrado. Cancelar y Escape preguntan antes de descartar cambios; cambiar de tenant cierra el pop-up.
 
 ### Probar en el tenant activo
 
-El panel lateral de «Ver» muestra el reporte guardado como texto: entidades, período, SQL, textos para el cliente, visualización y columnas asignadas con su rol y título. Trae «Editar», o «Duplicar y editar» si el reporte está en un tablero ([Un reporte en uso](#un-reporte-en-uso)), y un bloque «Probar en el tenant activo»: conexión, período («Últimos 30 días», arranca en el predeterminado; no aparece sin período) y «Probar».
+El panel lateral de «Ver reporte» muestra el reporte guardado como texto: entidades, período, SQL, textos para el cliente, visualización y columnas asignadas con su rol y título. Trae «Editar», o «Duplicar y editar» si el reporte está en un tablero ([Un reporte en uso](#un-reporte-en-uso)), y un bloque «Probar en el tenant activo»: conexión, período («Últimos 30 días», arranca en el predeterminado; no aparece sin período) y «Probar reporte».
 
 - Muestra **solo las columnas asignadas**, en su orden y con su título: lo más parecido a lo que va a ver el cliente. Debajo, las filas, la fecha usada y el corte, si hubo.
 - Si el resultado ya no trae una columna asignada, por ejemplo porque se renombró en la réplica de ese tenant, el bloque nombra la columna que falta y no muestra la tabla. Es el estado de error del reporte (DEC-184): el reporte puede romperse para un solo tenant.
 - Otro reporte, cerrar el panel o cambiar de tenant limpian el resultado.
 
-Las dos pruebas quedan en **Auditoría** con origen «Prueba de reporte». La de un reporte guardado dice «Reporte <id>» en la columna Consulta; la del pop-up, «Ad hoc». La fila guarda la sentencia compuesta, sin la fecha.
+Las dos pruebas quedan en **Auditoría** con origen «Prueba de reporte». La de un reporte guardado dice «Reporte» con el nombre del reporte y un fragmento del id en la columna Consulta; la del pop-up, «Ad hoc». La fila guarda la sentencia compuesta, sin la fecha.
 
 ## El tablero del cliente
 
@@ -95,9 +95,9 @@ Pantalla **Tablero del cliente**, en Puesta en marcha, después de Usuarios del 
 
 1. **Conexión.** Se elige una sola para todo el tablero: todos sus reportes leen esa réplica. Tiene que ser del tenant activo; si ya no existe, guardar responde `404` y la pantalla lo dice.
 2. **Orden.** La lista muestra cada reporte con su posición, el título para el cliente, el nombre y la visualización. «Subir» y «Bajar» lo mueven un lugar (están deshabilitados en los extremos) y «Quitar» lo saca. El cliente ve los reportes en ese orden.
-3. **Agregar.** «Agregar reporte» ofrece los reportes del catálogo que no están en la lista; «Agregar» suma el elegido al final. Un reporte aparece una sola vez.
+3. **Agregar.** «Agregar reporte» ofrece los reportes del catálogo que no están en la lista; «Agregar reporte» suma el elegido al final. Un reporte aparece una sola vez.
 4. **Tope.** Hasta **8** reportes, porque cada vez que el cliente abre el tablero se ejecutan todos en vivo (DEC-183). Con 8, el select y «Agregar» se deshabilitan y la pantalla dice «El tablero llegó al máximo de 8 reportes.»
-5. **«Guardar».** Envía `PUT /tablero` con la conexión y los reportes en el orden de la pantalla. Se habilita solo con una conexión elegida y algún cambio respecto de lo último cargado o guardado. Nada se envía al mover, agregar o quitar.
+5. **«Guardar tablero».** Envía `PUT /tablero` con la conexión y los reportes en el orden de la pantalla. Se habilita solo con una conexión elegida y algún cambio respecto de lo último cargado o guardado. Nada se envía al mover, agregar o quitar.
 
 Un tablero vacío se puede guardar: dice «El tablero no tiene reportes: el cliente no ve ninguno.» Cambiar de tenant descarta lo que no se guardó, sin preguntar.
 
