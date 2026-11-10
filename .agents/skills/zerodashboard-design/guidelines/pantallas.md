@@ -134,20 +134,21 @@ Más aire (`data-surface="panel"`: cuerpo 16 px, controles 44 px), móvil primer
 
 ### P-01 Ingreso — T3 · CH-22 · PENDIENTE
 - **Datos**: `correo` · `contraseña`. El tenant se deduce de la sesión: nunca se elige ni se muestra un selector.
-- **Estados**: error de credenciales ("El correo o la contraseña no coinciden") · ingresando (botón loading).
+- **Estados**: error de credenciales ("El correo o la contraseña no coinciden") · formulario incompleto («Escribí tu correo y tu contraseña.»; «No pudimos conectar con el servidor» queda para fallas de red o del servidor) · ingresando (botón loading).
+- **Ayuda**: bajo «Ingresar», la línea «¿No tenés o perdiste tu contraseña? Pedísela a quien te dio acceso.» Es solo texto, sin enlace ni flujo de recuperación (la clave la repone el operador, DEC-156). Pie de la pantalla: «Con tu correo entrás a tu negocio.»
 
 ### P-02 Mis automatizaciones — P1h · CH-22 · PENDIENTE
 - **Datos**: `titulo` (de negocio, "Aviso de stock bajo") · `descripcion` · `estado` (activa / con_falla / pausada) · `ultima_ejecucion` (texto de negocio, "Hoy 08:00 · 3 productos con poco stock") · `proxima_ejecucion` · `frecuencia`. Disponibles: `titulo`, `descripcion`, `tolerancia`.
 - **Estados**: sin activas (EmptyState "Todavía no activaste ninguna automatización") · cargando (skeleton de tarjetas).
 - **Aviso sin chat** (CH-44, DEC-197): una automatización activa por Telegram sin chat vinculado muestra en su tarjeta un Banner warn, «Este aviso no te está llegando» / «Se manda por Telegram y no hay un chat vinculado.». No cambia el estado ni el último resultado.
-- **Acciones**: Ajustar, Activar. (No hay "Ver último resultado": DEC-93 no persiste las filas; el cliente recibe el resultado por correo.)
+- **Acciones**: Ajustar. Las tarjetas disponibles no llevan botón «Activar»: dicen «Para activarla, pedísela a quien te dio acceso.» (activar desde el panel está fuera de alcance). Fechas de la tarjeta en `dd/mm, HH:mm` («11/11, 09:00»). (No hay "Ver último resultado": DEC-93 no persiste las filas; el cliente recibe el resultado por correo.)
 
 ### P-03 Aviso de falla en lenguaje de negocio — P3h · CH-22 · PENDIENTE
 - **Datos**: `titulo` (qué no pasó, "No pudimos armar tu resumen de esta mañana") · `cuerpo` (por qué en términos del negocio + qué hacemos + si tiene que hacer algo) · `proximo_intento`.
 - Banner error inline dentro de la tarjeta. Nunca códigos, nombres de tablas ni "réplica".
 
 ### P-04 Ajuste de umbrales y horarios — P2h · CH-23 · PENDIENTE
-- **Datos**: `umbral` (entero, 20, sufijo "unidades") · `hora` (08:00) · `dias` (enum) · `destinatarios` (un solo campo de texto, «Enviar a», de 1 a 5 correos separados por comas, con la ayuda «Hasta 5 correos, separados por comas.»; el panel no puede dejarlo vacío). **Sin campos de SQL.**
+- **Datos**: `umbral` (entero de 0 o más, 20, sufijo "unidades"; error «Escribí un número entero, 0 o más.») · `hora` (08:00) · `dias` (enum) · `destinatarios` (un solo campo de texto, «Enviar a», de 1 a 5 correos separados por comas, con la ayuda «Hasta 5 correos, separados por comas.»; el panel no puede dejarlo vacío). **Sin campos de SQL.**
 - **Canal** (CH-44, DEC-197): cuando hay más de una opción, un select «Enviar por» con «Correo» y «Telegram». Telegram se ofrece con el token y un chat vinculado, o si ya está elegido. Con «Telegram», «Enviar a» se oculta y la lista se conserva. Volver a «Correo» pide al menos un correo. Error: «Elegí por dónde querés recibir este aviso.». Nunca se muestra el chat.
 - **Estados**: validación por campo · guardado (Banner ok "Se aplican desde la próxima revisión").
 

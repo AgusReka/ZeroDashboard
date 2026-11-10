@@ -102,6 +102,9 @@ const CABEZA_PAGINA = `<!doctype html>
   .panel-telegram { display: grid; gap: var(--space-4); }
   .panel-telegram .zd-muted, .panel-telegram .zd-meta, .panel-telegram .panel-acciones { margin: 0; }
   .panel-telegram__codigo { margin: var(--space-3) 0; font-size: var(--text-2xl); letter-spacing: .08em; }
+  /* P-01 (UX review): the shared link rule (.zd-root a, specificity 0,1,1) beats .zd-btn--primary (0,1,0),
+     so a primary button drawn as a link kept the link color on the accent fill. */
+  .zd-root a.zd-btn--primary, .zd-root a.zd-btn--primary:hover { color: var(--text-on-accent); text-decoration: none; }
 </style>
 </head>
 <body class="zd-root" data-surface="panel">
@@ -120,7 +123,9 @@ const PIE_PAGINA = `</body>
  * serves the shell. No tenant is ever named or chosen here (rule 2; DEC-135).
  *
  * The "Olvidé mi contraseña" link of the mockup is deliberately absent: recovery is
- * out of scope (R2), and a dead link in production is worse than none.
+ * out of scope (R2, DEC-156: only the operator resets a password), and a dead link in
+ * production is worse than none. A plain help line under the button tells the person
+ * who to ask instead (UX review P-02); it adds no flow.
  */
 const DOCUMENTO_INGRESO = CABEZA_PAGINA + `<!-- P-01 Ingreso (CH-22): unauthenticated /panel. -->
 <section class="panel-ingreso" data-screen-label="Ingreso" data-change="CH-22" data-estado="parcial">
@@ -150,8 +155,9 @@ const DOCUMENTO_INGRESO = CABEZA_PAGINA + `<!-- P-01 Ingreso (CH-22): unauthenti
         <svg id="icono-cargando" class="zd-icon zd-icon--spin" aria-hidden="true" viewBox="0 0 24 24" hidden><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
         <span id="etiqueta-ingresar">Ingresar</span>
       </button>
+      <p id="ayuda-clave" class="zd-help">¿No tenés o perdiste tu contraseña? Pedísela a quien te dio acceso.</p>
     </form>
-    <p class="zd-meta">Entrás directo a tu negocio; no hace falta elegirlo.</p>
+    <p class="zd-meta">Con tu correo entrás a tu negocio.</p>
   </div>
 </section>
 <script>
@@ -164,6 +170,7 @@ var iconoCargando = document.getElementById('icono-cargando');
 var MENSAJE_CREDENCIALES = 'El correo o la contraseña no coinciden.';
 var MENSAJE_TENANT_INACTIVO = 'Tu negocio no está activo en este momento. Comunicate con quien te dio acceso.';
 var MENSAJE_RED = 'No pudimos conectar con el servidor. Volvé a intentar en unos minutos.';
+var MENSAJE_CAMPOS = 'Escribí tu correo y tu contraseña.';
 function fallar(texto) {
   textoAviso.textContent = texto;
   aviso.hidden = false;
@@ -184,6 +191,11 @@ formulario.addEventListener('submit', function (evento) {
   }).then(function (respuesta) {
     if (respuesta.ok) {
       window.location.reload();
+      return null;
+    }
+    // A 400 means the server answered and refused an empty or malformed form: that is not a connection problem.
+    if (respuesta.status === 400) {
+      fallar(MENSAJE_CAMPOS);
       return null;
     }
     return respuesta.json();
@@ -321,9 +333,13 @@ function nodo(etiqueta, clase, texto) {
 function mostrar(id, visible) {
   document.getElementById(id).hidden = !visible;
 }
-// The third argument narrows what is shown (CH-43: only the time, or only the date); the default is the P-02 one.
+// The third argument narrows what is shown (CH-43: only the time, or only the date); the default is the P-02 one,
+// «dd/mm, HH:mm» (lenguaje.md), assembled from the parts so the padding and separators do not depend on locale data.
+function relleno(valor) {
+  return ('0' + valor).slice(-2);
+}
 function formatear(iso, zona, campos) {
-  var opciones = Object.assign({}, campos || { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  var opciones = Object.assign({}, campos || { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   var formato;
   try {
     opciones.timeZone = zona;
@@ -332,7 +348,10 @@ function formatear(iso, zona, campos) {
     delete opciones.timeZone;
     formato = new Intl.DateTimeFormat('es-AR', opciones);
   }
-  return formato.format(new Date(iso));
+  if (campos) { return formato.format(new Date(iso)); }
+  var partes = {};
+  formato.formatToParts(new Date(iso)).forEach(function (parte) { partes[parte.type] = parte.value; });
+  return relleno(partes.day) + '/' + relleno(partes.month) + ', ' + relleno(partes.hour) + ':' + relleno(partes.minute);
 }
 function dato(lista, etiqueta, valor) {
   var fila = nodo('div');
@@ -357,7 +376,7 @@ var MENSAJE_AJUSTE_NO_DISPONIBLE = 'Esta automatización ya no se puede ajustar.
 var MENSAJE_REVISAR = 'Revisá los datos e intentá de nuevo.';
 var MENSAJE_SIN_CAMBIOS = 'No cambiaste ningún dato.';
 var ERRORES_CAMPO = {
-  umbral: 'Ingresá un número válido.',
+  umbral: 'Escribí un número entero, 0 o más.',
   hora: 'Elegí una hora válida.',
   dias: 'Elegí los días de envío.',
   canal: 'Elegí por dónde querés recibir este aviso.',
@@ -440,6 +459,14 @@ function marcarCampo(campo, texto) {
   }
   campo.error.hidden = !texto;
 }
+// P-06: an unchanged stored value passes; anything typed must be a whole number, 0 or more.
+function umbralValido(texto, guardado) {
+  var escrito = String(texto).trim();
+  if (escrito === '') { return false; }
+  var numero = Number(escrito);
+  if (numero === guardado) { return true; }
+  return Number.isInteger(numero) && numero >= 0;
+}
 // Only what the person changed is sent: the server rebuilds the schedule and the values.
 function cuerpoDeCambios(campos, ajustes) {
   var cuerpo = {};
@@ -509,7 +536,8 @@ function formularioDeAjustes(item, ajustes, tarjeta, boton) {
   if (typeof ajustes.umbral === 'number') {
     var numero = nodo('input', 'zd-input');
     numero.type = 'number';
-    numero.step = 'any';
+    numero.step = '1';
+    numero.min = '0';
     numero.value = String(ajustes.umbral);
     campos.umbral = campoDeFormulario(prefijo, 'umbral', 'Cantidad mínima', numero, 'Te avisamos cuando un producto llegue a esta cantidad o menos.', 'unidades');
     forma.appendChild(campos.umbral.caja);
@@ -574,6 +602,13 @@ function formularioDeAjustes(item, ajustes, tarjeta, boton) {
     quitarAviso(forma);
     for (var nombre in campos) {
       if (Object.prototype.hasOwnProperty.call(campos, nombre)) { marcarCampo(campos[nombre], null); }
+    }
+    // P-06: the minimum is a count of units, so only a whole number of 0 or more is sent. A stored value the
+    // person did not touch is never judged here.
+    if (campos.umbral && !umbralValido(campos.umbral.control.value, ajustes.umbral)) {
+      marcarCampo(campos.umbral, ERRORES_CAMPO.umbral);
+      campos.umbral.control.focus();
+      return;
     }
     var cuerpo = cuerpoDeCambios(campos, ajustes);
     if (Object.keys(cuerpo).length === 0) {
@@ -693,6 +728,8 @@ function tarjetaActiva(item, zona) {
 function tarjetaDisponible(item) {
   var tarjeta = nodo('article', 'zd-card zd-auto-card zd-auto-card--disponible');
   tarjeta.appendChild(cabeza(item.titulo, item.descripcion, null));
+  // Activation from the panel is out of scope: the card says who to ask instead of offering a button (UX review P-04).
+  tarjeta.appendChild(nodo('p', 'zd-meta', 'Para activarla, pedísela a quien te dio acceso.'));
   return tarjeta;
 }
 function pintar(cuerpo) {

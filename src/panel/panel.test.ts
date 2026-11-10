@@ -279,7 +279,7 @@ describe(
         'Cancelar',
         'Guardamos tus cambios',
         'Se aplican desde la próxima revisión.',
-        'Ingresá un número válido.',
+        'Escribí un número entero, 0 o más.',
         'Elegí una hora válida.',
         'Elegí los días de envío.',
         'Revisá los correos: escribí entre 1 y 5, separados por comas.',
@@ -417,6 +417,7 @@ describe(
         },
         createElement: crear,
         createElementNS: crear,
+        createTextNode: (texto: string): any => ({ tagName: '#text', textContent: texto, children: [] as unknown[] }),
       };
       return {
         documento,
@@ -444,6 +445,18 @@ describe(
     const esperar = () => new Promise((r) => setImmediate(r));
     const LISTA = { status: 200, cuerpo: { activas: [], disponibles: [], zonaHoraria: 'UTC', truncado: false } };
 
+    /** Every node under the page's fixed elements, depth first. */
+    function nodos(corrida: { elementos: () => any[] }): any[] {
+      const salida: any[] = [];
+      const visitar = (nodo: any) => {
+        salida.push(nodo);
+        for (const hijo of nodo.children) visitar(hijo);
+      };
+      corrida.elementos().forEach(visitar);
+      return salida;
+    }
+    const conTexto = (corrida: { elementos: () => any[] }, texto: string) => nodos(corrida).filter((n) => n.textContent === texto);
+
     describe('CH-44 the card and the form, run against the fake DOM', () => {
       const ITEM = {
         id: 'a-1', titulo: 'Aviso de stock', descripcion: 'Te avisamos.', estado: 'activa',
@@ -452,18 +465,6 @@ describe(
       };
       const lista = (item: object) => ({ status: 200, cuerpo: { activas: [item], disponibles: [], zonaHoraria: 'UTC', truncado: false } });
       const AJUSTES = '/api/panel/automatizaciones/a-1/ajustes';
-
-      /** Every node under the page's fixed elements, depth first. */
-      function nodos(corrida: { elementos: () => any[] }): any[] {
-        const salida: any[] = [];
-        const visitar = (nodo: any) => {
-          salida.push(nodo);
-          for (const hijo of nodo.children) visitar(hijo);
-        };
-        corrida.elementos().forEach(visitar);
-        return salida;
-      }
-      const conTexto = (corrida: { elementos: () => any[] }, texto: string) => nodos(corrida).filter((n) => n.textContent === texto);
 
       /** Paints the list, presses «Ajustar» and answers the read with `ajustes`. */
       async function abrirForma(script: string, ajustes: object) {
@@ -532,6 +533,171 @@ describe(
         assert.equal(select.children.map((o: any) => o.value).join(), 'correo,telegram');
         const cajaDeEnviarA = nodos(corrida).find((n) => n.children.some((h: any) => h.textContent === 'Enviar a'));
         assert.equal(cajaDeEnviarA.hidden, true);
+      });
+    });
+
+    describe('UX review lote 1 (P-01 to P-10), run against the fake DOM', () => {
+      const ITEM = {
+        id: 'a-1', titulo: 'Aviso de stock', descripcion: 'Te avisamos.', estado: 'activa',
+        ultimaEjecucion: { fecha: '2026-11-05T08:00:00.000Z', resultado: 'completada' },
+        proximaEjecucion: '2026-11-11T12:00:00.000Z', frecuencia: 'Todos los días a las 08:00',
+      };
+      const AJUSTES = '/api/panel/automatizaciones/a-1/ajustes';
+      const ESCRIBI_NUMERO = 'Escribí un número entero, 0 o más.';
+
+      const scriptDe = (html: string) => html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
+      const funcionDe = (script: string, nombre: string): string => {
+        const inicio = script.indexOf(`function ${nombre}(`);
+        assert.ok(inicio !== -1, nombre);
+        return script.slice(inicio, script.indexOf('\n}', inicio) + 2);
+      };
+
+      test('P-01: a primary button drawn as a link takes the primary text color, with no underline', async () => {
+        const { html } = await shellConScript();
+        assert.match(html, /\.zd-root a\.zd-btn--primary,\s*\.zd-root a\.zd-btn--primary:hover\s*\{[^}]*color:\s*var\(--text-on-accent\)/);
+        assert.match(html, /\.zd-root a\.zd-btn--primary[^{]*\{[^}]*text-decoration:\s*none/);
+        assert.match(html, /<a id="telegram-abrir" class="zd-btn zd-btn--primary"/);
+      });
+
+      test('P-02 and P-10: the login says who to ask for a password and no longer talks about choosing a business', async () => {
+        const { body: html } = await app.inject({ method: 'GET', url: '/panel' });
+        assert.ok(html.includes('¿No tenés o perdiste tu contraseña? Pedísela a quien te dio acceso.'));
+        assert.ok(html.includes('Con tu correo entrás a tu negocio.'));
+        assert.ok(!html.includes('Entrás directo a tu negocio'));
+        // Help text only: no recovery link or flow (DEC-156).
+        assert.ok(!/href=/.test(html.replace(/<link[^>]*>/g, '')), 'the login adds no link');
+        for (const texto of ['¿No tenés o perdiste tu contraseña? Pedísela a quien te dio acceso.', 'Con tu correo entrás a tu negocio.']) {
+          assert.deepEqual(terminosProhibidosEn(texto), [], texto);
+        }
+      });
+
+      describe('P-03: the login tells a refused form apart from a connection problem', () => {
+        async function ingresarCon(respuesta: { status: number; cuerpo?: unknown } | null) {
+          const { body: html } = await app.inject({ method: 'GET', url: '/panel' });
+          const corrida = correrScript(scriptDe(html), { 'POST /api/panel/auth/ingresar': respuesta });
+          const forma = corrida.el('form-ingreso');
+          forma.action = '/api/panel/auth/ingresar';
+          forma.elements = { correo: { value: '' }, clave: { value: '' } };
+          forma.oyentes[0]({ preventDefault() {} });
+          await esperar();
+          return corrida;
+        }
+        const texto = (corrida: { el: (id: string) => any }) => corrida.el('texto-aviso').textContent;
+
+        test('a 400 asks for both fields', async () => {
+          const corrida = await ingresarCon({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/correo'] } });
+          assert.equal(texto(corrida), 'Escribí tu correo y tu contraseña.');
+          assert.equal(corrida.el('aviso-ingreso').hidden, false);
+          assert.equal(corrida.el('boton-ingresar').disabled, false);
+        });
+
+        test('wrong credentials, a deactivated business, a 5xx and a network failure keep their own messages', async () => {
+          assert.equal(texto(await ingresarCon({ status: 401, cuerpo: { error: 'correo-o-clave-incorrectos' } })), 'El correo o la contraseña no coinciden.');
+          assert.equal(texto(await ingresarCon({ status: 409, cuerpo: { error: 'tenant-desactivado' } })), 'Tu negocio no está activo en este momento. Comunicate con quien te dio acceso.');
+          const conexion = 'No pudimos conectar con el servidor. Volvé a intentar en unos minutos.';
+          assert.equal(texto(await ingresarCon({ status: 500, cuerpo: { error: 'error-interno' } })), conexion);
+          assert.equal(texto(await ingresarCon({ status: 502 })), conexion);
+          assert.equal(texto(await ingresarCon(null)), conexion);
+        });
+
+        test('a successful login reloads and shows no notice', async () => {
+          const corrida = await ingresarCon({ status: 200, cuerpo: {} });
+          assert.equal(corrida.recargas.length, 1);
+          assert.equal(corrida.el('aviso-ingreso').hidden, true);
+        });
+      });
+
+      test('P-04 and P-08: an available card says who to ask, offers no button, and the dates read dd/mm, HH:mm', async () => {
+        const { script } = await shellConScript();
+        const corrida = correrScript(script, {
+          'GET /api/panel/automatizaciones': {
+            status: 200,
+            cuerpo: {
+              activas: [ITEM],
+              disponibles: [{ titulo: 'Aviso de productos que ya casi no podés armar', descripcion: 'Te avisamos.' }],
+              zonaHoraria: 'UTC',
+              truncado: false,
+            },
+          },
+          'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'sin-vincular', bot: 'zd_bot' } },
+        });
+        await esperar();
+
+        const lineas = conTexto(corrida, 'Para activarla, pedísela a quien te dio acceso.');
+        assert.equal(lineas.length, 1);
+        const tarjeta = nodos(corrida).find((n) => (n.className ?? "").includes('zd-auto-card--disponible'));
+        assert.ok(tarjeta !== undefined && tarjeta.children.includes(lineas[0]), 'the line sits inside the available card');
+        assert.ok(!nodos(corrida).some((n) => tarjeta.children.includes(n) && n.tagName === 'button'), 'no activation button');
+
+        assert.equal(conTexto(corrida, '11/11, 12:00').length, 1, 'Próxima revisión');
+        assert.equal(conTexto(corrida, 'Se completó — 05/11, 08:00').length, 1, 'Última revisión');
+        assert.ok(!/\b(lun|mar|mié|jue|vie|sáb|dom)\b/i.test(nodos(corrida).map((n) => n.textContent).join(' ')), 'no weekday in the dates');
+      });
+
+      test('P-08: formatear keeps the zone, zero-pads and never reads 24:00 at midnight', async () => {
+        const { script } = await shellConScript();
+        const formatear = new Function(`${funcionDe(script, 'relleno')}\n${funcionDe(script, 'formatear')}\nreturn formatear;`)() as (iso: string, zona: string) => string;
+        assert.equal(formatear('2026-11-11T12:00:00.000Z', 'America/Argentina/Buenos_Aires'), '11/11, 09:00');
+        assert.equal(formatear('2026-11-11T03:00:00.000Z', 'America/Argentina/Buenos_Aires'), '11/11, 00:00');
+        assert.equal(formatear('2026-03-04T08:05:00.000Z', 'UTC'), '04/03, 08:05');
+      });
+
+      test('P-06: umbralValido accepts a whole number of 0 or more and an untouched stored value', async () => {
+        const { script } = await shellConScript();
+        const umbralValido = new Function(`${funcionDe(script, 'umbralValido')}\nreturn umbralValido;`)() as (texto: string, guardado: number) => boolean;
+        for (const bueno of ['0', '5', '20', ' 7 ', '5.0', '1000']) assert.equal(umbralValido(bueno, 5), true, bueno);
+        for (const malo of ['', '  ', '2.5', '-3', '-1', 'abc', '1,5', 'Infinity', 'NaN']) assert.equal(umbralValido(malo, 5), false, malo);
+        // A stored value from before the rule is not judged while the person leaves it as it is.
+        assert.equal(umbralValido('2.5', 2.5), true);
+        assert.equal(umbralValido('3.5', 2.5), false);
+      });
+
+      describe('P-06: the form refuses a minimum that is not a whole number before sending anything', () => {
+        const BASE = { umbral: 5, destinatarios: ['a@b.com'], zonaHoraria: 'UTC', canal: 'correo', canales: ['correo'] };
+
+        async function enviarUmbral(valor: string, respuestaPut: { status: number; cuerpo?: unknown } | null = { status: 200, cuerpo: {} }) {
+          const { script } = await shellConScript();
+          const corrida = correrScript(script, {
+            'GET /api/panel/automatizaciones': { status: 200, cuerpo: { activas: [ITEM], disponibles: [], zonaHoraria: 'UTC', truncado: false } },
+            'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'sin-vincular', bot: 'zd_bot' } },
+            [`GET ${AJUSTES}`]: { status: 200, cuerpo: BASE },
+            [`PUT ${AJUSTES}`]: respuestaPut,
+          });
+          await esperar();
+          conTexto(corrida, 'Ajustar')[0].oyentes.forEach((oyente: () => void) => oyente());
+          await esperar();
+          const entrada = nodos(corrida).find((n) => typeof n.id === 'string' && n.id.endsWith('-umbral'));
+          assert.ok(entrada !== undefined, 'the form has the minimum field');
+          assert.equal(entrada.min, '0');
+          assert.equal(entrada.step, '1');
+          entrada.value = valor;
+          const forma = nodos(corrida).find((n) => n.tagName === 'form');
+          forma.oyentes[0]({ preventDefault() {} });
+          await esperar();
+          return { corrida, entrada };
+        }
+
+        test('2.5, -3, empty and non-numeric text show the message on the field and send nothing', async () => {
+          for (const malo of ['2.5', '-3', '', 'abc']) {
+            const { corrida, entrada } = await enviarUmbral(malo);
+            assert.equal(conTexto(corrida, ESCRIBI_NUMERO).length, 1, malo);
+            assert.equal(entrada.atributos['aria-invalid'], 'true', malo);
+            assert.ok(!corrida.pedidos.includes(`PUT ${AJUSTES}`), `nothing is sent for «${malo}»`);
+          }
+        });
+
+        test('0 and a larger whole number are sent as numbers', async () => {
+          for (const bueno of ['0', '12']) {
+            const { corrida } = await enviarUmbral(bueno);
+            assert.equal(conTexto(corrida, ESCRIBI_NUMERO).length, 0, bueno);
+            assert.ok(corrida.pedidos.includes(`PUT ${AJUSTES}`), `«${bueno}» is sent`);
+          }
+        });
+
+        test('a server 400 naming the minimum shows the same message', async () => {
+          const { corrida } = await enviarUmbral('7', { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['umbral'] } });
+          assert.equal(conTexto(corrida, ESCRIBI_NUMERO).length, 1);
+        });
       });
     });
 

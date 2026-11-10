@@ -201,6 +201,11 @@ function documentoConsola(nombreOperador: string): string {
   #plantilla-panel pre, #reporte-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   /* CH-29 (C-01): the operator slot and Salir sit at the end of the tenant bar. */
   #operador { margin-inline-start: auto; }
+  /* C-15: the ghost button's grey text sat on the violet bar at about 1.1:1. Salir takes the bar's own text color
+     (violet bar: --tenant-on; amber bar: --warn-text), and its hover keeps that color over the bar's tint. */
+  #barra-tenant #salir { color: inherit; }
+  #barra-tenant #salir:hover:not(:disabled) { background: rgba(255, 255, 255, .14); color: inherit; }
+  #barra-tenant #salir:focus-visible { outline-color: currentColor; }
   /* CH-30d: the mapping editors the script builds, one per contract entity. */
   #mapeo-entidades { display: grid; gap: var(--space-6); }
   #mapeo-entidades textarea { width: 100%; min-height: 8rem; font-family: var(--font-mono); font-size: var(--text-sm); }
@@ -1768,8 +1773,9 @@ function fijarTenant(id) {
     indicadorTenant.className = 'sin-tenant';
     indicadorTenant.textContent = 'Ningún tenant seleccionado';
   } else {
-    var opcion = selectorTenant.options[selectorTenant.selectedIndex];
-    var nombre = opcion ? opcion.textContent : '';
+    // The name comes from the loaded row, not from the option text: that text already carries the id fragment.
+    var fila = filaDeTenant(tenantActivo);
+    var nombre = fila ? String(fila.nombre) : '';
     indicadorTenant.className = '';
     // The id fragment is not decoration: two tenants may share a nombre by design, so
     // the name alone would not satisfy T4's "without ambiguity".
@@ -1795,7 +1801,8 @@ function renderizarSelector(tenants) {
     // textContent, never markup: a stored nombre that spells out a script tag has to
     // render as visible text (regla 7). The smoke test greps the served document for
     // the markup-assigning property name, so it must not appear even in a comment.
-    opcion.textContent = String(fila.nombre);
+    // C-01: the id fragment tells apart two tenants that share a nombre, as the connection selectors do.
+    opcion.textContent = String(fila.nombre) + ' (' + String(fila.id).slice(0, 8) + '…)';
     selectorTenant.appendChild(opcion);
   });
 
@@ -2296,7 +2303,7 @@ function renderizarGuardadas(cuerpo) {
     // called "Stock producible" are otherwise indistinguishable in a list.
     var fecha = document.createElement('span');
     fecha.className = 'ayuda';
-    fecha.textContent = String(fila.creadaEn);
+    fecha.textContent = fechaHoraTenant(fila.creadaEn);
     item.appendChild(fecha);
 
     if (fila.descripcion !== null && fila.descripcion !== undefined) {
@@ -3140,7 +3147,7 @@ async function listarAutomatizaciones() {
       }
       var nombre = nombresPlantilla[fila.plantillaId];
       return [nombre === undefined ? String(fila.plantillaId) : nombre, nombreDeConexion(fila.conexionId),
-        celdaDeHorario(fila.cron), fila.activo === true ? 'activa' : 'desactivada', String(fila.creadaEn), acciones];
+        celdaDeHorario(fila.cron), fila.activo === true ? 'activa' : 'desactivada', fechaHoraTenant(fila.creadaEn), acciones];
     }),
     'automatizacion',
     resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' automatizaciones más recientes.' : null
@@ -4550,6 +4557,15 @@ function fechaTenant(iso) {
   return dos(fecha.getDate()) + '/' + dos(fecha.getMonth() + 1) + '/' + fecha.getFullYear();
 }
 
+// C-16: dd/mm/aaaa HH:MM in this browser's zone, the format Auditoría already uses (it adds seconds).
+// An instant that does not parse is shown as it came, never blanked.
+function fechaHoraTenant(iso) {
+  var fecha = new Date(String(iso));
+  if (isNaN(fecha.getTime())) { return String(iso); }
+  var dos = function (n) { return (n < 10 ? '0' : '') + n; };
+  return fechaTenant(iso) + ' ' + dos(fecha.getHours()) + ':' + dos(fecha.getMinutes());
+}
+
 function celdaTenant(fila, texto) {
   var td = document.createElement('td');
   td.textContent = texto;
@@ -5109,6 +5125,10 @@ async function revocarAgente(id) {
 
 var avisoUsuarios = document.getElementById('usuarios-aviso');
 var cuerpoUsuarios = document.getElementById('usuarios-cuerpo');
+// C-10: the two lines that describe a state, not an event. They are cleared when the state ends; a failure or a
+// «Copiado.» written by an action is never touched.
+var AVISO_USUARIOS_SIN_TENANT = 'Elegí un tenant para ver sus usuarios del panel.';
+var AVISO_USUARIOS_VACIO = 'Este tenant todavía no tiene usuarios del panel.';
 var formularioUsuario = document.getElementById('usuario-alta');
 
 document.getElementById('usuario-guardado').addEventListener('click', olvidarSecretos);
@@ -5180,9 +5200,10 @@ function renderizarUsuarios(usuarios) {
 async function cargarPantallaUsuarios() {
   if (tenantActivo === null) {
     vaciar(cuerpoUsuarios);
-    avisoUsuarios.textContent = 'Elegí un tenant para ver sus usuarios del panel.';
+    avisoUsuarios.textContent = AVISO_USUARIOS_SIN_TENANT;
     return;
   }
+  if (avisoUsuarios.textContent === AVISO_USUARIOS_SIN_TENANT) { avisoUsuarios.textContent = ''; }
   var respuesta;
   try { respuesta = await pedir('/usuarios'); } catch (fallaDeRed) {
     avisoUsuarios.textContent = 'No se pudo contactar con la aplicación.';
@@ -5197,6 +5218,8 @@ async function cargarPantallaUsuarios() {
     return;
   }
   renderizarUsuarios(cuerpo.usuarios);
+  if (cuerpo.usuarios.length === 0) { avisoUsuarios.textContent = AVISO_USUARIOS_VACIO; }
+  else if (avisoUsuarios.textContent === AVISO_USUARIOS_VACIO) { avisoUsuarios.textContent = ''; }
 }
 
 // CH-32b (DEC-173): «Nuevo usuario» is a pop-up with the email and the optional name.
@@ -7575,6 +7598,7 @@ var etiqueta = document.getElementById('etiqueta-ingresar');
 var iconoCargando = document.getElementById('icono-cargando');
 var MENSAJE_CREDENCIALES = 'Nombre o clave incorrectos.';
 var MENSAJE_RED = 'No se pudo contactar con la consola. Revisá que la aplicación esté en marcha y volvé a intentar.';
+var MENSAJE_CAMPOS = 'Completá el nombre y la clave.';
 function fallar(texto) {
   textoAviso.textContent = texto;
   aviso.hidden = false;
@@ -7599,6 +7623,11 @@ formulario.addEventListener('submit', function (evento) {
     }
     if (respuesta.status === 401) {
       fallar(MENSAJE_CREDENCIALES);
+      return null;
+    }
+    // A 400 means the server answered and refused an empty or malformed form: that is not a connection problem.
+    if (respuesta.status === 400) {
+      fallar(MENSAJE_CAMPOS);
       return null;
     }
     fallar(MENSAJE_RED);
