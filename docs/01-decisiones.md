@@ -4309,6 +4309,92 @@ Entrada al repositorio:
 
 ---
 
+### DEC-201 — CH-48: el panel lee el tablero en una llamada y ejecuta cada reporte en otra, con un período por reporte y hasta tres ejecuciones a la vez por tenant
+
+**Contexto.**
+- DEC-183 fija la ejecución en vivo sin caché, el tope de filas en el código, solo las columnas asignadas, el tenant de la sesión y la frescura como información. DEC-198 fija el período en días que declara P1, con el primero como predeterminado. DEC-199 permite hasta 8 reportes por tablero.
+- El panel no tiene ruta de tablero: `GET /tablero` es de la consola.
+- Un agente atiende como máximo 8 sesiones a la vez (`LIMITES.sesionesPorAgente`), y el planificador usa las mismas. Un tablero de 8 reportes ejecutado de una vez las ocupa todas: una segunda pestaña o una recarga hacen fallar las automatizaciones programadas del tenant.
+- No hay límite de pedidos en ningún lugar del servidor.
+
+Quedan tres puntos que DEC-183 y DEC-198 no resuelven.
+
+**Opciones.**
+
+Forma de la API:
+- (a) Una llamada para la configuración y la frescura, y una por reporte.
+- (b) Una sola llamada que ejecuta todos los reportes.
+
+Período:
+- (a) Por reporte, cada uno con su selector.
+- (b) Un selector común a todo el tablero.
+
+Límite:
+- (a) Por tenant: como máximo 3 ejecuciones en curso, una cola acotada, y una sola ejecución para pedidos iguales en curso.
+- (b) Ninguno, más allá de los 8 reportes.
+- (c) Un plugin de límite por sesión o por IP.
+- (d) Una caché corta de resultados.
+
+**Decisión.** (a) en los tres puntos.
+- **API (a).** Cada tarjeta tiene su estado de error y su reintento, la primera aparece aunque otra tarde, y cambiar el período vuelve a ejecutar un solo reporte. (b) hace esperar todo al reporte más lento y complica la falla parcial.
+- **Período (a).** Cada reporte declara su propia lista. Un selector común solo serviría para los valores que todos comparten.
+- **Límite (a).** Deja 5 sesiones del agente libres para el planificador, en memoria y sin dependencias. (b) deja sin sesiones a las automatizaciones. (c) suma una dependencia y no modela el presupuesto del agente. (d) contradice el «sin caché» de DEC-183 y reabre DEC-93.
+
+**Forma.**
+- **Configuración.** `GET /api/panel/tablero` responde los reportes en el orden del tablero, cada uno con `id`, `titulo`, `descripcion`, `visualizacion` y `periodo` (`dias` y `predeterminado`, o null), más la última actualización de los datos del tenant (CH-24) y su zona. No ejecuta nada. Nunca devuelve el nombre interno, el SQL, las entidades, la conexión ni nombres de columna. Sin tablero, `reportes` es `[]`.
+- **Ejecución.** `GET /api/panel/tablero/:reporteId/resultado?dias=N` ejecuta un reporte sobre la conexión del tablero, nunca sobre una que nombre el pedido. Si el id no está en el tablero del tenant de la sesión, responde `404 reporte-no-encontrado`, igual para un id desconocido y para uno de otro tenant. Un `dias` no declarado, o cualquier `dias` en un reporte sin período, es `400 solicitud-invalida`.
+- **Respuesta.** `200` con un `estado` cerrado: `ok`, `sin-datos`, `no-disponible`, `tiempo-agotado`, `sin-conexion` o `error`. Con `ok` lleva los títulos de las columnas asignadas, las filas reducidas a esas columnas, `corte` y el período usado. Nunca la categoría, el código, un nombre de columna ni el SQL (como DEC-137). Ambas respuestas llevan `Cache-Control: no-store`, y ambas rutas son filas exactas de `RUTAS_PANEL_PUBLICAS` (DEC-135).
+- **Período.** Se muestra como «Últimos N días». Sin elección se usa el primero declarado. La elección no se guarda: al recargar vuelve al predeterminado.
+- **Límite.** Constantes en el código, sin variable de entorno: 3 en curso por tenant, una cola FIFO acotada y `429 demasiadas-solicitudes` más allá. Un pedido igual (tenant, reporte, días) en curso espera la misma ejecución, y nada queda guardado al terminar. Una ejecución en cola cuyo pedido se cerró se descarta. El navegador también pide de a 3.
+- **Sin actualización automática.** No hay temporizador. «Actualizar» vuelve a pedir todo y queda deshabilitado mientras carga.
+- **Tiempos.** Los del motor (conexión 5 s, consulta 15 s). El motor no se extiende (regla 6).
+
+**Se resigna.**
+- **Más pedidos:** hasta 9 por vista del tablero, en lugar de uno.
+- **Un límite por proceso:** con dos instancias se duplicaría. El proyecto corre una.
+- **El período elegido se pierde al recargar.**
+
+**Decidido por:** el agente, con la autorización del usuario del 2026-11-10 de avanzar sin frenar: se tomaron las opciones recomendadas en la exploración de CH-48. Queda para revisión del usuario.
+
+**Estado:** firme, sujeto a revisión del usuario.
+
+---
+
+### DEC-202 — CH-48: una ejecución de reporte desde el panel no escribe una fila de auditoría y deja una línea de log con campos cerrados
+
+**Contexto.**
+- DEC-159 audita todo camino de la consola que ejecuta SQL contra la base de un cliente, con su operador. Las corridas programadas quedan solo en `Ejecucion`.
+- En `RegistroEjecucion`, `operadorId` y `operadorNombre` son obligatorios. DEC-162 hace el registro inmodificable y sin poda.
+- Una ejecución desde el panel no tiene operador: hoy `registrarEjecucion` omitiría la fila y dejaría una línea `error` por cada reporte.
+- Cada vista del tablero son hasta 8 ejecuciones, y `GET /auditoria` lista las más nuevas hasta `LIMITE_LISTADO`.
+
+**Opciones.**
+- (a) Sin fila: una línea de log `info` con campos cerrados por ejecución.
+- (b) Operador nullable y un origen `panel-reporte`. Pide una migración, y la pantalla de auditoría tiene que mostrar «Cliente (panel)».
+- (c) Un operador centinela: el usuario del panel en `operadorId` y «Panel del cliente» como nombre.
+- (d) Un campo de actor aparte (`usuarioPanelId`) y el operador nullable. Pide una migración.
+
+**Decisión.** (a).
+- **Es reversible.** Un tipo de fila se puede sumar después. Las filas que se escriban ahora no se pueden borrar nunca (DEC-162).
+- **El registro sigue siendo de la consola.** Las ejecuciones del panel no tapan las del operador en su pantalla.
+- **El riesgo es bajo.** El SQL es un reporte guardado que P1 escribió y que quedó auditado al probarlo (`reporte-prueba`). P2 solo aporta un entero validado. Es el mismo criterio que para las corridas programadas.
+- (b) y (d) suman una migración y un cambio en la pantalla de auditoría. (c) cambia el significado de `operadorId`.
+
+**Forma.**
+- `ejecutarSobreVistas` acepta `auditoria: null`: no escribe fila ni la línea de «sin operador». Los caminos de la consola no cambian.
+- Cada ejecución del panel deja una línea `info` con `tenantId`, `reporteId`, `conexionId`, `estado`, `filas` y `duracionMs`. Nunca el SQL, la fecha calculada ni el contenido de una fila (DEC-93, regla 5). Una falla deja además la línea `warn` saneada de hoy.
+- Un reporte guardado fuera de las reglas deja una línea `error`, y su tarjeta queda `no-disponible`.
+
+**Se resigna.**
+- **Una lectura de la réplica desde el panel no queda en el registro consultable:** queda en el log, que no es inmutable ni tiene pantalla.
+- **Saber qué vio el cliente y cuándo** exige revisar el log.
+
+**Decidido por:** el agente, con la autorización del usuario del 2026-11-10 de avanzar sin frenar: se tomaron las opciones recomendadas en la exploración de CH-48. Queda para revisión del usuario.
+
+**Estado:** firme, sujeto a revisión del usuario.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
