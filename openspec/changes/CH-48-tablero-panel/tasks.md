@@ -74,15 +74,15 @@ Chain strategy: feature-branch-chain
 ## CH-48b — page without the library
 
 ### 5. Design guide first
-- [ ] 5.1 `.claude/skills/zerodashboard-design/SKILL.md`: the scope line rewritten as design §2.1 says (P-06 stays out; the live dashboard is allowed).
-- [ ] 5.2 `.claude/skills/zerodashboard-design/guidelines/pantallas.md`: P-08 «Tablero» (purpose, data, nav, cards, number card, table, chart box, states with the copy of design §2.4, actions, freshness); P-07 moves below «Mis automatizaciones»; the CH-48 row of the change table.
-- [ ] 5.3 `.claude/skills/zerodashboard-design/guidelines/lenguaje.md`: «resultados» for the dashboard.
-- [ ] 5.4 The same three edits in `.agents/skills/zerodashboard-design/`, and a check that both copies are identical (`diff -rq`).
+- [x] 5.1 `.claude/skills/zerodashboard-design/SKILL.md`: the scope line rewritten as design §2.1 says (P-06 stays out; the live dashboard is allowed).
+- [x] 5.2 `.claude/skills/zerodashboard-design/guidelines/pantallas.md`: P-08 «Tablero» (purpose, data, nav, cards, number card, table, chart box, states with the copy of design §2.4, actions, freshness); P-07 moves below «Mis automatizaciones»; the CH-48 row of the change table.
+- [x] 5.3 `.claude/skills/zerodashboard-design/guidelines/lenguaje.md`: «resultados» for the dashboard.
+- [x] 5.4 The same three edits in `.agents/skills/zerodashboard-design/`, and a check that both copies are identical (`diff -rq`).
 
 ### 6. Page
-- [ ] 6.1 `src/panel/panel-tablero-pagina.ts`: `ESTILOS_TABLERO`, `MARCADO_NAV`, `MARCADO_TABLERO`, `SCRIPT_TABLERO` (design §2.2, §2.3). Chart cards render their table open; there is no canvas yet.
-- [ ] 6.2 `src/panel/panel.ts`: styles into `CABEZA_PAGINA`; nav and dashboard section; `#seccion-avisos` wrapping the list and, after it, the Telegram card; `SCRIPT_TABLERO` before the automations script, which stays last.
-- [ ] 6.3 `src/panel/panel-tablero-pagina.test.ts` (fake DOM):
+- [x] 6.1 `src/panel/panel-tablero-pagina.ts`: `ESTILOS_TABLERO`, `MARCADO_NAV`, `MARCADO_TABLERO`, `SCRIPT_TABLERO` (design §2.2, §2.3). Chart cards render their table open; there is no canvas yet.
+- [x] 6.2 `src/panel/panel.ts`: styles into `CABEZA_PAGINA`; nav and dashboard section; `#seccion-avisos` wrapping the list and, after it, the Telegram card; `SCRIPT_TABLERO` before the automations script, which stays last.
+- [x] 6.3 `src/panel/panel-tablero-pagina.test.ts` (fake DOM):
   - nav only with reports; default «Tablero»; hash switch and `aria-current`; configuration failure shows «Avisos» only;
   - 3 requests at a time in dashboard order; a slow card does not block the rest; stale answers dropped;
   - every state with its copy; «Reintentar» re-runs one card; 429 and network show the error state; 401 reloads;
@@ -91,10 +91,10 @@ Chain strategy: feature-branch-chain
   - number formatting `es-AR`; table caption, `th scope="col"`, `zd-num` only on all-number columns; `corte` and «Desde el dd/mm» lines;
   - freshness: hours, minutes, days, null;
   - markup in titles and values is text; no tenant identifier in any request.
-- [ ] 6.4 `src/panel/panel.test.ts`: the automations script is still last; the glossary scan covers `SCRIPT_TABLERO`; the Telegram card follows the list.
+- [x] 6.4 `src/panel/panel.test.ts`: the automations script is still last; the glossary scan covers `SCRIPT_TABLERO`; the Telegram card follows the list.
 
 ### 7. Verification (CH-48b)
-- [ ] 7.1 `npx tsc -p tsconfig.json --noEmit`, `npm run build`, the focused command of unit b, and `npm run test:db`.
+- [x] 7.1 `npx tsc -p tsconfig.json --noEmit`, `npm run build`, the focused command of unit b, and `npm run test:db`.
 
 ## CH-48c — charts
 

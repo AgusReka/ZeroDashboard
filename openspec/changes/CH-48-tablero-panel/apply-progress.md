@@ -61,3 +61,55 @@ Branch `ch48a/servidor`, from `master` after PR #249 (DEC-201, DEC-202). CH-48b 
 - The page reads `GET /api/panel/tablero` → `{ reportes: [{ id, titulo, descripcion, visualizacion, periodo: { dias, predeterminado } | null }], datos: { actualizadosEn: string | null }, zonaHoraria }`.
 - A run is `GET /api/panel/tablero/<id>/resultado[?dias=N]` → `200 { estado }`. With `ok` it also has `columnas: [{ rol, titulo }]`, `filas` (positional, `valor` already a number), `corte: boolean` and `periodo: { dias, desde: 'YYYY-MM-DD' } | null`. The other answers are `400 { error: 'solicitud-invalida', campos: ['/dias'] }`, `404 reporte-no-encontrado`, `429 demasiadas-solicitudes`, and `401 sesion-invalida` / `sesion-expirada` (or `409 tenant-desactivado`) from the session hook.
 - Any query key other than `dias`, or `dias` that is not 1 to 3 digits, is a `400`. The page sends no other key.
+
+## CH-48b (page without the library): tasks 5.1 to 7.1, done
+
+Branch `ch48b/pantalla`, from `master` after CH-48a (PR #250). CH-48c (tasks 8 to 10) is not started.
+
+### Tasks done
+
+- 5.1 to 5.4: the design guide, both copies, identical (`diff -rq` empty). `SKILL.md` scope line as design §2.1; `pantallas.md` gets P-08 «Tablero» (purpose, data, nav, cards, number, table, chart box, states with the §2.4 copy, actions, freshness, implementation), P-07 now sits below «Mis automatizaciones», and the CH-48 row; `lenguaje.md` allows «resultados» on the dashboard.
+- 6.1: `src/panel/panel-tablero-pagina.ts` with `ESTILOS_TABLERO`, `MARCADO_NAV`, `MARCADO_TABLERO` and `SCRIPT_TABLERO`. Bar and line cards show their table open inside `<details>`; no canvas.
+- 6.2: `src/panel/panel.ts`: the styles in `CABEZA_PAGINA`; the nav between the header and `<main>`; the dashboard section, then `#seccion-avisos` with the list and, after it, the Telegram card; `SCRIPT_TABLERO` after «Salir» and before the automations script, which stays last.
+- 6.3: `src/panel/panel-tablero-pagina.test.ts`, 35 cases on its own fake DOM with a controllable `fetch` and a fixed clock. No database.
+- 6.4: `src/panel/panel.test.ts`: the dashboard script comes before the automations script, which is still last, once, only in the authenticated shell; the glossary scan covers `SCRIPT_TABLERO`'s literals; the Telegram card follows the list inside «Avisos»; «Actualizar» joins «Salir» as a static control.
+- 7.1: the verification below.
+
+### Files touched
+
+| File | Action | Lines (+/-) |
+|---|---|---|
+| `.claude/skills/zerodashboard-design/{SKILL.md,guidelines/pantallas.md,guidelines/lenguaje.md}` | Modify | +26 / -3 |
+| `.agents/skills/zerodashboard-design/` (same three) | Modify | +26 / -3 |
+| `src/panel/panel-tablero-pagina.ts` | Create | +477 |
+| `src/panel/panel.ts` | Modify | +34 / -31 |
+| `src/panel/panel-tablero-pagina.test.ts` | Create | +524 |
+| `src/panel/panel.test.ts` | Modify | +33 / -3 |
+
+### Deviations from the design, with reasons
+
+- **The script is wrapped in its own function.** The automations script declares global `nodo`, `mostrar`, `fallar` and others; two classic scripts share one global scope, so the last one would overwrite the first's names.
+- **Right alignment uses `is-num zd-num`.** In `components.css`, `.zd-num` only sets tabular figures; the right alignment of a table cell is `.zd-table .is-num`. Both classes go on all-number columns, and the tests check `zd-num`.
+- **The cut line uses the number of rows received** as N («Mostramos solo los primeros N resultados.»). With `corte`, the server sends exactly the effective cap (`topeEfectivo`, which can be lower than the visualization's cap), and the page does not know `maxFilasPorConsulta`. A number card shows no cut line («los primeros 1 resultados» reads wrong).
+- **A one-day option reads «Último día»**, not «Últimos 1 días».
+- **A failing «Actualizar» keeps the cards** and shows a banner, «No pudimos actualizar el tablero.» / «Volvé a intentar en unos minutos.». The design only says what a failing first read does («Avisos» only).
+- **`no-disponible` and `sin-datos` use `role="status"`**, the three states with «Reintentar» use `role="alert"`.
+- **Card headers align to the top** and the select sits at the right on desktop, under the title on mobile (seen in the browser: aligned to the bottom, a card with no description left its title floating).
+- **A table header over a number column keeps the sans font** (`.zd-table .is-num` sets mono, which looked off in a header).
+
+### Verification
+
+- `npx tsc -p tsconfig.json --noEmit`: exit 0.
+- `npm run build`: exit 0.
+- Focused command of unit b, with the `TEST_DB_*` variables and `DATABASE_URL` on port 5434: 65 tests, 65 pass, 0 skipped.
+- `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`: 2138 tests, 2134 pass, 4 fail: the known `src/conexiones/conexiones.test.ts` 5.1, 5.3, 5.4 and CH-07.
+- Browser (demo container, headless Chrome at 1280 and 390 px): «Tablero» with a number, a bar (as its table) and a table card, the period changed to 7 days, «Avisos», and every card in the error state after forcing `429`. No page exceptions.
+
+### For CH-48c
+
+- The bar and line bodies are built in `pintarResultado`, branch `vista === 'barras' || vista === 'linea'`: a `<details class="panel-datos">` with `open = true`, a `<summary>` «Ver los datos en una tabla» and `tablaDe(titulo, columnas, filas)`. Draw the canvas before that `<details>` and set `open` to false when `Chart` is a function.
+- Each card object (`tarjeta`) has `reporte`, `dias`, `generacion`, `pendiente`, `descartada`, `cuerpo` and `elemento`. Every re-run goes through `encolar(tarjeta)`, and `vaciar(tarjeta)` clears the body: that is the place for `chart.destroy()`. «Actualizar» marks the old cards `descartada` in `pintarTablero`, so their charts must be destroyed there too.
+- The `<script src="/ui/vendor/chart.umd.js">` goes before the `<!-- P-08 Tablero (CH-48) ... -->` comment and `<script>` that hold `SCRIPT_TABLERO` in `documentoShell`. The panel test checks `html.indexOf(SCRIPT_TABLERO)`.
+- The page test runs the script with `new Function('document', 'fetch', 'window', 'Date', SCRIPT_TABLERO)`; add a `Chart` parameter and stub it there. The fake DOM's `Nodo` has no `getComputedStyle`: `colores()` needs a stubbed global or a parameter too.
+- Values in a `tabla` column arrive as the driver returns them: a `COUNT` or `SUM` over `bigint` is a string ("26"), so that column is neither right-aligned nor formatted es-AR. The `valor` of a chart is always a number (the server converts it).
+- «Desde el dd/mm» drops the year, which reads oddly for 366 days («Desde el 09/11» means last year).
