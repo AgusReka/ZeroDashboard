@@ -54,8 +54,9 @@ A stored report whose fields are out of the rules SHALL still be listed, with it
 
 ### Requirement: Run One Report of the Session Tenant's Dashboard (DEC-198, DEC-201)
 `GET /api/panel/tablero/:reporteId/resultado` SHALL run one report. Its only inputs SHALL be `:reporteId` and an optional query key `dias`. The checks SHALL run in this order, and each refusal SHALL answer before anything is dialed:
-1. `:reporteId` SHALL be one of the ids on the session tenant's dashboard. Otherwise the answer is `404 reporte-no-encontrado`, the same answer for an unknown id and for a report on another tenant's dashboard only.
-2. `dias`, when present, SHALL be a string of digits and SHALL be one of the report's declared days. A report without a period SHALL accept no `dias`. Otherwise the answer is `400 solicitud-invalida` with `campos` ["/dias"]. Any other query key SHALL also be `400 solicitud-invalida`.
+1. The query SHALL hold no key other than `dias`, and `dias`, when present, SHALL be a string of one to three digits. Otherwise the answer is `400 solicitud-invalida` with `campos` ["/dias"]. This shape check reads nothing, so it answers the same for any `:reporteId`.
+2. `:reporteId` SHALL be one of the ids on the session tenant's dashboard. Otherwise the answer is `404 reporte-no-encontrado`, the same answer for an unknown id and for a report on another tenant's dashboard only.
+3. `dias`, when present, SHALL be one of the report's declared days, and a report without a period SHALL accept no `dias`. Otherwise the answer is `400 solicitud-invalida` with `campos` ["/dias"].
 3. The run SHALL pass the per-tenant gate ("Per-Tenant Run Gate and Single-Flight"), or the answer is `429 demasiadas-solicitudes`.
 
 Without `dias`, the first declared day SHALL be used. The connection SHALL be the dashboard's `conexionId`, never a request value. The run SHALL go through the shared report run of `report-catalog` ("Report Runs Share One Path"): the date computed by the server and bound as a driver parameter (rule 4), the row cap of the visualization, the first page only.
@@ -233,7 +234,7 @@ The page SHALL ask for the configuration first, then the runs, at most 3 at a ti
 |---|---|
 | `ok` | The body. With `corte`, «Mostramos solo los primeros N resultados.» with N the cap of the visualization. With `periodo`, «Desde el dd/mm», or «Desde el dd/mm/aaaa» when that year is not the current one in the tenant's time zone. |
 | `sin-datos` | «No hay datos para este período.» |
-| `no-disponible` | That the report cannot be shown for now and that the team is told, with no action for the client |
+| `no-disponible` | That the report cannot be shown for now and that the client can tell whoever gave them access; no retry action |
 | `tiempo-agotado` | «Tu tienda tardó demasiado en responder.» and «Reintentar» |
 | `sin-conexion` | That the business's data could not be reached right now, and «Reintentar» |
 | `error`, `429`, a network failure or a `5xx` | A generic message in business language and «Reintentar» |
