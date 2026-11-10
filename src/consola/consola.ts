@@ -194,6 +194,11 @@ function documentoConsola(nombreOperador: string): string {
   .versiones-bloques { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); margin-top: var(--space-5); }
   .versiones-bloque pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (max-width: 40rem) { .versiones-bloques { grid-template-columns: minmax(0, 1fr); } }
+  /* Side panels: the body is a grid, so one long SQL line widened its column past the
+     420 px panel and pushed the selects past its edge. Grid items may shrink, and the
+     statement wraps instead of overflowing. */
+  .zd-drawer__body > * { min-width: 0; }
+  #plantilla-panel pre, #reporte-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   /* CH-29 (C-01): the operator slot and Salir sit at the end of the tenant bar. */
   #operador { margin-inline-start: auto; }
   /* CH-30d: the mapping editors the script builds, one per contract entity. */
