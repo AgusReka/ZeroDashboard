@@ -8789,6 +8789,109 @@ describe('the console document, served by the real route', () => {
     await enviar(escenario, { error: 'sesion-invalida' }, 401, 'salir', 'click');
     assert.equal(escenario.recargas, 1);
   });
+
+  // ---- UX review lote 1 (C-01 selector, C-10, C-15, C-16) ----------------------------------
+
+  test('C-01 each tenant option shows the name and an id fragment, as text, and the bar does not repeat the fragment', async () => {
+    const A = '31d00000-0000-4000-8000-000000000002';
+    const B = 'c1bf52cd-0000-4000-8000-000000000001';
+    const hostil = '<img src=x onerror=alert(1)>';
+    const escenario = await arrancar([
+      { id: A, nombre: 'Food Store' },
+      { id: B, nombre: 'Food Store' },
+      { id: 't-9', nombre: hostil },
+    ]);
+    const selector = nodo(escenario, 'tenant');
+    assert.deepEqual(selector.options.map((o) => [o.value, o.textContent]), [
+      ['', 'Elegí un tenant'],
+      [A, 'Food Store (31d00000…)'],
+      [B, 'Food Store (c1bf52cd…)'],
+      ['t-9', hostil + ' (t-9…)'],
+    ]);
+    assert.ok(selector.options.every((o) => o.hijos.length === 0), 'text only');
+
+    await elegirTenant(escenario, [], [], A);
+    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Food Store (31d00000…)', 'the bar names the tenant once');
+  });
+
+  test('C-10 a tenant with users clears the «Elegí un tenant» line, and one without says so until the first user exists', async () => {
+    const sinTenant = await arrancar();
+    irA(sinTenant, '#usuarios');
+    await asentarVarias();
+    assert.equal(nodo(sinTenant, 'usuarios-aviso').textContent, 'Elegí un tenant para ver sus usuarios del panel.');
+    // Choosing the tenant with the screen open reloads it: the answer to /usuarios is the fourth request.
+    nodo(sinTenant, 'tenant').value = 't-1';
+    sinTenant.respuestas.push(
+      { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+      { status: 200, cuerpo: { plantillas: [], truncado: false } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO], truncado: false } },
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+      { status: 200, cuerpo: { automatizaciones: [], truncado: false } },
+    );
+    nodo(sinTenant, 'tenant').disparar('change');
+    await asentarVarias();
+    assert.ok(filaUsuario(sinTenant, 'ana@negocio.com'));
+    assert.equal(nodo(sinTenant, 'usuarios-aviso').textContent, '', 'no stale line over a list that is showing');
+
+    const conUsuarios = await abrirUsuarios();
+    assert.equal(nodo(conUsuarios, 'usuarios-aviso').textContent, '');
+
+    const vacio = await abrirUsuarios([]);
+    assert.equal(nodo(vacio, 'usuarios-aviso').textContent, 'Este tenant todavía no tiene usuarios del panel.');
+    abrirDialogo(vacio, 'usuario-nuevo');
+    nodo(vacio, 'usuario-correo').value = 'ana@negocio.com';
+    vacio.respuestas.push(
+      { status: 201, cuerpo: { usuario: USUARIO_ACTIVO, clave: CLAVE } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO], truncado: false } },
+    );
+    nodo(vacio, 'usuario-alta').disparar('submit');
+    await asentarVarias();
+    assert.equal(nodo(vacio, 'usuarios-aviso').textContent, '', 'the empty line goes with the first user');
+  });
+
+  test('C-10 a failure written by an action is not wiped by the reload that follows it', async () => {
+    const escenario = await abrirUsuarios();
+    escenario.respuestas.push(
+      { status: 500, cuerpo: { error: 'interno' } },
+      { status: 200, cuerpo: { usuarios: [USUARIO_ACTIVO, USUARIO_INACTIVO], truncado: false } },
+    );
+    botonesCon(filaUsuario(escenario, 'beto@negocio.com'), 'Reactivar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'usuarios-aviso').textContent, 'No se pudo completar la acción (HTTP 500).');
+  });
+
+  test('C-15 Salir takes the tenant bar text color, in the page style', () => {
+    const estilo = documento.slice(0, documento.indexOf('<script>'));
+    assert.match(estilo, /#barra-tenant #salir\s*\{[^}]*color:\s*inherit/);
+    assert.match(estilo, /#barra-tenant #salir:hover:not\(:disabled\)\s*\{[^}]*color:\s*inherit/);
+    assert.ok(!/#salir\s*\{[^}]*color:\s*var\(--text-2\)/.test(estilo), 'no grey text on the bar');
+  });
+
+  /** dd/mm/aaaa HH:MM of an instant in the zone this test process runs in, like the console's own helper. */
+  const localDe = (iso: string): string => {
+    const f = new Date(iso);
+    const dos = (n: number): string => String(n).padStart(2, '0');
+    return `${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${f.getFullYear()} ${dos(f.getHours())}:${dos(f.getMinutes())}`;
+  };
+
+  test('C-16 «Creada» of an automation and the date of a saved query use the local format, not the ISO instant', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [FILA_GUARDADA], [automatizacion()]);
+    const [, , , , creada] = celdasDeFila(escenario);
+    assert.equal(creada.textContent, localDe('2026-09-28T00:00:00.000Z'));
+    assert.match(creada.textContent, /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+    const fecha = nodo(escenario, 'guardadas').hijos[0].hijos[1];
+    assert.equal(fecha.textContent, localDe('2026-10-01T10:00:00.000Z'));
+    assert.ok(!textoDeLaPagina(escenario).includes('2026-10-01T10:00:00.000Z'), 'no raw ISO instant on the page');
+  });
+
+  test('C-16 a date that does not parse is shown as it came', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [{ ...FILA_GUARDADA, creadaEn: 'sin-fecha' }], [automatizacion({ creadaEn: 'sin-fecha' })]);
+    assert.equal(celdasDeFila(escenario)[4].textContent, 'sin-fecha');
+    assert.equal(nodo(escenario, 'guardadas').hijos[0].hijos[1].textContent, 'sin-fecha');
+  });
 });
 
 // ---- CH-29 (DEC-152, DEC-154): GET /consola serves the login screen or the console --------
@@ -8906,5 +9009,21 @@ describe('CH-29 the console page by session', () => {
     const r = await ingresarCon(500, { error: 'interno' });
     assert.equal(r.recargas(), 0);
     assert.match((r.nodos.get('texto-aviso') as Nodo).textContent, /No se pudo contactar/);
+  });
+
+  test('C-03 an empty form (a 400) asks for the name and the password instead of blaming the connection', async () => {
+    const r = await ingresarCon(400, { error: 'solicitud-invalida', campos: ['/nombre'] });
+    assert.equal(r.recargas(), 0);
+    assert.equal((r.nodos.get('aviso-ingreso') as Nodo).hidden, false);
+    assert.equal((r.nodos.get('texto-aviso') as Nodo).textContent, 'Completá el nombre y la clave.');
+    assert.equal((r.nodos.get('boton-ingresar') as Nodo).disabled, false);
+    assert.equal((r.nodos.get('etiqueta-ingresar') as Nodo).textContent, 'Ingresar');
+  });
+
+  test('C-03 a 5xx and a 502 still say the console could not be reached', async () => {
+    for (const status of [500, 502, 503]) {
+      const r = await ingresarCon(status, { error: 'interno' });
+      assert.match((r.nodos.get('texto-aviso') as Nodo).textContent, /No se pudo contactar con la consola/, String(status));
+    }
   });
 });
