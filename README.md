@@ -4,9 +4,16 @@ Plataforma que ofrece automatizaciones operativas a e-commerce pequeños sin mod
 
 ## Estado actual
 
-La consola, el motor de automatizaciones con aviso por correo, el panel del cliente y la conexión por agente están implementados (CH-01 a CH-35, más la advertencia de frescura de CH-26). Queda como **trabajo a futuro** CH-19d1, CH-19d2 y CH-19e (latido del agente, estado de conectividad y runbook de alta; DEC-179), y CH-27 está fuera de alcance mientras los resultados no se persistan (DEC-93). Detalle por change: [`docs/02-mapa-de-changes.md`](docs/02-mapa-de-changes.md). Es la **versión 1.0** (tag `v1.0.0`); qué deja afuera, en la sección «Versión 1.0» de su mapa congelado, [`docs/versiones/v1/02-mapa-de-changes.md`](docs/versiones/v1/02-mapa-de-changes.md). El mapa vivo ya planifica la versión 2.
+La consola, el motor de automatizaciones con aviso por correo, el panel del cliente y la conexión por agente están implementados (CH-01 a CH-35, más la advertencia de frescura de CH-26). Queda como **trabajo a futuro** CH-19d1, CH-19d2 y CH-19e (latido del agente, estado de conectividad y runbook de alta; DEC-179), y CH-27 está fuera de alcance mientras los resultados no se persistan (DEC-93). Esa es la **versión 1.0** (tag `v1.0.0`); qué deja afuera, en la sección «Versión 1.0» de su mapa congelado, [`docs/versiones/v1/02-mapa-de-changes.md`](docs/versiones/v1/02-mapa-de-changes.md).
 
-**Cómo se usa:** [`docs/guia/`](docs/guia/README.md) (arquitectura, alta de tenant, mapeo, consultas, plantillas, automatizaciones, usuarios y diagnóstico).
+La **versión 2** está en curso en `master`. Al 2026-11-10 incluye hasta CH-47:
+- **Plantillas y avisos:** plantillas escritas desde la consola, con texto del mensaje, mínimo de filas, varios destinatarios y vista previa (CH-37 a CH-42).
+- **Telegram:** vínculo desde el panel y canal de aviso (CH-43 y CH-44).
+- **Reportes:** catálogo de reportes en la consola, tablero de cada cliente y Chart.js servido para los gráficos (CH-45 a CH-47).
+
+El panel todavía no muestra los reportes: eso llega con CH-48. Detalle por change: [`docs/02-mapa-de-changes.md`](docs/02-mapa-de-changes.md).
+
+**Cómo se usa:** [`docs/guia/`](docs/guia/README.md) (arquitectura, alta de tenant, mapeo, consultas, plantillas, automatizaciones, usuarios, diagnóstico y reportes).
 
 ## Versión evaluada en la tesis
 
@@ -69,6 +76,27 @@ Después, `http://localhost:3000/consola` muestra «Ingresar». Detalle en [Usua
 | `correo` | `docker compose --profile correo up -d` | Mailpit para ver los correos: interfaz en `http://localhost:8026`. Hay que apuntar la app a él con `SMTP_HOST=mailpit` y `SMTP_PORT=1025`. |
 
 La demo exige `SEED_DEMO=1`, `REPLICA_DEMO_PASSWORD`, `DEMO_OPERADOR_CLAVE` (mínimo 12 caracteres), `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE`, en el entorno o en `.env`. Si falta alguna o la réplica no responde, la app no arranca y dice cuál falta. Solo el valor exacto `1` activa la siembra (DEC-171).
+
+### Probar la demo completa
+
+Los dos perfiles se combinan en un solo comando. Antes, en `.env`, cargar las variables de la demo y apuntar el correo a Mailpit (`SMTP_HOST=mailpit`, `SMTP_PORT=1025`):
+
+```bash
+docker compose --profile demo --profile correo up -d --build
+curl http://localhost:3000/health   # {"status":"ready","db":"connected"}
+```
+
+Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
+
+1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y una automatización activa sobre la plantilla `stock-fisico`. Los avisos llegan a Mailpit, en `http://localhost:8026`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
+2. **Reportes.** En **Reportes**, «Nuevo reporte», probarlo contra la conexión de la demo y guardarlo. La guía trae un SQL de ejemplo: [Reportes](docs/guia/09-reportes.md#escribir-el-sql).
+3. **Tablero del cliente.** En **Puesta en marcha → Tablero del cliente**, elegir la conexión, agregar y ordenar los reportes y guardar. Un reporte que ya está en un tablero ofrece «Duplicar y editar» en lugar de «Editar».
+
+El panel del cliente está en `http://localhost:3000/panel`, con `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE`. Hoy muestra las automatizaciones y el vínculo de Telegram. El tablero de reportes llega con CH-48.
+
+Para probar Telegram hace falta además `TELEGRAM_BOT_TOKEN` (ver [Variables opcionales](#variables-opcionales)).
+
+Para bajar todo: `docker compose --profile demo --profile correo down`. Agregar `-v` borra también los volúmenes, y con ellos la base y la demo sembrada.
 
 ## Scripts
 
