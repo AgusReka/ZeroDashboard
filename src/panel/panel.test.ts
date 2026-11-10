@@ -10,6 +10,7 @@ import { hashearClave } from '../compartido/crypto-auth.js';
 import { terminosProhibidosEn } from '../compartido/glosario-panel.js';
 import { registerPanelAuthRoutes } from './panel-auth.js';
 import { registerPanelRoutes } from './panel.js';
+import { SCRIPT_TABLERO } from './panel-tablero-pagina.js';
 
 /**
  * CH-22a tasks 3.1 and 3.2 (DEC-04, DEC-135, DEC-136): the servable panel page.
@@ -238,6 +239,25 @@ describe(
       assert.ok(!login.body.includes('/api/panel/automatizaciones'), 'the login screen must not carry the screen script');
     });
 
+    test('CH-48 the dashboard: nav and section start hidden, its script comes before the automations script, which stays last', async () => {
+      const { html, script } = await shellConScript();
+
+      assert.ok(script.includes("fetch('/api/panel/automatizaciones'"), 'the last script is still the automations one');
+      const tablero = html.indexOf(SCRIPT_TABLERO);
+      assert.ok(tablero !== -1, 'the dashboard script is served once');
+      assert.equal(html.indexOf(SCRIPT_TABLERO, tablero + 1), -1);
+      assert.ok(tablero < html.lastIndexOf('<script>'), 'the dashboard script runs before the automations script');
+      assert.ok(html.indexOf('boton-salir') < tablero);
+      assert.match(html, /<nav id="nav-panel" class="zd-tabs panel-nav" aria-label="Secciones" hidden>/);
+      assert.match(html, /<section id="seccion-tablero"[^>]*data-change="CH-48"[^>]*hidden>/);
+      assert.match(html, /<div id="seccion-avisos" class="panel-avisos">/);
+      assert.ok(html.indexOf('id="seccion-tablero"') < html.indexOf('id="seccion-avisos"'));
+      // Only the authenticated shell carries the dashboard.
+      const login = await app.inject({ method: 'GET', url: '/panel' });
+      assert.ok(!login.body.includes('/api/panel/tablero'), 'the login screen does not carry the dashboard script');
+      assert.ok(!login.body.includes('id="nav-panel"'));
+    });
+
     test('the P-02 script carries every state string and the 401 reload branch (CH-22b)', async (t) => {
       const { html, script } = await shellConScript();
 
@@ -391,7 +411,11 @@ describe(
       assert.ok(!/\.(href|src)\s*=/.test(script.replace(enlaceTelegram, '')), 'no other href or src built from API data');
       assert.ok(!/Activar/.test(html), 'activation is not offered');
       const sinTarjeta = html.replace(/<section id="tarjeta-telegram"[\s\S]*?<\/section>/, '');
-      assert.ok(!/<button/.test(sinTarjeta.replace(/<button id="boton-salir"[\s\S]*?<\/button>/, '')), 'Salir is the only static control outside the Telegram card');
+      // CH-48: «Actualizar» of the dashboard is the other static control.
+      const sinFijos = sinTarjeta
+        .replace(/<button id="boton-salir"[\s\S]*?<\/button>/, '')
+        .replace(/<button id="boton-actualizar"[\s\S]*?<\/button>/, '');
+      assert.ok(!/<button/.test(sinFijos), 'Salir and Actualizar are the only static controls outside the Telegram card');
     });
 
     /** A minimal DOM: every id resolves to one recorded element, and clicks run the handlers. */
@@ -701,11 +725,14 @@ describe(
       });
     });
 
-    test('CH-43 P-07: the «Avisos por Telegram» card sits above the list, with its fixed blocks and copy', async (t) => {
+    test('CH-43 P-07: the «Avisos por Telegram» card sits below the list (CH-48), with its fixed blocks and copy', async (t) => {
       const { html, script } = await shellConScript();
 
       assert.match(html, /<section id="tarjeta-telegram" class="zd-card panel-telegram" [^>]*data-change="CH-43" data-estado="existe"/);
-      assert.ok(html.indexOf('id="tarjeta-telegram"') < html.indexOf('data-screen-label="Mis automatizaciones"'), 'the card goes above the list');
+      // CH-48 (UX review P-07): the card follows the whole list, and both live inside «Avisos».
+      assert.ok(html.indexOf('id="tarjeta-telegram"') > html.indexOf('id="nota-truncado"'), 'the card goes below the list');
+      assert.ok(html.indexOf('id="seccion-avisos"') < html.indexOf('data-screen-label="Mis automatizaciones"'), 'the list is inside «Avisos»');
+      assert.ok(html.indexOf('id="tarjeta-telegram"') < html.indexOf('</main>'), 'the card stays inside the page body');
       for (const id of ['telegram-carga', 'telegram-error', 'telegram-no-disponible', 'telegram-sin-vincular', 'telegram-codigo', 'telegram-vinculado', 'telegram-confirmar', 'telegram-aviso', 'telegram-reintentar', 'telegram-abrir']) {
         assert.match(html, new RegExp(`id="${id}"`), id);
       }
@@ -795,7 +822,8 @@ describe(
         .replace(/<style>[\s\S]*?<\/style>/g, ' ')
         .replace(/<!--[\s\S]*?-->/g, ' ')
         .replace(/<[^>]*>/g, ' ');
-      const literales = (script.match(/'[^']*'/g) ?? []).join(' ');
+      // CH-48: the dashboard script is part of the served page, so its literals are scanned too.
+      const literales = [...(script.match(/'[^']*'/g) ?? []), ...(SCRIPT_TABLERO.match(/'[^']*'/g) ?? [])].join(' ');
       const prohibido = /tenant|cron|sql|consulta|query|ejecución|réplica|parámetro|timeout|plantilla/i;
 
       assert.ok(!prohibido.test(visible), `término técnico en el texto visible: ${prohibido.exec(visible)?.[0]}`);

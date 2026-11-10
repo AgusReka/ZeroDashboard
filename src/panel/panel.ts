@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { levantarSesionPanel } from './panel-auth.js';
+import { ESTILOS_TABLERO, MARCADO_NAV, MARCADO_TABLERO, SCRIPT_TABLERO } from './panel-tablero-pagina.js';
 
 /**
  * The servable client panel: one page, two renders (CH-22a PR3, DEC-04, DEC-136).
@@ -105,7 +106,7 @@ const CABEZA_PAGINA = `<!doctype html>
   /* P-01 (UX review): the shared link rule (.zd-root a, specificity 0,1,1) beats .zd-btn--primary (0,1,0),
      so a primary button drawn as a link kept the link color on the accent fill. */
   .zd-root a.zd-btn--primary, .zd-root a.zd-btn--primary:hover { color: var(--text-on-accent); text-decoration: none; }
-</style>
+${ESTILOS_TABLERO}</style>
 </head>
 <body class="zd-root" data-surface="panel">
 `;
@@ -213,7 +214,9 @@ formulario.addEventListener('submit', function (evento) {
 
 /**
  * The authenticated shell (CH-22, "parcial": the header, plus the P-02 list of CH-22b and
- * the P-04 inline "Ajustar" form of CH-23, below the P-07 Telegram card of CH-43). The header names the session's tenant — the one store
+ * the P-04 inline "Ajustar" form of CH-23, then the P-07 Telegram card of CH-43, all inside
+ * «Avisos»; and the P-08 dashboard of CH-48 with its nav, shown only when the tenant has
+ * reports). The header names the session's tenant — the one store
  * this administrator sees — and its Salir button revokes the session through the PR2
  * endpoint and reloads, so the server renders the login screen again. `nombreTenant`
  * is escaped before interpolation: it is stored data, so it is never trusted as
@@ -236,8 +239,35 @@ function documentoShell(nombreTenant: string): string {
     </button>
   </div>
 </header>
-<main class="panel-main">
-  <!-- P-07 Avisos por Telegram (CH-43): fixed blocks toggled with hidden; values enter through textContent. -->
+${MARCADO_NAV}<main class="panel-main">
+${MARCADO_TABLERO}  <!-- «Avisos» (CH-48): the automations list and, after it, the Telegram card. Visible on its own when there is no dashboard. -->
+  <div id="seccion-avisos" class="panel-avisos">
+  <section data-screen-label="Mis automatizaciones" data-change="CH-22" data-estado="parcial">
+    <h1 class="zd-h1">Mis automatizaciones</h1>
+    <p class="zd-muted">Lo que revisamos por vos y te avisamos.</p>
+  </section>
+  <!-- P-02 states: loading skeleton, error, empty, active cards, available section. -->
+  <div id="estado-carga" class="panel-lista" aria-busy="true" aria-label="Cargando tus automatizaciones">
+    <div class="zd-card panel-esqueleto"><span class="zd-skeleton panel-esqueleto__titulo"></span><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
+    <div class="zd-card panel-esqueleto"><span class="zd-skeleton panel-esqueleto__titulo"></span><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
+  </div>
+  <div id="estado-error" class="zd-card zd-state zd-state--error" role="alert" hidden>
+    <span class="zd-state__icon"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>
+    <p class="zd-state__title">No pudimos cargar tus automatizaciones</p>
+    <p class="zd-state__body" id="texto-error">Volvé a intentar en unos minutos.</p>
+  </div>
+  <div id="estado-vacio" class="zd-card zd-state" hidden>
+    <span class="zd-state__icon"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg></span>
+    <p class="zd-state__title">Todavía no activaste ninguna automatización</p>
+    <p class="zd-state__body">Cuando haya una activa, la vas a ver acá con su última revisión y la próxima.</p>
+  </div>
+  <div id="lista-activas" class="panel-lista" hidden></div>
+  <section id="seccion-disponibles" class="panel-seccion" hidden>
+    <h2 class="zd-h2">Otras automatizaciones disponibles</h2>
+    <div id="lista-disponibles" class="panel-lista"></div>
+  </section>
+  <p id="nota-truncado" class="zd-meta" hidden>Mostramos solo una parte de tus automatizaciones.</p>
+  <!-- P-07 Avisos por Telegram (CH-43; below the list since CH-48, UX review P-07): fixed blocks toggled with hidden; values enter through textContent. -->
   <section id="tarjeta-telegram" class="zd-card panel-telegram" data-screen-label="Avisos por Telegram" data-change="CH-43" data-estado="existe" aria-labelledby="titulo-telegram">
     <h2 id="titulo-telegram" class="zd-h2">Avisos por Telegram</h2>
     <div id="telegram-carga" class="panel-esqueleto" aria-busy="true" aria-label="Cargando tus avisos por Telegram"><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
@@ -288,31 +318,7 @@ function documentoShell(nombreTenant: string): string {
       </div>
     </div>
   </section>
-  <section data-screen-label="Mis automatizaciones" data-change="CH-22" data-estado="parcial">
-    <h1 class="zd-h1">Mis automatizaciones</h1>
-    <p class="zd-muted">Lo que revisamos por vos y te avisamos.</p>
-  </section>
-  <!-- P-02 states: loading skeleton, error, empty, active cards, available section. -->
-  <div id="estado-carga" class="panel-lista" aria-busy="true" aria-label="Cargando tus automatizaciones">
-    <div class="zd-card panel-esqueleto"><span class="zd-skeleton panel-esqueleto__titulo"></span><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
-    <div class="zd-card panel-esqueleto"><span class="zd-skeleton panel-esqueleto__titulo"></span><span class="zd-skeleton panel-esqueleto__linea"></span><span class="zd-skeleton panel-esqueleto__corta"></span></div>
   </div>
-  <div id="estado-error" class="zd-card zd-state zd-state--error" role="alert" hidden>
-    <span class="zd-state__icon"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>
-    <p class="zd-state__title">No pudimos cargar tus automatizaciones</p>
-    <p class="zd-state__body" id="texto-error">Volvé a intentar en unos minutos.</p>
-  </div>
-  <div id="estado-vacio" class="zd-card zd-state" hidden>
-    <span class="zd-state__icon"><svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg></span>
-    <p class="zd-state__title">Todavía no activaste ninguna automatización</p>
-    <p class="zd-state__body">Cuando haya una activa, la vas a ver acá con su última revisión y la próxima.</p>
-  </div>
-  <div id="lista-activas" class="panel-lista" hidden></div>
-  <section id="seccion-disponibles" class="panel-seccion" hidden>
-    <h2 class="zd-h2">Otras automatizaciones disponibles</h2>
-    <div id="lista-disponibles" class="panel-lista"></div>
-  </section>
-  <p id="nota-truncado" class="zd-meta" hidden>Mostramos solo una parte de tus automatizaciones.</p>
 </main>
 <script>
 document.getElementById('boton-salir').addEventListener('click', function () {
@@ -321,6 +327,9 @@ document.getElementById('boton-salir').addEventListener('click', function () {
   });
 });
 </script>
+<!-- P-08 Tablero (CH-48): before the automations script, which stays the last one on the page. -->
+<script>
+${SCRIPT_TABLERO}</script>
 <script>
 var MENSAJE_TENANT_INACTIVO = 'Tu negocio no está activo en este momento. Comunicate con quien te dio acceso.';
 var MENSAJE_ERROR = 'Volvé a intentar en unos minutos.';

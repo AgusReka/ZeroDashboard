@@ -14,7 +14,7 @@ Español rioplatense neutro: voseo (tenés, elegí, podés), sin lunfardo ni mod
 | schedule, cron expression | horario · días |
 | timeout | tu tienda tardó demasiado en responder |
 | fallida, error 500 | no pudimos… |
-| filas, rows | productos · pedidos (la entidad de negocio) |
+| filas, rows | productos · pedidos (la entidad de negocio) · en el tablero, «resultados» («Mostramos solo los primeros 20 resultados.»), porque un reporte no siempre trata de una sola entidad |
 | freshness, latencia de réplica | los datos se actualizaron hace… |
 | notificación duplicada | — (no se muestra; el cliente no necesita saberlo) |
 | omitida por solapamiento | — (se comunica solo si afecta: "la revisión de las 14:00 no se hizo") |

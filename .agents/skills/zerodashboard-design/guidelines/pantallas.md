@@ -160,10 +160,32 @@ Más aire (`data-surface="panel"`: cuerpo 16 px, controles 44 px), móvil primer
 - **No implementar.** DEC-93 (D-1) decidió no persistir el contenido de las filas, solo metadatos de ejecución. CH-27 queda fuera de alcance mientras D-1 no se reabra. El mockup `ui_kits/panel` conserva la pantalla solo como referencia visual; no es una pantalla a construir.
 
 ### P-07 Avisos por Telegram — N5 · CH-43 · EXISTE
-- **Propósito**: vincular el Telegram del negocio sin datos técnicos (DEC-185, DEC-196). Tarjeta arriba de «Mis automatizaciones», con su propia carga: si falla, la lista carga igual.
+- **Propósito**: vincular el Telegram del negocio sin datos técnicos (DEC-185, DEC-196). Tarjeta debajo de «Mis automatizaciones», en Avisos (CH-48, revisión UX P-07), con su propia carga: si falla, la lista carga igual.
 - **Datos**: `estado` (no-disponible / sin-vincular / codigo-pendiente / vinculado) · `codigo` (8 caracteres, se ve como `7KQ2 M9XA`, solo en la respuesta que lo crea) · `enlace` (t.me con el código) · `vence_en` (hora, «Vence a las 10:40») · `vinculado_en` (fecha, 05/11/2026). Nunca el chat ni el token del bot.
 - **Estados**: cargando (skeleton) · error (ErrorState con «Reintentar») · no disponible («Por ahora no podés recibir avisos por Telegram.», sin acciones) · sin vincular (explicación + «Vincular Telegram») · código (código, «Abrir Telegram», cómo mandarlo y vencimiento; un código de una visita anterior muestra solo el vencimiento) · vinculado (badge «Telegram vinculado» con la fecha).
 - **Acciones**: Vincular Telegram, Generar otro código, Vincular otro chat, Desvincular (confirma en línea con «Desvincular Telegram» / «Cancelar»).
+
+### P-08 Tablero — R3h, R4h, R5h · CH-48 · EXISTE
+- **Propósito**: que el cliente vea de un vistazo los reportes que le armó quien le dio acceso (DEC-183, DEC-201). Cada reporte se calcula en vivo al abrir la página, solo con las columnas asignadas, y no se guarda (DEC-93): no es P-06.
+- **Datos**: por reporte `titulo` · `descripcion` (opcional) · `visualizacion` (número / tabla / barras / línea) · `periodo` (días declarados y el primero como predeterminado, o ninguno) · títulos de las columnas asignadas y sus valores. De la página: la fecha de actualización de los datos del negocio (o ninguna) y la zona horaria.
+- **Navegación**: «Tablero» y «Avisos», como `.zd-tabs` con enlaces `#tablero` / `#avisos` (no botones), debajo del header; en móvil es una segunda fila de ancho completo. El enlace actual lleva `aria-current="page"` y se ve como la pestaña seleccionada. Por defecto, «Tablero». **Solo aparece si hay al menos un reporte**: sin reportes, o si la configuración no carga, la página es la de siempre (solo Avisos, sin navegación). «Avisos» tiene «Mis automatizaciones» y, debajo, «Avisos por Telegram».
+- **Tarjetas**: una `zd-card` por reporte, en el orden del tablero, ancho completo, una columna. Título (`h2`), descripción en `--text-2` y el cuerpo:
+  - **Número**: el valor a `--text-3xl`, peso 600, `tabular-nums`, formateado `es-AR` (1.520,5), con el título de la columna como etiqueta arriba.
+  - **Tabla**: `zd-table` dentro de `zd-table-wrap` / `zd-table-scroll`, con `<caption>` (título del reporte, oculto a la vista), `<th scope="col">` con los títulos de las columnas, y `zd-num` solo en las columnas cuyos valores son todos números. Fechas `dd/mm`; vacío como «—».
+  - **Gráfico** (barras, línea): caja de alto fijo de unos 220 px, una sola serie en `--accent`, marcas en `--text-2`, grilla en `--border-1`, sin paleta de la librería; debajo, plegado, «Ver los datos en una tabla» con la misma tabla. Si el gráfico no se puede dibujar, la tabla se muestra abierta, sin mensaje técnico.
+  - Debajo del cuerpo, en `--text-2` y `--text-sm`: «Desde el dd/mm» cuando el reporte tiene período, y «Mostramos solo los primeros N resultados.» cuando se cortó.
+- **Estados** (por tarjeta; las demás no se enteran):
+  - cargando: skeleton dentro de la tarjeta.
+  - sin datos: «No hay datos para este período.», sin acción.
+  - no disponible: «No podemos mostrar este reporte por ahora.» / «Si sigue así, avisale a quien te dio acceso.», sin acción.
+  - tiempo agotado: «Tu tienda tardó demasiado en responder.» / «Volvé a intentar en unos minutos.» + «Reintentar».
+  - sin conexión: «No pudimos llegar a los datos de tu negocio.» / «Volvé a intentar en unos minutos.» + «Reintentar».
+  - error, demasiados pedidos o falla de red: «No pudimos cargar este reporte.» / «Volvé a intentar en unos minutos.» + «Reintentar».
+  - sesión vencida: la página se recarga y muestra el ingreso.
+  - Los errores van con `role="alert"`, ícono + texto.
+- **Acciones**: «Período» (select con etiqueta visible, opciones «Últimos N días» en el orden declarado; cambia solo esa tarjeta y no se recuerda al recargar) · «Reintentar» (solo esa tarjeta) · «Actualizar» (botón secundario arriba de las tarjetas: vuelve a leer todo; deshabilitado mientras algo carga). No hay refresco automático.
+- **Frescura**: una línea arriba de las tarjetas, solo informativa (no frena nada): «Datos de tu negocio actualizados hace 3 h · 10/11, 09:15», en minutos bajo 1 h, horas bajo 48 h y días después. Sin fecha: «Todavía no tenemos la fecha de actualización de tus datos.». Nunca se presenta una fecha desconocida como al día.
+- **Implementación**: estilos propios en el `<style>` del panel, con prefijo `panel-` y solo tokens; los archivos de `public/ui/` no se tocan. Todo dato entra por `textContent`.
 
 ---
 
@@ -206,6 +228,7 @@ Reporte HTML compatible con clientes de correo: tablas, estilos inline, 600 px, 
 | CH-44 | P-02 Aviso sin chat · P-04 Enviar por | EXISTE |
 | CH-45 | C-23 Reportes (consola, ver `consola.md` C-13) | EXISTE |
 | CH-46 | C-24 Tablero del cliente (consola, ver `consola.md` C-14) · C-23 Reportes: en uso | EXISTE |
+| CH-48 | P-08 Tablero (panel) · P-07 Avisos por Telegram: debajo de la lista | EXISTE |
 
 ## Componentes → change
 | Componente | Historia · Change · Estado |
