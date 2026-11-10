@@ -224,14 +224,14 @@ When the configuration answers at least one report, the authenticated panel page
 
 The «Tablero» section SHALL hold the freshness line, «Actualizar», and one card per report in dashboard order, each with the report's title, its description when present, and its body:
 - `numero`: the value formatted with `Intl.NumberFormat('es-AR')`, labeled with the column title;
-- `tabla`: a table with a `<caption>`, one `<th scope="col">` per column title, and the rows. A column is right-aligned only when every value in it is a number;
+- `tabla`: a table with a `<caption>`, one `<th scope="col">` per column title, and the rows. A column is right-aligned and formatted `es-AR` only when it has a value and every non-empty value in it is a number or a decimal number as text without a leading zero (a `COUNT` or `SUM` the driver returns as "26"); any other column, labels and codes included, stays text;
 - `barras` and `linea`: the chart of "Charts and Their Accessible Table".
 
 The page SHALL ask for the configuration first, then the runs, at most 3 at a time, in dashboard order. Each card SHALL show its own loading skeleton, and then its state:
 
 | State | What the card shows |
 |---|---|
-| `ok` | The body. With `corte`, «Mostramos solo los primeros N resultados.» with N the cap of the visualization. With `periodo`, «Desde el dd/mm». |
+| `ok` | The body. With `corte`, «Mostramos solo los primeros N resultados.» with N the cap of the visualization. With `periodo`, «Desde el dd/mm», or «Desde el dd/mm/aaaa» when that year is not the current one in the tenant's time zone. |
 | `sin-datos` | «No hay datos para este período.» |
 | `no-disponible` | That the report cannot be shown for now and that the team is told, with no action for the client |
 | `tiempo-agotado` | «Tu tienda tardó demasiado en responder.» and «Reintentar» |

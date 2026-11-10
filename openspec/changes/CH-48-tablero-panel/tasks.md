@@ -99,14 +99,14 @@ Chain strategy: feature-branch-chain
 ## CH-48c — charts
 
 ### 8. Drawing
-- [ ] 8.1 `src/panel/panel.ts`: `<script src="/ui/vendor/chart.umd.js"></script>` in `documentoShell` only, before the dashboard script.
-- [ ] 8.2 `src/panel/panel-tablero-pagina.ts`: canvas with `role="img"` and `aria-label`; one dataset; `colores()` from the tokens; theme listeners (`matchMedia` and a `MutationObserver` on `data-theme`); `destroy` before re-run; the `<details>` collapsed when drawn and the table open when `Chart` is missing (design §3).
-- [ ] 8.3 `src/panel/panel-tablero-pagina.test.ts` with a stub `Chart`: canvas and label; colors equal the stubbed token values; theme flip calls `update`; `destroy` before re-run; no `Chart` shows the table open.
-- [ ] 8.4 `src/panel/panel.test.ts`: only the authenticated shell holds the script, once, before the dashboard script; the login page does not.
+- [x] 8.1 `src/panel/panel.ts`: `<script src="/ui/vendor/chart.umd.js"></script>` in `documentoShell` only, before the dashboard script.
+- [x] 8.2 `src/panel/panel-tablero-pagina.ts`: canvas with `role="img"` and `aria-label`; one dataset; `colores()` from the tokens; theme listeners (`matchMedia` and a `MutationObserver` on `data-theme`); `destroy` before re-run; the `<details>` collapsed when drawn and the table open when `Chart` is missing (design §3).
+- [x] 8.3 `src/panel/panel-tablero-pagina.test.ts` with a stub `Chart`: canvas and label; colors equal the stubbed token values; theme flip calls `update`; `destroy` before re-run; no `Chart` shows the table open.
+- [x] 8.4 `src/panel/panel.test.ts`: only the authenticated shell holds the script, once, before the dashboard script; the login page does not.
 
 ### 9. Docs
-- [ ] 9.1 `docs/guia/09-reportes.md`: the panel section (what the client sees, period, states, freshness, the run limit, and why panel runs leave no audit row).
+- [x] 9.1 `docs/guia/09-reportes.md`: the panel section (what the client sees, period, states, freshness, the run limit, and why panel runs leave no audit row).
 - [ ] 9.2 `docs/02-mapa-de-changes.md`: the CH-48 row with the three PR numbers.
 
 ### 10. Verification (CH-48c)
-- [ ] 10.1 `npm run build`, `npm run build:agente`, `npx tsc -p tsconfig.json --noEmit` and `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`.
+- [x] 10.1 `npm run build`, `npm run build:agente`, `npx tsc -p tsconfig.json --noEmit` and `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`.

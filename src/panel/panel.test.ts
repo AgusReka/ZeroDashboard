@@ -258,6 +258,21 @@ describe(
       assert.ok(!login.body.includes('id="nav-panel"'));
     });
 
+    test('CH-48c Chart.js: only the authenticated shell loads it, once, right before the dashboard script', async () => {
+      const { html } = await shellConScript();
+      const etiqueta = '<script src="/ui/vendor/chart.umd.js"></script>';
+      const libreria = html.indexOf(etiqueta);
+      assert.ok(libreria !== -1, 'the shell loads the vendored script');
+      assert.equal(html.split('/ui/vendor/chart.umd.js').length, 2, 'exactly once');
+      const tablero = html.indexOf(SCRIPT_TABLERO);
+      assert.ok(libreria < tablero, 'before the dashboard script');
+      assert.equal(html.slice(libreria + etiqueta.length, tablero).trim(), '<script>', 'right before it');
+      assert.ok(!/<script[^>]*src=/.test(html.slice(libreria + etiqueta.length)), 'no other external script');
+      const login = await app.inject({ method: 'GET', url: '/panel' });
+      assert.equal(login.statusCode, 200);
+      assert.ok(!login.body.includes('chart.umd.js'), 'the login page does not load it');
+    });
+
     test('the P-02 script carries every state string and the 401 reload branch (CH-22b)', async (t) => {
       const { html, script } = await shellConScript();
 
