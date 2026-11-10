@@ -2,7 +2,7 @@
 
 Un reporte es una consulta escrita contra las vistas canónicas, como una plantilla, que en lugar de mandar un aviso se muestra en el tablero del cliente: un número, una tabla, un gráfico de barras o uno de línea (DEC-183). Declara a lo sumo un período, que el cliente elige entre los que permite P1, y asigna las columnas del resultado a los roles de su visualización, cada una con un título para el cliente (DEC-198). El catálogo es **global**: lo comparten todos los tenants. Pantalla: **Reportes**, en Global, después de Plantillas.
 
-CH-45 define y prueba los reportes en la consola, y CH-46 arma el tablero de cada cliente: qué reportes ve y en qué orden ([El tablero del cliente](#el-tablero-del-cliente)). La pantalla del panel es CH-48: hasta entonces, ningún cliente ve un reporte.
+CH-45 define y prueba los reportes en la consola, y CH-46 arma el tablero de cada cliente: qué reportes ve y en qué orden ([El tablero del cliente](#el-tablero-del-cliente)). Desde CH-48, el cliente ve su tablero en el panel, en «Tablero» ([Lo que ve el cliente](#lo-que-ve-el-cliente)).
 
 ## Camino rápido
 
