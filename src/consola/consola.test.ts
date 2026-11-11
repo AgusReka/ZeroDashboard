@@ -541,6 +541,11 @@ const IDS = [
   // C-02, C-04, C-08, C-12: the result banners (the banner itself, its title and its text) and the next-step link.
   ...BANNERS_DE_RESULTADO.flatMap((id) => [id, id + '-titulo', id + '-cuerpo']),
   'tenant-siguiente',
+  // CH-50: the tenant's short id and no-tenant hint in the bar, the navigation's tenant block and research footer, the
+  // unsaved-changes warning of the tenant pop-up, the catalog's test tenant and the unknown-section screen.
+  'tenant-activo-id', 'tenant-sin-ayuda', 'nav-tenant-nombre', 'nav-tenant-id', 'nav-tenant-hint', 'nav-investigacion',
+  'tc-sin-guardar', 'tc-sin-guardar-texto', 'prueba-sobre-plantillas', 'prueba-sobre-reportes',
+  'pantalla-desconocida', 'desconocida-volver',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -553,6 +558,7 @@ const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conex
   'pantalla-reportes', 'reporte-panel', 'reporte-prueba-periodo-caja', 'reporte-dialogo', 'reporte-confirmar', 'reporte-f-periodo-campos', 'reporte-f-agregar-columna', 'reporte-f-prueba-periodo-caja',
   'reporte-en-uso-aviso', 'reporte-editar', 'reporte-duplicar', 'reporte-dialogo-duplicar', 'pantalla-tablero',
   'tenant-cambio', 'tc-confirmar', 'auto-vacio', 'mapeo-automatizaciones-bloque', 'tenant-siguiente',
+  'tenant-activo-id', 'nav-tenant-id', 'tc-sin-guardar', 'pantalla-desconocida',
   ...PANTALLAS_DEL_TENANT.map((nombre) => 'sin-tenant-' + nombre), ...BANNERS_DE_RESULTADO];
 
 /**
@@ -3455,7 +3461,11 @@ describe('the console document, served by the real route', () => {
       assert.match(seccion, new RegExp('<button id="' + id + '"[^>]*type="button"[^>]*disabled'), id);
     }
     assert.match(seccion, /<input id="fresc-minutos"[^>]*type="text"/, 'a text control: a number control would hide invalid input');
-    assert.ok(seccion.includes('Frescura de datos'));
+    // CH-50 (P3): the screen names itself once, in its page header, next to a purpose line.
+    const pantalla = marcado().slice(marcado().indexOf('id="pantalla-frescura"'), marcado().indexOf('id="frescura"'));
+    assert.equal(marcado().match(/>Frescura de datos</g)?.length, 2, 'the navigation link and the one heading');
+    assert.match(pantalla, /<h1 id="titulo-frescura"[^>]*>Frescura de datos<\/h1>\s*<p class="zd-pagehead__desc">[^<]+<\/p>/);
+    assert.ok(!seccion.includes('<h2 class="zd-h2">Frescura de datos</h2>'), 'no second heading repeats the title');
   });
 
   test('CH-24 with no active tenant the section says so and offers no action', async () => {
@@ -4067,14 +4077,23 @@ describe('the console document, served by the real route', () => {
     soloVisible(await arrancar(undefined, undefined, '#frescura'), 'frescura');
   });
 
-  test('CH-30a a hashchange switches the screen, and an unknown hash falls back to Consultas', async () => {
+  test('CH-30a a hashchange switches the screen; CH-50 an unknown hash shows the unknown-section screen', async () => {
     const escenario = await arrancar();
     irA(escenario, '#automatizaciones');
     soloVisible(escenario, 'automatizaciones');
+    assert.equal(nodo(escenario, 'pantalla-desconocida').hidden, true);
     irA(escenario, '#frescura');
     soloVisible(escenario, 'frescura');
     irA(escenario, '#no-existe');
-    soloVisible(escenario, 'consultas');
+    // N9: no screen and no link: the unknown-section screen says so and offers the way back.
+    for (const nombre of PANTALLAS) {
+      assert.equal(nodo(escenario, `pantalla-${nombre}`).hidden, true, `pantalla-${nombre}`);
+      assert.equal(nodo(escenario, `nav-${nombre}`).getAttribute('aria-current'), null, `nav-${nombre}`);
+    }
+    assert.equal(nodo(escenario, 'pantalla-desconocida').hidden, false);
+    assert.equal(escenario.titulo, 'Sección no encontrada — ZeroDashboard');
+    assert.equal(nodo(escenario, 'desconocida-volver').getAttribute('href'), '#tenants', 'no tenant yet: back to Tenants');
+    assert.equal(nodo(escenario, 'desconocida-volver').textContent, 'Ir a Tenants');
   });
 
   test('CH-30b no function is declared twice in the script: a later one would silently replace the first', () => {
@@ -4188,18 +4207,27 @@ describe('the console document, served by the real route', () => {
     assert.ok(filaTenant(escenario, 'Almacén Don Tito'));
   });
 
-  test('CH-30b choosing a tenant makes it the active one', async () => {
+  test('CH-30b CH-50 choosing a tenant opens the tenant pop-up with it chosen; only «Operar sobre …» makes it active', async () => {
     const escenario = await arrancar();
     await abrirTenants(escenario);
+    const antes = escenario.peticiones.length;
+    botonesCon(filaTenant(escenario, 'Food Store'), 'Elegir como activo')[0].disparar('click');
+    await asentarVarias();
+    // N7: the same pop-up as the bar, with the row's tenant chosen; nothing moved yet.
+    assert.equal(nodo(escenario, 'tenant-cambio').hidden, false);
+    assert.equal(nodo(escenario, 'tenant').value, 't-1');
+    assert.equal(nodo(escenario, 'tc-operar').textContent, 'Operar sobre Food Store');
+    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Ningún tenant seleccionado');
+    assert.equal(escenario.peticiones.length, antes, 'no tenant-scoped read before confirming');
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultasGuardadas: [], truncado: false } },
       { status: 200, cuerpo: { plantillas: [], truncado: false } },
       { status: 200, cuerpo: { automatizaciones: [], truncado: false } },
     );
-    botonesCon(filaTenant(escenario, 'Food Store'), 'Elegir como activo')[0].disparar('click');
+    nodo(escenario, 'tc-operar').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'tenant').value, 't-1');
-    assert.match(nodo(escenario, 'tenant-activo').textContent, /Food Store/);
+    assert.equal(nodo(escenario, 'tenant-cambio').hidden, true);
+    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Food Store');
   });
 
   // ---- CH-33 (DEC-175): the baja is confirmed in a pop-up by typing the tenant's name ----
@@ -4443,10 +4471,45 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
   }
 
-  test('CH-30c Agentes and Usuarios del panel come after Conexiones, before the daily work', () => {
+  test('CH-50 the navigation has three titled blocks, and setup follows the real dependency (Agentes first)', () => {
     const marcado = documento.slice(0, documento.indexOf('<script>'));
-    assert.ok(marcado.indexOf('id="nav-conexiones"') < marcado.indexOf('id="nav-agentes"'));
-    assert.ok(marcado.indexOf('id="nav-agentes"') < marcado.indexOf('id="nav-consultas"'));
+    const orden = [...marcado.matchAll(/<a id="nav-([a-z]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(orden, [
+      'tenants', 'plantillas', 'reportes', 'contrato',
+      'agentes', 'conexiones', 'mapeo', 'usuarios', 'tablero',
+      'consultas', 'automatizaciones', 'frescura', 'auditoria',
+      'tiempos',
+    ]);
+    // N1: the tenant block is headed by the tenant (written by the script); N3: research sits at the foot, titled.
+    const navegacion = marcado.slice(marcado.indexOf('<nav class="zd-sidenav"'), marcado.indexOf('</nav>'));
+    assert.ok(navegacion.indexOf('id="nav-tenant-nombre"') < navegacion.indexOf('id="nav-agentes"'));
+    assert.match(navegacion, /<div id="nav-investigacion" class="zd-sidenav__group">\s*<span class="zd-sidenav__heading">Investigación<\/span>\s*<a id="nav-tiempos"/);
+    // N2: Agentes is marked optional; N4: Plantillas and Reportes say they are tested with the active tenant.
+    assert.match(navegacion, /<a id="nav-agentes"[^>]*><span>Agentes<\/span><span class="zd-sidenav__meta">opcional<\/span><\/a>/);
+    for (const id of ['nav-plantillas', 'nav-reportes']) {
+      assert.match(navegacion, new RegExp(`<a id="${id}"[^>]*>.*?<span class="zd-sidenav__meta" title="Se prueba con el tenant activo">con tenant</span></a>`));
+    }
+  });
+
+  test('CH-50 the tenant block and the bar name the active tenant, or say that none is chosen', async () => {
+    const escenario = await arrancar();
+    assert.equal(nodo(escenario, 'nav-tenant-nombre').textContent, 'Ningún tenant');
+    assert.equal(nodo(escenario, 'nav-tenant-hint').hidden, false);
+    assert.equal(nodo(escenario, 'nav-tenant-id').hidden, true);
+    assert.equal(nodo(escenario, 'tenant-sin-ayuda').hidden, false);
+    assert.equal(nodo(escenario, 'tenant-activo-id').hidden, true);
+    assert.equal(nodo(escenario, 'prueba-sobre-plantillas').textContent, 'Prueba sobre: ningún tenant (elegí uno para probar o guardar)');
+    const conTenant = await arrancar();
+    await elegirTenant(conTenant);
+    assert.equal(nodo(conTenant, 'nav-tenant-nombre').textContent, 'Food Store');
+    assert.equal(nodo(conTenant, 'nav-tenant-id').textContent, 't-1…');
+    assert.equal(nodo(conTenant, 'nav-tenant-id').hidden, false);
+    assert.equal(nodo(conTenant, 'nav-tenant-hint').hidden, true);
+    assert.equal(nodo(conTenant, 'tenant-activo').textContent, 'Food Store');
+    assert.equal(nodo(conTenant, 'tenant-activo-id').textContent, 't-1…');
+    assert.equal(nodo(conTenant, 'tenant-sin-ayuda').hidden, true);
+    assert.equal(nodo(conTenant, 'prueba-sobre-plantillas').textContent, 'Prueba sobre: Food Store');
+    assert.equal(nodo(conTenant, 'prueba-sobre-reportes').textContent, 'Prueba sobre: Food Store');
   });
 
   test('CH-30c with no tenant, Agentes asks for one and sends nothing', async () => {
@@ -5807,7 +5870,8 @@ describe('the console document, served by the real route', () => {
     const en = (id: string): number => html.indexOf(`id="${id}"`);
     assert.ok(en('nav-plantillas') < en('nav-reportes'));
     assert.ok(en('nav-reportes') < en('nav-contrato'));
-    assert.match(html, /<a id="nav-reportes" class="zd-sidenav__item" href="#reportes"><span>Reportes<\/span><\/a>/);
+    // CH-50 (N4): the link says the report is tested with the active tenant.
+    assert.match(html, /<a id="nav-reportes" class="zd-sidenav__item" href="#reportes"><span>Reportes<\/span><span class="zd-sidenav__meta" title="Se prueba con el tenant activo">con tenant<\/span><\/a>/);
     assert.match(html, /<section id="pantalla-reportes"[^>]*hidden>/);
     assert.match(html, /<aside id="reporte-panel"[^>]*hidden>/);
     assert.match(html, /<div id="reporte-dialogo" class="zd-dialog-backdrop" hidden>/);
@@ -6382,6 +6446,18 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'tablero-aviso').textContent, '');
   });
 
+  test('CH-50 the tenant pop-up warns about unsaved dashboard changes, and only then', async () => {
+    const escenario = await abrirTableroCH46();
+    nodo(escenario, 'tenant-cambiar').disparar('click');
+    assert.equal(nodo(escenario, 'tc-sin-guardar').hidden, true, 'nothing changed yet');
+    nodo(escenario, 'tc-cancelar').disparar('click');
+    botonFilaCH46(escenario, 1, 'Subir').disparar('click');
+    nodo(escenario, 'tenant-cambiar').disparar('click');
+    // N8: said inside the pop-up, before «Operar sobre …» discards it.
+    assert.equal(nodo(escenario, 'tc-sin-guardar').hidden, false);
+    assert.match(marcado(), /<p id="tc-sin-guardar-texto" class="zd-banner__body">Tenés cambios sin guardar en Tablero del cliente\. Si cambiás de tenant, se descartan\.<\/p>/);
+  });
+
   test('CH-46 «Subir» on the second row and «Guardar» send one PUT /tablero in the new order, and the answer is drawn', async () => {
     const escenario = await abrirTableroCH46();
     botonFilaCH46(escenario, 1, 'Subir').disparar('click');
@@ -6885,10 +6961,10 @@ describe('the console document, served by the real route', () => {
     return pares;
   }
 
-  test('CH-30e2 Tiempos de alta closes the onboarding group, after Usuarios del panel, and starts hidden', () => {
+  test('CH-30e2 CH-50 Tiempos de alta sits at the foot, under «Investigación», after the daily work, and starts hidden', () => {
     const marcado = documento.slice(0, documento.indexOf('<script>'));
-    assert.ok(marcado.indexOf('id="nav-usuarios"') < marcado.indexOf('id="nav-tiempos"'));
-    assert.ok(marcado.indexOf('id="nav-tiempos"') < marcado.indexOf('Trabajo diario</span>'));
+    assert.ok(marcado.indexOf('Trabajo diario</span>') < marcado.indexOf('id="nav-investigacion"'));
+    assert.ok(marcado.indexOf('id="nav-auditoria"') < marcado.indexOf('id="nav-tiempos"'));
     assert.match(marcado, /<section id="pantalla-tiempos"[^>]*hidden/);
   });
 
@@ -8386,24 +8462,30 @@ describe('the console document, served by the real route', () => {
     assert.ok(nodo(escenario, 'tenant').options.some((o) => o.value === 't-3'), 'the selector lists it');
   });
 
-  test('CH-32b «Crear y elegir» creates it and makes it the active tenant, selector and bar', async () => {
+  test('CH-32b CH-50 «Crear y elegir» creates it and opens the tenant pop-up on it; «Operar sobre …» makes it active', async () => {
     const escenario = await conPopUpDeTenant();
     nodo(escenario, 'tenant-nombre').value = 'Almacén Don Tito';
     escenario.respuestas.push(
       { status: 201, cuerpo: { tenant: TENANT_NUEVO } },
       { status: 200, cuerpo: { tenants: [...TENANTS_PANTALLA, TENANT_NUEVO] } },
       { status: 200, cuerpo: { tenants: [{ id: 't-1', nombre: 'Food Store' }, { id: 't-3', nombre: 'Almacén Don Tito' }] } },
-      ...respuestasDeTenant(),
     );
     nodo(escenario, 'tenant-crear-elegir').disparar('click');
     await asentarVarias();
     assert.equal(escenario.peticiones.filter((p) => p.url === '/tenants' && p.cuerpo !== null).length, 1, 'one creation');
     assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), false);
+    // N7: the same confirmation as every tenant change, with the new tenant chosen.
+    assert.equal(nodo(escenario, 'tenant-cambio').hidden, false);
     assert.equal(nodo(escenario, 'tenant').value, 't-3');
-    assert.match(nodo(escenario, 'tenant-activo').textContent, /Almacén Don Tito/);
+    assert.equal(nodo(escenario, 'tc-operar').textContent, 'Operar sobre Almacén Don Tito');
+    assert.doesNotMatch(nodo(escenario, 'tenant-activo').textContent, /Almacén Don Tito/);
     // C-02: the next step of the setup is one link away.
-    assert.match(nodo(escenario, 'tenant-banner-cuerpo').textContent, /^Se creó el tenant «Almacén Don Tito» y quedó como activo\. El paso siguiente.*conexión/);
+    assert.match(nodo(escenario, 'tenant-banner-cuerpo').textContent, /^Se creó el tenant «Almacén Don Tito»\. Confirmá «Operar sobre Almacén Don Tito».*conexión/);
     assert.equal(nodo(escenario, 'tenant-siguiente').hidden, false);
+    escenario.respuestas.push(...respuestasDeTenant());
+    nodo(escenario, 'tc-operar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Almacén Don Tito');
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].tenant, 't-3', 'the screens reload for the new tenant');
   });
 
@@ -8954,7 +9036,9 @@ describe('the console document, served by the real route', () => {
     assert.ok(selector.options.every((o) => o.hijos.length === 0), 'text only');
 
     await elegirTenant(escenario, [], [], A);
-    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Food Store (31d00000…)', 'the bar names the tenant once');
+    // CH-50 (T4): the name and the short id are two nodes now, the id in mono; together they stay unambiguous.
+    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Food Store', 'the bar names the tenant once');
+    assert.equal(nodo(escenario, 'tenant-activo-id').textContent, '31d00000…');
   });
 
   test('C-10 a tenant with users clears the «Elegí un tenant» line, and one without says so until the first user exists', async () => {
@@ -9103,7 +9187,8 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'tc-operar').disparar('click');
     await asentarVarias();
     assert.equal(abierto(), false);
-    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Food Store (31d00000…)');
+    assert.equal(nodo(escenario, 'tenant-activo').textContent, 'Food Store');
+    assert.equal(nodo(escenario, 'tenant-activo-id').textContent, '31d00000…');
     assert.equal(nodo(escenario, 'tenant-cambiar').textContent, 'Cambiar tenant');
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].tenant, A);
 
@@ -9262,9 +9347,11 @@ describe('the console document, served by the real route', () => {
     assert.ok(escenario.peticiones.some((p) => p.url === '/tenants?incluirInactivos=true'));
   });
 
-  test('C-02 only an empty hash is decided by the tenant: a named screen stays, and an unknown hash still falls back to Consultas', async () => {
+  test('C-02 only an empty hash is decided by the tenant: a named screen stays, and CH-50 an unknown hash shows the unknown section', async () => {
     soloVisible(await arrancar(undefined, undefined, '#frescura'), 'frescura');
-    soloVisible(await arrancar(undefined, undefined, '#no-existe'), 'consultas');
+    const desconocida = await arrancar(undefined, undefined, '#no-existe');
+    assert.equal(nodo(desconocida, 'pantalla-desconocida').hidden, false);
+    assert.equal(nodo(desconocida, 'pantalla-consultas').hidden, true);
     soloVisible(await arrancar(undefined, undefined, '#conexiones'), 'conexiones');
   });
 
@@ -9602,10 +9689,11 @@ describe('the console document, served by the real route', () => {
   });
 
   test('C-19 each screen names the tab, and the title of the page is the first screen\'s', async () => {
-    assert.ok(documento.includes('<title>Consultas — ZeroDashboard</title>'));
+    // CH-50: the served title names the console, so a page whose script fails does not claim to be Consultas.
+    assert.ok(documento.includes('<title>Consola — ZeroDashboard</title>'));
     const escenario = await arrancar();
     assert.equal(escenario.titulo, 'Consultas — ZeroDashboard');
-    for (const [hash, titulo] of [['#usuarios', 'Usuarios del panel'], ['#frescura', 'Frescura de datos'], ['#auditoria', 'Auditoría'], ['#conexiones', 'Conexiones'], ['#nada', 'Consultas']]) {
+    for (const [hash, titulo] of [['#usuarios', 'Usuarios del panel'], ['#frescura', 'Frescura de datos'], ['#auditoria', 'Auditoría'], ['#conexiones', 'Conexiones'], ['#nada', 'Sección no encontrada']]) {
       irA(escenario, hash);
       assert.equal(escenario.titulo, `${titulo} — ZeroDashboard`, hash);
     }
@@ -9615,13 +9703,13 @@ describe('the console document, served by the real route', () => {
     assert.ok(documento.includes('<link rel="icon" href="data:,">'));
   });
 
-  test('C-19 the scope tag of each screen of the tenant names the active tenant', async () => {
+  test('C-19 CH-50 the scope tag of each screen of the tenant names the active tenant, or says it needs one', async () => {
     const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Panadería' }]);
-    for (const nombre of PANTALLAS_DEL_TENANT) assert.equal(nodo(escenario, 'alcance-' + nombre).textContent, 'Del tenant activo', nombre);
+    for (const nombre of PANTALLAS_DEL_TENANT) assert.equal(nodo(escenario, 'alcance-' + nombre).textContent, 'Necesita un tenant', nombre);
     await elegirTenant(escenario);
-    for (const nombre of PANTALLAS_DEL_TENANT) assert.equal(nodo(escenario, 'alcance-' + nombre).textContent, 'Del tenant activo: Food Store', nombre);
+    for (const nombre of PANTALLAS_DEL_TENANT) assert.equal(nodo(escenario, 'alcance-' + nombre).textContent, 'Del tenant · Food Store', nombre);
     await elegirTenant(escenario, [], [], 't-2');
-    assert.equal(nodo(escenario, 'alcance-auditoria').textContent, 'Del tenant activo: Panadería');
+    assert.equal(nodo(escenario, 'alcance-auditoria').textContent, 'Del tenant · Panadería');
   });
 
   test('C-19 a column of numbers lines up on the right; text, codes with a leading zero and NULL do not', async () => {

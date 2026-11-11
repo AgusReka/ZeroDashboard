@@ -96,7 +96,7 @@ function documentoConsola(nombreOperador: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Consultas — ZeroDashboard</title>
+<title>Consola — ZeroDashboard</title>
 <!-- C-19: an empty icon, so the browser does not ask the server for /favicon.ico on every load (the guard answered it with an error). -->
 <link rel="icon" href="data:,">
 <!--
@@ -121,6 +121,13 @@ function documentoConsola(nombreOperador: string): string {
      underline to stay distinct from the active-tenant state. */
   #barra-tenant { flex-wrap: wrap; padding-block: var(--space-2); }
   #tenant-activo { font-size: var(--text-md); font-weight: var(--weight-bold); overflow-wrap: anywhere; }
+  /* CH-50 (N1): the short id and the no-tenant hint of the bar, and the tenant block's own title in the navigation. */
+  .tenant-sin-ayuda { font-size: var(--text-xs); }
+  .nav-tenant-titulo { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+  .nav-tenant-id { font-size: var(--text-xs); color: var(--text-3); }
+  .nav-tenant-hint { font-size: var(--text-xs); color: var(--warn-text); }
+  .prueba-sobre { margin-left: var(--space-4); font-size: var(--text-xs); color: var(--text-2); }
+  #nav-investigacion { margin-top: auto; padding-top: var(--space-5); border-top: var(--border-width) solid var(--border-1); }
   #tenant-activo.sin-tenant { text-decoration: underline; text-decoration-color: var(--warn); text-decoration-thickness: 2px; text-underline-offset: 3px; }
   .zd-tenantbar:has(#tenant-activo.sin-tenant) { background: var(--warn-soft); color: var(--warn-text); box-shadow: inset 0 -2px 0 var(--warn); }
   .zd-tenantbar:has(#tenant-activo.sin-tenant) .zd-tenantbar__btn:focus-visible { outline-color: var(--warn-text); }
@@ -327,8 +334,12 @@ function documentoConsola(nombreOperador: string): string {
   replayed later, which makes it a stored-input surface (regla 7).
 -->
 <header id="barra-tenant" class="zd-tenantbar">
-  <span class="zd-tenantbar__label">Tenant activo</span>
+  <!-- CH-50 (N1, T4): the bar says what the tenant screens operate on: name, short id in mono, or that none is chosen. -->
+  ${SVG_ABIERTO}><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4"></path><path d="M10 10h4"></path><path d="M10 14h4"></path><path d="M10 18h4"></path></svg>
+  <span class="zd-tenantbar__label">Operando sobre</span>
   <strong id="tenant-activo" class="sin-tenant">Ningún tenant seleccionado</strong>
+  <span id="tenant-activo-id" class="zd-tenantbar__id" hidden></span>
+  <span id="tenant-sin-ayuda" class="tenant-sin-ayuda">Las secciones del tenant necesitan uno</span>
   <!-- C-01: the tenant is changed in the pop-up below, never by a bare select; the label says which of the two it is. -->
   <button id="tenant-cambiar" class="zd-tenantbar__btn" type="button">Elegir tenant</button>
   <!-- CH-29 (DEC-154, C-01): who operates. The name is escaped by the server. -->
@@ -352,6 +363,10 @@ function documentoConsola(nombreOperador: string): string {
       </div>
     </div>
     <p class="ayuda">Para dar de alta o de baja un tenant, andá a <a id="tc-tenants" href="#tenants">Tenants</a>.</p>
+    <!-- CH-50 (N8): unsaved work of the tenant being left is announced here, before it is discarded. -->
+    <div id="tc-sin-guardar" class="zd-banner zd-banner--warn" role="status" hidden>
+      <div><p id="tc-sin-guardar-texto" class="zd-banner__body">Tenés cambios sin guardar en Tablero del cliente. Si cambiás de tenant, se descartan.</p></div>
+    </div>
     <div class="zd-dialog__actions">
       <span id="tc-confirmar" hidden></span>
       <button id="tc-operar" class="zd-btn zd-btn--primary" type="button" disabled>Operar sobre el tenant</button>
@@ -369,26 +384,39 @@ function documentoConsola(nombreOperador: string): string {
 <div class="zd-shell">
 <nav class="zd-sidenav" aria-label="Secciones de la consola">
   <div class="zd-sidenav__brand"><span class="zd-sidenav__brandname">ZeroDashboard</span><span class="zd-eyebrow">Consola</span></div>
+  <!--
+    CH-50 (N1–N4): three titled blocks. Global works without a tenant (Plantillas and Reportes are tested with one);
+    the tenant block is headed by the active tenant, written by the script as text; research goes to the foot.
+    Every link stays usable without a tenant (N5): its screen shows the empty state.
+  -->
   <div class="zd-sidenav__group">
-    <span class="zd-sidenav__heading">Global</span>
+    <span class="zd-sidenav__heading">${SVG_ABIERTO}><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>Global</span>
     <a id="nav-tenants" class="zd-sidenav__item" href="#tenants"><span>Tenants</span></a>
-    <a id="nav-plantillas" class="zd-sidenav__item" href="#plantillas"><span>Plantillas</span></a>
-    <a id="nav-reportes" class="zd-sidenav__item" href="#reportes"><span>Reportes</span></a>
+    <a id="nav-plantillas" class="zd-sidenav__item" href="#plantillas"><span>Plantillas</span><span class="zd-sidenav__meta" title="Se prueba con el tenant activo">con tenant</span></a>
+    <a id="nav-reportes" class="zd-sidenav__item" href="#reportes"><span>Reportes</span><span class="zd-sidenav__meta" title="Se prueba con el tenant activo">con tenant</span></a>
     <a id="nav-contrato" class="zd-sidenav__item" href="#contrato"><span>Contrato canónico</span></a>
   </div>
   <div class="zd-sidenav__scope">
+    <div class="zd-sidenav__tenant">
+      <span class="nav-tenant-titulo">${SVG_ABIERTO}><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4"></path><path d="M10 10h4"></path><path d="M10 14h4"></path><path d="M10 18h4"></path></svg><b id="nav-tenant-nombre">Ningún tenant</b></span>
+      <span id="nav-tenant-id" class="zd-mono nav-tenant-id" hidden></span>
+      <span id="nav-tenant-hint" class="nav-tenant-hint">Elegí un tenant para usar estas secciones</span>
+    </div>
     <span class="zd-sidenav__subheading">Puesta en marcha</span>
+    <a id="nav-agentes" class="zd-sidenav__item" href="#agentes"><span>Agentes</span><span class="zd-sidenav__meta">opcional</span></a>
     <a id="nav-conexiones" class="zd-sidenav__item" href="#conexiones"><span>Conexiones</span></a>
-    <a id="nav-agentes" class="zd-sidenav__item" href="#agentes"><span>Agentes</span></a>
     <a id="nav-mapeo" class="zd-sidenav__item" href="#mapeo"><span>Mapeo y validación</span></a>
     <a id="nav-usuarios" class="zd-sidenav__item" href="#usuarios"><span>Usuarios del panel</span></a>
     <a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente</span></a>
-    <a id="nav-tiempos" class="zd-sidenav__item" href="#tiempos"><span>Tiempos de alta</span></a>
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
     <a id="nav-automatizaciones" class="zd-sidenav__item" href="#automatizaciones"><span>Automatizaciones</span></a>
     <a id="nav-frescura" class="zd-sidenav__item" href="#frescura"><span>Frescura de datos</span></a>
     <a id="nav-auditoria" class="zd-sidenav__item" href="#auditoria"><span>Auditoría</span></a>
+  </div>
+  <div id="nav-investigacion" class="zd-sidenav__group">
+    <span class="zd-sidenav__heading">Investigación</span>
+    <a id="nav-tiempos" class="zd-sidenav__item" href="#tiempos"><span>Tiempos de alta</span></a>
   </div>
 </nav>
 <main class="zd-page">
@@ -691,7 +719,7 @@ ${estadoSinTenant('tiempos')}
 <section id="pantalla-plantillas" aria-labelledby="titulo-plantillas" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span></div>
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span><span id="prueba-sobre-plantillas" class="prueba-sobre">Prueba sobre: ningún tenant (elegí uno para probar o guardar)</span></div>
     <h1 id="titulo-plantillas" class="zd-h1">Plantillas</h1>
     <p class="zd-pagehead__desc">El catálogo de automatizaciones que se pueden activar. Cada plantilla necesita ciertas entidades mapeadas.</p>
   </div>
@@ -832,7 +860,7 @@ ${estadoSinTenant('tiempos')}
 <section id="pantalla-reportes" aria-labelledby="titulo-reportes" data-change="CH-45" data-estado="existe" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span></div>
+    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span><span id="prueba-sobre-reportes" class="prueba-sobre">Prueba sobre: ningún tenant (elegí uno para probar o guardar)</span></div>
     <h1 id="titulo-reportes" class="zd-h1">Reportes</h1>
     <p class="zd-pagehead__desc">Los reportes que el cliente podrá ver en su tablero. Cada uno lee las vistas canónicas y muestra sus columnas como número, tabla, barras o línea.</p>
   </div>
@@ -1043,7 +1071,7 @@ ${avisoResultado('mapeo-banner')}
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span id="alcance-consultas" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-consultas" class="zd-h1">Consultas</h1>
-    <p class="zd-pagehead__desc">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
+    <p class="zd-pagehead__desc">Explorá la réplica del tenant activo con SQL de solo lectura. Usala para revisar un mapeo, una plantilla o un reporte antes de guardarlos. Plantillas y automatizaciones no usan estas consultas.</p>
   </div>
   <!--
     CH-32a PR2 (DEC-172, DEC-173): opens the query pop-up empty (the script empties the editor, the
@@ -1425,6 +1453,7 @@ ${estadoSinTenant('automatizaciones')}
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span id="alcance-frescura" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-frescura" class="zd-h1">Frescura de datos</h1>
+    <p class="zd-pagehead__desc">Cada cuánto se actualiza la réplica del tenant y si alcanza para lo que tolera cada plantilla. Es informativo: no frena ninguna ejecución.</p>
   </div>
 </header>
 ${estadoSinTenant('frescura')}
@@ -1436,7 +1465,6 @@ ${estadoSinTenant('frescura')}
   value is written by the script as text.
 -->
 <section id="frescura">
-  <h2 class="zd-h2">Frescura de datos</h2>
   <p class="ayuda">Declarás cada cuánto se regenera la réplica del tenant activo y cuándo se actualizó por última vez. Una plantilla figura como desactualizada cuando esa ventana supera la antigüedad que tolera. Es informativo: no detiene ni cambia ninguna ejecución.</p>
   <p id="fresc-ventana" class="ayuda"></p>
   <p id="fresc-actualizada" class="ayuda"></p>
@@ -1482,6 +1510,21 @@ ${estadoSinTenant('auditoria')}
     <thead><tr><th>Fecha y hora</th><th>Operador</th><th>Origen</th><th>Conexión</th><th>Consulta</th><th>SQL</th><th>Filas</th><th>Duración</th><th>Resultado</th></tr></thead>
     <tbody id="auditoria-cuerpo"></tbody>
   </table>
+</div>
+</section>
+<!-- CH-50 (N9): a hash that names no screen says so, instead of silently opening another screen. -->
+<section id="pantalla-desconocida" aria-labelledby="titulo-desconocida" hidden>
+<header class="zd-pagehead">
+  <div class="zd-pagehead__text">
+    <h1 id="titulo-desconocida" class="zd-h1">Sección no encontrada</h1>
+  </div>
+</header>
+<div class="zd-state">
+  <p class="zd-state__title">Esta sección no existe</p>
+  <p class="zd-state__body">La dirección no corresponde a ninguna pantalla de la consola. Puede que el enlace esté mal escrito.</p>
+  <div class="zd-state__actions">
+    <a id="desconocida-volver" class="zd-btn zd-btn--primary" href="#consultas">Ir a Consultas</a>
+  </div>
 </div>
 </section>
 </main>
@@ -1969,9 +2012,16 @@ function fijarTenant(id) {
   tenantActivo = (id === null || id === '') ? null : String(id);
   selectorTenant.value = tenantActivo === null ? '' : tenantActivo;
 
+  // CH-50 (N1, T4): the bar and the navigation's tenant block name the same tenant, the short id apart in mono.
+  var idCorto = document.getElementById('tenant-activo-id');
+  var navNombre = document.getElementById('nav-tenant-nombre');
+  var navId = document.getElementById('nav-tenant-id');
   if (tenantActivo === null) {
     indicadorTenant.className = 'sin-tenant';
     indicadorTenant.textContent = 'Ningún tenant seleccionado';
+    idCorto.textContent = '';
+    navNombre.textContent = 'Ningún tenant';
+    navId.textContent = '';
   } else {
     // The name comes from the loaded row, not from the option text: that text already carries the id fragment.
     var fila = filaDeTenant(tenantActivo);
@@ -1979,9 +2029,21 @@ function fijarTenant(id) {
     indicadorTenant.className = '';
     // The id fragment is not decoration: two tenants may share a nombre by design, so
     // the name alone would not satisfy T4's "without ambiguity".
-    indicadorTenant.textContent = (nombre === '' ? 'Tenant' : nombre) +
-      ' (' + tenantActivo.slice(0, 8) + '…)';
+    indicadorTenant.textContent = nombre === '' ? 'Tenant' : nombre;
+    idCorto.textContent = tenantActivo.slice(0, 8) + '…';
+    navNombre.textContent = nombre === '' ? 'Tenant' : nombre;
+    navId.textContent = tenantActivo.slice(0, 8) + '…';
   }
+  idCorto.hidden = tenantActivo === null;
+  navId.hidden = tenantActivo === null;
+  document.getElementById('tenant-sin-ayuda').hidden = tenantActivo !== null;
+  document.getElementById('nav-tenant-hint').hidden = tenantActivo !== null;
+  // CH-50 (N4): the global catalog says which tenant its tests run on.
+  var pruebaSobre = tenantActivo === null
+    ? 'Prueba sobre: ningún tenant (elegí uno para probar o guardar)'
+    : 'Prueba sobre: ' + (nombre === '' ? 'Tenant' : nombre);
+  document.getElementById('prueba-sobre-plantillas').textContent = pruebaSobre;
+  document.getElementById('prueba-sobre-reportes').textContent = pruebaSobre;
   escribirTenantGuardado(tenantActivo);
   botonCambiarTenant.textContent = tenantActivo === null ? 'Elegir tenant' : 'Cambiar tenant';
   aplicarSinTenant();
@@ -1998,7 +2060,8 @@ function aplicarSinTenant() {
   var sin = tenantActivo === null;
   // C-19: the scope tag of each screen names the tenant it works on, as the design guide asks.
   var filaActiva = sin ? null : filaDeTenant(tenantActivo);
-  var alcance = 'Del tenant activo' + (filaActiva === null ? '' : ': ' + String(filaActiva.nombre));
+  // CH-50 (N1): it names the tenant, or says that the screen needs one.
+  var alcance = sin ? 'Necesita un tenant' : 'Del tenant · ' + (filaActiva === null ? 'Tenant' : String(filaActiva.nombre));
   PANTALLAS_DEL_TENANT.forEach(function (nombre) {
     document.getElementById('alcance-' + nombre).textContent = alcance;
     var seccion = document.getElementById('pantalla-' + nombre);
@@ -4745,6 +4808,8 @@ function cambiarTenant(id) {
 // (name, id fragment, alta) and holds the choice; choosing in it moves nothing. The pop-up opens on the tenant that is
 // active now, so «Cancelar» and Escape leave everything as it was.
 var botonOperarTenant = document.getElementById('tc-operar');
+// CH-50 (N7): «Elegir como activo» and «Crear y elegir» open this same pop-up with their tenant chosen in the list.
+var tenantPreelegido = null;
 
 var dialogoCambioTenant = crearDialogo({
   fondo: document.getElementById('tenant-cambio'),
@@ -4753,10 +4818,18 @@ var dialogoCambioTenant = crearDialogo({
   confirmar: document.getElementById('tc-confirmar'),
   hayCambios: function () { return false; },
   alAbrir: function () {
-    selectorTenant.value = tenantActivo === null ? '' : tenantActivo;
+    selectorTenant.value = tenantPreelegido !== null ? tenantPreelegido : (tenantActivo === null ? '' : tenantActivo);
+    tenantPreelegido = null;
     actualizarConfirmacionDeTenant();
+    // CH-50 (N8): unsaved work of the tenant being left is announced before anything is discarded.
+    document.getElementById('tc-sin-guardar').hidden = !tableroCambiado();
   }
 });
+
+function abrirCambioTenant(id) {
+  tenantPreelegido = id === undefined || id === null ? null : String(id);
+  dialogoCambioTenant.abrir();
+}
 
 // The confirmation names the chosen tenant; it stays off while nothing, or the tenant already active, is chosen.
 function actualizarConfirmacionDeTenant() {
@@ -4972,7 +5045,8 @@ function botonTenant(texto, alHacerClic) {
 // The action cell of an active tenant: Elegir and Dar de baja, which opens the confirmation pop-up (CH-33).
 function accionesTenant(td, tenant) {
   vaciar(td);
-  td.appendChild(botonTenant('Elegir como activo', function () { cambiarTenant(String(tenant.id)); }));
+  // CH-50 (N7): one path to change the tenant, the pop-up that confirms «Operar sobre …».
+  td.appendChild(botonTenant('Elegir como activo', function () { abrirCambioTenant(tenant.id); }));
   td.appendChild(botonTenant('Dar de baja', function () { abrirBaja(tenant); }));
 }
 
@@ -5135,12 +5209,13 @@ async function crearTenant(elegir) {
   dialogoTenant.cerrar();
   await cargarTenantsPantalla();
   await cargarTenants();
-  // C-02: the result is a banner with the next step: with the tenant active, its connection; otherwise, choosing it.
+  // C-02: the result is a banner with the next step. CH-50 (N7): «Crear y elegir» goes through the same pop-up as
+  // every other tenant change, so the new tenant becomes active only on «Operar sobre …».
   var siguiente = document.getElementById('tenant-siguiente');
   if (elegir && creado !== '') {
-    cambiarTenant(creado);
     siguiente.hidden = false;
-    mostrarResultado('tenant-banner', 'ok', 'Tenant creado', 'Se creó el tenant «' + nombre + '» y quedó como activo. El paso siguiente de la puesta en marcha es registrar su conexión.');
+    mostrarResultado('tenant-banner', 'ok', 'Tenant creado', 'Se creó el tenant «' + nombre + '». Confirmá «Operar sobre ' + nombre + '» para que quede como activo; el paso siguiente de la puesta en marcha es registrar su conexión.');
+    abrirCambioTenant(creado);
     return;
   }
   siguiente.hidden = true;
@@ -8113,8 +8188,8 @@ botonAgregarTablero.addEventListener('click', function () {
 });
 botonGuardarTablero.addEventListener('click', guardarTablero);
 
-// CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty or unknown hash
-// shows Consultas. Only hidden and aria-current change: every node keeps its id and its
+// CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty hash shows the start screen and,
+// since CH-50, an unknown one shows the unknown-section screen. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
 var PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tablero', 'tiempos','consultas', 'automatizaciones', 'frescura', 'auditoria'];
 // C-19: the tab names the screen that is open (the same words as the navigation).
@@ -8125,7 +8200,7 @@ var TITULOS_PANTALLA = {
   'automatizaciones': 'Automatizaciones', 'frescura': 'Frescura de datos', 'auditoria': 'Auditoría'
 };
 // C-02: with no hash the console opens Tenants while no tenant is selected, and Consultas once there is one. A hash
-// that names no screen still falls back to Consultas. Before the tenant list answers there is no tenant yet, so the
+// that names no screen opens the unknown-section screen (CH-50). Before the tenant list answers there is no tenant yet, so the
 // remembered selection stands in for it: a visit that will end on Consultas does not flash Tenants first, and
 // one whose remembered tenant is gone moves to Tenants as soon as the list says so.
 var pantallaMostrada = null;
@@ -8142,10 +8217,15 @@ function mostrarPantalla() {
   ocultarResultado('mapeo-banner');
   ocultarResultado('mapeo-conexion-banner');
   var pedida = String(window.location.hash || '').replace(/^#/, '');
-  var activa = hashVacio() ? pantallaInicial() : (PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida);
+  // CH-50 (N9): a hash that names no screen opens the unknown-section screen, with no link marked as current.
+  var activa = hashVacio() ? pantallaInicial() : (PANTALLAS.indexOf(pedida) === -1 ? 'desconocida' : pedida);
   pantallaMostrada = activa;
-  document.title = TITULOS_PANTALLA[activa] + ' — ZeroDashboard';
+  document.title = (activa === 'desconocida' ? 'Sección no encontrada' : TITULOS_PANTALLA[activa]) + ' — ZeroDashboard';
   olvidarSecretos();
+  document.getElementById('pantalla-desconocida').hidden = activa !== 'desconocida';
+  var volver = document.getElementById('desconocida-volver');
+  volver.setAttribute('href', '#' + pantallaInicial());
+  volver.textContent = pantallaInicial() === 'consultas' ? 'Ir a Consultas' : 'Ir a Tenants';
   PANTALLAS.forEach(function (nombre) {
     document.getElementById('pantalla-' + nombre).hidden = nombre !== activa;
     var enlace = document.getElementById('nav-' + nombre);
