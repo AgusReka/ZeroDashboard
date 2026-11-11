@@ -4638,6 +4638,56 @@ Cómo se provoca la falla en vivo:
 
 ---
 
+### DEC-208 — CH-53 y CH-56: los editores con SQL (Consultas, Plantillas y Reportes) pasan a una subvista de página; enmienda DEC-173
+
+**Contexto.**
+- DEC-173 manda todo alta o modificación a un pop-up y descartó la vista dedicada con sub-rutas `#pantalla/alta`.
+- La auditoría de UX de la consola (EXPLORE del 2026-11-11) encontró que el trabajo principal del operador ocurre dentro de pop-ups:
+  - en Consultas, un pop-up de 1100 px con editor, parámetros, resultado y paginación;
+  - en Plantillas y Reportes, pop-ups largos con SQL, parámetros, textos, formato y prueba.
+- Esos pop-ups tapan la lista, no tienen dirección propia y esconden errores fuera de la vista.
+- La guía de patrones de la skill de diseño (`guidelines/admin.md` P5 y W) reserva el pop-up para confirmar o completar de uno a tres campos. Lo que lleva scroll o más de un minuto va en página.
+- El usuario aprobó CH-53 y CH-56 con el editor en página sin advertir el choque con DEC-173. Se le consultó el 2026-11-11.
+
+**Opciones.**
+- (a) Enmendar DEC-173: los editores con SQL pasan a una subvista de su pantalla, con dirección `#pantalla/nueva` o `#pantalla/{id}`, y las altas cortas siguen en pop-up.
+- (b) Mantener DEC-173: pop-up a pantalla casi completa con el mismo esqueleto de banco de trabajo, sin dirección propia.
+- (c) Enmendar solo para Consultas.
+
+**Decisión.** (a).
+- Los editores de **Consultas**, **Plantillas** y **Reportes** se abren como una subvista de su pantalla. Las direcciones son:
+  - Consultas: `#consultas/nueva` y `#consultas/{id}`;
+  - Plantillas: `#plantillas/nueva` y `#plantillas/{id}`;
+  - Reportes: `#reportes/nuevo` y `#reportes/{id}`.
+- La subvista reemplaza el contenido de la pantalla y lleva migas («Consultas › {nombre}») para volver a la lista.
+- Se mantiene de DEC-173:
+  - todos los campos del registro van en la subvista;
+  - acción principal con verbo más objeto, y «Cancelar»;
+  - foco al primer campo al abrir;
+  - «Descartar cambios» si se sale con cambios sin guardar, sea por las migas, por otra dirección o al cambiar de tenant.
+- Sigue en pop-up todo lo demás: «Nuevo tenant», «Nueva conexión», «Nuevo usuario», el asistente y el ajuste de automatizaciones, y las confirmaciones.
+- Siguen en panel lateral el historial de versiones y el detalle de solo lectura.
+- Sigue valiendo DEC-164: un solo documento con navegación por `#`, y los ids se mueven sin renombrarse.
+
+**Por qué.**
+- Son las tres tareas largas de la consola: escribir SQL, mirar un resultado y corregir.
+- En página tienen el ancho completo, el resultado debajo del editor y una dirección a la que se puede volver.
+- (b) conserva la dirección perdida y el tapado de la lista.
+- (c) deja a Plantillas y Reportes, que tienen más campos que Consultas, en el contenedor que peor les queda.
+
+**Se resigna.**
+- La consola tiene dos patrones de edición en lugar de uno. La regla para elegir entre ellos es la de P5 en `guidelines/admin.md`: pop-up para tareas cortas, página para el trabajo principal con SQL.
+- El navegador por `#` gana un nivel de sub-ruta que `mostrarPantalla` tiene que interpretar.
+- Los tests de esos tres pop-ups cambian sus pasos de apertura y cierre.
+
+**Aplicación.** Consultas en CH-53 y Plantillas y Reportes en CH-56. Modifica los requisitos «Create and Edit Forms Open in a Pop-up (DEC-173)», «Query Screen and Query Pop-up» y los de los pop-ups de plantilla y reporte de la spec `query-console`.
+
+**Decidido por:** el usuario, 2026-11-11, al revisar las specs de CH-53 y CH-56. Eligió enmendar DEC-173 para los editores con SQL.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
