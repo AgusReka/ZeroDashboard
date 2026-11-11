@@ -50,11 +50,11 @@ Chain strategy: stacked-to-main
 - [x] a.4 Isolated stack check: each database's five views return rows; last 7 days has orders in both; each `food_store` order has items; each reader cannot connect to the other database; an `INSERT` is refused; `stock-fisico` at `umbral` 10 returns 2 rows. Tear down with `down -v --rmi local`.
 
 ## b1 — Seed split and second tenant
-- [ ] b1.1 `src/semillas/demo/comun.ts`: move `crearSiFalta`, `motivoInvalida` and a `validarVistas` parameterized by `TenantDemo`. The audit row uses the descriptor's tenant.
-- [ ] b1.2 `demo/tenant.ts`: one tenant from a descriptor (tenant, connection with optional `agenteId`, views and probe, optional saved query, panel user, daily automation). Food Store's output and ids stay identical.
-- [ ] b1.3 `semilla-demo.ts`: descriptors for both tenants, the derived `+cafe` email, the new `IDS_DEMO` entries (`49d…`), the `ClienteSemilla` additions, the order of steps.
-- [ ] b1.4 Café del Puerto pre-check: `base-inexistente` throws the closed `down -v` message; nothing of the second tenant is left.
-- [ ] b1.5 Tests: existing tests pass unchanged except counts and ids; both tenants seeded; second run creates nothing; derived email; old-volume message and no Café rows.
+- [x] b1.1 `src/semillas/demo/comun.ts`: move `crearSiFalta`, `motivoInvalida` and a `validarVistas` parameterized by `TenantDemo`. The audit row uses the descriptor's tenant.
+- [x] b1.2 `demo/tenant.ts`: one tenant from a descriptor (tenant, connection with optional `agenteId`, views and probe, optional saved query, panel user, daily automation). Food Store's output and ids stay identical.
+- [x] b1.3 `semilla-demo.ts`: descriptors for both tenants, the derived `+cafe` email, the new `IDS_DEMO` entries (`49d…`), the `ClienteSemilla` additions, the order of steps.
+- [x] b1.4 Café del Puerto pre-check: `base-inexistente` throws the closed `down -v` message; nothing of the second tenant is left.
+- [x] b1.5 Tests: existing tests pass unchanged except counts and ids; both tenants seeded; second run creates nothing; derived email; old-volume message and no Café rows.
 
 ## b2 — Reports and dashboards
 - [ ] b2.1 `demo/reportes.ts`: the four reports from the design and `rechazoDeEntradaReporte` (AJV half restated, then `rechazoDeReporte` with columns required); create by fixed id with `datosDeReporte`.

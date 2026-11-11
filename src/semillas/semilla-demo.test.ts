@@ -9,7 +9,7 @@ import type { ResultadoSondeo, SondeoEntidad } from '../ejecucion/consulta-ejecu
 import { CONTRATO_CANONICO, type TipoSemantico } from '../contrato/contrato.js';
 import { descifrarCredencial } from '../compartido/cripto-credencial.js';
 import { verificarClave } from '../compartido/crypto-auth.js';
-import { IDS_DEMO, leerEntornoDemo, sembrarDemo, type EntornoDemo } from './semilla-demo.js';
+import { IDS_DEMO, correoPanelCafe, leerEntornoDemo, sembrarDemo, type EntornoDemo } from './semilla-demo.js';
 
 process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
 
@@ -18,6 +18,9 @@ process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzI
  * them before each case and after the last; the audit table is the one thing it cannot clean,
  * because the database refuses to delete from it (DEC-162), so the audit assertions count the
  * rows a run added rather than the rows that exist.
+ *
+ * CH-49 (b1): the seed runs two tenants, Food Store and Café del Puerto, from one descriptor
+ * each. Cases that read "the tenant" without a name mean Food Store, as before.
  *
  * The replica is not dialled: `sembrarDemo` takes the probe as a dependency and the cases
  * hand it a fake answer. The real probe is exercised by `validacion-mapeo-rutas.test.ts`.
@@ -68,6 +71,12 @@ const SONDEAR_FALLO = async (): Promise<ResultadoSondeo> => ({
   duracionMs: 5,
 });
 
+/** A probe that answers per replica database: the one named `base` gets `respuesta`, the rest are valid. */
+function sondearPorBase(base: string, respuesta: () => Promise<ResultadoSondeo>) {
+  return async (destino: { database: string }, entidades: readonly { entidad: string }[]) =>
+    destino.database === base ? respuesta() : sondeoValido(entidades);
+}
+
 const SONDEAR_NUNCA = async (): Promise<ResultadoSondeo> => {
   throw new Error('the probe must not run');
 };
@@ -98,6 +107,12 @@ describe('semilla demo — environment', () => {
     );
   });
 
+  test('Café del Puerto’s email is the panel email with +cafe before the @', () => {
+    assert.equal(correoPanelCafe('demo-ch31@prueba.test'), 'demo-ch31+cafe@prueba.test');
+    // Nothing is replaced: an existing tag stays and the new one is added after it.
+    assert.equal(correoPanelCafe('ana+x@prueba.test'), 'ana+x+cafe@prueba.test');
+  });
+
   test('a complete environment is read, with the email normalized', () => {
     const entorno = leerEntornoDemo(ENV_COMPLETO);
     assert.equal(entorno.correoPanel, 'demo-ch31@prueba.test');
@@ -116,16 +131,17 @@ describe(
 
     /** Everything the seed writes, children first; the audit rows stay (DEC-162). */
     async function limpiar(): Promise<void> {
-      const tenantId = IDS_DEMO.tenant;
-      await db.ejecucion.deleteMany({ where: { tenantId } });
-      await db.automatizacion.deleteMany({ where: { tenantId } });
-      await db.vistaCanonica.deleteMany({ where: { tenantId } });
-      await db.consultaGuardadaVersion.deleteMany({ where: { tenantId } });
-      await db.consultaGuardada.deleteMany({ where: { tenantId } });
-      await db.conexion.deleteMany({ where: { tenantId } });
-      await db.sesionPanel.deleteMany({ where: { tenantId } });
-      await db.usuario.deleteMany({ where: { tenantId } });
-      await db.tenant.deleteMany({ where: { id: tenantId } });
+      for (const tenantId of [IDS_DEMO.tenant, IDS_DEMO.cafe.tenant]) {
+        await db.ejecucion.deleteMany({ where: { tenantId } });
+        await db.automatizacion.deleteMany({ where: { tenantId } });
+        await db.vistaCanonica.deleteMany({ where: { tenantId } });
+        await db.consultaGuardadaVersion.deleteMany({ where: { tenantId } });
+        await db.consultaGuardada.deleteMany({ where: { tenantId } });
+        await db.conexion.deleteMany({ where: { tenantId } });
+        await db.sesionPanel.deleteMany({ where: { tenantId } });
+        await db.usuario.deleteMany({ where: { tenantId } });
+        await db.tenant.deleteMany({ where: { id: tenantId } });
+      }
       // The operator's sessions cascade with it.
       await db.operador.deleteMany({ where: { id: IDS_DEMO.operador } });
     }
@@ -144,8 +160,8 @@ describe(
       await db.$disconnect();
     });
 
-    function cuentas() {
-      const where = { tenantId: IDS_DEMO.tenant };
+    function cuentas(tenantId: string = IDS_DEMO.tenant) {
+      const where = { tenantId };
       return Promise.all([
         db.vistaCanonica.count({ where }),
         db.automatizacion.count({ where }),
@@ -161,7 +177,7 @@ describe(
       ).map((f) => f.id);
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
-      assert.equal(creadas.length, 11, creadas.join(', '));
+      assert.equal(creadas.length, 20, creadas.join(', '));
 
       const operador = await db.operador.findUniqueOrThrow({ where: { id: IDS_DEMO.operador } });
       assert.equal(operador.nombre, 'demo');
@@ -225,6 +241,71 @@ describe(
       });
     });
 
+    test('the first run also seeds Café del Puerto with its own ids, database, user and audit row', async () => {
+      const antes = (
+        await db.registroEjecucion.findMany({ where: { tenantId: IDS_DEMO.cafe.tenant }, select: { id: true } })
+      ).map((f) => f.id);
+
+      const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+      assert.deepEqual(
+        creadas.filter((c) => c.startsWith('cafe:')),
+        [
+          'cafe:tenant',
+          'cafe:conexion',
+          'cafe:usuario',
+          ...CONTRATO_CANONICO.map((e) => `cafe:vista:${e.nombre}`),
+          'cafe:automatizacion',
+        ],
+      );
+
+      const tenant = await db.tenant.findUniqueOrThrow({ where: { id: IDS_DEMO.cafe.tenant } });
+      assert.equal(tenant.nombre, 'Café del Puerto');
+
+      const conexion = await db.conexion.findUniqueOrThrow({ where: { id: IDS_DEMO.cafe.conexion } });
+      assert.deepEqual(
+        [conexion.tenantId, conexion.nombre, conexion.host, conexion.puerto, conexion.baseDeDatos, conexion.usuarioDb, conexion.soloLectura, conexion.agenteId],
+        [IDS_DEMO.cafe.tenant, 'cafe-del-puerto-demo', 'replica-demo', 5432, 'cafe_demo', 'lector_cafe_demo', true, null],
+      );
+      assert.equal(descifrarCredencial(conexion.credencial), entorno.claveReplica);
+
+      const vistas = await db.vistaCanonica.findMany({ where: { tenantId: IDS_DEMO.cafe.tenant } });
+      assert.deepEqual(vistas.map((v) => v.entidad).sort(), CONTRATO_CANONICO.map((e) => e.nombre).sort());
+      for (const vista of vistas) {
+        assert.equal(vista.id, IDS_DEMO.cafe.vistas[vista.entidad as keyof typeof IDS_DEMO.cafe.vistas]);
+        assert.equal(vista.conexionId, IDS_DEMO.cafe.conexion);
+        assert.equal(vista.estadoValidacion, 'valida', vista.entidad);
+      }
+
+      // No saved query: only Food Store keeps it.
+      assert.equal(await db.consultaGuardada.count({ where: { tenantId: IDS_DEMO.cafe.tenant } }), 0);
+
+      const usuario = await db.usuario.findUniqueOrThrow({ where: { id: IDS_DEMO.cafe.usuario } });
+      assert.equal(usuario.tenantId, IDS_DEMO.cafe.tenant);
+      assert.equal(usuario.correo, 'demo-ch31+cafe@prueba.test');
+      assert.ok(await verificarClave(ENV_COMPLETO.DEMO_PANEL_CLAVE as string, usuario.claveHash));
+
+      const automatizacion = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_DEMO.cafe.automatizacion } });
+      assert.equal(automatizacion.plantillaId, ID_STOCK_FISICO);
+      assert.equal(automatizacion.conexionId, IDS_DEMO.cafe.conexion);
+      assert.deepEqual(automatizacion.valores, { umbral: 5 });
+      assert.equal(automatizacion.cron, '0 9 * * *');
+      assert.deepEqual(automatizacion.destinatarios, ['demo-ch31+cafe@prueba.test']);
+      assert.equal(automatizacion.activo, true);
+
+      const filas = await db.registroEjecucion.findMany({
+        where: { tenantId: IDS_DEMO.cafe.tenant, id: { notIn: antes } },
+      });
+      assert.equal(filas.length, 1);
+      assert.equal(filas[0]?.tenantNombre, 'Café del Puerto');
+      assert.equal(filas[0]?.conexionId, IDS_DEMO.cafe.conexion);
+      assert.equal(filas[0]?.resultado, 'ok');
+      assert.equal(filas[0]?.operadorId, IDS_DEMO.operador);
+
+      // Each tenant keeps its own rows.
+      assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [5, 1, 0, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
+    });
+
     test('a second run creates nothing, never probes, and keeps the owner’s edit', async () => {
       await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
       const editada = 'SELECT 1 AS editada';
@@ -239,6 +320,7 @@ describe(
 
       assert.deepEqual(creadas, []);
       assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
+      assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [5, 1, 0, 1, 1]);
       const consulta = await db.consultaGuardada.findUniqueOrThrow({ where: { id: IDS_DEMO.consulta } });
       assert.equal(consulta.sql, editada);
       assert.equal(consulta.nombre, 'Editada por el dueño');
@@ -276,6 +358,50 @@ describe(
 
       assert.deepEqual(await cuentas(), [0, 0, 1, 1, 1]);
       assert.equal(await db.registroEjecucion.count({ where: { tenantId: IDS_DEMO.tenant } }), antes);
+    });
+
+    test('an old replica volume without cafe_demo fails with the recreate message and leaves no Café rows', async () => {
+      const auditoriaAntes = await db.registroEjecucion.count({ where: { tenantId: IDS_DEMO.cafe.tenant } });
+      const sondear = sondearPorBase('cafe_demo', async () => ({
+        resultado: 'fallo',
+        fase: 'conexion',
+        categoria: 'base-inexistente',
+        codigo: '3D000',
+        duracionMs: 4,
+      }));
+
+      await assert.rejects(
+        sembrarDemo(db, entorno, { sondear }),
+        (error: Error) =>
+          error.message === 'replica-demo has no database cafe_demo: recreate the volume with docker compose down -v' &&
+          !error.message.includes(entorno.claveReplica),
+      );
+
+      // Food Store, seeded before the check, stays; nothing of the second tenant exists.
+      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
+      assert.equal(await db.tenant.count({ where: { id: IDS_DEMO.cafe.tenant } }), 0);
+      assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [0, 0, 0, 0, 0]);
+      assert.equal(await db.registroEjecucion.count({ where: { tenantId: IDS_DEMO.cafe.tenant } }), auditoriaAntes);
+    });
+
+    test('any other failure of cafe_demo keeps the probe’s closed message and leaves no Café rows', async () => {
+      const sondear = sondearPorBase('cafe_demo', SONDEAR_FALLO);
+
+      await assert.rejects(
+        sembrarDemo(db, entorno, { sondear }),
+        (error: Error) => error.message === 'replica-demo did not answer: conexion · tiempo-agotado (no code)',
+      );
+
+      assert.equal(await db.tenant.count({ where: { id: IDS_DEMO.cafe.tenant } }), 0);
+      assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [0, 0, 0, 0, 0]);
+    });
+
+    test('the old-volume check is skipped once Café del Puerto exists', async () => {
+      await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+
+      const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_NUNCA });
+
+      assert.deepEqual(creadas, []);
     });
   },
 );
