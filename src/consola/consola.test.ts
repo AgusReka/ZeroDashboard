@@ -558,6 +558,8 @@ const IDS = [
   // CH-51: the one graded confirmation pop-up (title, consequence, list, the restore note and its three buttons).
   'confirmacion-dialogo', 'confirmacion-titulo', 'confirmacion-consecuencia', 'confirmacion-lista', 'confirmacion-extra',
   'confirmacion-nota', 'confirmacion-cancelar', 'confirmacion-primaria', 'confirmacion-peligro',
+  // CH-54: Mapeo in three columns: the entity list, the expected fields, the pending links, the rule and the blocked state.
+  'mapeo-lista', 'mapeo-campos', 'mapeo-campos-titulo', 'mapeo-campos-lista', 'mapeo-pendientes', 'mapeo-regla', 'mapeo-bloqueado',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -572,6 +574,7 @@ const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conex
   'tenant-cambio', 'tc-confirmar', 'auto-vacio', 'mapeo-automatizaciones-bloque', 'tenant-siguiente',
   'tenant-activo-id', 'nav-tenant-id', 'tc-sin-guardar', 'pantalla-desconocida',
   'confirmacion-dialogo', 'confirmacion-lista', 'confirmacion-extra', 'confirmacion-primaria', 'confirmacion-peligro',
+  'mapeo-campos', 'mapeo-pendientes', 'mapeo-bloqueado',
   ...PANTALLAS_DEL_TENANT.map((nombre) => 'sin-tenant-' + nombre), ...BANNERS_DE_RESULTADO];
 
 /**
@@ -7433,12 +7436,71 @@ describe('the console document, served by the real route', () => {
     assert.match(bloqueEntidad(escenario, 'insumo').textContent, /opcional/);
   });
 
-  test('CH-30d an invalid field shows its verdict, column, observed type and the cast hint', async () => {
+  test('CH-30d CH-54 an invalid field shows its verdict in words, the observed type and the cast hint, in the fields column', async () => {
     const escenario = await abrirMapeo();
-    const texto = bloqueEntidad(escenario, 'producto').textContent;
-    for (const parte of ['stockDisponible', 'tipo-incorrecto', 'texto', '::numeric']) {
-      assert.ok(texto.includes(parte), parte);
+    // producto is the first entity that is not valid, so it is the one selected.
+    assert.equal(nodo(escenario, 'mapeo-campos').hidden, false);
+    const campo = nodo(escenario, 'mapeo-campos-lista').hijos.find((li) => li.hijos[0].textContent === 'stockDisponible');
+    assert.ok(campo, 'the contract field is listed');
+    assert.equal(campo.getAttribute('data-tono'), 'error');
+    assert.match(campo.textContent, /Tipo distinto: llega texto/);
+    assert.match(campo.textContent, /Probá castear con ::numeric/);
+    assert.ok(!campo.textContent.includes('tipo-incorrecto'), 'the verdict token never reaches the page');
+  });
+
+  test('CH-54 the fields column lists every contract field of the selected entity, with its type, before any verdict', async () => {
+    const escenario = await abrirMapeo();
+    // The list follows the contract's order: pedido is the second entity.
+    nodo(escenario, 'mapeo-lista').hijos[1].disparar('click');
+    const esperados = CONTRATO_CANONICO.find((e) => e.nombre === 'pedido')!.campos;
+    const items = nodo(escenario, 'mapeo-campos-lista').hijos;
+    assert.deepEqual(items.map((li) => li.hijos[0].textContent), esperados.map((c) => c.nombre));
+    assert.deepEqual(items.map((li) => li.hijos[1].textContent), esperados.map((c) => c.tipo + ' · ' + c.obligatoriedad));
+    assert.ok(items.every((li) => li.getAttribute('data-tono') === null), 'pedido is not mapped: no verdict yet');
+    assert.equal(nodo(escenario, 'mapeo-campos-titulo').textContent, 'Campos esperados de pedido');
+  });
+
+  test('CH-54 one entity at a time: the list says each state, and choosing one shows its block and marks it current', async () => {
+    const escenario = await abrirMapeo();
+    const lista = nodo(escenario, 'mapeo-lista').hijos;
+    assert.deepEqual(lista.map((b) => b.textContent), ['productoInválida', 'pedidoSin mapear', 'item_pedidoSin mapear', 'insumoSin mapear', 'receta_componenteSin mapear']);
+    assert.equal(lista[0].getAttribute('data-tono'), 'error');
+    assert.equal(lista[0].getAttribute('aria-current'), 'true');
+    const visibles = () => nodo(escenario, 'mapeo-entidades').hijos.filter((b) => !b.hidden).length;
+    assert.equal(visibles(), 1);
+    lista[3].disparar('click');
+    assert.equal(lista[3].getAttribute('aria-current'), 'true');
+    assert.equal(lista[0].getAttribute('aria-current'), null);
+    assert.equal(visibles(), 1);
+    assert.equal(bloqueEntidad(escenario, 'insumo').hidden, false);
+  });
+
+  test('CH-54 each entity editor has a label associated by id', async () => {
+    const escenario = await abrirMapeo();
+    for (const entidad of ['producto', 'pedido']) {
+      const bloque = bloqueEntidad(escenario, entidad);
+      const rotulo = buscar(bloque, (n) => n.tagName === 'label')[0];
+      const editor = editorDe(bloque);
+      assert.equal(editor.id, 'mapeo-sql-' + entidad);
+      assert.equal((rotulo as unknown as { htmlFor: string }).htmlFor, editor.id);
+      assert.equal(rotulo.textContent, 'SELECT de ' + entidad);
     }
+  });
+
+  test('CH-54 the embedded contract is the one the server serves, and the validity rule is stated', () => {
+    assert.ok(script.includes('var CONTRATO = ' + jsonEnScript(CONTRATO_CANONICO) + ';'));
+    assert.match(marcado(), /<p id="mapeo-regla" class="ayuda">El mapeo es válido cuando cada entidad obligatoria/);
+  });
+
+  test('CH-54 with no connections the screen shows the blocked state, pointing to Conexiones', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
+    irA(escenario, '#mapeo');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'mapeo-bloqueado').hidden, false);
+    assert.ok(!escenario.peticiones.some((p) => p.url.includes('validacion-mapeo')), 'nothing to validate');
+    assert.match(marcado(), /<div id="mapeo-bloqueado" class="zd-state" hidden>[\s\S]*?Primero registrá una conexión[\s\S]*?href="#conexiones">Ir a Conexiones<\/a>/);
   });
 
   test('CH-30d the automations show their state and every reason', async () => {
@@ -7497,6 +7559,22 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'mapeo-aviso').textContent, '', 'the old one-line text is gone');
     assert.match(bloqueEntidad(escenario, 'producto').textContent, /Inválida/);
     assert.equal(editorDe(bloqueEntidad(escenario, 'producto')).value, SQL_PRODUCTO);
+  });
+
+  test('CH-54 after a validation, each entity that needs work has a button that selects it', async () => {
+    const escenario = await abrirMapeo();
+    escenario.respuestas.push({ status: 200, cuerpo: { validacionMapeo: informeDePrueba() } });
+    nodo(escenario, 'mapeo-validar').disparar('click');
+    await asentarVarias();
+    const pendientes = nodo(escenario, 'mapeo-pendientes');
+    assert.equal(pendientes.hidden, false);
+    // producto is invalid and pedido, item_pedido are obligatory and unmapped; the optional ones are not pending.
+    const textos = pendientes.hijos.map((b) => b.textContent);
+    assert.ok(textos.includes('Ir a producto') && textos.includes('Ir a pedido'), textos.join(', '));
+    assert.ok(!textos.includes('Ir a insumo'), 'an optional unmapped entity is not work to do');
+    botonesCon(pendientes, 'Ir a pedido')[0].disparar('click');
+    assert.equal(bloqueEntidad(escenario, 'pedido').hidden, false);
+    assert.equal(nodo(escenario, 'mapeo-campos-titulo').textContent, 'Campos esperados de pedido');
   });
 
   test('CH-30d a successful validation repaints the states and keeps what is in the editors', async () => {
