@@ -64,14 +64,14 @@ Chain strategy: stacked-to-main
 ## c — Telegram and every-minute automations
 - [x] c.1 `leerEntornoDemo`: `DEMO_TELEGRAM_CHAT_ID` (signed 64-bit, error without the value).
 - [x] c.2 `demo/canales.ts`: the link when missing; the email every-minute automation (umbral 10, minimum 2, three recipients); the Telegram one only with a link.
-- [ ] c.3 Compose forwards `DEMO_TELEGRAM_CHAT_ID`; `.env.example` lists it empty.
+- [x] c.3 Compose forwards `DEMO_TELEGRAM_CHAT_ID`; `.env.example` lists it empty.
 - [x] c.4 Tests: link created, skipped, never overwritten; malformed id rejected without echo; Telegram automation only with a link; email automation shape.
 - [x] c.5 README «Probar la demo completa»: what comes seeded (two tenants, dashboards, every-minute email, Telegram with both variables), the clean start with `down -v`, how to stop the every-minute automations («Desactivar», one-way), the data check query, and the stale CH-48 sentence removed.
 
 ## d — Agent
 - [x] d.1 `leerEntornoDemo`: `DEMO_AGENTE_TOKEN` (format check, error without the value).
 - [x] d.2 `demo/agente.ts`: agent with the token hash when the tenant has none; Food Store's connection created with `agenteId`.
-- [x] d.3 `docker-compose.yml`: `agente` service per the design; forward `DEMO_AGENTE_TOKEN`. Compose part done (the token is `${DEMO_AGENTE_TOKEN:-}`, not `:?`, which broke every `docker compose` command without a token). `.env.example` listing it empty with the `agente` profile is pending (the owner handles `.env*`).
+- [x] d.3 `docker-compose.yml`: `agente` service per the design; forward `DEMO_AGENTE_TOKEN`. Compose part done (the token is `${DEMO_AGENTE_TOKEN:-}`, not `:?`, which broke every `docker compose` command without a token). `.env.example` lists it empty with the `agente` profile.
 - [x] d.4 Tests: only the hash stored; connection bound; existing agent and existing direct connection untouched; no token gives a direct connection.
 - [x] d.5 README: the agent shortcut sentence, the token one-liner, recreating `agente` after rebuilding `app`, and the provoked failure with `stop`/`start agente`. Isolated stack check of the run and the failure.
 
