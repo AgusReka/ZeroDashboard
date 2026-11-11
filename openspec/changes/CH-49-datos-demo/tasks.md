@@ -44,10 +44,10 @@ Chain strategy: stacked-to-main
 - [x] 0.2 Agent network spike: `network_mode: "service:app"` resolves `replica-demo`, reaches `:5432` and the app over loopback on Docker Desktop.
 
 ## a — Replica
-- [ ] a.1 `02-lector.sh`: add `REVOKE CONNECT ON DATABASE food_store FROM PUBLIC`.
-- [ ] a.2 `03-datos-recientes.sql`: shift `pedido` and `detalle_pedido` dates by `now()::date - DATE '2026-09-16'`; insert two items per order 73 to 99 as the design says; `setval`; set stock of products 7, 8, 9 to 18, 9, 4.
-- [ ] a.3 `04-cafe-demo.sh` and `cafe/esquema-y-datos.sql`: database, `REVOKE CONNECT`, role `lector_cafe_demo`, tables, data generated over `now()` with no `random()`, five views with exactly the canonical columns.
-- [ ] a.4 Isolated stack check: each database's five views return rows; last 7 days has orders in both; each `food_store` order has items; each reader cannot connect to the other database; an `INSERT` is refused; `stock-fisico` at `umbral` 10 returns 2 rows. Tear down with `down -v --rmi local`.
+- [x] a.1 `02-lector.sh`: add `REVOKE CONNECT ON DATABASE food_store FROM PUBLIC`.
+- [x] a.2 `03-datos-recientes.sql`: shift `pedido` and `detalle_pedido` dates by `now()::date - DATE '2026-09-16'`; no item insert: the dump already has items for all 99 orders (194 lines), so the gap the exploration assumed does not exist; set stock of products 7, 8, 9 to 18, 9, 4.
+- [x] a.3 `04-cafe-demo.sh` and `cafe/esquema-y-datos.sql`: database, `REVOKE CONNECT`, role `lector_cafe_demo`, tables, data generated over `now()` with no `random()`, five views with exactly the canonical columns.
+- [x] a.4 Isolated stack check: each database's five views return rows; last 7 days has orders in both; each `food_store` order has items; each reader cannot connect to the other database; an `INSERT` is refused; `stock-fisico` at `umbral` 10 returns 2 rows. Tear down with `down -v --rmi local`.
 
 ## b1 — Seed split and second tenant
 - [ ] b1.1 `src/semillas/demo/comun.ts`: move `crearSiFalta`, `motivoInvalida` and a `validarVistas` parameterized by `TenantDemo`. The audit row uses the descriptor's tenant.

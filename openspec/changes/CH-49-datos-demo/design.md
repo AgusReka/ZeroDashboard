@@ -12,10 +12,8 @@ The replica gains init files that run after the dump and change its data in plac
 **Alternatives considered**: regenerate the dump with relative expressions; generate new orders.
 **Rationale**: a 2,229-line dump stays byte-identical and reviewable; one `UPDATE` per table is easy to read and to check. The 7-, 30- and 90-day windows all have rows on load day.
 
-### Decision: Items for orders 73 to 99 are generated deterministically
-**Choice**: The same file inserts two `detalle_pedido` rows per order 73 to 99 (ids from 195 up). The products are `(pedido_id % 9) + 1` and `((pedido_id * 4) % 9) + 1`; when both are equal the second is the next product. The quantity is `1 + pedido_id % 3`, the price is `product.base_price`, and `subtotal` is quantity times price. Then the sequence is set with `setval`.
-**Alternatives considered**: leave the gap; copy items from earlier orders.
-**Rationale**: no `random()` (spec), every order has items, and «Lo más vendido» covers the whole month. `pedido.total` is not recomputed: a mismatch between an order's total and its items is invisible in the four reports and keeps the dump's totals.
+### Decision: No items are added (correction during apply)
+**Choice**: none. The exploration said orders 73 to 99 had no `detalle_pedido` rows, but the dump has 194 items covering all 99 orders (`pedido_id` 1 to 99), checked during unit a. Inserting items would have duplicated them, so `03-datos-recientes.sql` only shifts dates and sets stock.
 
 ### Decision: Stock and automation numbers
 **Choice**: `03-datos-recientes.sql` sets the stock of products 7, 8 and 9 (the only ones without a recipe, so the only ones `stock-fisico` reads) to **18, 9 and 4**. The automations use:
@@ -110,7 +108,7 @@ Dashboards: Food Store has 41, 42, 43, 44; Café del Puerto has 41, 42, 43. Each
 ## Data Flow
 
     up (demo [+correo] [+agente])
-      replica-demo initdb: 01 dump -> 02 role + REVOKE -> 03 recent dates, items, stock -> 04 cafe_demo
+      replica-demo initdb: 01 dump -> 02 role + REVOKE -> 03 recent dates, stock -> 04 cafe_demo
       app entrypoint: migrate -> seed
         catalog -> sembrarDemo:
           operator -> [agent] -> Food Store (tenant, connection, views + probe, query, user, daily)
@@ -122,7 +120,7 @@ Dashboards: Food Store has 41, 42, 43, 44; Café del Puerto has 41, 42, 43. Each
 | File | Action | Description |
 |------|--------|-------------|
 | `docker/replica-demo/02-lector.sh` | Modify | `REVOKE CONNECT … FROM PUBLIC` on `food_store` |
-| `docker/replica-demo/03-datos-recientes.sql` | Create | date shift, items for orders 73 to 99, stock 18/9/4 |
+| `docker/replica-demo/03-datos-recientes.sql` | Create | date shift and stock 18/9/4 |
 | `docker/replica-demo/04-cafe-demo.sh` | Create | database, role, grants, runs the data file |
 | `docker/replica-demo/cafe/esquema-y-datos.sql` | Create | tables, generated data, five views |
 | `src/semillas/semilla-demo.ts` | Modify | env and ids; order of steps over the modules |

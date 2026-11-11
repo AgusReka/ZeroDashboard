@@ -11,7 +11,7 @@ The video script needs a fresh environment that already shows every step: a cons
 
 ### In Scope
 - **Replica (DEC-206).**
-  - `food_store`: dates relative to the load moment, the missing `detalle_pedido` rows for orders 73 to 99, and low, distinct stock for products 7, 8 and 9, so the threshold and the minimum of rows are met.
+  - `food_store`: dates relative to the load moment (every order already has its items; the exploration's gap was wrong, see design), and low, distinct stock for products 7, 8 and 9, so the threshold and the minimum of rows are met.
   - A second database `cafe_demo` in the same `replica-demo` container: its own role, its own table design, data generated relative to `now()` without `random()`, and the five canonical `v_*` views over it.
   - One role per database, both with `REPLICA_DEMO_PASSWORD`. `REVOKE CONNECT … FROM PUBLIC` on both, so one tenant's credential cannot open the other's database.
 - **Seed: second tenant (DEC-206).** «Café del Puerto» with fixed ids (`49d00000-…`): connection, five views validated by the same probe as `POST /conexiones/:id/validacion-mapeo`, a panel user, one active daily automation, and its dashboard.
