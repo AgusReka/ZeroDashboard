@@ -4395,6 +4395,249 @@ Límite:
 
 ---
 
+### DEC-203 — Revisión de UX: `GET /` sirve una página estática con dos puertas, y `/consola/` y `/panel/` redirigen a su ruta
+
+**Contexto.**
+- `GET /` responde hoy `401 {"error":"sesion-invalida"}` en JSON. No hay ruta en `/`: la cabecera de `registerConsolaRoute` lo dice («`/` is left unclaimed»), y el guard de DEC-152 contesta 401 a toda URL sin ruta (`requiereOperador` con patrón indefinido). Fastify no ignora la barra final por defecto, así que `/consola/` y `/panel/` son otras URL sin ruta y reciben el mismo JSON. Solo `/consola` y `/panel`, exactos, devuelven HTML (revisión de UX del 2026-11-10, sección 6.1).
+- La separación de superficies viene de DEC-04 y de DEC-136, que ya reconoce como consecuencia «dos puntos de entrada HTML». Ninguna DEC cubre la ruta raíz (sección 6.2 de la revisión).
+- Hay dos listas cerradas de exenciones, ambas por fila exacta de método y patrón de ruta: `EXENCIONES_OPERADOR` (guard, `src/consola/consola-auth.ts`) y `esExenta` (cabecera de tenant, `src/aislamiento/contexto-tenant.ts`). `src/app/rutas.test.ts` exige que cada ruta registrada esté protegida o figure en la lista, y que cada fila exenta nombre una ruta registrada.
+- La pregunta del usuario que origina el punto: tener `/consola` y `/panel` por separado confunde, y se propuso una puerta común que luego se divida. La revisión analizó tres opciones (sección 6.4).
+
+**Opciones.**
+- (A) Dejar como está: `/` sigue en JSON 401.
+- (B) Una página estática en `GET /` con dos puertas, sin datos ni sesión.
+- (C) Un ingreso único que enruta por tipo de cuenta (operador a `/consola`, usuario del panel a `/panel`).
+
+Barra final (solo si se elige B):
+- (a) Dejar `/consola/` y `/panel/` como hoy, en JSON 401.
+- (b) Servir la misma pantalla en las dos URL.
+- (c) Redirigir `/consola/` a `/consola` y `/panel/` a `/panel`.
+- (d) Activar `ignoreTrailingSlash` en toda la aplicación.
+
+**Decisión.** (B), y para la barra final, (c).
+- **(A) se descarta:** deja el JSON crudo en `/`, y nadie le dice a P2 por dónde entrar.
+- **(C) se descarta por las razones de seguridad de la sección 6.3 de la revisión.** Un mismo formulario consultaría dos tablas de cuentas distintas (`Operador` y `Usuario`): abre la enumeración por tiempo o por mensaje entre las dos clases de cuenta, la ambigüedad de identidad (la guía no prohíbe `@` en el nombre de operador y el panel entra por correo), y junta en una ruta políticas distintas (12 horas la consola, 30 días el panel), donde un error de enrutamiento emite la cookie equivocada. Además esconde la estructura que sostiene la regla 2. Reemplazaría en parte a DEC-136 y a DEC-151, y P2 recibe su enlace directo, así que se gana poco.
+- **Barra final (c).** Una sola URL canónica por pantalla, y el manejador de `/consola` y `/panel`, que sí lee la cookie de sesión, sigue siendo uno solo. Las filas nuevas atienden manejadores que no leen sesión ni datos, así que se justifican con el mismo argumento que `/` y no agregan un segundo camino que toque la sesión. (b) duplicaría ese manejador. (d) es global: cambia el ruteo de toda la API para resolver un caso de dos pantallas, y se aleja de la lista cerrada por fila exacta.
+
+**Forma.**
+- **Ruta.** `GET /` exacta. HTML estático con la hoja compartida (DEC-124), sin datos, sin leer la cookie y sin base: su registrador no recibe cliente ni resolver de sesión, como el de `/contrato` (DEC-24). Esa ausencia estructural es lo que hace segura la exención.
+- **Puertas.** «Ir a mi panel» es la principal y se dirige a quien administra un negocio (P2). «Ir a la consola» es la secundaria y se dirige a quien configura ZeroDashboard para un cliente (P1). Los enlaces van a `/panel` y a `/consola`. El resto del texto y la jerarquía visual los fija la guía de diseño.
+- **Exención.** Fila exacta `GET /` en las dos listas (`EXENCIONES_OPERADOR` y la de la cabecera de tenant). Ni prefijo ni otro método: una URL parecida y cualquier otro método siguen protegidos.
+- **Barra final.** `GET /consola/` y `GET /panel/` responden `308` con `Location` a `/consola` y `/panel`, y cada una es una fila exacta en las dos listas. Se elige `308` por sobre `301`: para un `GET` el efecto es el mismo y `308` deja explícito que el método se conserva. Esta elección la propuso el agente al registrar la decisión; lo que decidió el usuario es que estas URL sirvan su pantalla en lugar del JSON 401.
+- **Pruebas.** `src/app/rutas.test.ts` lista las tres filas nuevas como exentas del guard, y comprueba que `GET /` responde HTML sin cookie y que las dos barras finales redirigen sin pasar por la sesión.
+- **Diseño primero.** La pantalla de aterrizaje se agrega a la guía de diseño (`pantallas.md`) antes de implementarla.
+- **Fuera de alcance.** Entregar a P1 la dirección del panel al crear un usuario (C-14) y decir en el ingreso del panel a quién pedir la clave (P-02) no dependen de esta decisión.
+
+**Se resigna.**
+- **La consola queda anunciada en una página pública.** Ya era alcanzable en `/consola`, y la página no muestra nada de ella salvo el enlace.
+- **Tres filas más en las listas cerradas** que mantener y probar.
+- **Siguen siendo dos ingresos separados.** Quien elige la puerta equivocada vuelve a la página de inicio.
+- **Un `308` lo guarda el navegador:** si algún día cambiara la ruta canónica, habría que contar con esa caché.
+
+**Decidido por:** el usuario, 2026-11-10, tras la revisión de UX: eligió (B) con la puerta del panel como principal, rechazó (A) y (C), y pidió que `/consola/` y `/panel/` sirvan su pantalla. El agente propuso el `308`. No inferido por el agente, salvo ese punto.
+
+**Estado:** firme.
+
+---
+
+### DEC-204 — Revisión de UX, C-07: la consola rechaza antes de enviar una sentencia cuya primera palabra es de escritura, con un mensaje de solo lectura
+
+**Contexto.**
+- C-07 de la revisión: `UPDATE producto SET stock = 0` en la consola produce «La sentencia es inválida, o contiene más de una sentencia en un mismo envío. Solo se admite una por ejecución. (SQLSTATE 42601)», el mismo texto que un error de sintaxis. P1 no se entera de que la regla aplicada es «solo lectura».
+- La causa está en la ejecución: `POST /consultas/ejecutar` envuelve la sentencia en `SELECT * FROM (<sql>) AS _consulta_usuario LIMIT $n OFFSET $m` (`sentenciaPaginada`, `src/ejecucion/consulta-ejecucion.ts`). El motor rechaza el `UPDATE` dentro de la subconsulta con `42601`, y `classifyExecutionError` lo clasifica como `error-sintaxis` (rama 5). Ese código es el mismo del texto con más de una sentencia, y solo se distinguen por el mensaje del servidor, que depende del idioma y que el código se prohíbe leer (el comentario de esa rama lo cita como «rule 7»; la regla 7 de `AGENTS.md` es otra, la de secretos, así que lo que se cita acá es el comentario).
+- DEC-09 fija que la garantía de solo lectura la da el motor (transacción `READ ONLY` y protocolo extendido), sin parser de SQL, y descarta el chequeo por palabra clave como protección porque es evadible. La regla 3 exige las dos capas: rechazo en la aplicación y usuario de base sin permisos de escritura (DEC-08).
+- La guía (`lenguaje.md`) fija la fórmula del error de consola: qué se rechazó, la regla y el dato técnico.
+
+**Opciones.**
+- (a) Dejarlo como está.
+- (b) Solo reescribir el texto de `42601`.
+- (c) Un pre-chequeo de la primera palabra de la sentencia antes de enviarla.
+
+**Decisión.** (c).
+- **(a) se descarta:** P1 pierde tiempo buscando una sentencia duplicada que no existe.
+- **(b) se descarta:** `42601` es también el código del texto con más de una sentencia y del error de sintaxis, y distinguirlos exigiría leer el mensaje del servidor. Decir «solo lectura» para esos casos sería falso.
+
+**Forma.**
+- **Dónde.** En `POST /consultas/ejecutar`, después de `sanearSql` y antes de buscar la conexión: una sentencia rechazada no se envía al destino ni abre una conexión.
+- **Cómo se lee.** Se descartan los espacios iniciales y los comentarios (`--` hasta el fin de la línea y `/* … */`) y se toma la primera palabra, sin distinguir mayúsculas. No analiza el resto de la sentencia, así que no es un parser (DEC-09). Si no se puede determinar la primera palabra (un comentario sin cerrar, o ninguna palabra), no rechaza y la sentencia sigue por el camino de hoy.
+- **Lista cerrada.** `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`, `CREATE`, `ALTER`, `DROP`, `GRANT`, `REVOKE`, `COPY`, `CALL`, `DO`, `COMMENT`, `REINDEX`, `REFRESH`, `VACUUM` y `CLUSTER`. El usuario enumeró las diez primeras y dejó el cierre de la lista al registro; las ocho siguientes son lo que completó el agente. Ampliarla es un cambio de esta decisión.
+- **Mensaje.** «La consulta fue rechazada: solo se permiten lecturas. Se encontró UPDATE.», con la palabra encontrada en mayúsculas. No lleva número de línea. El texto de la guía lo ejemplifica con «en la línea 3», y la revisión lo propone sin él.
+- **No lee el mensaje del servidor** y no cambia ninguna otra protección: el rol de solo lectura y su verificación (DEC-08), la transacción `READ ONLY` y el envoltorio (DEC-09), y la clasificación de `42601`, `25006` y `0A000` siguen igual.
+- **Es un pre-chequeo de experiencia, no una garantía.** Que una sentencia lo pase no significa que sea una lectura: `WITH x AS (DELETE …)`, `SELECT … INTO` o una función con efectos siguen su camino y quedan en manos del motor. La respuesta del servidor conserva la forma de un veredicto del intento, no la de un error de la solicitud (como el resto de los rechazos de ejecución). Si reutiliza la categoría `no-es-lectura` o suma una nueva, y cómo viaja la palabra (que sale de una lista cerrada), lo fija la especificación del change.
+- **Alcance.** Solo `POST /consultas/ejecutar`. Las pruebas de plantillas y de reportes y la validación del mapeo no cambian, y las protege el motor.
+
+**Se resigna.**
+- **Una lista de palabras que mantener** dentro de la aplicación, que se parece a la protección que DEC-09 descartó. Por eso queda escrito que es un pre-chequeo de experiencia, y que la garantía sigue siendo el motor.
+- **Solo cubre la primera palabra.** Una escritura dentro de un `WITH` conserva el mensaje general de `no-es-lectura`.
+- **Queda para la especificación del change** si un intento rechazado antes de enviarse deja fila de auditoría. DEC-159 audita los caminos que ejecutan SQL contra la base de un cliente, y este no llega a ejecutar nada. No se decide acá.
+
+**Decidido por:** el usuario, 2026-11-10, tras la revisión de UX: eligió (c) y fijó el texto del mensaje; eligió la primera palabra como criterio, y descartó dejarlo como está y solo reescribir `42601`. El agente completó la lista cerrada. No inferido por el agente, salvo ese punto.
+
+**Estado:** firme.
+
+---
+
+### DEC-205 — Revisión de UX, P-06: el servidor exige que `umbral` sea un entero mayor o igual a 0, y afina DEC-60 para ese parámetro
+
+**Contexto.**
+- DEC-60 fija que `numero` es un número JSON, sin conversiones. En el código es `typeof valor === 'number' && Number.isFinite(valor)` (`FORMA.numero`, `src/ejecucion/parametros.ts`), así que `2.5` es válido.
+- P-06 de la revisión: con `2.5` el panel guardó el cambio («Guardamos tus cambios») aunque la guía define el umbral como entero (`pantallas.md`, P-04) y la unidad es «unidades». Un valor imposible para un conteo llegó al motor.
+- El cliente del panel ya lo rechaza (`umbralValido` y `ERRORES_CAMPO.umbral`: «Escribí un número entero, 0 o más.»), pero DEC-141 deja al servidor como única fuente de validación.
+- `umbral` se escribe por tres rutas, todas validadas con `prepararSentencia` contra la declaración de la plantilla: `PUT /api/panel/automatizaciones/:id/ajustes` (`resolverAjustes`, que mezcla `umbral` en `valores`), y en la consola `POST /automatizaciones` y `PUT /automatizaciones/:id/ajustes` (`resolverAjusteOperador`, que recibe `valores` completo). `umbral` es el nombre que declaran las dos plantillas del catálogo inicial. `prepararSentencia` es genérico: lo usan consultas, plantillas y reportes con cualquier parámetro `numero`.
+- El catálogo se escribió admitiendo decimales: `stock-fisico` compara `"stockDisponible"::numeric` «so a decimal `umbral` binds against an integer column» (`src/plantillas/catalogo-inicial.ts`).
+
+**Opciones.**
+- (a) Dejar DEC-60 como está y confiar en el cliente.
+- (b) Exigir el entero en el servidor para el parámetro `umbral`, en las tres rutas que lo escriben.
+- (c) Endurecer `numero` para todos los parámetros.
+
+**Decisión.** (b). Es un afinado de DEC-60 limitado a `umbral`, no un cambio del tipo `numero`.
+- **(a) se descarta:** el cliente no es una frontera de validación (DEC-141), y las rutas de la consola aceptan hoy cualquier número finito.
+- **(c) se descarta:** cambiaría lo que acepta todo parámetro `numero` de consultas, plantillas y reportes, y DEC-60 se fijó para eso.
+
+**Forma.**
+- **Regla.** El valor de `umbral` debe ser un entero mayor o igual a 0 (`Number.isInteger` y `>= 0`), además de la forma de DEC-60. Un número escrito como texto sigue rechazado, sin conversión (`"3"` no es válido).
+- **Dónde.** Las tres rutas de arriba, con la regla en un solo lugar compartido por las tres, no copiada en cada una.
+- **Forma del error**, la misma de hoy para un valor inválido:
+  - Panel: `400 solicitud-invalida` con `campos: ['umbral']`, en nombre de negocio (DEC-141), sin texto. El mensaje «Escribí un número entero, 0 o más.» lo muestra el cliente.
+  - Consola: `400 solicitud-invalida` con `campos: ['/valores/umbral']` y `problemas` con `motivo: 'valor-invalido'`, como el resto de los rechazos de `prepararSentencia`.
+- **Lo ya guardado.** Esta decisión no migra ni reescribe nada.
+
+**Se resigna.**
+- **Pueden existir valores guardados no enteros.** Durante la revisión el panel guardó `2.5` en la automatización de la demo (se restauró a `5`; la semilla usa `UMBRAL_DEMO = 5`), y la consola lo aceptaba. No se verificó ninguna base real. No se decide qué hacer con ellos; queda como punto de la implementación, con esta orientación: se siguen leyendo (la lectura de ajustes expone cualquier número finito) y se siguen ejecutando (`::numeric`), y solo se rechazan las escrituras nuevas.
+- **Un caso de borde para esa implementación:** el `PUT` de la consola reemplaza `valores` completo cuando lo recibe, así que un operador que reenvíe un `umbral` decimal ya guardado, sin cambiarlo, recibiría el rechazo. El panel no lo sufre, porque solo envía lo que cambió.
+- **Una plantilla que de verdad quisiera un `umbral` decimal ya no puede usarlo.** Las dos del catálogo no lo necesitan: cuentan unidades.
+
+**Decidido por:** el usuario, 2026-11-10, tras la revisión de UX: el servidor exige un entero mayor o igual a 0 para `umbral`, como afinado de DEC-60. El agente verificó en el código qué rutas lo escriben. No inferido por el agente.
+
+**Estado:** firme.
+
+---
+
+### DEC-206 — CH-49: la demo trae un segundo tenant en su propia base, automatizaciones cada minuto siempre activas, un vínculo de Telegram opcional y cuatro reportes sembrados
+
+**Contexto.**
+- DEC-170 y DEC-171 fijan que la réplica de demo viaja con el repositorio y que la semilla es opt-in (`SEED_DEMO` exactamente `1`), con id fijo, solo crea lo que falta, nunca actualiza ni borra, ejecuta la misma sonda que `POST /conexiones/:id/validacion-mapeo` y, ante un rechazo, falla nombrando la causa para que la app no arranque. DEC-125 fija lo mismo para el catálogo, que se escribe por las comprobaciones de la propia ruta.
+- Hoy la demo tiene un solo tenant, «Food Store», una conexión directa a `replica-demo:5432` (`food_store`, rol `lector_zerodashboard`), cinco vistas `v_*` validadas con la sonda real, una consulta guardada, un usuario de panel y una automatización diaria (`stock-fisico`, `0 9 * * *`, `umbral` 5, un destinatario). No crea reportes, tablero, vínculo de Telegram ni agente (`src/semillas/semilla-demo.ts`).
+- **Los datos de la réplica están viejos** (verificado en la exploración de CH-49): los 99 pedidos van del 2026-08-18 al 2026-09-16, con fechas fijas del volcado del 2026-09-17, así que un reporte de 7 o 30 días no devuelve filas; y `detalle_pedido` cubre solo los pedidos 1 a 72.
+- **La automatización de la demo no envía nunca.** `stock-fisico` solo mira productos sin receta (7, 8 y 9, con stock 150, 200 y 40); con `umbral` 5 el resultado es vacío y la ejecución queda `omitida-sin-filas`.
+- El guion del video necesita: un segundo tenant para mostrar el aislamiento, un aviso por correo a varios destinatarios con un mínimo de filas, uno por Telegram, y el tablero del panel con reportes.
+- Una automatización nunca se reactiva y la desactivación es de un solo sentido (DEC-79). El canal es uno por automatización (DEC-197), así que «correo y Telegram recibidos» pide dos automatizaciones. Hay un vínculo de Telegram por tenant, con `tenantId` único y `chatId` entero de 64 bits (DEC-196), y la semilla no puede obtener ni inventar un chat real: el vínculo real nace de `/start <código>` con `TELEGRAM_BOT_TOKEN`.
+- Un reporte es una fila global que se guarda por `rechazoDeReporte` (DEC-198), y un tablero tiene una conexión y de 0 a 8 reportes (DEC-199). Las ejecuciones del panel no dejan fila de auditoría (DEC-202).
+- La clave de la réplica, la de cada usuario y el chat de Telegram salen del entorno (regla 7).
+
+**Opciones.**
+
+Dónde vive el segundo tenant:
+- (a) Una segunda base en el mismo contenedor `replica-demo`, con su propio rol y sus propias tablas detrás de las mismas cinco vistas canónicas.
+- (b) La misma base, con un segundo mapeo que filtra.
+- (c) Un segundo contenedor de réplica.
+
+Automatizaciones cada minuto:
+- (a) Siempre sembradas y activas.
+- (b) Sembradas solo con una variable opt-in (`DEMO_CADA_MINUTO=1`).
+- (c) No sembradas: el video las crea en vivo.
+
+Vínculo de Telegram:
+- (a) Siempre sin vincular; el video lo vincula en vivo.
+- (b) Sembrado desde `DEMO_TELEGRAM_CHAT_ID` cuando está definida; si no, sin vincular.
+
+Reportes y tablero:
+- (a) Cuatro reportes globales, uno por tipo de visualización, y tableros sobre ellos.
+- (b) Menos reportes.
+- (c) Una lista propia del usuario.
+
+Réplica vieja con código nuevo:
+- (a) Falla con un mensaje claro que manda a `down -v`.
+- (b) Omite las partes nuevas y avisa.
+
+**Decisión.**
+- **Segundo tenant: (a).** «Café del Puerto», en la base `cafe_demo` dentro del contenedor `replica-demo`, con su propio rol, tablas de diseño distinto y las mismas cinco vistas canónicas, con fechas relativas. (b) se descarta porque dos tenants que leen las mismas filas parecen filtros, no aislamiento. (c) se descarta porque suma un servicio, un volumen y una dependencia sin mostrar nada más que (a).
+- **Cada minuto: (a).** Las automatizaciones cada minuto están **siempre activas** en la demo. El usuario rechazó la variable `DEMO_CADA_MINUTO` que recomendaba la exploración: no existe tal variable. Son dos: una de correo con varios destinatarios y un mínimo de filas, y una de Telegram **solo si el tenant está vinculado**.
+- **Telegram: (b).** Si `DEMO_TELEGRAM_CHAT_ID` está definida, la semilla crea el `VinculoTelegram` solo si el tenant no tiene uno, y solo en Food Store. Si no, el tenant queda sin vincular y no se siembra la automatización de Telegram. La semilla no lee `TELEGRAM_BOT_TOKEN`.
+- **Reportes: (a).** Cuatro reportes globales, uno por tipo, que deben pasar `rechazoDeReporte`, más los tableros.
+- **Réplica vieja: (a).** Falla fuerte, como pide DEC-171, y `down -v` es la única forma de empezar limpio.
+
+**Forma.**
+- **Réplica.**
+  - Un script de `docker/replica-demo/` crea `cafe_demo` y la carga con datos generados **relativos a `now()`**, sin `random()`, con tablas de nombre distinto a las de `food_store` y las cinco vistas canónicas encima.
+  - Un rol propio por base. La exploración propone además `REVOKE CONNECT … FROM PUBLIC` en ambas bases, para que la credencial de un tenant no abra la base del otro y la segunda capa de la regla 3 siga literal. Hoy `02-lector.sh` solo otorga `CONNECT` sobre `food_store` y no revoca nada. Los dos roles usan `REPLICA_DEMO_PASSWORD`, así que no hay un secreto nuevo.
+  - `food_store` también se ajusta: fechas relativas, los `detalle_pedido` que faltan y un stock bajo y distinto para los productos 7, 8 y 9, de modo que el mínimo de filas y el umbral de las automatizaciones se cumplan. La exploración da como ejemplo stock 18, 9 y 4 con `umbral` 10; los números definitivos los fija el diseño.
+- **Semilla.**
+  - Segundo tenant con conexión, cinco vistas validadas por la misma sonda, un usuario de panel, una automatización diaria y un tablero. Ids fijos con otro prefijo, para que el video pueda mostrar un id ajeno respondiendo `404` (regla 2). Cada tenant tiene su conexión y su mapeo, y la validación deja una fila de auditoría por conexión (DEC-171).
+  - Sobre Food Store, la automatización de correo cada minuto (`* * * * *`) con varios destinatarios, hasta el tope de 5 de DEC-187, y un `minimoFilas` mayor que 1 (DEC-186, DEC-193); y, solo con vínculo, la de Telegram. Se siguen creando por id fijo y solo si faltan, y la diaria de hoy se conserva. Apagarlas es «Desactivar» en la consola, y es de un solo sentido (DEC-79).
+  - `DEMO_TELEGRAM_CHAT_ID` se valida como entero con signo de 64 bits; el error nombra la variable y nunca repite el valor. Un vínculo existente, aun a otro chat, no se toca.
+- **Reportes y tableros.**
+  - Cuatro filas globales con id fijo: «Ventas del período» (`numero`), «Productos más vendidos» (`barras`), «Ventas por día» (`linea`) y «Stock de productos» (`tabla`), sobre entidades canónicas para que corran en los dos tenants.
+  - Se escriben por las mismas comprobaciones que la consola: la mitad de AJV la repite la semilla, como `sembrarCatalogoInicial` con `rechazoDeEntrada`, y luego `rechazoDeReporte(undefined, cuerpo, { exigirColumnas: true })`. Una entrada rechazada lanza y no escribe nada.
+  - Food Store recibe los cuatro y Café del Puerto un subconjunto, así que el mismo reporte muestra números distintos. El `Tablero` se crea después de validar las vistas y solo si el tenant no tiene uno (`tenantId` único); un tablero existente no se toca.
+  - La exploración propone dos pruebas que no usan la réplica (DEC-170): que cada entrada pase `rechazoDeReporte` y que una corrupta se rechace, y que cada reporte, compuesto sobre vistas de `VALUES`, devuelva las columnas de `columnasPrueba`. Títulos, SQL, conteos y nombres son datos, no arquitectura, y los fija la especificación.
+- **Idempotencia.** Todo id es fijo y se crea solo si falta; nada se actualiza ni se borra (salvo las vistas de la misma corrida cuando la validación falla, como hoy). Un reporte que el dueño editó queda como está.
+- **Réplica vieja.** Si `replica-demo` no tiene la base `cafe_demo` (SQLSTATE `3D000` en la sonda), la semilla falla con un texto cerrado que nombra la causa y manda a `docker compose down -v`, sin repetir el mensaje del driver, y la app no arranca. Los archivos de inicio de la réplica solo corren con el volumen vacío, así que `down -v` es la **única** forma de empezar limpio: borra la base de la app y la réplica juntas, y la semilla reconstruye todo. Lo mismo vale cuando la demo envejece: los datos se cargan una vez, con fechas relativas a ese momento.
+- **Variables.** Nuevas y opcionales, solo nombres en `.env.example` (regla 7): `DEMO_TELEGRAM_CHAT_ID`. La clave de la réplica sigue siendo `REPLICA_DEMO_PASSWORD` y no se agrega ninguna para el segundo tenant ni para las automatizaciones cada minuto; las variables del usuario de panel del segundo tenant (la exploración propone derivarlas de `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE`) las fija el diseño.
+- **Qué no cambia.** Ningún comportamiento del producto: no se agrega una vía de reactivación, ni un canal, ni capacidad al motor (regla 6).
+
+**Se resigna.**
+- **Un arranque desde cero con esta demo manda un correo por minuto** a los destinatarios sembrados, y un mensaje de Telegram por minuto si hay vínculo, hasta que alguien desactive esas automatizaciones, y la desactivación no se puede deshacer (DEC-79). La diaria de las 09:00 queda como ruido junto a ellas. Es la consecuencia directa de haber rechazado el opt-in, y el README debe decir cómo frenarlas.
+- **Se pierde el arranque silencioso:** quien clona el repositorio y levanta la demo ve actividad continua en Mailpit, que conserva solo los 500 mensajes más nuevos.
+- **Dos tenants comparten un clúster de Postgres.** La app los aísla por `tenantId` y por credencial, y los roles separados con `REVOKE CONNECT` mantienen la regla 3 literal, pero es una topología de demo, no una afirmación sobre producción.
+- **Una base de desarrollo vieja conserva sus restos.** Con crear-si-falta, el tablero, los reportes o la conexión que ya existan quedan como están (por ejemplo, los dos «Food Store» y los reportes de prueba de la revisión de UX, C-01 y C-20). Solo `down -v` da el estado del video, y la semilla no limpia nada.
+- **Un script SQL más para mantener** (`cafe_demo`), que no tiene pruebas de TypeScript: la réplica no está bajo prueba (DEC-170). Los números que hacen que el correo salga, el stock, el `umbral` y el mínimo, dependen entre sí, y si se desajustan la demo no envía nada y no avisa. Por eso se fijan en una comprobación de los datos y en el README.
+- **Un reporte sembrado confía en `columnasPrueba`**, que en una semilla es una constante: nada prueba por sí solo que el SQL devuelva esas columnas. Las dos pruebas de arriba lo cierran.
+- **El vínculo de Telegram es el chat personal del dueño** (dato personal): vive solo en `.env` y en la fila, nunca en el repositorio ni en un log. El dueño debe haberle escrito antes al bot, y el paso de Telegram solo funciona con las dos variables juntas, `DEMO_TELEGRAM_CHAT_ID` y `TELEGRAM_BOT_TOKEN`.
+- **Ninguna falla se siembra.** La falla de la demo se provoca en vivo (DEC-207) y no deja filas rotas en listas globales, en Auditoría ni en Ejecuciones.
+
+**Decidido por:** el usuario, 2026-11-10, sobre la exploración de CH-49: eligió el segundo tenant «Café del Puerto» en la base `cafe_demo` del mismo contenedor, con rol propio y fechas relativas; que las automatizaciones cada minuto estén siempre activas (rechazó la variable opt-in que recomendaba la exploración); y que el vínculo de Telegram salga de `DEMO_TELEGRAM_CHAT_ID` solo en Food Store, sin leer `TELEGRAM_BOT_TOKEN`. Aceptó por no objetar las recomendaciones restantes de la exploración: cuatro reportes sembrados, uno por tipo, y los tableros; la falla de réplica vieja con un mensaje que manda a `down -v`, que es la única forma de empezar limpio. El agente verificó en el código y en las decisiones citadas el estado actual y completó los detalles de forma que la exploración propone (`REVOKE CONNECT … FROM PUBLIC`, los números de ejemplo, las pruebas). No inferido por el agente, salvo esos detalles.
+
+**Estado:** firme.
+
+---
+
+### DEC-207 — CH-49: el agente de la demo se siembra con un token del entorno y corre como un servicio propio en su perfil de Compose
+
+**Contexto.**
+- DEC-114 guarda del token del agente solo el hash, y DEC-115 fija un agente por tenant (`Agente`, `tenantId` y `tokenHash` únicos). Por eso una semilla puede crear un agente cuyo token venga del entorno: guarda `hashTokenAgente(token)` y nunca el token. `Conexion.agenteId` ata una conexión a ese agente.
+- El proceso del agente (DEC-120, DEC-123) necesita `AGENT_SERVER_URL`, `AGENT_TOKEN` (`zda_` más 43 caracteres) y `AGENT_ALLOWED_TARGETS` (`host:puerto` exactos). `AGENT_SERVER_URL` debe ser `wss://`; `ws://` se acepta solo en loopback (`src/agente-proceso/politica-tls.ts`).
+- `docker-compose.agente.yml` corre en su propio proyecto y su propia red, y su cabecera dice «Never run it together with docker-compose.yml». Desde ahí el agente no resuelve `replica-demo`, y la app no es loopback para él. Una demo con el agente mostrado en vivo necesitaría un puerto de la réplica publicado en el host o una red a medida.
+- El guion pide una consola con el tenant activo y una conexión **por agente**, y una falla provocada en vivo. Sin una conexión por agente la apertura sería directa.
+- La semilla corre antes de que el servidor escuche, así que no puede sondear a través del agente.
+- Con el agente caído, la ejecución de una conexión por agente falla con la categoría `error-desconocido` y código `ESINAGENTE` (`docs/guia/08-diagnostico.md`, `src/conexiones/conexion-destino.ts`).
+
+**Opciones.**
+- (a) Solo directa: el agente se muestra en vivo.
+- (b) Un agente sembrado y un servicio `agente` en el `docker-compose.yml` principal, en su propio perfil.
+- (c) El agente solo para el segundo tenant.
+
+Cómo se provoca la falla en vivo:
+- (a) Con un comando documentado: `docker compose stop agente`.
+- (b) Una conexión y una automatización que fallan, sembradas.
+- (c) Un reporte con SQL defectuoso sembrado.
+
+**Decisión.** (b), y para la falla, (a).
+- **(a) se descarta:** no es una historia de un solo comando, porque el agente no llega a la réplica desde su propio proyecto.
+- **(c) se descarta:** la apertura sobre Food Store sería directa y contradice el guion.
+- **Falla en vivo, (a).** `docker compose stop agente` hace que la siguiente ejecución falle con `ESINAGENTE`: la consola muestra la ejecución fallida y el panel la muestra «con falla»; `start` la restaura. No se siembra nada roto. (b) dejaría una fila fallida permanente en Auditoría y en Ejecuciones que se reintenta cada minuto y no se puede borrar desde la consola, y (c) deja una fila defectuosa en un catálogo global.
+
+**Forma.**
+- **Semilla.** Si `DEMO_AGENTE_TOKEN` está definida, crea el `Agente` de Food Store con `tokenHash = hashTokenAgente(DEMO_AGENTE_TOKEN)` y solo guarda el hash. Se crea por id fijo y solo si el tenant no tiene agente (`tenantId` único): un agente existente con otro token queda y el servicio termina con código 2, que el README explica. La conexión de Food Store se guarda con `agenteId`. La semilla sondea la réplica **directamente**, con el mismo `host:puerto` y credencial que usará el agente, y recién después la guarda como conexión por agente: las vistas validadas son las mismas por los dos caminos. Como la semilla solo crea lo que falta, una conexión directa que ya exista queda directa; el arranque limpio lo resuelve.
+- **Servicio.** Un servicio `agente` en `docker-compose.yml`, perfil `agente`, `build.target: agente`, con el mismo endurecimiento del archivo del agente (`read_only`, `cap_drop: [ALL]`, `no-new-privileges`, `init`). El token es una variable con forma `zda_` más 43 caracteres, nunca en el repositorio (regla 7), y el README da el comando para generarlo. Es una excepción acotada a la cabecera de `docker-compose.agente.yml`: el archivo del agente sigue siendo el camino de un cliente real y no cambia.
+- **Red.** La exploración propone `network_mode: "service:app"`: el agente comparte el espacio de red de la app, con `AGENT_SERVER_URL=ws://localhost:${APP_PORT}` (loopback, el único `ws://` que acepta) y `AGENT_ALLOWED_TARGETS=replica-demo:5432` resuelto por el DNS de la app. Es un atajo de demo: en producción el agente vive en la red del cliente. El README lo dice en una frase y el video no afirma otra cosa.
+- **Arranque.** El agente se conecta apenas la app escucha y ya reintenta ante errores de conexión; los códigos de salida 1, 2 y 3 son los que necesitan al operador.
+- **Qué no cambia.** Ni el protocolo del agente ni la regla de un agente por tenant; ninguna ruta.
+
+**Se resigna.**
+- **El detalle de la red está sin confirmar.** Si el espacio de red compartido comparte el DNS interno en Docker Desktop para Windows es la única incógnita técnica. Un spike lo confirma **antes del diseño**, como primera tarea del change. Si el spike falla, **esta decisión se enmienda antes de escribir código**; la exploración nombra como alternativa publicar la réplica en `127.0.0.1` y correr el agente fuera de Docker, es decir, la opción (a), y esa elección sería del usuario. Lo que está firme es la decisión de tener el agente sembrado y como servicio propio; el `network_mode` es el medio que el spike confirma.
+- **Un servicio más en el archivo principal**, que contradice la cabecera del archivo del agente («nunca juntos»). Queda limitado al perfil `agente`, así que `docker compose up` sin ese perfil no cambia, y la máquina del cliente no necesita secretos del motor.
+- **Un hash de credencial sembrado.** El token vive en `.env` y en el entorno del servicio; en la base queda solo el hash. Quien conozca `DEMO_AGENTE_TOKEN` puede conectarse como el agente de Food Store, así que es una credencial de demo y no se reutiliza.
+- **Una conexión directa preexistente no se convierte en agente.** Solo el arranque limpio da el estado del video.
+- **La falla en vivo depende de que el agente esté arriba.** Sin él, la apertura por agente no se muestra; sin el perfil `agente` la demo sigue funcionando con conexión directa.
+
+**Decidido por:** el usuario, 2026-11-10, sobre la exploración de CH-49: eligió un agente sembrado con el token del entorno y un servicio `agente` en su propio perfil de Compose, y aceptó la falla en vivo con `docker compose stop agente`. El agente completó la forma (nombre de la variable, endurecimiento, el atajo de red que propone la exploración) y dejó el detalle de red sujeto al spike. No inferido por el agente, salvo esos detalles.
+
+**Estado:** firme, con el detalle de la red a confirmar por un spike antes del diseño. Si el spike falla, se enmienda antes del código.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
