@@ -799,7 +799,8 @@ describe('the console document, served by the real route', () => {
 
   /** Spec `query-console`: "Limit attributes preserved"; the script-managed nodes keep their markup. */
   test('CH-21a G2 the script-managed nodes and the limit input keep their exact attributes', () => {
-    assert.ok(documento.includes('<p id="banner" class="banner" role="alert" hidden></p>'));
+    // CH-52 (E1): the page notice is the shared Banner, its tone set by data-tono and never by a class.
+    assert.ok(documento.includes('<p id="banner" class="zd-banner banner-pagina" data-tono="error" role="alert" hidden></p>'));
     assert.ok(documento.includes('<strong id="tenant-activo" class="sin-tenant">'));
     assert.ok(documento.includes('<p id="estado" class="estado" hidden></p>'));
     const limite = marcado().match(/<input id="limite"[^>]*>/)?.[0] ?? '';
@@ -1784,7 +1785,7 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(envio.cuerpo, { cron: '30 7 * * 1-5' });
     assert.equal(ajusteAbierto(escenario), false);
     const banner = nodo(escenario, 'banner');
-    assert.equal(banner.className, 'banner exito');
+    assert.equal(banner.getAttribute('data-tono'), 'ok');
     assert.equal(banner.textContent, 'Se guardaron los ajustes. Próxima ejecución programada: 15/10/2026 07:30, zona horaria UTC.');
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/automatizaciones', 'the list is reloaded');
   });
@@ -2337,7 +2338,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'auto-alta').hidden, true);
     assert.equal(nodo(escenario, 'auto-nueva').hidden, false);
     assert.equal(nodo(escenario, 'auto-conexion').value, '');
-    assert.equal(nodo(escenario, 'banner').className, 'banner exito');
+    assert.equal(nodo(escenario, 'banner').getAttribute('data-tono'), 'ok');
   });
 
   /** Spec "Viewing an automation's runs"; X2: only closed categories reach the page. */
@@ -2980,7 +2981,7 @@ describe('the console document, served by the real route', () => {
       escenario.respuestas.push({ status: 201, cuerpo: { automatizacion: automatizacion(), ...extra } });
       await enviar(escenario, { automatizaciones: [automatizacion()], truncado: false }, 200, 'auto-crear', 'click');
       const banner = nodo(escenario, 'banner');
-      assert.deepEqual([banner.className, banner.textContent], ['banner exito', texto]);
+      assert.deepEqual([banner.getAttribute('data-tono'), banner.textContent], ['ok', texto]);
       assert.equal(nodo(escenario, 'auto-alta').hidden, true);
     }
   });
@@ -4617,6 +4618,43 @@ describe('the console document, served by the real route', () => {
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones/c-1/prueba');
     assert.match(fila.textContent, /credenciales-invalidas/);
     assert.match(fila.textContent, /28P01/);
+  });
+
+  test('CH-52 a pending test makes its button say «Probando…», disabled and aria-busy, and gives it back after', async () => {
+    const escenario = await abrirConexiones();
+    escenario.respuestas.push({ status: 200, cuerpo: { resultado: 'ok', host: 'db.cliente.test', puerto: 5432, duracionMs: 12 } });
+    const fila = nodo(escenario, 'conexiones-cuerpo').hijos[0];
+    const boton = botonesCon(fila, 'Probar conexión')[0];
+    boton.disparar('click');
+    // E2: while the answer has not arrived.
+    assert.equal(boton.textContent, 'Probando…');
+    assert.equal(boton.disabled, true);
+    assert.equal(boton.getAttribute('aria-busy'), 'true');
+    await asentarVarias();
+    assert.equal(boton.textContent, 'Probar conexión');
+    assert.equal(boton.disabled, false);
+    assert.equal(boton.getAttribute('aria-busy'), null);
+  });
+
+  test('CH-52 «Ejecutar consulta» is busy while the run is pending and free again after it', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    const boton = nodo(escenario, 'ejecutar');
+    boton.textContent = 'Ejecutar consulta';
+    escenario.respuestas.push({ status: 200, cuerpo: { columnas: ['n'], filas: [[1]], hayMas: false } });
+    nodo(escenario, 'formulario').disparar('submit');
+    assert.equal(boton.textContent, 'Ejecutando…');
+    assert.equal(boton.getAttribute('aria-busy'), 'true');
+    await asentarVarias();
+    assert.equal(boton.textContent, 'Ejecutar consulta');
+    assert.equal(boton.disabled, false);
+    assert.equal(boton.getAttribute('aria-busy'), null);
+  });
+
+  test('CH-52 the page notice takes its tone by data-tono; the script never assigns it a class', async () => {
+    assert.ok(!/banner\.className\s*=/.test(script), 'no class is written on #banner');
+    assert.ok(marcado().includes('.banner-pagina[data-tono="ok"]'));
+    assert.ok(!marcado().includes('.banner {'), 'the old bridge banner style is gone');
   });
 
   // ---- CH-30c (DEC-121): the Agentes screen and secrets shown once ------------------------

@@ -185,11 +185,13 @@ function documentoConsola(nombreOperador: string): string {
   button[data-tono="error"]:not(.zd-btn):hover:not(:disabled) { background: var(--error-soft); border-color: var(--error); }
   :root { --icono-alerta: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E"); }
   #confirmacion-lista { margin: var(--space-3) 0 0; padding-left: var(--space-6); }
-  /* One alert region; a multi-line refusal keeps its line breaks. */
-  .banner { margin: var(--space-6) 0 0; padding: var(--space-5) var(--space-6); border: var(--border-width) solid var(--error-border);
-    border-left: var(--space-2) solid var(--error); border-radius: var(--radius-md); background: var(--error-soft);
-    color: var(--text-1); white-space: pre-wrap; }
-  .banner.exito { border-color: var(--ok-border); border-left-color: var(--ok); background: var(--ok-soft); }
+  /* CH-52 (E1): the page notice is the shared Banner; a multi-line refusal keeps its line breaks, and the tone the
+     script sets as data-tono picks the colors (the same pairs as the result banners). */
+  .banner-pagina { margin: var(--space-6) 0 0; white-space: pre-wrap; }
+  .banner-pagina[data-tono="ok"] { background: var(--ok-soft); border-color: var(--ok-border); }
+  .banner-pagina[data-tono="error"] { background: var(--error-soft); border-color: var(--error-border); }
+  /* CH-52 (E2): a button whose request is pending says so in its own label and cannot be pressed again. */
+  button[aria-busy="true"] { cursor: progress; }
   .estado { margin: var(--space-6) 0 var(--space-2); font-size: var(--text-sm); color: var(--text-2); white-space: pre-wrap; }
   /* The row-cap cut, styled so it cannot be mistaken for the pagination line it sits
      next to or for the pager buttons: its own block, its own rule and colour, and
@@ -453,7 +455,8 @@ function documentoConsola(nombreOperador: string): string {
   </div>
 </nav>
 <main class="zd-page">
-<p id="banner" class="banner" role="alert" hidden></p>
+<!-- CH-52 (E1): the page notice is the shared Banner; the script sets its tone with data-tono, never a class (G3'). -->
+<p id="banner" class="zd-banner banner-pagina" data-tono="error" role="alert" hidden></p>
 
 <!--
   CH-30b (DEC-167, DEC-168, screen C-02): every tenant, active and deactivated. Global: it
@@ -1806,7 +1809,7 @@ var tenantsCargados = [];
 // failure and an execution failure overwrite each other, which is simpler than two
 // competing alert regions and keeps a single place where the operator looks.
 function mostrarBanner(texto) {
-  banner.className = 'banner';
+  banner.setAttribute('data-tono', 'error');
   banner.textContent = texto;
   banner.hidden = false;
 }
@@ -1814,17 +1817,37 @@ function mostrarBanner(texto) {
 // Same region, success wording. The save flow has to say out loud that the statement
 // was stored; reusing the failure styling for that would be a lie in red.
 function mostrarConfirmacion(texto) {
-  banner.className = 'banner exito';
+  banner.setAttribute('data-tono', 'ok');
   banner.textContent = texto;
   banner.hidden = false;
 }
 
 function ocultarBanner() {
-  banner.className = 'banner';
+  banner.setAttribute('data-tono', 'error');
   banner.textContent = '';
   banner.hidden = true;
   // C-08: every action that clears the page banner starts clean, the query pop-up's refusal included.
   ocultarResultado('consulta-aviso');
+}
+
+// CH-52 (E2): while the request a button started is pending, the button says so with a gerund, is disabled and
+// carries aria-busy; libre() puts back its label and the disabled state it had before. Attributes only (G3').
+function ocupado(boton, gerundio) {
+  if (boton.getAttribute('aria-busy') === 'true') { return; }
+  boton.setAttribute('data-etiqueta', boton.textContent);
+  boton.setAttribute('data-deshabilitado', boton.disabled ? 'si' : 'no');
+  boton.disabled = true;
+  boton.setAttribute('aria-busy', 'true');
+  boton.textContent = gerundio;
+}
+
+function libre(boton) {
+  if (boton.getAttribute('aria-busy') !== 'true') { return; }
+  boton.textContent = boton.getAttribute('data-etiqueta') || '';
+  boton.disabled = boton.getAttribute('data-deshabilitado') === 'si';
+  boton.removeAttribute('aria-busy');
+  boton.removeAttribute('data-etiqueta');
+  boton.removeAttribute('data-deshabilitado');
 }
 
 // C-04, C-08, C-12: a result banner (the markup is written once by the server, one per place). tono: 'ok', 'warn' or
@@ -2589,7 +2612,7 @@ async function ejecutar(desplazamiento) {
     return;
   }
   limpiarAvisoDeEleccion();
-  botonEjecutar.disabled = true;
+  ocupado(botonEjecutar, 'Ejecutando…');
   // CH-32a PR2: the save controls follow the last run only while it answered ok. Starting a run
   // closes them, so every answer but an ok one leaves them closed.
   var huella = huellaActual();
@@ -2614,11 +2637,11 @@ async function ejecutar(desplazamiento) {
     });
   } catch (fallaDeRed) {
     // A rejected fetch must not be silent either: the page says so instead.
-    botonEjecutar.disabled = false;
+    libre(botonEjecutar);
     avisarEnConsulta('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
     return;
   }
-  botonEjecutar.disabled = false;
+  libre(botonEjecutar);
   // No tenant selected: pedir() made no request and already showed the banner.
   if (respuesta === null) { return; }
 
@@ -5461,9 +5484,12 @@ function renderizarPantallaConexiones(conexiones) {
     pintarUltimaPrueba(ultima, cx.ultimaPrueba);
     var prueba = celdaTenant(fila, '');
     var resultado = document.createElement('span');
-    prueba.appendChild(botonTenant('Probar conexión', async function () {
-      resultado.textContent = 'Probando…';
-      var hecha = await pedirPrueba(String(cx.id));
+    var botonProbar = botonTenant('Probar conexión', async function () {
+      resultado.textContent = '';
+      // CH-52 (E2): the button itself says it is testing until the answer arrives.
+      ocupado(botonProbar, 'Probando…');
+      var hecha;
+      try { hecha = await pedirPrueba(String(cx.id)); } finally { libre(botonProbar); }
       if (hecha.mensaje !== undefined) { resultado.textContent = hecha.mensaje; return; }
       resultado.textContent = textoDePrueba(hecha.cuerpo);
       // The list follows the test that was just made, without reading it again.
@@ -5472,7 +5498,8 @@ function renderizarPantallaConexiones(conexiones) {
           resultado: hecha.cuerpo.resultado, categoria: hecha.cuerpo.categoria, codigo: hecha.cuerpo.codigo, fecha: new Date().toISOString()
         });
       }
-    }));
+    });
+    prueba.appendChild(botonProbar);
     prueba.appendChild(resultado);
     cuerpoConexiones.appendChild(fila);
   });
@@ -7721,11 +7748,19 @@ document.getElementById('mapeo-validar').addEventListener('click', async functio
   if (conexionMapeo === null) { avisoMapeo.textContent = 'Elegí una conexión para validar.'; return; }
   avisoMapeo.textContent = 'Validando…';
   ocultarResultado('mapeo-banner');
-  var leido = await leerMapeo(urlMapeo('/validacion-mapeo'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
+  // CH-52 (E2): «Validar mapeo» says it is validating and cannot be pressed twice while the probe runs.
+  var botonValidar = document.getElementById('mapeo-validar');
+  ocupado(botonValidar, 'Validando…');
+  var leido;
+  try {
+    leido = await leerMapeo(urlMapeo('/validacion-mapeo'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+  } finally {
+    libre(botonValidar);
+  }
   if (leido === null) { return; }
   avisoMapeo.textContent = '';
   if (leido.status !== 200 || leido.cuerpo === null) {

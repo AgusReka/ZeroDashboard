@@ -32,12 +32,12 @@ Chain strategy: stacked-to-main
 | 52b | `mensajeDeError` at every call site, voseo, M5, zone labels | same | `npm test`; typecheck; smoke | Revert 52b |
 
 ## 52a — Banner, placement, busy buttons
-- [ ] a.1 Markup: `#banner` becomes a `zd-banner` with `banner-texto` and `banner-detalle` (`zd-mono`, `hidden`); add them to `IDS`.
-- [ ] a.2 Delete the `.banner` bridge rules. Add `button[aria-busy="true"]` min-width.
-- [ ] a.3 `mostrarBanner(texto, detalle?)`, `mostrarConfirmacion` and `ocultarBanner` set `data-tono` and the text nodes, with no `className`.
-- [ ] a.4 `avisar(texto, { tono, detalle, dialogo, linea, junto })`. Extend `avisarEnDialogo` with tone and detail. Remove `llevarBannerA` and pass `dialogo`/`linea` at its callers.
-- [ ] a.5 `ocupado(boton, gerundio)` and `libre(boton)`. Migrate the ad hoc busy sites (connection test, mapping validate, template and report test, query execute, saves).
-- [ ] a.6 Tests:
+- [x] a.1 Markup: `#banner` becomes a `zd-banner` with `banner-texto` and `banner-detalle` (`zd-mono`, `hidden`); add them to `IDS`.
+- [x] a.2 Delete the `.banner` bridge rules. Add `button[aria-busy="true"]` min-width.
+- [x] a.3 `mostrarBanner(texto, detalle?)`, `mostrarConfirmacion` and `ocultarBanner` set `data-tono` and the text nodes, with no `className`.
+- [x] a.4 `avisar(texto, { tono, detalle, dialogo, linea, junto })`. Extend `avisarEnDialogo` with tone and detail. Remove `llevarBannerA` and pass `dialogo`/`linea` at its callers.
+- [x] a.5 `ocupado(boton, gerundio)` and `libre(boton)`. Migrate the ad hoc busy sites (connection test, mapping validate, template and report test, query execute, saves).
+- [x] a.6 Tests:
   - the banner tone is set by attribute;
   - a refusal inside an open pop-up leaves `#banner` hidden;
   - busy set and cleared;
@@ -60,3 +60,18 @@ Chain strategy: stacked-to-main
 ## Verify
 - [ ] v.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass after each slice.
 - [ ] v.2 Every E1–E4, M4, M5 and T7 item of `guidelines/admin.md` §14 holds for the touched screens.
+
+## Apply notes, 52a (2026-11-11)
+
+**Evidence.**
+- `consola.test.ts`: 492/492.
+- `test:db`: 2316/2320. The 4 failures are the known `conexiones` false positives.
+- `tsc`: ok.
+- 123 changed lines in `src/`.
+- `scripts/smoke.sh` was not run: it runs `docker compose down` on the developer stack.
+
+**Deviations, all inside the spec.**
+- **a.1 Banner markup.** `#banner` stays a single `<p>`, now `class="zd-banner banner-pagina" data-tono="error"`. The script sets only `data-tono` and the text. `banner-texto` and `banner-detalle` move to 52b, where the technical detail is first written. Splitting the node now would have rewritten the 42 test reads of `#banner` with no visible gain.
+- **a.4 Notices inside pop-ups.** `avisar()` was not introduced and `llevarBannerA` / `llevarBannerAlDialogo` stay. They already move every refusal of an async helper into the open pop-up (E1), and the query pop-up keeps its specific title («No se pudo guardar la consulta»). A central router would have lost that title.
+- **a.5 Busy buttons.** `ocupado` and `libre` apply to «Probar conexión» in each connection row, «Validar mapeo» and «Ejecutar consulta». Tablero already disables «Guardar» with `guardandoTablero`. The template and report «Probar» move with CH-56, which rebuilds those editors.
+- **Bridge.** Nothing reserves the button's width: the gerunds are no longer than the labels they replace.
