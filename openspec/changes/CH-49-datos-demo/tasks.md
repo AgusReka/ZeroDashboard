@@ -57,9 +57,9 @@ Chain strategy: stacked-to-main
 - [x] b1.5 Tests: existing tests pass unchanged except counts and ids; both tenants seeded; second run creates nothing; derived email; old-volume message and no Café rows.
 
 ## b2 — Reports and dashboards
-- [ ] b2.1 `demo/reportes.ts`: the four reports from the design and `rechazoDeEntradaReporte` (AJV half restated, then `rechazoDeReporte` with columns required); create by fixed id with `datosDeReporte`.
-- [ ] b2.2 `demo/tableros.ts`: Food Store 41 to 44, Café del Puerto 41 to 43, only when the tenant has no dashboard.
-- [ ] b2.3 Tests: the four entries pass; extra key, wrong role, empty title and glossary term are rejected; an existing dashboard is untouched; each report's columns over `VALUES` views equal its declared columns.
+- [x] b2.1 `demo/reportes.ts`: the four reports from the design and `rechazoDeEntradaReporte` (AJV half restated, then `rechazoDeReporte` with columns required); create by fixed id with `datosDeReporte`.
+- [x] b2.2 `demo/tableros.ts`: Food Store 41 to 44, Café del Puerto 41 to 43, only when the tenant has no dashboard.
+- [x] b2.3 Tests: the four entries pass; extra key, wrong role, empty title and glossary term are rejected; an existing dashboard is untouched; each report's columns over `VALUES` views equal its declared columns.
 
 ## c — Telegram and every-minute automations
 - [ ] c.1 `leerEntornoDemo`: `DEMO_TELEGRAM_CHAT_ID` (signed 64-bit, error without the value).

@@ -27,6 +27,8 @@ export type ClienteSemilla = Pick<
   | 'usuario'
   | 'automatizacion'
   | 'registroEjecucion'
+  | 'reporte'
+  | 'tablero'
 >;
 
 /** Everything that differs between one demo tenant and the next. */
@@ -54,6 +56,8 @@ export interface TenantDemo {
   correoPanel: string;
   /** Prepended to this tenant's labels in `creadas`, so the two tenants never collide. */
   prefijoEtiqueta: string;
+  /** The tenant's dashboard (CH-49 b2): its fixed id and the report ids it lists, in order. */
+  tablero: { id: string; reportes: readonly string[] };
 }
 
 /** The operator the audit row is attributed to. */
