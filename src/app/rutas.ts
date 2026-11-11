@@ -9,6 +9,7 @@ import { registerValidacionMapeoRoutes } from '../mapeo/validacion-mapeo-rutas.j
 import { registerConsolaRoute } from '../consola/consola.js';
 import { registerConsolaAuthRoutes, registrarGuardOperador, resolverSesionConsola } from '../consola/consola-auth.js';
 import { registerContratoRoutes } from '../contrato/contrato-rutas.js';
+import { registerInicioRoutes } from '../inicio/inicio-rutas.js';
 import { registerEstilosRoutes, type EstilosCargados } from '../compartido/estilos-rutas.js';
 import { registerTenantRoutes } from '../tenants/tenants.js';
 import { registerPlantillaRoutes } from '../plantillas/plantillas-rutas.js';
@@ -89,6 +90,10 @@ export function registrarRutas(app: FastifyInstance, deps: DependenciasRutas): v
   // the catalog is static and identical for every tenant, so this route has no database to
   // reach (DEC-21) — which is exactly what makes its header exemption safe (DEC-24).
   registerContratoRoutes(app);
+  // UX review lote 4 (DEC-203): the start page and the two trailing-slash redirects. Same shape as the
+  // contract above: the registrar takes the app and nothing else, so no handler can read a session
+  // or a table, which is what makes its three exact exemption rows safe.
+  registerInicioRoutes(app);
   // The template catalog is global (DEC-61) and exempt by exact row, so it receives the
   // `plantilla` delegate alone: no scoped model is within reach of an exempt handler. CH-38
   // (DEC-191): it still gets two answers about use, as a port built from the isolation

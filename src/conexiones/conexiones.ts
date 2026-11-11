@@ -105,6 +105,43 @@ const registroConexionSchema = {
   },
 } as const;
 
+/**
+ * UX review C-05: the verdict of each connection's most recent test, as the audit recorded it
+ * (`origen: 'conexion-prueba'`, DEC-159). A connection with no such row is absent from the map.
+ * Scoped by the isolation extension like every audit read, and it reads only the verdict
+ * columns: never the statement, the operator or a duration. `categoria` and `codigo` are the
+ * closed values of `classifyConnectionError` and the driver's SQLSTATE, as the test route already answers.
+ */
+export interface UltimaPrueba {
+  resultado: 'ok' | 'fallo';
+  categoria: string | null;
+  codigo: string | null;
+  /** ISO 8601, UTC. */
+  fecha: string;
+}
+
+async function ultimasPruebas(prisma: PrismaAislado, ids: string[]): Promise<Map<string, UltimaPrueba>> {
+  const mapa = new Map<string, UltimaPrueba>();
+  if (ids.length === 0) {
+    return mapa;
+  }
+  const filas = await prisma.registroEjecucion.findMany({
+    where: { origen: 'conexion-prueba', conexionId: { in: ids } },
+    select: { conexionId: true, resultado: true, categoria: true, codigo: true, creadoEn: true },
+    orderBy: [{ creadoEn: 'desc' }, { id: 'asc' }],
+    distinct: ['conexionId'],
+  });
+  for (const fila of filas) {
+    mapa.set(fila.conexionId, {
+      resultado: fila.resultado === 'ok' ? 'ok' : 'fallo',
+      categoria: fila.categoria,
+      codigo: fila.codigo,
+      fecha: fila.creadoEn.toISOString(),
+    });
+  }
+  return mapa;
+}
+
 export function registerConexionRoutes(
   app: FastifyInstance,
   prisma: PrismaAislado,
@@ -183,8 +220,16 @@ export function registerConexionRoutes(
       take: LIMITE_LISTADO + 1,
     });
     const truncado = filas.length > LIMITE_LISTADO;
+    const pagina = truncado ? filas.slice(0, LIMITE_LISTADO) : filas;
+    // UX review C-05: each connection also carries how its last test went, read from the audit
+    // (DEC-159 records every test) so nothing new is stored. Read-only and optional by nature:
+    // `null` when the connection was never tested or the audit row is not there.
+    const pruebas = await ultimasPruebas(
+      prisma,
+      pagina.map((fila) => fila.id),
+    );
     return reply.code(200).send({
-      conexiones: truncado ? filas.slice(0, LIMITE_LISTADO) : filas,
+      conexiones: pagina.map((fila) => ({ ...fila, ultimaPrueba: pruebas.get(fila.id) ?? null })),
       truncado,
     });
   });

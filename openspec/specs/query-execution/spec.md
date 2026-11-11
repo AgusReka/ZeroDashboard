@@ -241,3 +241,20 @@ WHEN a connection is established over an injected channel (`agent-channel`), `ej
 #### Scenario: Another tenant's saved query
 - **WHEN** tenant A sends the id of a saved query of tenant B with its exact text
 - **THEN** the execution answers as usual and the audit row has no saved query
+
+### Requirement: Write Keywords Are Refused Before Sending (DEC-204)
+
+`POST /consultas/ejecutar` SHALL, after sanitizing the statement and before checking parameters or looking up the connection, read its first word: leading whitespace, `--` line comments and `/* … */` block comments (nested, as PostgreSQL's are) are skipped, and the word is compared case-insensitively with the closed list `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`, `CREATE`, `ALTER`, `DROP`, `GRANT`, `REVOKE`, `COPY`, `CALL`, `DO`, `COMMENT`, `REINDEX`, `REFRESH`, `VACUUM` and `CLUSTER`. A statement whose first word is in the list SHALL be refused with `200` and the verdict of an attempt `{ resultado: "fallo", fase: "ejecucion", categoria: "no-es-lectura", codigo: null, duracionMs: 0, palabra }`, `palabra` being the matched word in upper case; no connection SHALL be looked up or opened and nothing SHALL be sent to the target. When no first word can be determined (an unclosed comment, no word, a first character that does not start one) the statement SHALL NOT be refused here and SHALL follow the usual path. Only the first word is read: it is an experience pre-check and not the protection, which stays the `READ ONLY` transaction and the role check, so a write inside a `WITH`, a `SELECT … INTO` or a function with effects SHALL continue to the engine. The route is the only one that applies it: template tests, report tests and mapping validation are unchanged.
+
+#### Scenario: A write keyword is refused without contacting the target
+- **WHEN** `UPDATE producto SET stock = 0` is sent, in any letter case and after any whitespace or comments
+- **THEN** the answer is `200` with `categoria` "no-es-lectura", `palabra` "UPDATE" and no `codigo`
+- **AND** the connection is not looked up and no statement reaches the target
+
+#### Scenario: Reads and unreadable first words pass
+- **WHEN** a statement starting with `SELECT`, `WITH`, `VALUES`, `TABLE` or a parenthesis, or whose first word cannot be read, is sent
+- **THEN** it follows the usual path to the connection lookup and the engine
+
+#### Scenario: A write further in is left to the engine
+- **WHEN** `WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x` is sent
+- **THEN** it is not refused by the first word, and the engine refuses it as `no-es-lectura` with its SQLSTATE

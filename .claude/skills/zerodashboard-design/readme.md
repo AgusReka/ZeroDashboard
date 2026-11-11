@@ -11,6 +11,7 @@ Sistema visual y especificación de pantallas de **ZeroDashboard**: plataforma m
 1. **CONSOLA** (P1 · Implementador) — herramienta interna del proveedor; ve todos los tenants; usuario técnico. Densa, utilitaria, escritorio primero.
 2. **PANEL** (P2 · Administrador PYME) — el cliente; ve solo su tenant (deducido de la sesión); no técnico; **nunca ve SQL ni términos de base de datos**. Más aire, lenguaje de negocio, móvil primero.
 3. **CORREO** — reporte HTML (tablas + estilos inline) con versión "sin datos".
+4. **INICIO** — página estática en `GET /` con dos puertas, «Ir a mi panel» (principal) e «Ir a la consola» (secundaria). Sin datos ni sesión (DEC-203; `guidelines/pantallas.md`, I-01).
 
 Mismos tokens y componentes; la diferencia se hace con `data-surface="panel"` en `<body>` (cuerpo 16 px, controles 44 px, más espacio) y con el lenguaje.
 

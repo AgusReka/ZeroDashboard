@@ -252,6 +252,114 @@ export function sanearSql(sql: string): string {
 }
 
 /**
+ * UX review C-07 (DEC-204): the closed list of first words that mark a statement as a write
+ * or DDL. The user named the first ten; the other eight completed the list at registration.
+ * Widening it is a change to DEC-204.
+ */
+export const PALABRAS_DE_ESCRITURA = [
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'MERGE',
+  'TRUNCATE',
+  'CREATE',
+  'ALTER',
+  'DROP',
+  'GRANT',
+  'REVOKE',
+  'COPY',
+  'CALL',
+  'DO',
+  'COMMENT',
+  'REINDEX',
+  'REFRESH',
+  'VACUUM',
+  'CLUSTER',
+] as const;
+
+export type PalabraDeEscritura = (typeof PALABRAS_DE_ESCRITURA)[number];
+
+const PALABRAS_DE_ESCRITURA_SET: ReadonlySet<string> = new Set(PALABRAS_DE_ESCRITURA);
+
+/** A word as the SQL lexer reads an unquoted identifier: a letter or underscore, then letters, digits, `_` or `$`. */
+const PRIMERA_PALABRA = /^[A-Za-z_][A-Za-z0-9_$]*/;
+
+/**
+ * The first word of a statement, past leading whitespace and comments, or `null` when there
+ * is none to read (DEC-204). Plain string scanning, never parsing: it looks at nothing after
+ * the first word (DEC-09). A line comment (two dashes) runs to the end of the line; a block
+ * comment (slash-star to star-slash) nests, as PostgreSQL's does, so a block comment holding
+ * another still ends where the outer one does. An unclosed block comment, an empty statement,
+ * or a first character that does not start a word (a parenthesis, a quote) gives `null`.
+ */
+export function primeraPalabraDeSentencia(sql: string): string | null {
+  let i = 0;
+  while (i < sql.length) {
+    if (/\s/.test(sql.charAt(i))) {
+      i += 1;
+    } else if (sql.startsWith('--', i)) {
+      const fin = sql.indexOf('\n', i);
+      if (fin === -1) {
+        return null;
+      }
+      i = fin + 1;
+    } else if (sql.startsWith('/*', i)) {
+      let profundidad = 1;
+      let j = i + 2;
+      while (j < sql.length && profundidad > 0) {
+        if (sql.startsWith('/*', j)) {
+          profundidad += 1;
+          j += 2;
+        } else if (sql.startsWith('*/', j)) {
+          profundidad -= 1;
+          j += 2;
+        } else {
+          j += 1;
+        }
+      }
+      if (profundidad > 0) {
+        return null;
+      }
+      i = j;
+    } else {
+      const palabra = PRIMERA_PALABRA.exec(sql.slice(i));
+      return palabra === null ? null : palabra[0];
+    }
+  }
+  return null;
+}
+
+/**
+ * UX review C-07 (DEC-204): the write word a statement starts with, upper-cased, or `null`
+ * when it starts with anything else (including when the first word cannot be read). An
+ * experience pre-check, not a guarantee: a statement that passes it is not thereby a read
+ * (`WITH x AS (DELETE …)`, `SELECT … INTO`, a function with effects); the engine still decides.
+ */
+export function palabraDeEscritura(sql: string): PalabraDeEscritura | null {
+  const palabra = primeraPalabraDeSentencia(sql)?.toUpperCase();
+  return palabra !== undefined && PALABRAS_DE_ESCRITURA_SET.has(palabra) ? (palabra as PalabraDeEscritura) : null;
+}
+
+/**
+ * The verdict of a statement refused before it was sent (DEC-204): the same `no-es-lectura`
+ * category the engine's own refusal carries (`25006` and `0A000`), in the same phase, so every
+ * reader of an execution verdict reads it as it reads that one. There is no SQLSTATE and no
+ * duration: nothing was sent and no connection was opened. `palabra` is the one addition and
+ * it comes from the closed list above, never from the request's text.
+ */
+export interface EjecucionRechazadaPorEscritura extends EjecucionFallida {
+  fase: 'ejecucion';
+  categoria: 'no-es-lectura';
+  codigo: null;
+  duracionMs: 0;
+  palabra: PalabraDeEscritura;
+}
+
+export function rechazoPorEscritura(palabra: PalabraDeEscritura): EjecucionRechazadaPorEscritura {
+  return { resultado: 'fallo', fase: 'ejecucion', categoria: 'no-es-lectura', codigo: null, duracionMs: 0, palabra };
+}
+
+/**
  * Runs the three-leg privilege check on an open client inside the read-only
  * transaction. An absent row (which the engine cannot produce for an `EXISTS`-only
  * projection) fails closed: every leg reads as `true`, so the attempt is refused.

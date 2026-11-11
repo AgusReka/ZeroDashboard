@@ -559,8 +559,10 @@ describe(
       // console's Conexiones screen; never the credential.
       for (const fila of cuerpo.conexiones) {
         assert.deepEqual(Object.keys(fila).sort(), [
-          'actualizadaEn', 'agenteId', 'baseDeDatos', 'creadaEn', 'host', 'id', 'motor', 'nombre', 'puerto', 'soloLectura', 'usuarioDb',
+          'actualizadaEn', 'agenteId', 'baseDeDatos', 'creadaEn', 'host', 'id', 'motor', 'nombre', 'puerto', 'soloLectura', 'ultimaPrueba', 'usuarioDb',
         ]);
+        // UX review C-05: read-only, and null while no test is recorded for the connection.
+        assert.equal(fila.ultimaPrueba, null);
       }
       // Rules 5 and 7: no credential key, value or envelope, and no tenant id.
       for (const fuga of ['credencial', secreto, sobre, tenantId]) {

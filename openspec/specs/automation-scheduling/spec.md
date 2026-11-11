@@ -137,7 +137,7 @@ Every `Automatizacion` row SHALL have a non-null text `canal`, either `correo` o
 
 The system SHALL expose, all scoped to the active tenant: `POST /automatizaciones` (create), `GET /automatizaciones` (list), `GET /automatizaciones/:id` (get), `PUT /automatizaciones/:id/ajustes` (adjust, DEC-174) and `POST /automatizaciones/:id/desactivar` (deactivate). The adjust route SHALL update only `valores`, `cron`, `destinatarios` and `minimoFilas` of the same row, and SHALL NOT change `plantillaId`, `conexionId`, `activo` or `tenantId`. It SHALL NOT expose any route that deletes a row or reactivates it. Deactivating sets `activo: false` and no route sets it back to `true`.
 
-The adjust body SHALL be a non-empty subset of `valores`, `cron`, `destinatarios` and `minimoFilas`; any other key, including `tenantId`, `plantillaId`, `conexionId`, `activo` or the former `destinatario`, SHALL be refused with `400 solicitud-invalida`, never silently dropped. Each sent field SHALL be checked with the same rules as the create route: `cron` with `cronValido` in the configured zone; `destinatarios` with the list rule of `email-notification`, where `[]` empties it; `minimoFilas` as defined by "Minimum Rows Are Bounded by the Row Cap"; `valores` with `prepararSentencia` against the stored row's template. A sent `valores` or `destinatarios` SHALL replace the stored value as a whole. Every offending field SHALL be named in `campos`. An unknown id, or another tenant's, SHALL answer `404 automatizacion-no-encontrada`; a deactivated automation SHALL answer `409 automatizacion-desactivada`; in both cases nothing is written. A `200` SHALL carry the updated row (`AutomatizacionCompleta`), `proximaEjecucion` computed from the new schedule and `zonaHoraria`. The scheduler SHALL apply the change from its next tick, with no reprogramming.
+The adjust body SHALL be a non-empty subset of `valores`, `cron`, `destinatarios` and `minimoFilas`; any other key, including `tenantId`, `plantillaId`, `conexionId`, `activo` or the former `destinatario`, SHALL be refused with `400 solicitud-invalida`, never silently dropped. Each sent field SHALL be checked with the same rules as the create route: `cron` with `cronValido` in the configured zone; `destinatarios` with the list rule of `email-notification`, where `[]` empties it; `minimoFilas` as defined by "Minimum Rows Are Bounded by the Row Cap"; `valores` with `prepararSentencia` against the stored row's template and, when the template declares `umbral` as `numero`, the rule that `umbral` is an integer of 0 or more (DEC-205), refused as `/valores/umbral` with a `valor-invalido` problem; a `umbral` equal to the one already stored is not refused, so a form that resends `valores` unchanged over an older decimal is accepted. The create route SHALL apply the same rule to `umbral` with no stored value to resend. A sent `valores` or `destinatarios` SHALL replace the stored value as a whole. Every offending field SHALL be named in `campos`. An unknown id, or another tenant's, SHALL answer `404 automatizacion-no-encontrada`; a deactivated automation SHALL answer `409 automatizacion-desactivada`; in both cases nothing is written. A `200` SHALL carry the updated row (`AutomatizacionCompleta`), `proximaEjecucion` computed from the new schedule and `zonaHoraria`. The scheduler SHALL apply the change from its next tick, with no reprogramming.
 (Previously: the adjust took one `destinatario`, with `null` to clear it.)
 
 #### Scenario: Deactivating an automation
@@ -646,3 +646,16 @@ The `POST /automatizaciones` 201 body SHALL include, in addition to its existing
 
 `tenant-isolation` needs tests only, no spec change: tenant context entry, closed-field logs, and recipient derivation already hold; isolation tests assert them across a tenant failure.
 
+
+### Requirement: Umbral Is an Integer, 0 or More (DEC-205)
+
+The parameter named `umbral`, when its template declares it as `numero`, SHALL be an integer of 0 or more wherever it is written: `POST /automatizaciones`, `PUT /automatizaciones/:id/ajustes` and the panel's `PUT /api/panel/automatizaciones/:id/ajustes`, through one shared rule. The `numero` type of every other parameter, and of queries, templates and reports, SHALL keep accepting any finite JSON number (DEC-60). Stored decimals SHALL keep being read and run; only new writes are refused.
+
+#### Scenario: A decimal umbral is refused on the three routes
+- **WHEN** `2.5`, `-1` or `"3"` is sent as `umbral`
+- **THEN** the console routes answer `400 solicitud-invalida` with `campos` `["/valores/umbral"]` and a `valor-invalido` problem, the panel route answers `400` with `campos` `["umbral"]`, and nothing is stored
+
+#### Scenario: An older decimal is resent unchanged
+- **GIVEN** an automation whose stored `umbral` is `2.5`
+- **WHEN** the console's adjust resends `valores` with `umbral` `2.5`
+- **THEN** it is accepted, and a different decimal is refused

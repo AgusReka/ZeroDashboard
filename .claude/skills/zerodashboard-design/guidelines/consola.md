@@ -53,6 +53,8 @@ Leyenda de estado: **EXISTE** = hay interfaz hoy (rediseñar manteniendo comport
 | Tenant activo | Violeta | Normales | Normales |
 | Tenant dado de baja | Violeta + chip "Dado de baja · congelado" | Banner neutro (ícono archivo): "X está dado de baja desde el dd/mm. La baja congela todo…"; **todas las acciones que crean, ejecutan o modifican quedan deshabilitadas**; lectura e historial disponibles | Normales |
 
+**Pantalla inicial.** Sin `#` en la dirección, la consola abre **Tenants** si no hay tenant elegido y **Consultas** si lo hay. Un `#` desconocido sigue cayendo en Consultas.
+
 **Rutas del mockup** (hash; los nombres reales los decide el change): `#tenants`, `#plantillas`, `#reportes`, `#contrato`, `#conexiones`, `#conexiones/agentes`, `#mapeo`, `#tablero`, `#tiempos`, `#consultas`, `#automatizaciones`, `#automatizaciones/alta`, `#automatizaciones/{id}`, `#frescura`, `#auditoria`.
 
 **Reglas del esqueleto**
@@ -108,6 +110,7 @@ Pestañas **Conexiones | Agentes** (dos maneras de llegar a la réplica del mism
   - Credenciales: la contraseña **nunca se muestra de vuelta**; el detalle dice "Guardada cifrada · no se muestra".
   - Estados: sin conexiones (EmptyState: primer paso de la puesta en marcha) · probando (badge "Probando…") · OK (latencia, motor, tablas) · falla (mensaje + SQLSTATE).
   - **Ayuda del formulario (UX review C-06)**: cada campo de «Nueva conexión» trae su ayuda corta (`.zd-help`): Servidor advierte que `localhost` no sirve dentro de Docker; Usuario pide un rol de solo lectura. La validación es en línea: el formulario lleva `novalidate` y el pop-up nombra los campos que faltan («Completá: Servidor, Usuario.») en su propia línea, como «Nuevo tenant», sin enviar nada; un puerto fuera de 1 a 65535 tiene su frase.
+  - **Última prueba (UX review C-05)**: la lista tiene una columna «Última prueba» con un badge (OK, Falló o Sin probar, ícono + texto) y la fecha; los selectores de conexión suman al nombre «· última prueba OK / falló» o «· sin probar»; en Mapeo, elegir una conexión cuya última prueba falló muestra un Banner warn con el motivo. Sale de la auditoría (`GET /conexiones` trae `ultimaPrueba`, solo lectura); no se guarda aparte.
   - **Botones**: «Probar conexión» en la fila; «Copiar token» en el aviso del agente.
 - **Agentes (CH-19b · API)**
   - Datos: `id` · `nombre` · `token_parcial` (zd_ag_••••8f2c) · `alta` · `revocado`.

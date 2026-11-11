@@ -340,6 +340,8 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
   let tenantA!: string;
   let tenantB!: string;
   let plantillaId!: string;
+  /** DEC-205: a template that declares a numeric `umbral`, as the catalog's two do. */
+  let plantillaUmbralId!: string;
   let conexionA!: string;
   let conexionB!: string;
 
@@ -371,6 +373,19 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
           nombre: `${marca} plantilla`,
           sql: 'SELECT * FROM v_producto WHERE nombre = :nombre',
           parametros: [{ nombre: 'nombre', tipo: 'texto' }],
+          entidades: ['producto'],
+          automatizacion: 'stock-fisico',
+          formato: 'correo-html',
+          toleranciaFrescuraMinutos: 30,
+        },
+      })
+    ).id;
+    plantillaUmbralId = (
+      await prisma.plantilla.create({
+        data: {
+          nombre: `${marca} plantilla umbral`,
+          sql: 'SELECT * FROM v_producto WHERE stock <= :umbral',
+          parametros: [{ nombre: 'umbral', tipo: 'numero' }],
           entidades: ['producto'],
           automatizacion: 'stock-fisico',
           formato: 'correo-html',
@@ -864,6 +879,52 @@ describe('automation routes — create, list, get, deactivate, runs (CH-13 3.2, 
     assert.equal(respuesta.statusCode, 404, respuesta.body);
     assert.deepEqual(respuesta.json(), { error: 'automatizacion-no-encontrada' });
     assert.equal((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).minimoFilas, 1);
+  });
+
+  // ---- UX review P-06 (DEC-205): umbral is an integer, 0 or more ---------------------------
+
+  const cuerpoUmbral = (umbral: unknown) => ({ plantillaId: plantillaUmbralId, conexionId: conexionA, valores: { umbral }, cron: '0 8 * * 1-5' });
+
+  test('DEC-205 POST /automatizaciones refuses a decimal, negative or text umbral as /valores/umbral, and persists nothing', async () => {
+    const antes = await prisma.automatizacion.count({ where: { tenantId: tenantA } });
+    for (const umbral of [2.5, -1, '3']) {
+      const respuesta = await crear(cuerpoUmbral(umbral));
+      assert.equal(respuesta.statusCode, 400, `${String(umbral)}: ${respuesta.body}`);
+      const cuerpo201 = respuesta.json();
+      assert.equal(cuerpo201.error, 'solicitud-invalida');
+      assert.deepEqual(cuerpo201.campos, ['/valores/umbral']);
+      assert.deepEqual(cuerpo201.problemas, [{ parametro: 'umbral', motivo: 'valor-invalido', campo: '/valores/umbral' }]);
+    }
+    assert.equal(await prisma.automatizacion.count({ where: { tenantId: tenantA } }), antes);
+    for (const umbral of [0, 5]) {
+      assert.equal((await crear(cuerpoUmbral(umbral))).statusCode, 201, String(umbral));
+    }
+  });
+
+  test('DEC-205 PUT /automatizaciones/:id/ajustes refuses a decimal umbral and leaves the row; an integer is written', async () => {
+    const creada = await crear(cuerpoUmbral(5));
+    const id = creada.json().automatizacion.id as string;
+    const rechazada = await ajustar(id, { valores: { umbral: 2.5 } });
+    assert.equal(rechazada.statusCode, 400, rechazada.body);
+    assert.deepEqual(rechazada.json().campos, ['/valores/umbral']);
+    assert.deepEqual((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).valores, { umbral: 5 });
+    const aceptada = await ajustar(id, { valores: { umbral: 7 } });
+    assert.equal(aceptada.statusCode, 200, aceptada.body);
+    assert.deepEqual((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).valores, { umbral: 7 });
+  });
+
+  test('DEC-205 an older stored decimal is not migrated: the PUT accepts it resent unchanged, and refuses any other decimal', async () => {
+    const id = (await crear(cuerpoUmbral(5))).json().automatizacion.id as string;
+    await prisma.automatizacion.update({ where: { id }, data: { valores: { umbral: 2.5 } } });
+    // The operator changes only the hour and the form resends valores as it read them.
+    const reenvio = await ajustar(id, { cron: '0 9 * * 1-5', valores: { umbral: 2.5 } });
+    assert.equal(reenvio.statusCode, 200, reenvio.body);
+    assert.deepEqual((await prisma.automatizacion.findUniqueOrThrow({ where: { id } })).valores, { umbral: 2.5 });
+    // Still readable.
+    assert.deepEqual((await pedir('GET', `/automatizaciones/${id}`)).json().automatizacion.valores, { umbral: 2.5 });
+    const otro = await ajustar(id, { valores: { umbral: 3.5 } });
+    assert.equal(otro.statusCode, 400, otro.body);
+    assert.deepEqual(otro.json().campos, ['/valores/umbral']);
   });
 
   test('CH-33 a deactivated automation answers 409, an unknown or foreign one 404, and neither is written', async () => {

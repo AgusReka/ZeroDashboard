@@ -1,6 +1,6 @@
 # ZeroDashboard
 
-Plataforma que ofrece automatizaciones operativas a e-commerce pequeños sin modificar su plataforma de venta. El cliente expone una réplica de solo lectura de su base; ZeroDashboard se conecta, mapea ese esquema a un contrato canónico y ejecuta sobre él un catálogo de automatizaciones que avisan por correo. La consola (`/consola`) es la herramienta del implementador (P1); el panel (`/panel`) es la del administrador del negocio (P2).
+Plataforma que ofrece automatizaciones operativas a e-commerce pequeños sin modificar su plataforma de venta. El cliente expone una réplica de solo lectura de su base; ZeroDashboard se conecta, mapea ese esquema a un contrato canónico y ejecuta sobre él un catálogo de automatizaciones que avisan por correo. La consola (`/consola`) es la herramienta del implementador (P1); el panel (`/panel`) es la del administrador del negocio (P2). La página de inicio (`/`) lleva a cada una: «Ir a mi panel» y «Ir a la consola». `/consola/` y `/panel/`, con barra final, redirigen a su ruta.
 
 ## Estado actual
 
@@ -119,7 +119,7 @@ docker compose --profile agente up -d --force-recreate agente
 
 **Falla provocada.** Con el agente arriba, las ejecuciones de Food Store salen bien. `docker compose stop agente` y, en la siguiente ejecución (en un minuto), falla con código `ESINAGENTE`: la consola muestra la ejecución fallida y el panel la muestra «con falla». `docker compose start agente` y la siguiente vuelve a salir bien. No se siembra nada roto.
 
-Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
+El punto de partida es `http://localhost:3000/`, con las dos puertas. Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
 
 1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y las automatizaciones sobre la plantilla `stock-fisico`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
 2. **Reportes y tablero del cliente.** Los cuatro reportes y los dos tableros ya están. En **Reportes** se puede crear otro y en **Puesta en marcha → Tablero del cliente** agregarlo. Guía: [Reportes](docs/guia/09-reportes.md#escribir-el-sql).

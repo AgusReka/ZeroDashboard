@@ -5,7 +5,7 @@ import { loadConfig } from '../compartido/config.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { SIN_AGENTES, type AbridorDeCanales } from '../agente/canal-agente.js';
 import { camposDeDestino, destinoDeConexion } from '../conexiones/conexion-destino.js';
-import { ejecutarConsulta, sanearSql } from '../ejecucion/consulta-ejecucion.js';
+import { ejecutarConsulta, palabraDeEscritura, rechazoPorEscritura, sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { ErrorCredencialIlegible } from '../compartido/cripto-credencial.js';
 import { prepararSentencia, TIPOS_PARAMETRO } from '../ejecucion/parametros.js';
 
@@ -95,6 +95,18 @@ export function registerConsultaRoutes(
       const sql = sanearSql(body.sql);
       if (sql === '') {
         return reply.code(400).send({ error: 'solicitud-invalida', campos: ['/sql'] });
+      }
+
+      // UX review C-07 (DEC-204): a statement whose first word is a write or DDL keyword is refused with
+      // the read-only message before anything else: no parameter check, no connection lookup, nothing sent
+      // to the target. It is an experience pre-check, not the protection (DEC-09 still gives that, with
+      // the `READ ONLY` transaction and the role check). The answer keeps the verdict shape of an attempt
+      // (`200`, `resultado: 'fallo'`), like every other execution refusal. No audit row: DEC-159 audits
+      // the paths that execute SQL against a client's database, and this one executes nothing; the other
+      // refusals before the engine (`400`, `404`, `409`) leave none either.
+      const palabra = palabraDeEscritura(sql);
+      if (palabra !== null) {
+        return reply.code(200).send(rechazoPorEscritura(palabra));
       }
 
       // Parameters are checked before the connection is even looked up, like the empty

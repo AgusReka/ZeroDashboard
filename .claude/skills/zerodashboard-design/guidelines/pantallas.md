@@ -189,6 +189,25 @@ Más aire (`data-surface="panel"`: cuerpo 16 px, controles 44 px), móvil primer
 
 ---
 
+## INICIO (todos · acceso) — página estática en `GET /`
+
+### I-01 Inicio — DEC-203 · UX lote 4 · EXISTE
+- **Propósito**: un solo punto de partida para el video, el README y quien no sabe cuál es su dirección. Lleva a cada persona a su ingreso; no ingresa a nadie (DEC-203).
+- **Datos**: ninguno. Página estática: sin sesión, sin cookie, sin base y sin script. Los dos enlaces son fijos: `/panel` y `/consola`.
+- **Superficie**: `data-surface="panel"` (más aire, controles de 44 px, móvil primero): quien llega sin guía suele ser P2. Una columna centrada de 420 px como máximo, como el ingreso del panel (P-01). Sin barra de tenant ni navegación.
+- **Estructura** (de arriba abajo):
+  1. Marca «ZeroDashboard» (`system-ui` 700, sin isotipo) y una línea de apoyo: «Tus avisos y reportes automáticos, en un solo lugar.»
+  2. `h1`: «¿Por dónde querés entrar?»
+  3. **Puerta principal**, una `zd-card`: `h2` «Administro un negocio», una frase («Mirá tus avisos y ajustá cuándo y a quién te llegan.») y el botón primario `zd-btn--primary zd-btn--block` «Ir a mi panel» (enlace a `/panel`).
+  4. **Puerta secundaria**, debajo y sin tarjeta, separada por un borde fino: `h2` «Configuro ZeroDashboard para un cliente», una frase en `--text-2` («Conectá la base de un cliente y armá sus consultas y automatizaciones.») y el botón secundario `zd-btn--secondary zd-btn--block` «Ir a la consola» (enlace a `/consola`).
+- **Jerarquía**: la puerta del panel es la principal (P2: quien administra un negocio); la de la consola es secundaria (P1: quien configura). Solo la primera lleva el acento. Un botón de enlace conserva el color de su variante (sin el subrayado ni el color de enlace).
+- **Lenguaje**: voseo, sin jerga: no dice «tenant», «SQL» ni «operador». Los botones son verbo + objeto.
+- **Estados**: no tiene (no carga nada, nada puede fallar).
+- **Barra final** (DEC-203): `/consola/` y `/panel/` no sirven pantalla; redirigen (`308`) a `/consola` y `/panel`.
+- **Fuera de alcance**: un ingreso común a las dos superficies (DEC-203, opción C descartada), mostrar algo de la consola, y dar a P1 la dirección del panel al crear un usuario (C-14).
+
+---
+
 ## CORREO — N1, N2 · CH-14 · EXISTE
 Reporte HTML compatible con clientes de correo: tablas, estilos inline, 600 px, sin webfonts, sin imágenes obligatorias. Versión **sin datos** con mensaje claro y sin campos rotos. Referencia: `ui_kits/correo/reporte.html`, `ui_kits/correo/sin-datos.html`.
 

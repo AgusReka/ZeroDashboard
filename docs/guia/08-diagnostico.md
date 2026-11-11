@@ -51,7 +51,7 @@ Las respuestas de ejecución, prueba de plantilla y validación llevan `fase` y 
 | `categoria` | Causa | Qué hacer |
 |---|---|---|
 | `tiempo-agotado` | Superó `QUERY_TIMEOUT_MS` (15 000 ms) y se canceló. | Acotar la consulta. |
-| `no-es-lectura` | Escribe o cambia la estructura; la transacción es de solo lectura. | Usar solo `SELECT`. |
+| `no-es-lectura` | Escribe o cambia la estructura; la transacción es de solo lectura. Si la sentencia empieza con una palabra de escritura, la consola la rechaza antes de enviarla (respuesta con `palabra`, sin `codigo` y `duracionMs` 0; no queda fila en la auditoría, DEC-204). | Usar solo `SELECT`. |
 | `permiso-denegado` | El rol no puede leer algún objeto. | Otorgar `SELECT` sobre esos objetos. |
 | `error-sintaxis` | SQL inválido, o más de una sentencia. | Corregir; una sentencia por ejecución. |
 | `error-datos` | Válida, pero falló con los datos (por ejemplo, división por cero). | Revisar los datos o los valores. |
@@ -71,7 +71,7 @@ Las respuestas de ejecución, prueba de plantilla y validación llevan `fase` y 
 
 | `error` | HTTP | Causa y acción |
 |---|---|---|
-| `solicitud-invalida` | 400 | Cuerpo inválido. `campos` lista los campos como `/cron`, `/destinatarios/1` (la posición de la dirección rechazada) o `/destinatarios` (más de 5), `/sql`, `/nota`, `/nombre`. Con `problemas`, cada uno trae el parámetro y un `motivo` (lista siguiente). En el panel, los campos son `umbral`, `hora`, `dias` y `destinatarios`. |
+| `solicitud-invalida` | 400 | Cuerpo inválido. `campos` lista los campos como `/cron`, `/destinatarios/1` (la posición de la dirección rechazada) o `/destinatarios` (más de 5), `/sql`, `/nota`, `/nombre`. Con `problemas`, cada uno trae el parámetro y un `motivo` (lista siguiente). En el panel, los campos son `umbral`, `hora`, `dias` y `destinatarios`. El `umbral` debe ser un entero de 0 o más: `2.5`, `-1` o `"3"` dan `400` con `umbral` en el panel y `/valores/umbral` (motivo `valor-invalido`) en la consola (DEC-205). |
 | `credencial-ilegible` | 409 | «La credencial guardada para esta conexión no se pudo descifrar. Si la conexión se registró antes de que el cifrado entrara en vigencia, hay que volver a registrarla.» También aplica si cambió `CREDENTIAL_MASTER_KEY`. Registrar la conexión de nuevo (DEC-20). |
 | `conexion-no-encontrada` | 404 | La conexión no existe **para el tenant activo**. |
 | `agente-no-encontrado` | 404 | El agente no existe o no es de este tenant. |

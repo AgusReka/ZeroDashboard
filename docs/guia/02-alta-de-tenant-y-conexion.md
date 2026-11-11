@@ -1,6 +1,6 @@
 # Alta de un tenant y su conexión
 
-Esta guía lleva a un negocio nuevo desde cero hasta una conexión probada, con conexión directa o a través de un agente. Todo se hace desde la consola, en `/consola`.
+Esta guía lleva a un negocio nuevo desde cero hasta una conexión probada, con conexión directa o a través de un agente. Todo se hace desde la consola, en `/consola`. Sin ninguna pantalla elegida en la dirección, la consola abre en **Tenants** si todavía no hay un tenant elegido, y en **Consultas** si lo hay.
 
 ## Antes de empezar
 
@@ -72,7 +72,7 @@ Notas del agente:
 
 ## 3. Probar
 
-«Guardar y probar» registra la conexión y la prueba en el mismo paso. Si la prueba falla, la conexión queda guardada y un aviso de error dice que la conexión se guardó, por qué falló la prueba y que hay que registrarla de nuevo con los datos corregidos. Después, «Probar conexión» en la fila repite la prueba.
+«Guardar y probar» registra la conexión y la prueba en el mismo paso. Si la prueba falla, la conexión queda guardada y un aviso de error dice que la conexión se guardó, por qué falló la prueba y que hay que registrarla de nuevo con los datos corregidos. Después, «Probar conexión» en la fila repite la prueba. La lista tiene una columna «Última prueba» (OK, Falló o Sin probar, con la fecha), y los selectores de conexión de la consola suman «· última prueba OK», «· última prueba falló» o «· sin probar» al nombre. En Mapeo, elegir una conexión cuya última prueba falló muestra un aviso con el motivo. El dato sale de la auditoría; una conexión registrada sigue sin poder editarse.
 
 | Categoría | Significa |
 |---|---|

@@ -178,7 +178,7 @@ WHEN `agenteId` is supplied, the system SHALL resolve it only among agents of th
 
 ### Requirement: Listing the Active Tenant's Connections (DEC-132)
 
-The system SHALL expose `GET /conexiones`, scoped to the active tenant, returning only the tenant's connections, each with exactly the public connection fields the registration answers: `id`, `nombre`, `motor`, `host`, `puerto`, `baseDeDatos`, `usuarioDb`, `soloLectura`, `agenteId`, `creadaEn` and `actualizadaEn`. The route MUST require `X-Tenant-Id` and MUST NOT be added to the tenant-context exemption allowlist. The result SHALL be capped to a fixed maximum number of rows, with cap value and ordering fixed by design. No other field, including `credencial`, MUST appear in the response.
+The system SHALL expose `GET /conexiones`, scoped to the active tenant, returning only the tenant's connections, each with exactly the public connection fields the registration answers: `id`, `nombre`, `motor`, `host`, `puerto`, `baseDeDatos`, `usuarioDb`, `soloLectura`, `agenteId`, `creadaEn`, `actualizadaEn` and, read-only, `ultimaPrueba` (UX review C-05). `ultimaPrueba` SHALL be `null` when no test of the connection is recorded, and otherwise `{ resultado, categoria, codigo, fecha }` from the most recent audit row of origin `conexion-prueba` for that connection and the active tenant (`fecha` ISO 8601 UTC); nothing new is stored for it. The route MUST require `X-Tenant-Id` and MUST NOT be added to the tenant-context exemption allowlist. The result SHALL be capped to a fixed maximum number of rows, with cap value and ordering fixed by design. No other field, including `credencial`, MUST appear in the response.
 (Previously: each entry had exactly `id` and `nombre`.)
 
 #### Scenario: Listing own connections
@@ -186,6 +186,12 @@ The system SHALL expose `GET /conexiones`, scoped to the active tenant, returnin
 - **GIVEN** tenant A with two connections
 - **WHEN** `GET /conexiones` is sent with A's `X-Tenant-Id`
 - **THEN** the response SHALL list exactly those two, each with exactly the public fields and no `credencial`
+
+#### Scenario: The last test of each connection (UX review C-05)
+
+- **GIVEN** a connection tested twice, the second time with a failure
+- **WHEN** `GET /conexiones` is requested
+- **THEN** its `ultimaPrueba` is the failure, with its `categoria`, `codigo` and `fecha`; a connection never tested has `ultimaPrueba` null, and another tenant's tests never count
 
 #### Scenario: Two tenants
 
