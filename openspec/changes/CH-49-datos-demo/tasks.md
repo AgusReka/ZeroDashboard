@@ -69,12 +69,12 @@ Chain strategy: stacked-to-main
 - [x] c.5 README «Probar la demo completa»: what comes seeded (two tenants, dashboards, every-minute email, Telegram with both variables), the clean start with `down -v`, how to stop the every-minute automations («Desactivar», one-way), the data check query, and the stale CH-48 sentence removed.
 
 ## d — Agent
-- [ ] d.1 `leerEntornoDemo`: `DEMO_AGENTE_TOKEN` (format check, error without the value).
-- [ ] d.2 `demo/agente.ts`: agent with the token hash when the tenant has none; Food Store's connection created with `agenteId`.
-- [ ] d.3 `docker-compose.yml`: `agente` service per the design; forward `DEMO_AGENTE_TOKEN`; `.env.example` lists it empty with the `agente` profile.
-- [ ] d.4 Tests: only the hash stored; connection bound; existing agent and existing direct connection untouched; no token gives a direct connection.
-- [ ] d.5 README: the agent shortcut sentence, the token one-liner, recreating `agente` after rebuilding `app`, and the provoked failure with `stop`/`start agente`. Isolated stack check of the run and the failure.
+- [x] d.1 `leerEntornoDemo`: `DEMO_AGENTE_TOKEN` (format check, error without the value).
+- [x] d.2 `demo/agente.ts`: agent with the token hash when the tenant has none; Food Store's connection created with `agenteId`.
+- [x] d.3 `docker-compose.yml`: `agente` service per the design; forward `DEMO_AGENTE_TOKEN`. Compose part done (the token is `${DEMO_AGENTE_TOKEN:-}`, not `:?`, which broke every `docker compose` command without a token). `.env.example` listing it empty with the `agente` profile is pending (the owner handles `.env*`).
+- [x] d.4 Tests: only the hash stored; connection bound; existing agent and existing direct connection untouched; no token gives a direct connection.
+- [x] d.5 README: the agent shortcut sentence, the token one-liner, recreating `agente` after rebuilding `app`, and the provoked failure with `stop`/`start agente`. Isolated stack check of the run and the failure.
 
 ## Close
-- [ ] z.1 `docs/02-mapa-de-changes.md` CH-49 row.
+- [x] z.1 `docs/02-mapa-de-changes.md` CH-49 row.
 - [ ] z.2 `npm run build` and `npm run test:db` pass apart from the known failures.
