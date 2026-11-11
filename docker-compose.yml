@@ -64,6 +64,10 @@ services:
       DEMO_OPERADOR_CLAVE: ${DEMO_OPERADOR_CLAVE:-}
       DEMO_PANEL_CORREO: ${DEMO_PANEL_CORREO:-}
       DEMO_PANEL_CLAVE: ${DEMO_PANEL_CLAVE:-}
+      # Optional since CH-49: the Telegram chat Food Store is linked to (a signed integer, a
+      # negative one for a group). Unset or empty, no link and no Telegram automation are seeded;
+      # a malformed value makes the container refuse to start, without echoing it.
+      DEMO_TELEGRAM_CHAT_ID: ${DEMO_TELEGRAM_CHAT_ID:-}
     ports:
       - "${APP_PORT}:${APP_PORT}"
 

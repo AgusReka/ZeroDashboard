@@ -29,6 +29,7 @@ export type ClienteSemilla = Pick<
   | 'registroEjecucion'
   | 'reporte'
   | 'tablero'
+  | 'vinculoTelegram'
 >;
 
 /** Everything that differs between one demo tenant and the next. */
