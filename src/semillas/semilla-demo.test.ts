@@ -9,6 +9,7 @@ import type { ResultadoSondeo, SondeoEntidad } from '../ejecucion/consulta-ejecu
 import { CONTRATO_CANONICO, type TipoSemantico } from '../contrato/contrato.js';
 import { descifrarCredencial } from '../compartido/cripto-credencial.js';
 import { verificarClave } from '../compartido/crypto-auth.js';
+import { IDS_REPORTES_DEMO, REPORTES_DEMO } from './demo/reportes.js';
 import { IDS_DEMO, correoPanelCafe, leerEntornoDemo, sembrarDemo, type EntornoDemo } from './semilla-demo.js';
 
 process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzISE=';
@@ -18,6 +19,9 @@ process.env.CREDENTIAL_MASTER_KEY ??= 'emVyb2Rhc2hib2FyZC1jbGF2ZS1kZS1wcnVlYmFzI
  * them before each case and after the last; the audit table is the one thing it cannot clean,
  * because the database refuses to delete from it (DEC-162), so the audit assertions count the
  * rows a run added rather than the rows that exist.
+ *
+ * CH-49 (b2): the four global reports and each tenant's dashboard come after both tenants. The
+ * reports are global, so the suite deletes only the seeded ids, never by name or count.
  *
  * CH-49 (b1): the seed runs two tenants, Food Store and Café del Puerto, from one descriptor
  * each. Cases that read "the tenant" without a name mean Food Store, as before.
@@ -132,6 +136,7 @@ describe(
     /** Everything the seed writes, children first; the audit rows stay (DEC-162). */
     async function limpiar(): Promise<void> {
       for (const tenantId of [IDS_DEMO.tenant, IDS_DEMO.cafe.tenant]) {
+        await db.tablero.deleteMany({ where: { tenantId } });
         await db.ejecucion.deleteMany({ where: { tenantId } });
         await db.automatizacion.deleteMany({ where: { tenantId } });
         await db.vistaCanonica.deleteMany({ where: { tenantId } });
@@ -142,6 +147,8 @@ describe(
         await db.usuario.deleteMany({ where: { tenantId } });
         await db.tenant.deleteMany({ where: { id: tenantId } });
       }
+      // Reports are global: only the seeded ids go.
+      await db.reporte.deleteMany({ where: { id: { in: REPORTES_DEMO.map((r) => r.id) } } });
       // The operator's sessions cascade with it.
       await db.operador.deleteMany({ where: { id: IDS_DEMO.operador } });
     }
@@ -171,13 +178,21 @@ describe(
       ]);
     }
 
+    function reportesSembrados() {
+      return db.reporte.count({ where: { id: { in: REPORTES_DEMO.map((r) => r.id) } } });
+    }
+
+    function tablerosDeLaDemo() {
+      return db.tablero.count({ where: { tenantId: { in: [IDS_DEMO.tenant, IDS_DEMO.cafe.tenant] } } });
+    }
+
     test('the first run creates every row with its fixed id, validates the five views and audits once', async () => {
       const antes = (
         await db.registroEjecucion.findMany({ where: { tenantId: IDS_DEMO.tenant }, select: { id: true } })
       ).map((f) => f.id);
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
-      assert.equal(creadas.length, 20, creadas.join(', '));
+      assert.equal(creadas.length, 26, creadas.join(', '));
 
       const operador = await db.operador.findUniqueOrThrow({ where: { id: IDS_DEMO.operador } });
       assert.equal(operador.nombre, 'demo');
@@ -255,6 +270,7 @@ describe(
           'cafe:usuario',
           ...CONTRATO_CANONICO.map((e) => `cafe:vista:${e.nombre}`),
           'cafe:automatizacion',
+          'cafe:tablero',
         ],
       );
 
@@ -306,6 +322,84 @@ describe(
       assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
     });
 
+    test('the four reports and both dashboards are seeded after the tenants, by fixed id', async () => {
+      const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+      assert.deepEqual(
+        creadas.filter((c) => c.startsWith('reporte:') || c.endsWith('tablero')),
+        [...REPORTES_DEMO.map((r) => `reporte:${r.nombre}`), 'tablero', 'cafe:tablero'],
+      );
+
+      for (const entrada of REPORTES_DEMO) {
+        const fila = await db.reporte.findUniqueOrThrow({ where: { id: entrada.id } });
+        assert.deepEqual(
+          [fila.nombre, fila.titulo, fila.descripcion, fila.sql, fila.entidades, fila.visualizacion, fila.columnas, fila.periodo],
+          [entrada.nombre, entrada.titulo, entrada.descripcion, entrada.sql, entrada.entidades, entrada.visualizacion, entrada.columnas, entrada.periodo],
+          entrada.nombre,
+        );
+      }
+
+      const foodStore = await db.tablero.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.tenant } });
+      assert.deepEqual(
+        [foodStore.id, foodStore.conexionId, foodStore.reportes],
+        [
+          IDS_DEMO.tablero,
+          IDS_DEMO.conexion,
+          [IDS_REPORTES_DEMO.ventas, IDS_REPORTES_DEMO.masVendido, IDS_REPORTES_DEMO.ventasPorDia, IDS_REPORTES_DEMO.stock],
+        ],
+      );
+      const cafe = await db.tablero.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.cafe.tenant } });
+      assert.deepEqual(
+        [cafe.id, cafe.conexionId, cafe.reportes],
+        [
+          IDS_DEMO.cafe.tablero,
+          IDS_DEMO.cafe.conexion,
+          [IDS_REPORTES_DEMO.ventas, IDS_REPORTES_DEMO.masVendido, IDS_REPORTES_DEMO.ventasPorDia],
+        ],
+      );
+    });
+
+    test('a dashboard the tenant already has is untouched and no second one is created', async () => {
+      await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+      // The owner replaced Food Store's dashboard with one of their own (another id, one report);
+      // Café del Puerto's was edited in place.
+      await db.tablero.delete({ where: { tenantId: IDS_DEMO.tenant } });
+      const propio = await db.tablero.create({
+        data: { tenantId: IDS_DEMO.tenant, conexionId: IDS_DEMO.conexion, reportes: [IDS_REPORTES_DEMO.stock] },
+      });
+      await db.tablero.update({ where: { tenantId: IDS_DEMO.cafe.tenant }, data: { reportes: [IDS_REPORTES_DEMO.ventas] } });
+
+      const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_NUNCA });
+
+      assert.deepEqual(creadas, []);
+      assert.equal(await db.tablero.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+      const foodStore = await db.tablero.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.tenant } });
+      assert.deepEqual([foodStore.id, foodStore.reportes], [propio.id, [IDS_REPORTES_DEMO.stock]]);
+      assert.notEqual(foodStore.id, IDS_DEMO.tablero);
+      const cafe = await db.tablero.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.cafe.tenant } });
+      assert.deepEqual(cafe.reportes, [IDS_REPORTES_DEMO.ventas]);
+    });
+
+    test('a report that already exists is left as it is, and the missing ones are still created', async () => {
+      await db.reporte.create({
+        data: {
+          id: IDS_REPORTES_DEMO.ventas,
+          nombre: 'Editado por el dueño',
+          titulo: 'Mis ventas',
+          sql: 'SELECT 1 AS ventas',
+          entidades: ['pedido'],
+          visualizacion: 'numero',
+          columnas: [{ rol: 'valor', columna: 'ventas', titulo: 'Ventas' }],
+        },
+      });
+
+      const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+
+      assert.equal(creadas.filter((c) => c.startsWith('reporte:')).length, 3);
+      assert.equal(await reportesSembrados(), 4);
+      const editado = await db.reporte.findUniqueOrThrow({ where: { id: IDS_REPORTES_DEMO.ventas } });
+      assert.deepEqual([editado.nombre, editado.sql], ['Editado por el dueño', 'SELECT 1 AS ventas']);
+    });
+
     test('a second run creates nothing, never probes, and keeps the owner’s edit', async () => {
       await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
       const editada = 'SELECT 1 AS editada';
@@ -321,6 +415,8 @@ describe(
       assert.deepEqual(creadas, []);
       assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
       assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [5, 1, 0, 1, 1]);
+      assert.equal(await reportesSembrados(), 4);
+      assert.equal(await tablerosDeLaDemo(), 2);
       const consulta = await db.consultaGuardada.findUniqueOrThrow({ where: { id: IDS_DEMO.consulta } });
       assert.equal(consulta.sql, editada);
       assert.equal(consulta.nombre, 'Editada por el dueño');
@@ -340,6 +436,9 @@ describe(
       );
       // Views of the failed run are gone, so the next start probes again.
       assert.deepEqual(await cuentas(), [0, 0, 1, 1, 1]);
+      // Nothing that depends on the views exists: no dashboard, and the reports come after the tenants.
+      assert.equal(await tablerosDeLaDemo(), 0);
+      assert.equal(await reportesSembrados(), 0);
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
       assert.ok(creadas.includes('automatizacion'));
@@ -382,6 +481,9 @@ describe(
       assert.equal(await db.tenant.count({ where: { id: IDS_DEMO.cafe.tenant } }), 0);
       assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [0, 0, 0, 0, 0]);
       assert.equal(await db.registroEjecucion.count({ where: { tenantId: IDS_DEMO.cafe.tenant } }), auditoriaAntes);
+      // The reports and dashboards come after both tenants, so neither exists yet.
+      assert.equal(await reportesSembrados(), 0);
+      assert.equal(await tablerosDeLaDemo(), 0);
     });
 
     test('any other failure of cafe_demo keeps the probe’s closed message and leaves no Café rows', async () => {

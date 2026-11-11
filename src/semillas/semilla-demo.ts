@@ -3,6 +3,8 @@ import { LARGO_MINIMO_CLAVE, validarClave } from '../operador-alta.js';
 import { correoValido, normalizarCorreo } from '../usuarios/usuarios-panel.js';
 import { hashearClave } from '../compartido/crypto-auth.js';
 import type { ClienteSemilla, TenantDemo } from './demo/comun.js';
+import { IDS_REPORTES_DEMO, sembrarReportes } from './demo/reportes.js';
+import { sembrarTablero } from './demo/tableros.js';
 import { sembrarTenant, verificarBaseDeReplica, type ContextoTenantDemo } from './demo/tenant.js';
 
 export type { ClienteSemilla } from './demo/comun.js';
@@ -42,6 +44,8 @@ export const IDS_DEMO = {
   consulta: '31d00000-0000-4000-8000-000000000021',
   usuario: '31d00000-0000-4000-8000-000000000022',
   automatizacion: '31d00000-0000-4000-8000-000000000023',
+  /** Food Store's dashboard (CH-49 b2). The four reports are global: see `IDS_REPORTES_DEMO`. */
+  tablero: '49d00000-0000-4000-8000-000000000031',
   /** Café del Puerto (CH-49): same layout, `49d…` ids. */
   cafe: {
     tenant: '49d00000-0000-4000-8000-000000000001',
@@ -55,6 +59,7 @@ export const IDS_DEMO = {
     },
     usuario: '49d00000-0000-4000-8000-000000000022',
     automatizacion: '49d00000-0000-4000-8000-000000000023',
+    tablero: '49d00000-0000-4000-8000-000000000032',
   },
 } as const;
 
@@ -97,6 +102,16 @@ function tenantFoodStore(entorno: EntornoDemo): TenantDemo {
     },
     correoPanel: entorno.correoPanel,
     prefijoEtiqueta: '',
+    // Food Store shows all four reports, the stock table included.
+    tablero: {
+      id: IDS_DEMO.tablero,
+      reportes: [
+        IDS_REPORTES_DEMO.ventas,
+        IDS_REPORTES_DEMO.masVendido,
+        IDS_REPORTES_DEMO.ventasPorDia,
+        IDS_REPORTES_DEMO.stock,
+      ],
+    },
   };
 }
 
@@ -113,6 +128,10 @@ function tenantCafe(entorno: EntornoDemo): TenantDemo {
     },
     correoPanel: correoPanelCafe(entorno.correoPanel),
     prefijoEtiqueta: 'cafe:',
+    tablero: {
+      id: IDS_DEMO.cafe.tablero,
+      reportes: [IDS_REPORTES_DEMO.ventas, IDS_REPORTES_DEMO.masVendido, IDS_REPORTES_DEMO.ventasPorDia],
+    },
   };
 }
 
@@ -172,6 +191,7 @@ export interface ResumenDemo {
  * cause, when the replica does not answer or an entity is not valid after the probe; in
  * both cases the tenant's automation is not created and its views of this run are removed.
  * Café del Puerto is checked against an old replica volume before any of its rows exists.
+ * After both tenants come the four global reports and each tenant's dashboard (CH-49 b2).
  */
 export async function sembrarDemo(
   prisma: ClienteSemilla,
@@ -214,6 +234,11 @@ export async function sembrarDemo(
     await verificarBaseDeReplica(cafe, contexto);
   }
   await sembrarTenant(prisma, cafe, contexto);
+
+  // Reports are global and both dashboards draw on them; each tenant's views exist by now.
+  await sembrarReportes(prisma, creadas);
+  await sembrarTablero(prisma, tenantFoodStore(entorno), creadas);
+  await sembrarTablero(prisma, cafe, creadas);
 
   return { creadas };
 }
