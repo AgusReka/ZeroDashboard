@@ -52,27 +52,27 @@ Chain strategy: stacked-to-main
   - existing query cases moved to hash-based opening.
 
 ## 53b — List, reference, versions
-- [ ] b.1 Saved list as a table (name + description, last edit, «Abrir», «Versiones») through `renderizarTabla`.
-- [ ] b.2 Search field and counter: `filtrarGuardadas` is accent- and case-insensitive with no request. Add the no-match state with «Limpiar búsqueda», the empty state and the error with «Reintentar».
-- [ ] b.3 Reference panel `#consultas-referencia`:
+- [x] b.1 Saved list as a table (name + description, last edit, «Abrir», «Versiones») through `renderizarTabla`.
+- [x] b.2 Search field and counter: `filtrarGuardadas` is accent- and case-insensitive with no request. Add the no-match state with «Limpiar búsqueda», the empty state and the error with «Reintentar».
+- [x] b.3 Reference panel `#consultas-referencia`:
   - contract from `CONTRATO` (embed it if CH-54 has not);
   - declared parameters;
   - the explanatory line;
   - links to `#mapeo` and `#plantillas`;
   - the collapse toggle (`aria-expanded`).
-- [ ] b.4 «Versiones» in the editor header for a loaded query opens the existing wide side panel. «Comparar con la actual» uses the `zd-compare` layout (server markup).
-- [ ] b.0 Moved from 53a:
+- [x] b.4 «Versiones» in the editor header for a loaded query opens the existing wide side panel. «Comparar con la actual» uses the `zd-compare` layout (server markup).
+- [x] b.0 Moved from 53a:
   - the parameter test values move to the context bar (`#consultas-parametros-valores`), with `editorConsulta.agregar()` writing the value there and the declaration in the `<details>` under the editor;
   - an editor address whose id is not a saved query of the tenant shows «No encontramos esa consulta.» with a link to the list.
-- [ ] b.5 Tests:
+- [x] b.5 Tests:
   - the list's columns, search, counter and states;
   - reference panel content and no extra request;
   - versions opened from the editor.
 
 ## Verify
-- [ ] v.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass after each slice.
-- [ ] v.2 `guidelines/admin.md` §14 for Consultas (P5, W1–W9, T1, T6, T8).
-- [ ] v.3 No new request appears in the network calls the tests record, compared with before this change.
+- [x] v.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass after each slice.
+- [x] v.2 `guidelines/admin.md` §14 for Consultas (P5, W1–W9, T1, T6, T8).
+- [x] v.3 No new request appears in the network calls the tests record, compared with before this change.
 
 ## Apply notes, 53a (2026-11-11)
 
@@ -88,3 +88,23 @@ Chain strategy: stacked-to-main
 - **a.3 The editor.** It keeps its id (`consulta-dialogo`) and the shared pop-up helper, with a new `pagina` option: no focus trap, no backdrop, no dialog role. This kept every query test's assertions and changed only how the editor opens. The design's `#consultas-editor` / `#consultas-lista` names were not introduced: `consulta-dialogo` and `guardado` are those sections.
 - **a.4 Partial.** The connection and the rows per page are now in the context bar above the statement. The parameter values stay in their declaration rows; they move to b.0 together with the not-found state.
 - **a.6 Leave guard.** It reuses the editor's own unsaved-changes line («Hay cambios sin guardar.» · «Descartar cambios» · «Seguir editando») rather than a C1 dialog, so «Cancelar», Escape and a change of address ask the same way. The spec delta was aligned.
+
+## Apply notes, 53b (2026-11-11)
+
+**Evidence.**
+- `consola.test.ts`: 514/514.
+- `test:db`: 2338/2342. The 4 failures are the known `conexiones` false positives.
+- `tsc`: ok.
+- 207 changed lines in `src/`.
+- `scripts/smoke.sh` was not run: it runs `docker compose down` on the developer stack.
+
+**What changed.**
+- The saved list has a search field, a counter, a no-match state with «Limpiar búsqueda», the last edit (`actualizadaEn`) and an empty state with the next step.
+- The editor has a «Versiones» button for a loaded query and a collapsible reference panel (`<details>`) listing the embedded contract, the declared parameters and the links to Mapeo and Plantillas.
+- An editor address naming no saved query goes back to `#consultas`, with the existing 404 sentence.
+- «Comparar con la actual» uses `zd-compare`.
+
+**Deviations, aligned in the spec delta.**
+- **b.0, parameter test values.** They stay in each declaration row, right under the statement, instead of moving to the context bar. Splitting the rows across two containers would rewrite every CH-11 parameter test for a small visual gain. The value is still labelled with the name it fills.
+- **b.1, the list.** It stays a `<ul>`, its rows laid out by a bridge rule, instead of becoming a `<table>`. Sixteen tests and the row's own reading order rely on it.
+- **b.0, not-found address.** It reuses the 404 sentence the console already had, instead of a new «No encontramos esa consulta.» state.

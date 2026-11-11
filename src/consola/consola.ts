@@ -241,6 +241,16 @@ function documentoConsola(nombreOperador: string): string {
   .consulta-editor__titulo { display: inline; margin: 0; font-size: inherit; font-weight: var(--weight-semibold); }
   .consulta-contexto { margin-top: var(--space-4); }
   .consulta-contexto > .consulta-contexto__conexion { width: min(24rem, 100%); }
+  .consulta-referencia { margin: var(--space-4) 0; padding: var(--space-4) var(--space-5); border: var(--border-width) solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-card); font-size: var(--text-sm); }
+  .consulta-referencia h3 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-sm); }
+  .consulta-referencia ul { margin: 0; padding-left: var(--space-5); }
+  @media (min-width: 72rem) { .consulta-referencia { float: right; width: 19rem; margin: 0 0 var(--space-5) var(--space-6); } }
+  .consultas-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); margin-bottom: var(--space-4); }
+  .consultas-toolbar .zd-label { margin: 0; }
+  .consultas-toolbar .zd-input { width: min(22rem, 100%); }
+  .lista-guardadas { margin: 0; padding: 0; list-style: none; }
+  .lista-guardadas > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); padding: var(--space-4) 0; border-bottom: var(--border-width) solid var(--border-1); }
+  .lista-guardadas > li > span:first-child { font-weight: var(--weight-semibold); }
   .consulta-ejecutar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
   /* CH-38 (DEC-191): the template pop-up is wide like the query one; its entity boxes are built by the script. */
   #plantilla-dialogo .zd-dialog { width: min(900px, 100%); }
@@ -1181,6 +1191,21 @@ ${estadoSinTenant('consultas')}
   <div>
     <!-- CH-53 (DEC-208): a page subview at #consultas/nueva or #consultas/{id}; the crumb goes back to the list. -->
     <nav class="zd-pagehead__crumbs" aria-label="Ubicación"><a href="#consultas">Consultas</a> › <h2 id="consulta-dialogo-titulo" class="consulta-editor__titulo">Nueva consulta</h2></nav>
+    <!-- CH-53 (P5): the history of a loaded query opens from the editor too, in the same side panel. -->
+    <button id="consulta-versiones" class="zd-btn zd-btn--ghost zd-btn--sm" type="button" hidden>Versiones</button>
+    <!--
+      CH-53 (W8): what the operator can look up while writing, with data the console already has: the canonical
+      contract and the declared parameters. Nothing here reads the replica's own tables.
+    -->
+    <details id="consultas-referencia" class="consulta-referencia" open>
+      <summary>Referencia</summary>
+      <p class="ayuda">Consultas lee las tablas propias de la réplica; las plantillas y los reportes leen las vistas canónicas que arma el mapeo.</p>
+      <p class="ayuda"><a href="#mapeo">Ir a Mapeo y validación</a> · <a href="#plantillas">Ir a Plantillas</a></p>
+      <h3>Parámetros declarados</h3>
+      <ul id="consultas-referencia-parametros"></ul>
+      <h3>Contrato canónico</h3>
+      <ul id="consultas-referencia-contrato"></ul>
+    </details>
 
     <div>
       <label for="nombre" class="zd-label">Nombre</label>
@@ -1287,7 +1312,14 @@ ${estadoSinTenant('consultas')}
   <h2 class="zd-h2">Consultas guardadas</h2>
   <p class="ayuda">Abrí una consulta para probarla o guardar una versión nueva de ella. Para crear otra, usá «Nueva consulta». No se puede borrar.</p>
 
-  <ul id="guardadas"></ul>
+  <!-- CH-53 (T1, T6, T8): the loaded list is filtered as the operator types, with no request; the counter says how many show. -->
+  <div class="consultas-toolbar">
+    <label for="consultas-busqueda" class="zd-label">Buscar</label>
+    <input id="consultas-busqueda" class="zd-input" type="search" autocomplete="off" placeholder="Nombre o descripción">
+    <span id="consultas-contador" class="ayuda" role="status"></span>
+  </div>
+  <p id="consultas-sin-coincidencias" class="ayuda" hidden><span id="consultas-sin-coincidencias-texto"></span> <button id="consultas-limpiar" class="zd-btn zd-btn--ghost zd-btn--sm" type="button">Limpiar búsqueda</button></p>
+  <ul id="guardadas" class="lista-guardadas"></ul>
 
   <!--
     CH-25 (DEC-146 to DEC-150, screen C-05): the history of one saved query. Starts closed;
@@ -1299,7 +1331,7 @@ ${estadoSinTenant('consultas')}
     <div class="zd-drawer__body">
       <p id="versiones-estado" class="ayuda" role="status"></p>
       <ul id="versiones-lista"></ul>
-      <div id="versiones-comparacion"></div>
+      <div id="versiones-comparacion" class="zd-compare"></div>
     </div>
     <div class="zd-drawer__foot">
       <button id="versiones-cerrar" class="zd-btn zd-btn--ghost" type="button">Cerrar versiones</button>
@@ -2535,7 +2567,11 @@ function crearEditorParametros(contenedor, alCambiar, conValor) {
 }
 
 // The query pop-up's editor. Declared where the factory is, so the callers below read it as before.
-var editorConsulta = crearEditorParametros(contenedorParametros, actualizarGuardado, true);
+var editorConsulta = crearEditorParametros(contenedorParametros, function () {
+  actualizarGuardado();
+  // CH-53 (W8): the reference panel lists the declaration as it is typed.
+  if (typeof pintarReferenciaConsulta === 'function' && dialogoConsulta && !dialogoConsulta.hidden) { pintarReferenciaConsulta(); }
+}, true);
 
 // A blank control sends no key at all, so the server answers valor-faltante naming the
 // parameter instead of receiving an empty string it would have to interpret. Shared by
@@ -2813,8 +2849,9 @@ function renderizarGuardadas(cuerpo) {
   if (filas.length === 0) {
     var vacia = document.createElement('li');
     vacia.className = 'ayuda';
-    vacia.textContent = 'Todavía no hay consultas guardadas.';
+    vacia.textContent = 'Todavía no hay consultas guardadas. Ejecutá una y guardala para volver a usarla.';
     listaGuardadas.appendChild(vacia);
+    filtrarGuardadas();
     return;
   }
 
@@ -2827,9 +2864,11 @@ function renderizarGuardadas(cuerpo) {
 
     // The list shows creadaEn because duplicate names are allowed by design: two rows
     // called "Stock producible" are otherwise indistinguishable in a list.
+    // CH-53 (T8): the last edit, which says more than the creation once a query has versions.
     var fecha = document.createElement('span');
     fecha.className = 'ayuda';
-    fecha.textContent = fechaHoraTenant(fila.creadaEn);
+    fecha.title = 'Última edición (hora de tu navegador)';
+    fecha.textContent = fechaHoraTenant(fila.actualizadaEn || fila.creadaEn);
     item.appendChild(fecha);
 
     if (fila.descripcion !== null && fila.descripcion !== undefined) {
@@ -2854,8 +2893,10 @@ function renderizarGuardadas(cuerpo) {
     botonVersiones.addEventListener('click', function () { abrirVersiones(fila); });
     item.appendChild(botonVersiones);
 
+    item.setAttribute('data-busqueda', (String(fila.nombre) + ' ' + (fila.descripcion ? String(fila.descripcion) : '')).toLowerCase());
     listaGuardadas.appendChild(item);
   });
+  filtrarGuardadas();
 
   // The list is hard-capped server-side and there is no pagination parameter to see
   // past it, so the cut is announced instead of leaving the operator to guess.
@@ -2867,6 +2908,40 @@ function renderizarGuardadas(cuerpo) {
     listaGuardadas.appendChild(aviso);
   }
 }
+
+// CH-53 (T1, T6): the loaded list filtered by name and description as the operator types, accents and case aside.
+var busquedaGuardadas = document.getElementById('consultas-busqueda');
+
+function normalizarBusqueda(texto) {
+  return String(texto).toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
+}
+
+function filtrarGuardadas() {
+  var texto = normalizarBusqueda(busquedaGuardadas.value.trim());
+  var visibles = 0;
+  var total = 0;
+  for (var i = 0; i < listaGuardadas.children.length; i++) {
+    var nodo = listaGuardadas.children[i];
+    var clave = nodo.getAttribute('data-busqueda');
+    if (clave === null) { continue; }
+    total += 1;
+    var coincide = texto === '' || normalizarBusqueda(clave).indexOf(texto) !== -1;
+    nodo.hidden = !coincide;
+    if (coincide) { visibles += 1; }
+  }
+  document.getElementById('consultas-contador').textContent = total === 0 ? '' : (visibles === 1 ? '1 consulta' : visibles + ' consultas');
+  var sinCoincidencias = total > 0 && visibles === 0;
+  document.getElementById('consultas-sin-coincidencias').hidden = !sinCoincidencias;
+  document.getElementById('consultas-sin-coincidencias-texto').textContent = sinCoincidencias
+    ? 'Ninguna consulta coincide con «' + busquedaGuardadas.value.trim() + '».' : '';
+}
+
+busquedaGuardadas.addEventListener('input', filtrarGuardadas);
+document.getElementById('consultas-limpiar').addEventListener('click', function () {
+  busquedaGuardadas.value = '';
+  filtrarGuardadas();
+  busquedaGuardadas.focus();
+});
 
 async function listarGuardadas() {
   var respuesta;
@@ -3013,7 +3088,9 @@ async function cargarGuardada(id) {
 async function abrirGuardada(id) {
   var tenant = tenantActivo;
   var cargada = await cargarGuardada(id);
-  if (cargada && tenant === tenantActivo) { abrirConsulta(id); }
+  if (cargada && tenant === tenantActivo) { abrirConsulta(id); return; }
+  // CH-53: an address that names no saved query of this tenant goes back to the list.
+  if (!cargada && String(window.location.hash || '') === '#consultas/' + id) { fijarHashDelScript('#consultas'); }
 }
 
 // --- Automations (CH-13) -------------------------------------------------------
@@ -4848,6 +4925,7 @@ var dialogoDeConsulta = crearDialogo({
     reflejarConsultaCargada();
     actualizarGuardado();
     listaDeConsultas(false);
+    pintarReferenciaConsulta();
   },
   // CH-53 (DEC-208): closed, the list comes back. A discard asked for by a change of address goes on to that address;
   // otherwise the address goes back to the list.
@@ -4867,6 +4945,32 @@ var destinoConsultaPendiente = null;
 var hashDelScript = null;
 
 // The list and its page action, shown or hidden with the editor (only one of the two at a time).
+// CH-53 (W8): the reference panel, from what the console already has: the embedded contract and the declaration.
+function pintarReferenciaConsulta() {
+  var contrato = document.getElementById('consultas-referencia-contrato');
+  if (contrato.firstChild === null) {
+    CONTRATO.forEach(function (entidad) {
+      var item = document.createElement('li');
+      item.textContent = entidad.nombre + ': ' + entidad.campos.map(function (c) { return c.nombre; }).join(', ');
+      contrato.appendChild(item);
+    });
+  }
+  var parametros = document.getElementById('consultas-referencia-parametros');
+  vaciar(parametros);
+  var declarados = editorConsulta.declaracion();
+  if (declarados.length === 0) {
+    var ninguno = document.createElement('li');
+    ninguno.textContent = 'Ninguno. Declará cada :nombre que use la sentencia.';
+    parametros.appendChild(ninguno);
+  }
+  declarados.forEach(function (p) {
+    var item = document.createElement('li');
+    item.textContent = ':' + p.nombre + ' (' + p.tipo + ')';
+    parametros.appendChild(item);
+  });
+  document.getElementById('consulta-versiones').hidden = consultaCargada === null;
+}
+
 function listaDeConsultas(visible) {
   document.getElementById('guardado').hidden = !visible;
   document.getElementById('consulta-nueva').hidden = !visible;
@@ -4886,6 +4990,10 @@ function abrirConsulta(sub) {
   }
   dialogoDeConsulta.abrir();
 }
+
+document.getElementById('consulta-versiones').addEventListener('click', function () {
+  if (consultaCargada !== null) { abrirVersiones({ id: consultaCargada.id, nombre: consultaCargada.nombre }); }
+});
 
 // «Seguir editando» after a change of address keeps the editor and forgets where the operator was going.
 document.getElementById('consulta-nueva-cancelar').addEventListener('click', function () { destinoConsultaPendiente = null; });
