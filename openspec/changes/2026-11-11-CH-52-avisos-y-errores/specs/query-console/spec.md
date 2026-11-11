@@ -29,24 +29,27 @@ An action SHALL report success with a success notice or with its result, not bot
 When a console request fails, the console SHALL show:
 - what could not be done;
 - what to do;
-- at the end, in mono, the technical code.
+- at the end, the technical code as «Código: HTTP {n}.».
 
-It SHALL NOT show an API path or a bare "HTTP n".
+It SHALL NOT show an API path or a bare "HTTP n" sentence. Each message names its action as an infinitive phrase («cargar la lista de tenants», «guardar la plantilla»).
 
 | Failure | Text |
 |---|---|
 | No answer / network | «No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.» |
-| 400, 422 | The server's validation message, next to the field when it names one |
-| 403 | «Tu sesión no tiene permiso para esto. Volvé a ingresar.» |
-| 404 | «No encontramos {objeto}. Puede que lo hayan dado de baja.» |
-| 409 | The console's specific message for that code when there is one; otherwise «{Objeto} cambió o está en uso.» |
-| 5xx | «La consola tuvo un error interno al {acción}. Probá de nuevo; si se repite, revisá el log del servidor.» followed by the code |
+| 400, 422 | The console's specific message for that answer when there is one; otherwise «No se pudo {acción}. Revisá los datos y probá de nuevo.» |
+| 403 | «Tu sesión no tiene permiso para {acción}. Volvé a ingresar.» |
+| 404 | The specific message when there is one; otherwise «No se pudo {acción}: no encontramos lo que pediste. Puede que lo hayan dado de baja.» |
+| 409 | The specific message when there is one; otherwise «No se pudo {acción}: algo cambió o está en uso. Recargá la pantalla y probá de nuevo.» |
+| 5xx | «La consola tuvo un error interno al {acción}. Probá de nuevo; si se repite, revisá el log del servidor.» |
+| An answer it cannot read | «La consola recibió una respuesta que no pudo leer al {acción}. Probá de nuevo; si se repite, revisá el log del servidor.» |
 
 A 401 SHALL keep returning to the login screen (A 401 Returns to the Login Screen). Messages that already exist for a specific code or execution category SHALL keep their text.
 
+Most notices are plain-text lines, so the code is written as text at the end rather than in a mono block. A mono technical detail is part of the query workbench's in-place error (CH-53, W6).
+
 #### Scenario: A list fails to load
 - **WHEN** `GET /plantillas` answers 500
-- **THEN** the screen says «La consola tuvo un error interno al cargar las plantillas. Probá de nuevo; si se repite, revisá el log del servidor.» with `HTTP 500` in mono, and no text contains `/plantillas`
+- **THEN** the screen says «La consola tuvo un error interno al cargar las plantillas. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.», and no text contains `/plantillas`
 
 #### Scenario: No answer
 - **WHEN** a request fails before any answer
@@ -68,12 +71,16 @@ Every console text addressed to the operator SHALL use voseo. A text that refers
 - **THEN** the hint next to the save control says «Ejecutá la consulta para poder guardarla.»
 
 ### Requirement: Dates State Their Zone (T7)
-Every date column or date line SHALL state which zone it uses, once per screen:
-- lists, Auditoría and versions, which format in the browser's zone: «Hora de tu navegador»;
-- automations and runs, which use the deployment's zone: «Hora del servidor».
+Every column that shows a date and time SHALL state which zone it uses, in its header:
+- Auditoría and the automations list format in the browser zone: «Fecha y hora (hora de tu navegador)» and «Creada (hora de tu navegador)»;
+- the runs table shows each instant as stored, in UTC: «Inicio (UTC)» and «Fin (UTC)».
 
-No date SHALL be converted between zones by this rule.
+The next-run sentences already name the deployment zone they use («zona horaria …»), and keep doing so. Columns that show only a day (Alta) need no zone. No date SHALL be converted between zones by this rule.
 
 #### Scenario: Audit screen
 - **WHEN** the hash becomes `#auditoria` with rows
-- **THEN** the date column states «Hora de tu navegador»
+- **THEN** the date column is headed «Fecha y hora (hora de tu navegador)»
+
+#### Scenario: Runs of an automation
+- **WHEN** the operator opens «Ver ejecuciones»
+- **THEN** the columns read «Inicio (UTC)» and «Fin (UTC)»

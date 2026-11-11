@@ -44,22 +44,22 @@ Chain strategy: stacked-to-main
   - existing banner assertions updated to `banner-texto`.
 
 ## 52b — Errors, copy, zones
-- [ ] b.1 `mensajeDeError({ estado, cuerpo, accion, objeto })` per design §3, reusing the existing per-code map.
-- [ ] b.2 Replace every list-load, save, test and delete error string. The grep is `No se pudo leer|\(HTTP|HTTP ' \+`, and the result must be zero hits outside `mensajeDeError`.
-- [ ] b.3 Voseo:
+- [x] b.1 `mensajeDeError({ estado, cuerpo, accion, objeto })` per design §3, reusing the existing per-code map.
+- [x] b.2 Replace every list-load, save, test and delete error string. The grep is `No se pudo leer|\(HTTP|HTTP ' \+`, and the result must be zero hits outside `mensajeDeError`.
+- [x] b.3 Voseo:
   - lines L1503, L1932, L2297, L2426, L3519 and L3525;
   - any further hit of `Verifique|Revise|Escriba|elija|acote|Use un`.
-- [ ] b.4 L4474: «Ejecutá la consulta para poder guardarla.»
-- [ ] b.5 Zone labels: «Hora de tu navegador» on lists, Auditoría and versions; «Hora del servidor» on automations and runs.
-- [ ] b.6 Tests:
+- [x] b.4 L4474: «Ejecutá la consulta para poder guardarla.»
+- [x] b.5 Zone labels: «Hora de tu navegador» on lists, Auditoría and versions; «Hora del servidor» on automations and runs.
+- [x] b.6 Tests:
   - 5xx, 404, 403, 409 fallback and network sentences;
   - no `/` path in any shown error;
   - the voseo structural guard;
   - zone labels present.
 
 ## Verify
-- [ ] v.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass after each slice.
-- [ ] v.2 Every E1–E4, M4, M5 and T7 item of `guidelines/admin.md` §14 holds for the touched screens.
+- [x] v.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass after each slice.
+- [x] v.2 Every E1–E4, M4, M5 and T7 item of `guidelines/admin.md` §14 holds for the touched screens.
 
 ## Apply notes, 52a (2026-11-11)
 
@@ -75,3 +75,21 @@ Chain strategy: stacked-to-main
 - **a.4 Notices inside pop-ups.** `avisar()` was not introduced and `llevarBannerA` / `llevarBannerAlDialogo` stay. They already move every refusal of an async helper into the open pop-up (E1), and the query pop-up keeps its specific title («No se pudo guardar la consulta»). A central router would have lost that title.
 - **a.5 Busy buttons.** `ocupado` and `libre` apply to «Probar conexión» in each connection row, «Validar mapeo» and «Ejecutar consulta». Tablero already disables «Guardar» with `guardandoTablero`. The template and report «Probar» move with CH-56, which rebuilds those editors.
 - **Bridge.** Nothing reserves the button's width: the gerunds are no longer than the labels they replace.
+
+## Apply notes, 52b (2026-11-11)
+
+**Evidence.**
+- `consola.test.ts`: 495/495.
+- `test:db`: 2319/2323. The 4 failures are the known `conexiones` false positives.
+- `tsc`: ok.
+- 283 changed lines in `src/`.
+- `scripts/smoke.sh` was not run, as in the earlier slices.
+
+**What changed.**
+- `mensajeHttp(estado, accion)` and `mensajeIlegible(estado, accion)` replace the 39 raw «(HTTP n)» and «La aplicación respondió HTTP n» sentences and the path-based one in `leerGlobal`.
+- `AVISO_SIN_RED` replaces the 25 network sentences. The 3 «para leer …» variants were rewritten in the same voice.
+
+**Deviations, aligned in the spec delta.**
+- **The technical code** is written at the end as «Código: HTTP n.», not in a mono block. Most notices are plain-text lines, and the mono detail belongs to the query workbench (CH-53, W6). `banner-detalle` was therefore not needed.
+- **The 403, 404 and 409 sentences** name the action, so a sentence never reads out of context.
+- **T7.** The runs table shows the instant as stored (UTC), so its columns say «(UTC)». The «Hora del servidor» label of the design would have been wrong, because only the next-run sentences use the deployment zone, and they already name it.

@@ -1852,7 +1852,7 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'aj-destinatario').value = 'a@x.com, b@x.com, c@x.com, d@x.com, e@x.com, f@x.com';
     await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/destinatarios'] } });
     assert.equal(ajusteAbierto(escenario), true);
-    assert.match(nodo(escenario, 'aj-aviso').textContent, /Hay más de 5 destinatarios\. Escriba hasta 5 direcciones distintas\./);
+    assert.match(nodo(escenario, 'aj-aviso').textContent, /Hay más de 5 destinatarios\. Escribí hasta 5 direcciones distintas\./);
     assert.deepEqual(envioDeAjuste(escenario)?.cuerpo, { destinatarios: ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com'] });
   });
 
@@ -2126,7 +2126,7 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'aj-canal').value = 'correo';
     nodo(escenario, 'aj-canal').disparar('change');
     await guardarAjuste(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/canal'] } });
-    assert.equal(nodo(escenario, 'aj-aviso').textContent, 'El canal no es válido: elija Correo o Telegram.');
+    assert.equal(nodo(escenario, 'aj-aviso').textContent, 'El canal no es válido: elegí Correo o Telegram.');
   });
 
   test('CH-44 the runs table reads each run\'s own channel', async () => {
@@ -2239,7 +2239,7 @@ describe('the console document, served by the real route', () => {
     ['stale values', { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/valores/umbral'], problemas: [{ parametro: 'umbral', motivo: 'valor-faltante', campo: '/valores/umbral' }] } }, /Revisá estos parámetros: «umbral» no tiene valor/],
     ['an unreadable credential', { status: 409, cuerpo: { error: 'credencial-ilegible' } }, /no se pudo descifrar/],
     ['a failed query', { status: 200, cuerpo: { resultado: 'fallo', fase: 'ejecucion', categoria: 'tiempo-agotado', codigo: null, duracionMs: 15000, decision: null, para: [], correo: null } }, /^La consulta superó el tiempo máximo de ejecución y fue cancelada\.$/],
-    ['a network failure', { status: 0, cuerpo: null, falla: true }, /^No se pudo contactar con la aplicación\.$/],
+    ['a network failure', { status: 0, cuerpo: null, falla: true }, /^No pudimos conectar con el servidor de la consola\. Revisá tu conexión y probá de nuevo\.$/],
   ] as Array<[string, { status: number; cuerpo: unknown; falla?: boolean }, RegExp]>) {
     test(`CH-42 ${caso} is told inside the pop-up, with no rows and no message`, async () => {
       const escenario = await arrancar();
@@ -2503,7 +2503,7 @@ describe('the console document, served by the real route', () => {
     const banner = nodo(escenario, 'auto-dialogo-aviso').textContent;
     assert.equal(nodo(escenario, 'banner').hidden, true);
     assert.match(banner, /El correo «no-es-un-correo» no es válido\./);
-    assert.match(banner, /Escriba direcciones como operaciones@empresa\.com, separadas por comas\./);
+    assert.match(banner, /Escribí direcciones como operaciones@empresa\.com, separadas por comas\./);
     assert.ok(!banner.includes('/destinatarios'), 'the JSON pointer is translated');
     assert.ok(!banner.includes('direccionValida'), 'no stack trace reaches the page');
     assert.ok(!banner.includes('solicitud-invalida'), 'no raw error code reaches the page');
@@ -2747,7 +2747,7 @@ describe('the console document, served by the real route', () => {
 
     const banner = nodo(escenario, 'banner');
     assert.equal(banner.hidden, false);
-    assert.equal(banner.textContent, 'La aplicación respondió HTTP 500.');
+    assert.equal(banner.textContent, 'La consola tuvo un error interno al completar el pedido. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     assert.equal(nodo(escenario, 'auto-alta').hidden, false, 'the wizard stays open');
     assert.deepEqual(pasoVisible(escenario), [1, 1]);
     assert.deepEqual(opcionesConexion(escenario), [['', 'Elegí una conexión']]);
@@ -3459,7 +3459,7 @@ describe('the console document, served by the real route', () => {
     const seis = 'a@x.com b@x.com, c@x.com; d@x.com e@x.com f@x.com';
     (escenario.nodos.get('auto-destinatario') as Nodo).value = seis;
     await enviar(escenario, { error: 'solicitud-invalida', campos: ['/destinatarios'] }, 400, 'auto-crear', 'click');
-    assert.match(nodo(escenario, 'auto-dialogo-aviso').textContent, /Hay más de 5 destinatarios\. Escriba hasta 5 direcciones distintas\./);
+    assert.match(nodo(escenario, 'auto-dialogo-aviso').textContent, /Hay más de 5 destinatarios\. Escribí hasta 5 direcciones distintas\./);
     assert.deepEqual((ultimoCuerpo(escenario) as { destinatarios: string[] }).destinatarios, ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com']);
     assert.equal(nodo(escenario, 'auto-destinatario').value, seis);
   });
@@ -3868,7 +3868,7 @@ describe('the console document, served by the real route', () => {
     otra.respuestas.push({ status: 500, cuerpo: { error: 'interno' } });
     botonesCon(nodo(otra, 'guardadas'), 'Versiones')[0].disparar('click');
     await asentarVarias();
-    assert.equal(nodo(otra, 'versiones-estado').textContent, 'La aplicación respondió HTTP 500.');
+    assert.equal(nodo(otra, 'versiones-estado').textContent, 'La consola tuvo un error interno al leer el historial de versiones. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
   });
 
   test('CH-25 comparing reads the chosen and the current version and shows both as text, side by side', async () => {
@@ -4144,8 +4144,8 @@ describe('the console document, served by the real route', () => {
       [409, { error: 'sin-cambios' }, /^No hay cambios respecto de la versión vigente\.$/],
       [409, { error: 'conflicto-de-edicion' }, /Otra edición se guardó antes que esta\. Volvé a cargar la consulta/],
       [400, { error: 'solicitud-invalida', campos: ['/nota'] }, /^La nota tiene que ser un texto de hasta 500 caracteres\.$/],
-      [400, { error: 'solicitud-invalida', campos: ['/sql'] }, /La solicitud es inválida\. Revise estos campos: \/sql\./],
-      [500, { error: 'interno' }, /^La aplicación respondió HTTP 500\.$/],
+      [400, { error: 'solicitud-invalida', campos: ['/sql'] }, /La solicitud es inválida\. Revisá estos campos: \/sql\./],
+      [500, { error: 'interno' }, /La consola tuvo un error interno al [^.]+\. Probá de nuevo; si se repite, revisá el log del servidor\. Código: HTTP 500\./],
     ];
     for (const [estado, cuerpo, esperado] of casos) {
       const escenario = await conConsultaCargada();
@@ -4514,7 +4514,41 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'tb-dar-de-baja').disparar('click');
     await asentarVarias();
     assert.equal(bajaAbierta(escenario), true);
-    assert.match(nodo(escenario, 'tb-aviso').textContent, /No se pudo dar de baja el tenant \(HTTP 409\)/);
+    // CH-52 (E4): a sentence with what to do, and the code last.
+    assert.equal(nodo(escenario, 'tb-aviso').textContent, 'No se pudo dar de baja el tenant: algo cambió o está en uso. Recargá la pantalla y probá de nuevo. Código: HTTP 409.');
+  });
+
+  test('CH-52 an HTTP failure reads as a sentence by its code, never naming an API path', () => {
+    // The helper is the script's own: run it with the codes of lenguaje.md's table.
+    const fabrica = new Function(`${script.slice(script.indexOf('var AVISO_SIN_RED'), script.indexOf('function libre('))}; return { mensajeHttp, mensajeIlegible, AVISO_SIN_RED, DESCRIPCIONES_GLOBALES };`);
+    const { mensajeHttp, mensajeIlegible, AVISO_SIN_RED } = fabrica() as {
+      mensajeHttp: (estado: number, accion: string) => string;
+      mensajeIlegible: (estado: number, accion: string) => string;
+      AVISO_SIN_RED: string;
+    };
+    assert.equal(mensajeHttp(500, 'cargar las plantillas'), 'La consola tuvo un error interno al cargar las plantillas. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
+    assert.equal(mensajeHttp(503, 'cargar el tablero').endsWith('Código: HTTP 503.'), true);
+    assert.equal(mensajeHttp(404, 'cargar el agente'), 'No se pudo cargar el agente: no encontramos lo que pediste. Puede que lo hayan dado de baja. Código: HTTP 404.');
+    assert.equal(mensajeHttp(403, 'crear el tenant'), 'Tu sesión no tiene permiso para crear el tenant. Volvé a ingresar. Código: HTTP 403.');
+    assert.equal(mensajeHttp(400, 'guardar la vista'), 'No se pudo guardar la vista. Revisá los datos y probá de nuevo. Código: HTTP 400.');
+    assert.match(mensajeIlegible(200, 'probar el reporte'), /^La consola recibió una respuesta que no pudo leer al probar el reporte\./);
+    assert.equal(AVISO_SIN_RED, 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.');
+    // No message of the script builds a sentence from a raw path or a bare «HTTP n».
+    assert.ok(!/No se pudo leer ' \+ url/.test(script));
+    assert.ok(!/'La aplicación respondió HTTP '/.test(script));
+    assert.ok(!/\(HTTP ' \+/.test(script));
+  });
+
+  test('CH-52 the console speaks in voseo: no «usted» form is left in its messages', () => {
+    for (const forma of ['Verifique', 'Revise estos', 'Escriba ', 'elija Correo', 'acote la', 'cambie el tope', 'Use un rol', 'declárelo', 'intente de nuevo']) {
+      assert.ok(!script.includes(forma), forma);
+    }
+  });
+
+  test('CH-52 each date column states its zone', () => {
+    assert.ok(marcado().includes('<th>Fecha y hora (hora de tu navegador)</th>'), 'Auditoría');
+    assert.ok(script.includes("'Creada (hora de tu navegador)'"), 'Automatizaciones');
+    assert.ok(script.includes("['Inicio (UTC)', 'Fin (UTC)'"), 'the runs show the instant as stored, in UTC');
   });
 
   // ---- CH-30b (DEC-167): the Conexiones screen -------------------------------------------
@@ -5125,11 +5159,11 @@ describe('the console document, served by the real route', () => {
     await probar(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/conexionId'] } });
     assert.equal(aviso(), 'Revisá estos parámetros: /conexionId.');
     await probar(escenario, { status: 500, cuerpo: { error: 'x' } });
-    assert.equal(aviso(), 'La aplicación respondió HTTP 500.');
+    assert.equal(aviso(), 'La consola tuvo un error interno al probar la plantilla. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     await probar(escenario, { status: 200, cuerpo: null });
-    assert.equal(aviso(), 'La aplicación respondió algo que la consola no pudo interpretar (HTTP 200).');
+    assert.equal(aviso(), 'La consola recibió una respuesta que no pudo leer al probar la plantilla. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 200.');
     await probar(escenario, { status: 200, cuerpo: {}, falla: true });
-    assert.equal(aviso(), 'No se pudo contactar con la aplicación.');
+    assert.equal(aviso(), 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.');
     assert.equal(nodo(escenario, 'plantilla-prueba-tabla').hijos.length, 0);
     assert.equal(nodo(escenario, 'plantilla-probar').disabled, false);
   });
@@ -5718,8 +5752,8 @@ describe('the console document, served by the real route', () => {
       assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
       return nodo(escenario, 'plantilla-dialogo-estado').textContent;
     };
-    assert.equal(await guardar({ status: 500, cuerpo: { error: 'x' } }), 'No se pudo guardar la plantilla (HTTP 500).');
-    assert.equal(await guardar({ status: 200, cuerpo: {}, falla: true }), 'No se pudo contactar con la aplicación.');
+    assert.equal(await guardar({ status: 500, cuerpo: { error: 'x' } }), 'La consola tuvo un error interno al guardar la plantilla. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
+    assert.equal(await guardar({ status: 200, cuerpo: {}, falla: true }), 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.');
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false, 'a refusal does not close the save');
   });
 
@@ -6239,11 +6273,11 @@ describe('the console document, served by the real route', () => {
     await probarReporteCH45(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/dias'] } });
     assert.equal(aviso(), 'Revisá estos campos: período de la prueba.');
     await probarReporteCH45(escenario, { status: 500, cuerpo: { error: 'x' } });
-    assert.equal(aviso(), 'La aplicación respondió HTTP 500.');
+    assert.equal(aviso(), 'La consola tuvo un error interno al probar el reporte. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     await probarReporteCH45(escenario, { status: 200, cuerpo: null });
-    assert.equal(aviso(), 'La aplicación respondió algo que la consola no pudo interpretar (HTTP 200).');
+    assert.equal(aviso(), 'La consola recibió una respuesta que no pudo leer al probar el reporte. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 200.');
     await probarReporteCH45(escenario, { status: 200, cuerpo: {}, falla: true });
-    assert.equal(aviso(), 'No se pudo contactar con la aplicación.');
+    assert.equal(aviso(), 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.');
     assert.equal(nodo(escenario, 'reporte-prueba-tabla').hijos.length, 0);
   });
 
@@ -6780,9 +6814,9 @@ describe('the console document, served by the real route', () => {
     await guardarTableroCH46(escenario, { status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/conexionId', '/reportes/1'] } });
     assert.equal(aviso(), 'Revisá estos campos: conexión, reportes.');
     await guardarTableroCH46(escenario, { status: 500, cuerpo: { error: 'interno' } });
-    assert.equal(aviso(), 'No se pudo guardar el tablero (HTTP 500).');
+    assert.equal(aviso(), 'La consola tuvo un error interno al guardar el tablero. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     await guardarTableroCH46(escenario, { status: 200, cuerpo: {}, falla: true });
-    assert.equal(aviso(), 'No se pudo contactar con la aplicación.');
+    assert.equal(aviso(), 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.');
     assert.deepEqual(filasTableroCH46(escenario).map((f) => f[1]), ['Stock actual', 'Ventas del mes']);
     assert.equal(guardarTableroAbierto(escenario), true, 'the changes are still there to save');
   });
@@ -6793,7 +6827,7 @@ describe('the console document, served by the real route', () => {
       { status: 200, cuerpo: { conexiones: CONEXIONES_CH46, truncado: false } },
       { status: 200, cuerpo: { reportes: [], truncado: false } },
     ]);
-    assert.equal(nodo(fallido, 'tablero-aviso').textContent, 'No se pudo leer el tablero (HTTP 500).');
+    assert.equal(nodo(fallido, 'tablero-aviso').textContent, 'La consola tuvo un error interno al cargar el tablero. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     assert.equal(nodo(fallido, 'tablero-agregar').disabled, true);
     const parcial = await abrirTableroCH46([
       { status: 200, cuerpo: TABLERO_CH46 },
@@ -7121,7 +7155,7 @@ describe('the console document, served by the real route', () => {
     );
     nodo(escenario, 'aud-filtrar').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'No se pudo contactar con la aplicación.');
+    assert.equal(nodo(escenario, 'auditoria-aviso').textContent, 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.');
   });
 
   test('CH-30e1 the statement shows as text, cut to 80 characters in the summary and whole inside', async () => {
@@ -7257,7 +7291,7 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 500, cuerpo: { error: 'interno' } });
     irA(escenario, '#tiempos');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'tiempos-aviso').textContent, 'No se pudo leer los tiempos de alta (HTTP 500).');
+    assert.equal(nodo(escenario, 'tiempos-aviso').textContent, 'La consola tuvo un error interno al cargar los tiempos de alta. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
   });
 
   test('CH-30e2 a connection name with markup shows as text', async () => {
@@ -8123,7 +8157,7 @@ describe('the console document, served by the real route', () => {
     abrirNueva(escenario);
     assert.match(documento, /<button id="guardar"[^>]*aria-describedby="guardado-ayuda"/);
     assert.match(documento, /<button id="version-boton"[^>]*aria-describedby="guardado-ayuda"/);
-    assert.equal(ayuda(escenario), 'Probá la consulta para poder guardarla.', 'before any test');
+    assert.equal(ayuda(escenario), 'Ejecutá la consulta para poder guardarla.', 'before any test');
 
     escribir(escenario, 'sql', 'SELECT 1 AS id');
     escribir(escenario, 'conexion', 'c-1', 'change');
@@ -8144,7 +8178,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(ayuda(escenario), '', 'a passing test of the current content clears it');
 
     abrirNueva(escenario);
-    assert.equal(ayuda(escenario), 'Probá la consulta para poder guardarla.', 'reopening forgets the last test');
+    assert.equal(ayuda(escenario), 'Ejecutá la consulta para poder guardarla.', 'reopening forgets the last test');
   });
 
   test('CH-32a PR2 editing the SQL, the connection or the parameters closes the gate until «Probar» succeeds again', async () => {
@@ -8199,9 +8233,9 @@ describe('the console document, served by the real route', () => {
   test('CH-32a PR2 a failed «Probar», of any kind, closes the gate and tells it inside the pop-up', async () => {
     const fallos: Array<[number, unknown, RegExp]> = [
       [200, { resultado: 'fallo', fase: 'ejecucion', categoria: 'otra' }, /./],
-      [400, { error: 'solicitud-invalida', campos: ['/sql'] }, /La solicitud es inválida\. Revise estos campos: \/sql\./],
+      [400, { error: 'solicitud-invalida', campos: ['/sql'] }, /La solicitud es inválida\. Revisá estos campos: \/sql\./],
       [404, { error: 'no-encontrada' }, /No existe una conexión registrada con ese identificador\./],
-      [500, { error: 'interno' }, /La aplicación respondió HTTP 500\./],
+      [500, { error: 'interno' }, /La consola tuvo un error interno al [^.]+\. Probá de nuevo; si se repite, revisá el log del servidor\. Código: HTTP 500\./],
     ];
     for (const [status, cuerpo, esperado] of fallos) {
       const escenario = await conConexiones();
@@ -8230,7 +8264,7 @@ describe('the console document, served by the real route', () => {
     nodo(sinRed, 'formulario').disparar('submit');
     await asentarVarias();
     assert.equal(nodo(sinRed, 'guardar').disabled, true);
-    assert.match(nodo(sinRed, 'consulta-aviso-cuerpo').textContent, /No se pudo contactar con la aplicación/);
+    assert.match(nodo(sinRed, 'consulta-aviso-cuerpo').textContent, /No pudimos conectar con el servidor de la consola/);
   });
 
   test('CH-32a PR2 saving sends nothing while the gate is closed, even if the control is triggered', async () => {
@@ -8323,11 +8357,11 @@ describe('the console document, served by the real route', () => {
     await enviar(nueva, respuestaOk());
     await enviar(nueva, { error: 'solicitud-invalida', campos: ['/nombre'] }, 400, 'guardar', 'click');
     assert.equal(dialogoAbierto(nueva), true);
-    assert.match(nodo(nueva, 'consulta-aviso-cuerpo').textContent, /La solicitud es inválida\. Revise estos campos: \/nombre\./);
+    assert.match(nodo(nueva, 'consulta-aviso-cuerpo').textContent, /La solicitud es inválida\. Revisá estos campos: \/nombre\./);
     assert.equal(nodo(nueva, 'banner').hidden, true);
     assert.equal(nodo(nueva, 'nombre').value, 'Ventas');
     await enviar(nueva, { error: 'interno' }, 500, 'guardar', 'click');
-    assert.match(nodo(nueva, 'consulta-aviso-cuerpo').textContent, /^La aplicación respondió HTTP 500\.$/);
+    assert.match(nodo(nueva, 'consulta-aviso-cuerpo').textContent, /La consola tuvo un error interno al [^.]+\. Probá de nuevo; si se repite, revisá el log del servidor\. Código: HTTP 500\./);
     assert.equal(nodo(nueva, 'guardar').disabled, false, 'and it can try again');
 
     const cargada = await conConexiones();
@@ -8750,12 +8784,12 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 500, cuerpo: {} });
     nodo(escenario, 'tenant-alta').disparar('submit');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'No se pudo crear el tenant (HTTP 500).');
+    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'La consola tuvo un error interno al crear el tenant. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), true);
     assert.equal(nodo(escenario, 'tenant-nombre').value, 'Almacén Don Tito');
     nodo(escenario, 'tenant-crear-elegir').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'No se pudo contactar con la aplicación.', 'no answer queued: the network failed');
+    assert.equal(nodo(escenario, 'tenant-dialogo-aviso').textContent, 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.', 'no answer queued: the network failed');
     assert.equal(dialogoAbierto(escenario, 'tenant-dialogo'), true);
   });
 
@@ -8962,7 +8996,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), false);
     assert.equal(nodo(escenario, 'conexion-banner').getAttribute('data-tono'), 'warn');
     assert.equal(nodo(escenario, 'conexion-banner-titulo').textContent, 'La conexión se guardó, pero no se pudo probar');
-    assert.equal(nodo(escenario, 'conexion-banner-cuerpo').textContent, 'La prueba no se pudo hacer (HTTP 500).');
+    assert.equal(nodo(escenario, 'conexion-banner-cuerpo').textContent, 'La consola tuvo un error interno al probar la conexión. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
   });
 
   test('CH-32b a rejected registration keeps the pop-up open with the fields named and the password empty', async () => {
@@ -8986,7 +9020,7 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'conexion-alta').disparar('submit');
     await asentarVarias();
     assert.equal(escenario.peticiones.filter((p) => p.url === '/conexiones' && p.cuerpo !== null).length, 1, 'one registration');
-    assert.equal(nodo(escenario, 'cx-resultado').textContent, 'No se pudo registrar la conexión (HTTP 500).');
+    assert.equal(nodo(escenario, 'cx-resultado').textContent, 'La consola tuvo un error interno al registrar la conexión. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     assert.equal(dialogoAbierto(escenario, 'conexion-dialogo'), true);
   });
 
@@ -9315,7 +9349,7 @@ describe('the console document, served by the real route', () => {
     );
     botonesCon(filaUsuario(escenario, 'beto@negocio.com'), 'Reactivar')[0].disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'usuarios-aviso').textContent, 'No se pudo completar la acción (HTTP 500).');
+    assert.equal(nodo(escenario, 'usuarios-aviso').textContent, 'La consola tuvo un error interno al completar la acción. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
   });
 
   test('C-15 Salir takes the tenant bar text color, in the page style', () => {
@@ -9522,7 +9556,7 @@ describe('the console document, served by the real route', () => {
     escribir(escenario, 'nombre', 'Ventas');
     await enviar(escenario, { error: 'interno' }, 500, 'guardar', 'click');
     assert.equal(nodo(escenario, 'consulta-aviso-titulo').textContent, 'No se pudo guardar la consulta');
-    assert.equal(nodo(escenario, 'consulta-aviso-cuerpo').textContent, 'La aplicación respondió HTTP 500.');
+    assert.equal(nodo(escenario, 'consulta-aviso-cuerpo').textContent, 'La consola tuvo un error interno al guardar la consulta. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
   });
 
   test('C-07 (DEC-204) a statement refused by its first word says read-only and names the word, in the existing banner', async () => {
