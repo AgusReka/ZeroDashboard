@@ -33,6 +33,9 @@ interface EventoFalso {
   key?: string;
   /** CH-51: Shift+Tab walks the pop-up's controls backwards. */
   shiftKey?: boolean;
+  /** CH-53: Ctrl + Enter (Cmd + Enter) runs the statement. */
+  ctrlKey?: boolean;
+  metaKey?: boolean;
 }
 
 /** A DOM node, reduced to what the console's script actually touches. */
@@ -560,6 +563,8 @@ const IDS = [
   'confirmacion-nota', 'confirmacion-cancelar', 'confirmacion-primaria', 'confirmacion-peligro',
   // CH-54: Mapeo in three columns: the entity list, the expected fields, the pending links, the rule and the blocked state.
   'mapeo-lista', 'mapeo-campos', 'mapeo-campos-titulo', 'mapeo-campos-lista', 'mapeo-pendientes', 'mapeo-regla', 'mapeo-bloqueado',
+  // CH-53: the query editor's empty result state; the saved list and the result table, which the script now toggles.
+  'consulta-vacio', 'guardado', 'resultados',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -582,7 +587,7 @@ const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conex
  * the bar the T4 comment names and the three containers the script reaches by selector
  * or the smoke greps for.
  */
-const IDS_GUARDADOS = [...IDS, 'barra-tenant', 'resultados', 'guardado', 'automatizaciones', 'frescura'];
+const IDS_GUARDADOS = [...IDS, 'barra-tenant', 'automatizaciones', 'frescura'];
 
 /** Throws naming the first guarded id that is missing, renamed or duplicated. */
 function verificarIds(marcado: string): void {
@@ -660,6 +665,11 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
     location: {
       get hash(): string {
         return escenario.ubicacion.hash;
+      },
+      // CH-53 (DEC-208): the script writes the editor's address. A browser fires hashchange afterwards; the fake does
+      // not, so a test that wants it calls irA().
+      set hash(valor: string) {
+        escenario.ubicacion.hash = valor === '' || valor.startsWith('#') ? valor : '#' + valor;
       },
       reload: (): void => {
         escenario.recargas += 1;
@@ -805,7 +815,8 @@ describe('the console document, served by the real route', () => {
     // CH-52 (E1): the page notice is the shared Banner, its tone set by data-tono and never by a class.
     assert.ok(documento.includes('<p id="banner" class="zd-banner banner-pagina" data-tono="error" role="alert" hidden></p>'));
     assert.ok(documento.includes('<strong id="tenant-activo" class="sin-tenant">'));
-    assert.ok(documento.includes('<p id="estado" class="estado" hidden></p>'));
+    // CH-53 (W5): the status line is the shared one and is announced politely.
+    assert.ok(documento.includes('<p id="estado" class="estado zd-statusline" aria-live="polite" hidden></p>'));
     const limite = marcado().match(/<input id="limite"[^>]*>/)?.[0] ?? '';
     assert.match(limite, /min="1"/, 'the lower bound stays');
     assert.ok(!/\bmax=/.test(limite), 'the limite input must carry no max');
@@ -4292,7 +4303,7 @@ describe('the console document, served by the real route', () => {
   });
 
   // CH-32a PR2 (DEC-173): the result moved into the query pop-up, above its actions row, where «Probar» now is.
-  test('CH-30a the result sits inside the query pop-up, above its actions, before the saved queries, inside Consultas', () => {
+  test('CH-30a CH-53 the result sits right after «Ejecutar consulta» in the editor, before the saved queries, inside Consultas', () => {
     const marcado = documento.slice(0, documento.indexOf('<script>'));
     const en = (texto: string): number => {
       const i = marcado.indexOf(texto);
@@ -4306,7 +4317,10 @@ describe('the console document, served by the real route', () => {
     const guardado = en('id="guardado"');
     const automatizaciones = en('id="pantalla-automatizaciones"');
     const dialogo = en('id="consulta-dialogo"');
-    assert.ok(consultas < dialogo && dialogo < resultados && resultados < anterior && anterior < ejecutar && ejecutar < guardado);
+    const sql = en('id="sql"');
+    const guardar = en('id="guardar"');
+    // W5: the statement, its run, then the result and its pager, then the save controls.
+    assert.ok(consultas < dialogo && dialogo < sql && sql < ejecutar && ejecutar < resultados && resultados < anterior && anterior < guardar && guardar < guardado);
     assert.ok(guardado < automatizaciones, 'the saved queries stay inside Consultas');
   });
 
@@ -7887,12 +7901,12 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/conexiones']);
     assert.equal(nodo(escenario, 'conexion').value, 'c-2', 'the choice survives the reload');
 
-    // A connection that is gone from the list cannot stay chosen.
+    // A connection that is gone from the list cannot stay chosen. CH-53 (G3): the only one left comes chosen instead.
     irA(escenario, '#frescura');
     escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CX_TIENDA], truncado: false } });
     irA(escenario, '#consultas');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'conexion').value, '');
+    assert.equal(nodo(escenario, 'conexion').value, String(CX_TIENDA.id));
   });
 
   test('CH-32a executing with no connection chosen says so, focuses the picker and sends nothing', async () => {
@@ -8040,6 +8054,110 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, id).disparar(evento);
   }
 
+  // ---- CH-53a (DEC-208): the query editor as a page subview -----------------------------------------
+
+  const editorAbierto = (escenario: Escenario): boolean => !nodo(escenario, 'consulta-dialogo').hidden;
+
+  test('CH-53 «Nueva consulta» opens the editor at #consultas/nueva and hides the list; «Cancelar» goes back to #consultas', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    abrirNueva(escenario);
+    assert.equal(escenario.ubicacion.hash, '#consultas/nueva');
+    assert.equal(editorAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'guardado').hidden, true, 'the list gives way to the editor');
+    assert.equal(nodo(escenario, 'consulta-nueva').hidden, true);
+    nodo(escenario, 'consulta-cancelar').disparar('click');
+    assert.equal(editorAbierto(escenario), false);
+    assert.equal(escenario.ubicacion.hash, '#consultas');
+    assert.equal(nodo(escenario, 'guardado').hidden, false);
+  });
+
+  test('CH-53 the address #consultas/nueva opens the editor by itself', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [{ id: 'c-1', nombre: 'food-store' }], truncado: false } });
+    irA(escenario, '#consultas/nueva');
+    await asentarVarias();
+    assert.equal(editorAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'pantalla-consultas').hidden, false);
+  });
+
+  test('CH-53 leaving the editor with changes puts the address back and asks; «Descartar cambios» then goes on', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'SELECT 2');
+    irA(escenario, '#frescura');
+    assert.equal(escenario.ubicacion.hash, '#consultas/nueva', 'the address goes back to the editor');
+    assert.equal(editorAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'consulta-nueva-confirmar').hidden, false, 'it asks before dropping the edit');
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT 2');
+    nodo(escenario, 'consulta-nueva-descartar').disparar('click');
+    assert.equal(editorAbierto(escenario), false);
+    assert.equal(escenario.ubicacion.hash, '#frescura', 'then it goes where the operator was going');
+  });
+
+  test('CH-53 «Seguir editando» after a change of address keeps the editor and what was typed', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'SELECT 3');
+    irA(escenario, '#consultas');
+    nodo(escenario, 'consulta-nueva-cancelar').disparar('click');
+    assert.equal(editorAbierto(escenario), true);
+    assert.equal(nodo(escenario, 'sql').value, 'SELECT 3');
+    assert.equal(escenario.ubicacion.hash, '#consultas/nueva');
+  });
+
+  test('CH-53 Ctrl + Enter in the statement runs it; Enter alone does not', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    abrirNueva(escenario);
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'sql').disparar('keydown', { key: 'Enter' } as Partial<EventoFalso>);
+    assert.equal(escenario.peticiones.length, antes, 'Enter breaks the line');
+    escenario.respuestas.push({ status: 200, cuerpo: respuestaOk() });
+    nodo(escenario, 'sql').disparar('keydown', { key: 'Enter', ctrlKey: true } as Partial<EventoFalso>);
+    await asentarVarias();
+    assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/consultas/ejecutar']);
+  });
+
+  test('CH-53 the result area says how to get a result until a run answers', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    abrirNueva(escenario);
+    assert.equal(nodo(escenario, 'consulta-vacio').hidden, false);
+    assert.match(marcado(), /<p id="consulta-vacio" class="ayuda">Ejecutá la consulta para ver el resultado acá \(Ctrl \+ Enter\)\.<\/p>/);
+    escenario.respuestas.push({ status: 200, cuerpo: respuestaOk() });
+    nodo(escenario, 'formulario').disparar('submit');
+    assert.equal(nodo(escenario, 'resultados').getAttribute('aria-busy'), 'true', 'busy while the answer is on its way');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'resultados').getAttribute('aria-busy'), null);
+    assert.equal(nodo(escenario, 'consulta-vacio').hidden, true);
+  });
+
+  test('CH-53 the tenant pop-up names Consultas when the editor has unsaved changes', async () => {
+    const escenario = await arrancar();
+    await elegirTenantYConexion(escenario);
+    abrirNueva(escenario);
+    nodo(escenario, 'tenant-cambiar').disparar('click');
+    assert.equal(nodo(escenario, 'tc-sin-guardar').hidden, true, 'nothing typed yet');
+    nodo(escenario, 'tc-cancelar').disparar('click');
+    escribir(escenario, 'sql', 'SELECT 4');
+    nodo(escenario, 'tenant-cambiar').disparar('click');
+    assert.equal(nodo(escenario, 'tc-sin-guardar').hidden, false);
+    assert.equal(nodo(escenario, 'tc-sin-guardar-texto').textContent, 'Tenés cambios sin guardar en Consultas. Si cambiás de tenant, se descartan.');
+  });
+
+  test('CH-53 a tenant switch takes the editor back to the list', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenantYConexion(escenario);
+    abrirNueva(escenario);
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(editorAbierto(escenario), false);
+    assert.equal(escenario.ubicacion.hash, '#consultas');
+  });
+
   /** Whether the pop-up whose backdrop is `idFondo` (the query one by default) is open. */
   const dialogoAbierto = (escenario: Escenario, idFondo = 'consulta-dialogo'): boolean => !nodo(escenario, idFondo).hidden;
   const tituloDialogo = (escenario: Escenario): string => nodo(escenario, 'consulta-dialogo-titulo').textContent;
@@ -8064,25 +8182,29 @@ describe('the console document, served by the real route', () => {
     }
   });
 
-  test('CH-32a PR2 the pop-up is a hidden modal dialog: title, fields in order, the result inside and the actions at the foot', () => {
+  test('CH-32a PR2 CH-53 the editor is a hidden page subview: crumb, fields in order, the run under the statement, the result, and the save actions at the foot', () => {
     const d = markupDialogo();
-    assert.match(d, /^<div id="consulta-dialogo" class="zd-dialog-backdrop" hidden>\s*<div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="consulta-dialogo-titulo">\s*<h2 id="consulta-dialogo-titulo" class="zd-dialog__title">Nueva consulta<\/h2>/);
+    // DEC-208: no backdrop and no dialog role; a crumb leads back to the list and its tail is the editor's title.
+    assert.match(d, /^<div id="consulta-dialogo" class="consulta-editor" aria-labelledby="consulta-dialogo-titulo" hidden>/);
+    assert.match(d, /<nav class="zd-pagehead__crumbs" aria-label="Ubicación"><a href="#consultas">Consultas<\/a> › <h2 id="consulta-dialogo-titulo" class="consulta-editor__titulo">Nueva consulta<\/h2><\/nav>/);
+    assert.ok(!/role="dialog"|zd-dialog-backdrop/.test(d), 'not a pop-up any more');
     assert.ok(pantallaConsultas().includes(d.slice(0, 40)), 'inside the Consultas screen, so it goes with it');
 
+    // W2, W3: the connection and the rows per page above the statement; W4: the run right under it; W5: then the result.
     const orden = [
-      'nombre', 'descripcion', 'formulario', 'conexion', 'conexion-aviso', 'conexion-reintentar', 'sql', 'parametros',
-      'agregar-parametro', 'limite', 'version-campos', 'version-nota', 'estado', 'resultados', 'anterior', 'siguiente',
-      'ejecutar', 'guardar', 'version-boton', 'consulta-cancelar',
+      'nombre', 'descripcion', 'formulario', 'conexion', 'limite', 'conexion-aviso', 'conexion-reintentar', 'sql', 'parametros',
+      'agregar-parametro', 'ejecutar', 'version-campos', 'version-nota', 'consulta-vacio', 'estado', 'resultados', 'anterior', 'siguiente',
+      'guardar', 'version-boton', 'consulta-cancelar',
     ].map((id) => d.indexOf('id="' + id + '"'));
     assert.ok(orden.every((posicion) => posicion !== -1), 'every piece is inside the pop-up');
     assert.deepEqual([...orden].sort((a, b) => a - b), orden, 'in that order, top to bottom');
     // The name and description sit outside #formulario, so browser validation never blocks «Probar» for want of a name.
     const formulario = d.match(/<form id="formulario">[\s\S]*?<\/form>/)?.[0] ?? '';
-    for (const id of ['conexion', 'sql', 'parametros', 'agregar-parametro', 'limite']) assert.ok(formulario.includes('id="' + id + '"'), id + ' is in the form');
-    for (const id of ['nombre', 'descripcion', 'version-campos', 'ejecutar', 'guardar']) assert.ok(!formulario.includes('id="' + id + '"'), id + ' is not');
+    for (const id of ['conexion', 'sql', 'parametros', 'agregar-parametro', 'limite', 'ejecutar']) assert.ok(formulario.includes('id="' + id + '"'), id + ' is in the form');
+    for (const id of ['nombre', 'descripcion', 'version-campos', 'guardar']) assert.ok(!formulario.includes('id="' + id + '"'), id + ' is not');
+    assert.match(formulario, /<button id="ejecutar"[^>]*type="submit"[^>]*form="formulario"[^>]*>Ejecutar consulta<\/button>\s*<span class="ayuda">Ctrl \+ Enter<\/span>/);
 
     const acciones = d.slice(d.indexOf('<div class="zd-dialog__actions">'));
-    assert.match(acciones, /<button id="ejecutar"[^>]*type="submit"[^>]*form="formulario"[^>]*>Ejecutar consulta<\/button>/);
     assert.match(acciones, /<button id="guardar"[^>]*zd-btn--primary[^>]*type="button"[^>]*\bdisabled\b[^>]*>Guardar consulta<\/button>/);
     assert.match(acciones, /<button id="version-boton"[^>]*type="button"[^>]*\bhidden\b[^>]*>Guardar como versión nueva<\/button>/);
     assert.match(acciones, /<button id="consulta-cancelar"[^>]*zd-btn--ghost[^>]*type="button">Cancelar<\/button>/);
@@ -8092,8 +8214,9 @@ describe('the console document, served by the real route', () => {
     assert.match(d, /<div id="version-guardar" hidden>\s*<p id="version-cargada" class="ayuda"><\/p>\s*<div id="version-campos" hidden>/);
   });
 
-  test('CH-32a PR2 the pop-up is made wide by one rule of the console\'s own style, with no new shared class', () => {
-    assert.match(documento, /#consulta-dialogo \.zd-dialog \{ width: min\(1100px, 100%\)/);
+  test('CH-53 the editor page is laid out by rules of the console\'s own style, with no new shared class', () => {
+    assert.ok(!documento.includes('#consulta-dialogo .zd-dialog'), 'the pop-up width rule is gone with the pop-up');
+    assert.match(documento, /\.consulta-ejecutar \{ display: flex;/);
     assert.equal(documento.split('<style').length - 1, 1, 'still one style element');
     assert.ok(!/zd-dialog--/.test(documento), 'no invented modifier of the shared dialog');
   });
@@ -8244,7 +8367,8 @@ describe('the console document, served by the real route', () => {
 
     escribir(escenario, 'nombre', 'Ventas');
     assert.equal(nodo(escenario, 'guardar').disabled, false);
-    assert.equal(ayuda(escenario), '', 'nothing to say once it may save');
+    // CH-53 (F4): once it may save, the line says when the run that opened it happened and what it returned.
+    assert.match(ayuda(escenario), /^Última ejecución: OK · \d\d:\d\d · \d+ filas$/, 'the last run, once it may save');
 
     escribir(escenario, 'sql', 'SELECT 2 AS id');
     assert.equal(ayuda(escenario), 'Cambiaste la consulta después de probarla. Probala de nuevo para poder guardarla.');
@@ -8253,7 +8377,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(ayuda(escenario), 'La última prueba falló. Corregí la consulta y probala de nuevo para poder guardarla.');
 
     await enviar(escenario, respuestaOk());
-    assert.equal(ayuda(escenario), '', 'a passing test of the current content clears it');
+    assert.match(ayuda(escenario), /^Última ejecución: OK · /, 'a passing run of the current content says so');
 
     abrirNueva(escenario);
     assert.equal(ayuda(escenario), 'Ejecutá la consulta para poder guardarla.', 'reopening forgets the last test');

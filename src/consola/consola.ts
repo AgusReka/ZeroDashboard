@@ -236,7 +236,12 @@ function documentoConsola(nombreOperador: string): string {
   .datos-acceso dd { margin: 0; overflow-wrap: anywhere; }
   /* CH-32a PR2 (DEC-173): the query pop-up holds the whole form and the result, so it is wider than the
      shared dialog; every pop-up's unsaved-changes question sits in its actions row, level with the buttons. */
-  #consulta-dialogo .zd-dialog { width: min(1100px, 100%); }
+  /* CH-53 (DEC-208, W): the query editor is a page subview; the connection and the rows per page sit above the
+     statement, and the run right under it. */
+  .consulta-editor__titulo { display: inline; margin: 0; font-size: inherit; font-weight: var(--weight-semibold); }
+  .consulta-contexto { margin-top: var(--space-4); }
+  .consulta-contexto > .consulta-contexto__conexion { width: min(24rem, 100%); }
+  .consulta-ejecutar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
   /* CH-38 (DEC-191): the template pop-up is wide like the query one; its entity boxes are built by the script. */
   #plantilla-dialogo .zd-dialog { width: min(900px, 100%); }
   .entidades-plantilla { margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -1172,9 +1177,10 @@ ${estadoSinTenant('consultas')}
   script writes the title, shows one of the two save controls by whether a query is loaded,
   and writes every text from the API as text. Escape and Cancelar ask before dropping edits.
 -->
-<div id="consulta-dialogo" class="zd-dialog-backdrop" hidden>
-  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="consulta-dialogo-titulo">
-    <h2 id="consulta-dialogo-titulo" class="zd-dialog__title">Nueva consulta</h2>
+<div id="consulta-dialogo" class="consulta-editor" aria-labelledby="consulta-dialogo-titulo" hidden>
+  <div>
+    <!-- CH-53 (DEC-208): a page subview at #consultas/nueva or #consultas/{id}; the crumb goes back to the list. -->
+    <nav class="zd-pagehead__crumbs" aria-label="Ubicación"><a href="#consultas">Consultas</a> › <h2 id="consulta-dialogo-titulo" class="consulta-editor__titulo">Nueva consulta</h2></nav>
 
     <div>
       <label for="nombre" class="zd-label">Nombre</label>
@@ -1192,8 +1198,16 @@ ${estadoSinTenant('consultas')}
         loading, empty, truncated and error notices into #conexion-aviso. required stays for a
         real browser; the script's own check in ejecutar() does not rely on it.
       -->
-      <label for="conexion" class="zd-label">Conexión</label>
-      <select id="conexion" class="zd-select" required></select>
+      <div class="consulta-contexto controles">
+        <div class="consulta-contexto__conexion">
+          <label for="conexion" class="zd-label">Conexión</label>
+          <select id="conexion" class="zd-select" required></select>
+        </div>
+        <div>
+          <label for="limite" class="zd-label">Filas por página</label>
+          <input id="limite" class="zd-input" type="number" min="1" value="50">
+        </div>
+      </div>
       <p id="conexion-aviso" class="ayuda" role="status"></p>
       <button id="conexion-reintentar" class="zd-btn zd-btn--secondary" type="button" hidden>Reintentar</button>
 
@@ -1209,18 +1223,13 @@ ${estadoSinTenant('consultas')}
       <div id="parametros"></div>
       <button id="agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
 
-      <div class="controles">
-        <div>
-          <!--
-            No max attribute since CH-07, for the same reason the request schema dropped
-            its maximum: 200. The ceiling is now MAX_FILAS_CONSULTA (DEC-19) and the server
-            applies it and says so; a literal here would clamp the request below the ceiling
-            so the cut could never happen, leaving the operator unable to observe from the
-            only surface they have that a limit exists at all.
-          -->
-          <label for="limite" class="zd-label">Filas por página</label>
-          <input id="limite" class="zd-input" type="number" min="1" value="50">
-        </div>
+      <!--
+        #limite has no max attribute since CH-07: the ceiling is MAX_FILAS_CONSULTA (DEC-19) and the server
+        applies it and says so. CH-53 (W4): the run is right under the statement, with its shortcut in sight.
+      -->
+      <div class="consulta-ejecutar">
+        <button id="ejecutar" class="zd-btn zd-btn--secondary" type="submit" form="formulario">Ejecutar consulta</button>
+        <span class="ayuda">Ctrl + Enter</span>
       </div>
     </form>
 
@@ -1240,7 +1249,9 @@ ${estadoSinTenant('consultas')}
     <div>
       <!-- C-08: a refusal of a run or of a save (the statement, the rule, the SQLSTATE) as a banner, next to the control that caused it. -->
       ${avisoResultado('consulta-aviso')}
-      <p id="estado" class="estado" hidden></p>
+      <!-- CH-53 (W7): before the first run the result area says how to get one. -->
+      <p id="consulta-vacio" class="ayuda">Ejecutá la consulta para ver el resultado acá (Ctrl + Enter).</p>
+      <p id="estado" class="estado zd-statusline" aria-live="polite" hidden></p>
 
       <div class="zd-table-wrap zd-table-scroll">
         <table id="resultados" class="zd-table"><thead></thead><tbody></tbody></table>
@@ -1260,7 +1271,6 @@ ${estadoSinTenant('consultas')}
         <button id="consulta-nueva-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
         <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
       </span>
-      <button id="ejecutar" class="zd-btn zd-btn--secondary" type="submit" form="formulario">Ejecutar consulta</button>
       <button id="guardar" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled>Guardar consulta</button>
       <button id="version-boton" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled hidden>Guardar como versión nueva</button>
       <button id="consulta-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
@@ -1982,8 +1992,9 @@ function crearDialogo(opciones) {
   opciones.cancelar.addEventListener('click', pedirCerrar);
   opciones.fondo.addEventListener('keydown', function (evento) {
     if (evento.key === 'Escape') { pedirCerrar(); return; }
-    // CH-51: Tab and Shift+Tab wrap around the pop-up's controls instead of leaving it.
-    if (evento.key !== 'Tab') { return; }
+    // CH-51: Tab and Shift+Tab wrap around the pop-up's controls instead of leaving it. A page subview (CH-53,
+    // opciones.pagina) is part of the page, so the focus may leave it.
+    if (evento.key !== 'Tab' || opciones.pagina) { return; }
     var controles = controlesEnfocables(opciones.fondo);
     if (controles.length === 0) { return; }
     var actual = document.activeElement;
@@ -2099,6 +2110,8 @@ function limpiarResultados() {
   ocultarResultado('consulta-aviso');
   botonAnterior.disabled = true;
   botonSiguiente.disabled = true;
+  // CH-53 (W7): with no result, the result area says how to get one.
+  document.getElementById('consulta-vacio').hidden = false;
 }
 
 function textoDeCelda(valor) {
@@ -2644,6 +2657,12 @@ async function cargarConexionesConsulta() {
 
   var filas = resultado.cuerpo.conexiones;
   ponerOpcionesConexion(filas, filas.length === 0 ? 'No hay conexiones registradas' : 'Elegí una conexión');
+  // CH-53 (G3): with a single connection there is nothing to choose.
+  if (filas.length === 1 && entradaConexion.value === '') {
+    entradaConexion.value = String(filas[0].id);
+    conexionPrevia = entradaConexion.value;
+    actualizarGuardado();
+  }
   if (filas.length === 0) {
     avisoConexion.appendChild(document.createTextNode('Este tenant no tiene conexiones. Registrá una en '));
     var enlace = document.createElement('a');
@@ -2671,6 +2690,8 @@ async function ejecutar(desplazamiento) {
   }
   limpiarAvisoDeEleccion();
   ocupado(botonEjecutar, 'Ejecutando…');
+  // CH-53 (W4): the previous result stays in place, marked busy, until the answer replaces it.
+  document.getElementById('resultados').setAttribute('aria-busy', 'true');
   // CH-32a PR2: the save controls follow the last run only while it answered ok. Starting a run
   // closes them, so every answer but an ok one leaves them closed.
   var huella = huellaActual();
@@ -2696,10 +2717,12 @@ async function ejecutar(desplazamiento) {
   } catch (fallaDeRed) {
     // A rejected fetch must not be silent either: the page says so instead.
     libre(botonEjecutar);
+    document.getElementById('resultados').removeAttribute('aria-busy');
     avisarEnConsulta(AVISO_SIN_RED);
     return;
   }
   libre(botonEjecutar);
+  document.getElementById('resultados').removeAttribute('aria-busy');
   // No tenant selected: pedir() made no request and already showed the banner.
   if (respuesta === null) { return; }
 
@@ -2749,8 +2772,14 @@ async function ejecutar(desplazamiento) {
   // CH-32a PR2: an ok answer is what opens the save controls, for exactly what was sent.
   ultimaPruebaOk = huella;
   estadoPrueba = 'ok';
+  // CH-53 (F4): the save line says when the run that opened it happened and what it returned.
+  var ahora = new Date();
+  var dosCifras = function (n) { return (n < 10 ? '0' : '') + n; };
+  ultimaEjecucionOk = 'Última ejecución: OK · ' + dosCifras(ahora.getHours()) + ':' + dosCifras(ahora.getMinutes()) +
+    ' · ' + (Array.isArray(cuerpo.filas) ? cuerpo.filas.length : 0) + ' filas';
   actualizarGuardado();
   renderizar(cuerpo);
+  document.getElementById('consulta-vacio').hidden = true;
   pagina = {
     desplazamiento: cuerpo.paginacion.desplazamiento,
     limite: cuerpo.paginacion.limite,
@@ -2984,7 +3013,7 @@ async function cargarGuardada(id) {
 async function abrirGuardada(id) {
   var tenant = tenantActivo;
   var cargada = await cargarGuardada(id);
-  if (cargada && tenant === tenantActivo) { abrirConsulta(); }
+  if (cargada && tenant === tenantActivo) { abrirConsulta(id); }
 }
 
 // --- Automations (CH-13) -------------------------------------------------------
@@ -4738,8 +4767,9 @@ function actualizarGuardado() {
   var cerrado = guardando || !guardadoHabilitado();
   botonGuardar.disabled = cerrado;
   botonVersion.disabled = cerrado;
-  ayudaGuardado.textContent = !cerrado ? '' : motivoDeGuardadoCerrado();
+  ayudaGuardado.textContent = !cerrado ? ultimaEjecucionOk : motivoDeGuardadoCerrado();
 }
+var ultimaEjecucionOk = '';
 
 // The reason the save control is closed, in the order the operator can act on it.
 function motivoDeGuardadoCerrado() {
@@ -4804,6 +4834,7 @@ var botonCancelarNueva = document.getElementById('consulta-nueva-cancelar');
 // the editor holds, untested and with no result of an earlier run.
 var dialogoDeConsulta = crearDialogo({
   fondo: dialogoConsulta,
+  pagina: true,
   primerCampo: entradaNombre,
   cancelar: botonCancelarConsulta,
   confirmar: confirmarConsultaNueva,
@@ -4816,12 +4847,48 @@ var dialogoDeConsulta = crearDialogo({
     limpiarResultados();
     reflejarConsultaCargada();
     actualizarGuardado();
+    listaDeConsultas(false);
+  },
+  // CH-53 (DEC-208): closed, the list comes back. A discard asked for by a change of address goes on to that address;
+  // otherwise the address goes back to the list.
+  alCerrar: function () {
+    listaDeConsultas(true);
+    subConsultaAbierta = null;
+    var destino = destinoConsultaPendiente;
+    destinoConsultaPendiente = null;
+    if (destino !== null) { window.location.hash = destino; return; }
+    if (String(window.location.hash || '').indexOf('#consultas/') === 0) { fijarHashDelScript('#consultas'); }
   }
 });
 
-function abrirConsulta() {
+// CH-53 (DEC-208): where the editor is. subConsultaAbierta is 'nueva' or a saved query's id while it is open.
+var subConsultaAbierta = null;
+var destinoConsultaPendiente = null;
+var hashDelScript = null;
+
+// The list and its page action, shown or hidden with the editor (only one of the two at a time).
+function listaDeConsultas(visible) {
+  document.getElementById('guardado').hidden = !visible;
+  document.getElementById('consulta-nueva').hidden = !visible;
+}
+
+// An address the script sets itself: the hashchange it causes changes nothing more.
+function fijarHashDelScript(nuevo) {
+  if (String(window.location.hash || '') === nuevo) { return; }
+  hashDelScript = nuevo;
+  window.location.hash = nuevo;
+}
+
+function abrirConsulta(sub) {
+  if (sub !== undefined) {
+    subConsultaAbierta = String(sub);
+    fijarHashDelScript('#consultas/' + subConsultaAbierta);
+  }
   dialogoDeConsulta.abrir();
 }
+
+// «Seguir editando» after a change of address keeps the editor and forgets where the operator was going.
+document.getElementById('consulta-nueva-cancelar').addEventListener('click', function () { destinoConsultaPendiente = null; });
 
 function cerrarConsulta() {
   dialogoDeConsulta.cerrar();
@@ -4891,7 +4958,7 @@ botonConsultaNueva.addEventListener('click', function () {
   }
   ocultarBanner();
   empezarConsultaNueva();
-  abrirConsulta();
+  abrirConsulta('nueva');
 });
 
 // The fields of the gate: every edit of the connection, the statement or the name re-evaluates it.
@@ -5041,8 +5108,14 @@ var dialogoCambioTenant = crearDialogo({
     selectorTenant.value = tenantPreelegido !== null ? tenantPreelegido : (tenantActivo === null ? '' : tenantActivo);
     tenantPreelegido = null;
     actualizarConfirmacionDeTenant();
-    // CH-50 (N8): unsaved work of the tenant being left is announced before anything is discarded.
-    document.getElementById('tc-sin-guardar').hidden = !tableroCambiado();
+    // CH-50 (N8): unsaved work of the tenant being left is announced before anything is discarded. CH-53: the query
+    // editor's too.
+    var sinGuardar = [];
+    if (tableroCambiado()) { sinGuardar.push('Tablero del cliente'); }
+    if (dialogoDeConsulta.abierto() && hayCambiosSinGuardar()) { sinGuardar.push('Consultas'); }
+    document.getElementById('tc-sin-guardar').hidden = sinGuardar.length === 0;
+    document.getElementById('tc-sin-guardar-texto').textContent = 'Tenés cambios sin guardar en ' + sinGuardar.join(' y ') +
+      '. Si cambiás de tenant, se descartan.';
   }
 });
 
@@ -5184,6 +5257,14 @@ botonCrearAuto.addEventListener('click', function () {
 
 formulario.addEventListener('submit', function (evento) {
   evento.preventDefault();
+  ejecutar(0).then(marcarPruebaTerminada);
+});
+
+// CH-53 (W4): Ctrl + Enter (Cmd + Enter on a Mac) runs the statement; Enter alone still breaks the line.
+entradaSql.addEventListener('keydown', function (evento) {
+  if (evento.key !== 'Enter' || !(evento.ctrlKey || evento.metaKey)) { return; }
+  evento.preventDefault();
+  if (botonEjecutar.disabled) { return; }
   ejecutar(0).then(marcarPruebaTerminada);
 });
 
@@ -8600,7 +8681,24 @@ function mostrarPantalla() {
   ocultarResultado('conexion-banner');
   ocultarResultado('mapeo-banner');
   ocultarResultado('mapeo-conexion-banner');
-  var pedida = String(window.location.hash || '').replace(/^#/, '');
+  var hashActual = String(window.location.hash || '');
+  // CH-53: an address the script set itself has already been acted on.
+  if (hashDelScript !== null && hashActual === hashDelScript) { hashDelScript = null; return; }
+  var ruta = hashActual.replace(/^#/, '').split('/');
+  var pedida = ruta[0];
+  var sub = ruta.length > 1 && ruta.slice(1).join('/') !== '' ? ruta.slice(1).join('/') : null;
+  // CH-53 (DEC-208): leaving the query editor. With changes, the address goes back and the editor asks first.
+  if (dialogoDeConsulta.abierto() && !(pedida === 'consultas' && sub === subConsultaAbierta)) {
+    if (hayCambiosSinGuardar()) {
+      destinoConsultaPendiente = hashActual === '' ? '#consultas' : hashActual;
+      fijarHashDelScript('#consultas/' + subConsultaAbierta);
+      dialogoDeConsulta.pedirCerrar();
+      return;
+    }
+    destinoConsultaPendiente = null;
+    dialogoDeConsulta.cerrar();
+    if (String(window.location.hash || '') !== hashActual) { return; }
+  }
   // CH-50 (N9): a hash that names no screen opens the unknown-section screen, with no link marked as current.
   var activa = hashVacio() ? pantallaInicial() : (PANTALLAS.indexOf(pedida) === -1 ? 'desconocida' : pedida);
   pantallaMostrada = activa;
@@ -8629,6 +8727,10 @@ function mostrarPantalla() {
   if (activa === 'tiempos') { cargarPantallaTiempos(); }
   // CH-32a: the picker reads the tenant's connections each time Consultas is shown.
   if (activa === 'consultas') { cargarConexionesConsulta(); }
+  // CH-53 (DEC-208): #consultas/nueva and #consultas/{id} open the editor; with no tenant the screen says to choose one.
+  if (activa === 'consultas' && sub !== null && !dialogoDeConsulta.abierto() && tenantActivo !== null) {
+    if (sub === 'nueva') { empezarConsultaNueva(); abrirConsulta('nueva'); } else { abrirGuardada(sub); }
+  }
 }
 window.addEventListener('hashchange', mostrarPantalla);
 // C-02: until the tenant list answers there is no tenant, and the screens of the tenant say so.
@@ -8647,6 +8749,8 @@ cargarTenants().then(function () {
   // C-02: the list has answered, so the start screen can be settled for real. Only an empty hash is moved, and only
   // when the guess made before the answer was wrong; a screen the operator chose is left where it is.
   if (hashVacio() && pantallaMostrada !== pantallaInicial()) { mostrarPantalla(); }
+  // CH-53: an editor address opened before the tenant was known opens now.
+  if (String(window.location.hash || '').length > '#consultas/'.length && String(window.location.hash).indexOf('#consultas/') === 0 && !dialogoDeConsulta.abierto()) { mostrarPantalla(); }
 });
 </script>
 </body>
