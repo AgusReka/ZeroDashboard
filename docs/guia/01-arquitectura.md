@@ -44,6 +44,8 @@ planificador ─► motor ─► réplica ─► ¿hay filas? ─► correo (SMT
 | Tenant | Elegido por el operador, en cada solicitud | Tomado de la sesión, nunca de la solicitud |
 | Alcance | Todos los tenants, SQL de solo lectura | Su tenant, solo sus automatizaciones |
 
+**Página de inicio.** `/` es una página estática con dos puertas: «Ir a mi panel» (principal) e «Ir a la consola». No pide ingreso, no lee ninguna sesión y no consulta la base; cada puerta lleva al ingreso de su superficie, que sigue siendo separado (DEC-203). `/consola/` y `/panel/`, con barra final, redirigen a `/consola` y `/panel`.
+
 **Límite.** No hay roles dentro de cada superficie: todo operador puede lo mismo, y todo usuario del panel de un tenant también (DEC-04). El operador puede actuar sobre cualquier tenant cambiando la elección; la única protección contra el error humano es el indicador del tenant activo y las confirmaciones.
 
 ## Garantías que se mantienen

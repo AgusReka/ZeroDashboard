@@ -1574,3 +1574,23 @@ In the «Nueva automatización» wizard, each template card SHALL show a warning
 - **WHEN** the automation is created
 - **THEN** the creation notice repeats the warning
 - **AND** the request body is the same as without the warning
+
+### Requirement: Start Screen (UX review C-02)
+
+With no hash in the address the console SHALL open Tenants while no tenant is selected and Consultas once one is; a hash that names no screen still falls back to Consultas and a named screen is always honored. Before the tenant list answers, a remembered selection SHALL stand in for the tenant, so a visit that ends on Consultas does not pass through Tenants, and a remembered tenant that is no longer active SHALL move the empty hash to Tenants when the list answers.
+
+#### Scenario: First visit
+- **WHEN** the console opens with no hash and nothing remembered
+- **THEN** Tenants is the visible screen
+
+#### Scenario: Returning visit
+- **WHEN** the console opens with no hash and a remembered tenant that is still active
+- **THEN** Consultas is the visible screen and Tenants is not loaded
+
+### Requirement: Read-Only Refusal Message (DEC-204)
+
+An execution answered `categoria` "no-es-lectura" with a `palabra` SHALL be shown in the query's existing error banner as «La consulta fue rechazada: solo se permiten lecturas. Se encontró UPDATE.», with the word as sent by the server and no SQLSTATE. The engine's own `no-es-lectura` and the syntax error keep their own sentences.
+
+### Requirement: Last Connection Test (UX review C-05)
+
+The Conexiones list SHALL show the connection's `ultimaPrueba` in a column «Última prueba» as an icon, a word (OK, Falló or Sin probar) and the date, and the row's «Probar conexión» SHALL update it with the result it gets. Every connection selector SHALL add «· última prueba OK», «· última prueba falló» or «· sin probar» to the connection's name when the list carries `ultimaPrueba`, and nothing when it does not. Choosing in Mapeo a connection whose last test failed SHALL show a warning banner with the reason until another connection is chosen; the mapping stays readable.

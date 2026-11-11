@@ -252,6 +252,11 @@ function documentoConsola(nombreOperador: string): string {
   .estado-frescura--al-dia { color: var(--ok-text); }
   .estado-frescura--desactualizada { color: var(--warn-text); }
   .estado-frescura--sin-declarar { color: var(--text-2); }
+  /* C-05: the last test of a connection reuses the state look: ok, failed (error color) or never tested. */
+  .estado-frescura--prueba-ok { color: var(--ok-text); }
+  .estado-frescura--prueba-falla { color: var(--error-text); }
+  .estado-frescura--prueba-sin { color: var(--text-2); }
+  .fecha-prueba { display: block; margin-top: var(--space-2); color: var(--text-3); font-size: var(--text-xs); }
   .icono-frescura { width: 1.15em; height: 1.15em; flex: none; }
   #fresc-minutos { width: 10rem; }
   /* CH-25 (C-05): the versions panel. The current version is an icon and a word, never a color alone. */
@@ -487,7 +492,7 @@ ${estadoSinTenant('conexiones')}
 ${avisoResultado('conexion-banner')}
 <div class="zd-table-wrap zd-table-scroll">
   <table class="zd-table">
-    <thead><tr><th>Nombre</th><th>Motor</th><th>Servidor</th><th>Base</th><th>Usuario</th><th>Prueba</th></tr></thead>
+    <thead><tr><th>Nombre</th><th>Motor</th><th>Servidor</th><th>Base</th><th>Usuario</th><th>Última prueba</th><th>Prueba</th></tr></thead>
     <tbody id="conexiones-cuerpo"></tbody>
   </table>
 </div>
@@ -1004,6 +1009,8 @@ ${estadoSinTenant('mapeo')}
   <select id="mapeo-conexion" class="zd-select"></select>
 </div>
 <p id="mapeo-aviso" class="ayuda" role="status"></p>
+<!-- C-05: a warning while the chosen connection's last test failed (it stays until the connection changes). -->
+${avisoResultado('mapeo-conexion-banner')}
 <!-- C-12: the summary of «Validar mapeo» (valid or not, how many entities, which automations stay available), as a banner. -->
 ${avisoResultado('mapeo-banner')}
 <!-- CH-34 (DEC-176): static, closed by default; the per-entity examples are built by the script. -->
@@ -1712,6 +1719,8 @@ var pagina = { desplazamiento: 0, limite: 50, hayMas: false, siguiente: null, co
 // The selected tenant lives here and nowhere else (DEC-15: explicit per request, no
 // server session). Every call reads it through pedir() below.
 var tenantActivo = null;
+// C-02: true once GET /tenants has answered (or failed), so the remembered selection is no longer a stand-in.
+var tenantsListos = false;
 
 // CH-24: the rows GET /tenants returned, kept so the freshness section can read the active
 // tenant's declaration without another request.
@@ -1928,6 +1937,11 @@ function describirPagina(cuerpo) {
 }
 
 function mensajeDeFallo(cuerpo) {
+  // C-07 (DEC-204): a statement refused before it was sent names the write word it began with. The word comes
+  // from the server's closed list; it is shown as text like everything else.
+  if (cuerpo.fase === 'ejecucion' && cuerpo.categoria === 'no-es-lectura' && typeof cuerpo.palabra === 'string') {
+    return 'La consulta fue rechazada: solo se permiten lecturas. Se encontró ' + cuerpo.palabra + '.';
+  }
   var clave = String(cuerpo.fase) + ':' + String(cuerpo.categoria);
   var base = Object.prototype.hasOwnProperty.call(MENSAJES, clave) ? MENSAJES[clave] : MENSAJE_GENERICO;
   return cuerpo.codigo ? base + ' (SQLSTATE ' + cuerpo.codigo + ')' : base;
@@ -2312,7 +2326,7 @@ function ponerOpcionesConexion(filas, textoVacio) {
   entradaConexion.appendChild(opcionDe('', textoVacio));
   filas.forEach(function (fila) {
     var id = String(fila.id);
-    entradaConexion.appendChild(opcionDe(id, String(fila.nombre) + ' (' + id.slice(0, 8) + '…)'));
+    entradaConexion.appendChild(opcionDe(id, etiquetaDeConexion(fila)));
   });
   var sigue = filas.some(function (fila) { return String(fila.id) === conexionPrevia; });
   entradaConexion.value = sigue ? conexionPrevia : '';
@@ -2872,7 +2886,7 @@ function renderizarConexiones(filas, textoVacio) {
   selectorConexionAuto.appendChild(opcionDe('', textoVacio));
   filas.forEach(function (fila) {
     var id = String(fila.id);
-    selectorConexionAuto.appendChild(opcionDe(id, String(fila.nombre) + ' (' + id.slice(0, 8) + '…)'));
+    selectorConexionAuto.appendChild(opcionDe(id, etiquetaDeConexion(fila)));
   });
   selectorConexionAuto.value = '';
 }
@@ -3947,7 +3961,10 @@ var botonMarcar = document.getElementById('fresc-marcar');
 var avisoFrescura = document.getElementById('fresc-aviso');
 var tablaFrescura = document.getElementById('fresc-plantillas');
 
-var ETIQUETAS_FRESCURA = { 'al-dia': 'Al día', 'desactualizada': 'Desactualizada', 'sin-declarar': SIN_DECLARAR };
+var ETIQUETAS_FRESCURA = {
+  'al-dia': 'Al día', 'desactualizada': 'Desactualizada', 'sin-declarar': SIN_DECLARAR,
+  'prueba-ok': 'OK', 'prueba-falla': 'Falló', 'prueba-sin': 'Sin probar'
+};
 var ICONOS_FRESCURA = {
   'al-dia': [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm9 12 2 2 4-4' }]],
   'desactualizada': [
@@ -3956,6 +3973,14 @@ var ICONOS_FRESCURA = {
     ['path', { d: 'M12 17h.01' }]
   ],
   'sin-declarar': [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }],
+    ['path', { d: 'M12 17h.01' }]
+  ],
+  // C-05: the last test of a connection: circle-check, circle-x and circle-help.
+  'prueba-ok': [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm9 12 2 2 4-4' }]],
+  'prueba-falla': [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm15 9-6 6' }], ['path', { d: 'm9 9 6 6' }]],
+  'prueba-sin': [
     ['circle', { cx: '12', cy: '12', r: '10' }],
     ['path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }],
     ['path', { d: 'M12 17h.01' }]
@@ -4023,6 +4048,27 @@ function insignia(clave) {
   texto.textContent = ETIQUETAS_FRESCURA[clave];
   nodo.appendChild(texto);
   return nodo;
+}
+
+// C-05: the state of a connection's last test, from the ultimaPrueba GET /conexiones carries: null when it was
+// never tested, and absent (undefined) when the answer does not carry it at all.
+function clavePrueba(ultimaPrueba) {
+  if (ultimaPrueba === null) { return 'prueba-sin'; }
+  return ultimaPrueba.resultado === 'ok' ? 'prueba-ok' : 'prueba-falla';
+}
+
+// The text a connection selector adds to a connection's name, so a failed or missing test is visible where the
+// connection is chosen. Nothing when the list did not carry the test.
+function sufijoDePrueba(fila) {
+  if (fila === null || typeof fila !== 'object' || fila.ultimaPrueba === undefined) { return ''; }
+  var clave = clavePrueba(fila.ultimaPrueba);
+  return clave === 'prueba-ok' ? ' · última prueba OK' : (clave === 'prueba-falla' ? ' · última prueba falló' : ' · sin probar');
+}
+
+// The selector text of one connection: name, short id (two connections may share a name) and its last test.
+function etiquetaDeConexion(fila) {
+  var id = String(fila.id);
+  return String(fila.nombre) + ' (' + id.slice(0, 8) + '…)' + sufijoDePrueba(fila);
 }
 
 function filaDeTenant(id) {
@@ -5145,9 +5191,19 @@ async function pedirPrueba(id) {
   return { cuerpo: cuerpo };
 }
 
-async function probarConexionPorId(id) {
-  var prueba = await pedirPrueba(id);
-  return prueba.mensaje !== undefined ? prueba.mensaje : textoDePrueba(prueba.cuerpo);
+// C-05: the cell of «Última prueba»: a badge (icon and word, never the color alone) and, when there is one, the date.
+// ultimaPrueba is what GET /conexiones carries; absent (undefined) is read as never tested.
+function pintarUltimaPrueba(celda, ultimaPrueba) {
+  vaciar(celda);
+  var prueba = ultimaPrueba === undefined ? null : ultimaPrueba;
+  var clave = clavePrueba(prueba);
+  celda.appendChild(insignia(clave));
+  if (prueba !== null && prueba.fecha) {
+    var fecha = document.createElement('span');
+    fecha.className = 'fecha-prueba';
+    fecha.textContent = fechaHoraTenant(prueba.fecha);
+    celda.appendChild(fecha);
+  }
 }
 
 // C-04: what a saved connection leaves on the screen, as a banner: it was saved, and how its test went, with what to do
@@ -5184,11 +5240,21 @@ function renderizarPantallaConexiones(conexiones) {
     celdaTenant(fila, String(cx.host) + ':' + String(cx.puerto));
     celdaTenant(fila, String(cx.baseDeDatos));
     celdaTenant(fila, String(cx.usuarioDb));
+    var ultima = celdaTenant(fila, '');
+    pintarUltimaPrueba(ultima, cx.ultimaPrueba);
     var prueba = celdaTenant(fila, '');
     var resultado = document.createElement('span');
     prueba.appendChild(botonTenant('Probar conexión', async function () {
       resultado.textContent = 'Probando…';
-      resultado.textContent = await probarConexionPorId(String(cx.id));
+      var hecha = await pedirPrueba(String(cx.id));
+      if (hecha.mensaje !== undefined) { resultado.textContent = hecha.mensaje; return; }
+      resultado.textContent = textoDePrueba(hecha.cuerpo);
+      // The list follows the test that was just made, without reading it again.
+      if (hecha.cuerpo !== null && typeof hecha.cuerpo === 'object' && (hecha.cuerpo.resultado === 'ok' || hecha.cuerpo.resultado === 'fallo')) {
+        pintarUltimaPrueba(ultima, {
+          resultado: hecha.cuerpo.resultado, categoria: hecha.cuerpo.categoria, codigo: hecha.cuerpo.codigo, fecha: new Date().toISOString()
+        });
+      }
     }));
     prueba.appendChild(resultado);
     cuerpoConexiones.appendChild(fila);
@@ -5794,7 +5860,7 @@ async function cargarConexionesPrueba() {
   selectorPrueba.appendChild(opcionDe('', filas.length === 0 ? 'No hay conexiones' : 'Elegí una conexión'));
   filas.forEach(function (fila) {
     var idConexion = String(fila.id);
-    selectorPrueba.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+    selectorPrueba.appendChild(opcionDe(idConexion, etiquetaDeConexion(fila)));
   });
   selectorPrueba.value = '';
   if (filas.length === 0) { avisoPrueba.textContent = 'Registrá una conexión de este tenant para probar la plantilla.'; }
@@ -6192,7 +6258,7 @@ async function cargarConexionesPlantilla() {
   selectorConexionPlantilla.appendChild(opcionDe('', filas.length === 0 ? 'No hay conexiones' : 'Elegí una conexión'));
   filas.forEach(function (fila) {
     var idConexion = String(fila.id);
-    selectorConexionPlantilla.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+    selectorConexionPlantilla.appendChild(opcionDe(idConexion, etiquetaDeConexion(fila)));
   });
   selectorConexionPlantilla.value = '';
   if (filas.length === 0) { avisoResultadoPlantilla.textContent = 'Registrá una conexión de este tenant para probar la plantilla.'; }
@@ -6467,7 +6533,7 @@ async function llenarConexionesReporte(selector, aviso, vigente) {
   selector.appendChild(opcionDe('', filas.length === 0 ? 'No hay conexiones' : 'Elegí una conexión'));
   filas.forEach(function (fila) {
     var idConexion = String(fila.id);
-    selector.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+    selector.appendChild(opcionDe(idConexion, etiquetaDeConexion(fila)));
   });
   selector.value = '';
   if (filas.length === 0) { aviso.textContent = 'Registrá una conexión de este tenant para probar el reporte.'; }
@@ -7342,6 +7408,20 @@ function resumenDeMapeo(informe) {
   return { tono: limpio ? 'ok' : 'warn', titulo: limpio ? 'Mapeo válido' : 'El mapeo necesita revisión', cuerpo: lineas.join('\\n') };
 }
 
+// C-05: the last test of each connection of the selector, as GET /conexiones carried it.
+var pruebasDeMapeo = Object.create(null);
+
+// C-05: choosing a connection whose last test failed warns about it, above the mapping. The mapping can still be
+// read and edited; the warning says why validating it is likely to fail, and where to test the connection again.
+function avisarPruebaFallida(id) {
+  ocultarResultado('mapeo-conexion-banner');
+  var prueba = id === '' ? undefined : pruebasDeMapeo[id];
+  if (prueba === undefined || prueba === null || prueba.resultado !== 'fallo') { return; }
+  mostrarResultado('mapeo-conexion-banner', 'warn', 'La última prueba de esta conexión falló',
+    mensajeDeFallo({ fase: 'conexion', categoria: prueba.categoria, codigo: prueba.codigo }) +
+    '\\nEs probable que «Validar mapeo» tampoco logre conectarse. Probá la conexión de nuevo en Conexiones.');
+}
+
 async function cargarMapeoDeConexion(id) {
   conexionMapeo = id;
   bloquesMapeo = {};
@@ -7349,6 +7429,7 @@ async function cargarMapeoDeConexion(id) {
   vaciar(cuerpoAutomatizacionesMapeo);
   bloqueAutomatizacionesMapeo.hidden = true;
   ocultarResultado('mapeo-banner');
+  avisarPruebaFallida(id);
   if (id === '') { conexionMapeo = null; avisoMapeo.textContent = 'Elegí una conexión para ver su mapeo.'; return; }
   var informe = await leerMapeo(urlMapeo('/validacion-mapeo'));
   if (informe === null || informe.status !== 200 || informe.cuerpo === null) {
@@ -7376,10 +7457,15 @@ async function cargarPantallaMapeo() {
   vaciar(cuerpoAutomatizacionesMapeo);
   bloqueAutomatizacionesMapeo.hidden = true;
   ocultarResultado('mapeo-banner');
+  ocultarResultado('mapeo-conexion-banner');
+  pruebasDeMapeo = Object.create(null);
   conexionMapeo = null;
   if (tenantActivo === null) { avisoMapeo.textContent = 'Elegí un tenant para mapear sus conexiones.'; return; }
   var leido = await leerMapeo('/conexiones');
   if (leido === null || leido.status !== 200 || leido.cuerpo === null || !Array.isArray(leido.cuerpo.conexiones)) { return; }
+  leido.cuerpo.conexiones.forEach(function (cx) {
+    if (cx.ultimaPrueba !== undefined) { pruebasDeMapeo[String(cx.id)] = cx.ultimaPrueba; }
+  });
   var vacia = document.createElement('option');
   vacia.value = '';
   vacia.textContent = leido.cuerpo.conexiones.length === 0 ? 'No hay conexiones' : 'Elegí una conexión';
@@ -7387,7 +7473,7 @@ async function cargarPantallaMapeo() {
   leido.cuerpo.conexiones.forEach(function (cx) {
     var opcion = document.createElement('option');
     opcion.value = String(cx.id);
-    opcion.textContent = String(cx.nombre);
+    opcion.textContent = String(cx.nombre) + sufijoDePrueba(cx);
     selectorMapeo.appendChild(opcion);
   });
   avisoMapeo.textContent = leido.cuerpo.conexiones.length === 0
@@ -7885,7 +7971,7 @@ function opcionesConexionTablero(conexiones) {
   conexiones.forEach(function (fila) {
     var idConexion = String(fila.id);
     ids.push(idConexion);
-    selectorConexionTablero.appendChild(opcionDe(idConexion, String(fila.nombre) + ' (' + idConexion.slice(0, 8) + '…)'));
+    selectorConexionTablero.appendChild(opcionDe(idConexion, etiquetaDeConexion(fila)));
   });
   // The saved connection stays choosable even when the list could not name it.
   var guardada = tableroActual.conexionId;
@@ -8038,13 +8124,26 @@ var TITULOS_PANTALLA = {
   'tablero': 'Tablero del cliente', 'tiempos': 'Tiempos de alta', 'consultas': 'Consultas',
   'automatizaciones': 'Automatizaciones', 'frescura': 'Frescura de datos', 'auditoria': 'Auditoría'
 };
+// C-02: with no hash the console opens Tenants while no tenant is selected, and Consultas once there is one. A hash
+// that names no screen still falls back to Consultas. Before the tenant list answers there is no tenant yet, so the
+// remembered selection stands in for it: a visit that will end on Consultas does not flash Tenants first, and
+// one whose remembered tenant is gone moves to Tenants as soon as the list says so.
+var pantallaMostrada = null;
+function hashVacio() {
+  return String(window.location.hash || '').replace(/^#/, '') === '';
+}
+function pantallaInicial() {
+  return (tenantActivo !== null || (!tenantsListos && leerTenantGuardado() !== null)) ? 'consultas' : 'tenants';
+}
 function mostrarPantalla() {
-  // C-02, C-04, C-12: a result belongs to the visit that produced it.
+  // C-02, C-04, C-05, C-12: a result belongs to the visit that produced it.
   ocultarResultado('tenant-banner');
   ocultarResultado('conexion-banner');
   ocultarResultado('mapeo-banner');
+  ocultarResultado('mapeo-conexion-banner');
   var pedida = String(window.location.hash || '').replace(/^#/, '');
-  var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
+  var activa = hashVacio() ? pantallaInicial() : (PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida);
+  pantallaMostrada = activa;
   document.title = TITULOS_PANTALLA[activa] + ' — ZeroDashboard';
   olvidarSecretos();
   PANTALLAS.forEach(function (nombre) {
@@ -8075,11 +8174,15 @@ mostrarPantalla();
 // The tenant list comes first: nothing else on this page can be asked for until the
 // console knows which tenant it is operating as.
 cargarTenants().then(function () {
+  tenantsListos = true;
   if (tenantActivo !== null) {
     listarGuardadas();
     cargarConexionesConsulta();
     cargarAutomatizaciones();
   }
+  // C-02: the list has answered, so the start screen can be settled for real. Only an empty hash is moved, and only
+  // when the guess made before the answer was wrong; a screen the operator chose is left where it is.
+  if (hashVacio() && pantallaMostrada !== pantallaInicial()) { mostrarPantalla(); }
 });
 </script>
 </body>
@@ -8210,7 +8313,7 @@ export type ResolverOperador = (cabeceraCookie: string | undefined) => Promise<O
  * rather than a `PrismaClient` so the page itself still touches no database: production
  * passes `resolverSesionConsola` (`src/app/rutas.ts`), the console tests a fixed operator.
  * `no-store`, because the page names a person and changes with the session. `/` is left
- * unclaimed.
+ * owned by src/inicio/inicio-rutas.ts (DEC-203).
  */
 export function registerConsolaRoute(app: FastifyInstance, resolverOperador: ResolverOperador): void {
   app.get('/consola', async (request, reply) => {

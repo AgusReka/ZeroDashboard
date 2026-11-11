@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
-import { ESTILOS_EXENTOS, RUTAS_PANEL_PUBLICAS } from '../aislamiento/contexto-tenant.js';
+import { ESTILOS_EXENTOS, INICIO_EXENTOS, RUTAS_PANEL_PUBLICAS } from '../aislamiento/contexto-tenant.js';
 import { leerCookie } from '../compartido/cookies.js';
 import { generarTokenSesion, hashTokenSesion, hashearClave, verificarClave } from '../compartido/crypto-auth.js';
 
@@ -53,6 +53,8 @@ export const EXENCIONES_OPERADOR: ReadonlySet<string> = new Set([
   'GET /consola',
   'POST /consola/ingresar',
   'GET /panel',
+  // UX review lote 4 (DEC-203): the start page and the two trailing-slash redirects, exact rows.
+  ...INICIO_EXENTOS,
   ...ESTILOS_EXENTOS,
   ...RUTAS_PANEL_PUBLICAS,
 ]);

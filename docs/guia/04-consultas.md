@@ -26,6 +26,7 @@ El pop-up de «Nueva consulta» tiene todos los campos del registro:
 **Reglas de ejecución**
 
 - La sentencia corre en una transacción de solo lectura, y solo si el rol de la conexión no puede escribir (DEC-08, DEC-09).
+- Antes de enviarla, la consola mira la primera palabra (sin contar espacios ni comentarios). Si es de escritura (`INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE`, `CREATE`, `ALTER`, `DROP`, `GRANT`, `REVOKE`, `COPY`, `CALL`, `DO`, `COMMENT`, `REINDEX`, `REFRESH`, `VACUUM`, `CLUSTER`) la rechaza con «La consulta fue rechazada: solo se permiten lecturas. Se encontró UPDATE.» y no abre ninguna conexión con el cliente ni deja fila en la auditoría (DEC-204). Es un aviso a tiempo, no la protección: una escritura dentro de un `WITH` o un `SELECT … INTO` pasa esa mirada y la frena el motor, con el mensaje general de solo lectura.
 - Tope de filas del despliegue: 200 por defecto (`MAX_FILAS_CONSULTA`). Si las filas por página piden más que el tope y hay más resultados, se corta, se avisa «Resultado cortado en el tope configurado de N filas» y no hay página siguiente (DEC-18, DEC-19).
 - Tiempo máximo: 15 000 ms por defecto (`QUERY_TIMEOUT_MS`).
 - Ambos valores salen del entorno de la aplicación; `docker-compose.yml` no los reenvía, así que con Compose rigen los predeterminados (ver el [`README.md`](../../README.md)).

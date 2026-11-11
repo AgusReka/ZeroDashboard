@@ -8,7 +8,7 @@ import {
   cookieVaciaConsola,
   requiereOperador,
 } from './consola-auth.js';
-import { ESTILOS_EXENTOS, RUTAS_PANEL_PUBLICAS } from '../aislamiento/contexto-tenant.js';
+import { ESTILOS_EXENTOS, INICIO_EXENTOS, RUTAS_PANEL_PUBLICAS } from '../aislamiento/contexto-tenant.js';
 import { leerCookie } from '../compartido/cookies.js';
 
 describe('CH-29 console session cookie (DEC-151)', () => {
@@ -62,7 +62,9 @@ describe('CH-29 operator guard exemptions (DEC-152)', () => {
     for (const fila of [...ESTILOS_EXENTOS, ...RUTAS_PANEL_PUBLICAS]) {
       assert.ok(EXENCIONES_OPERADOR.has(fila), `${fila} should be exempt`);
     }
-    assert.equal(EXENCIONES_OPERADOR.size, 4 + ESTILOS_EXENTOS.size + RUTAS_PANEL_PUBLICAS.size);
+    // UX review lote 4 (DEC-203): plus the start page and its two trailing-slash redirects.
+    assert.equal(EXENCIONES_OPERADOR.size, 4 + INICIO_EXENTOS.size + ESTILOS_EXENTOS.size + RUTAS_PANEL_PUBLICAS.size);
+    assert.deepEqual([...INICIO_EXENTOS].sort(), ['GET /', 'GET /consola/', 'GET /panel/']);
   });
 
   test('CH-48 the two panel dashboard rows are exempt, and only they: another method or a longer path is guarded', () => {
@@ -94,7 +96,18 @@ describe('CH-29 operator guard exemptions (DEC-152)', () => {
     assert.equal(requiereOperador('GET', '/consola-falsa'), true);
     assert.equal(requiereOperador('GET', '/consola/ingresar'), true);
     assert.equal(requiereOperador('HEAD', '/health'), true);
-    assert.equal(requiereOperador('GET', '/panel/'), true);
+    // DEC-203: the trailing-slash URLs are their own exact rows (redirects that read no session).
+    assert.equal(requiereOperador('GET', '/'), false);
+    assert.equal(requiereOperador('GET', '/consola/'), false);
+    assert.equal(requiereOperador('GET', '/panel/'), false);
+    for (const metodo of ['POST', 'PUT', 'DELETE', 'HEAD']) {
+      assert.equal(requiereOperador(metodo, '/'), true, `${metodo} /`);
+      assert.equal(requiereOperador(metodo, '/panel/'), true, `${metodo} /panel/`);
+      assert.equal(requiereOperador(metodo, '/consola/'), true, `${metodo} /consola/`);
+    }
+    assert.equal(requiereOperador('GET', '/panel//'), true);
+    assert.equal(requiereOperador('GET', '/panel/x'), true);
+    assert.equal(requiereOperador('GET', '/consola/x'), true);
   });
 
   test('a request that matched no route is guarded', () => {

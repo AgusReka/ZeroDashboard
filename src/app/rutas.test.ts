@@ -107,6 +107,46 @@ describe('CH-29 route table — every registered route is guarded or listed (DEC
     assert.ok(!EXENCIONES_OPERADOR.has('POST /api/panel/tablero'));
   });
 
+  test('DEC-203 the start page and the two trailing-slash redirects are registered and exempt by exact row', () => {
+    for (const fila of ['GET /', 'GET /consola/', 'GET /panel/']) {
+      assert.ok(rutas.has(fila), `${fila} is not registered`);
+      assert.ok(EXENCIONES_OPERADOR.has(fila), `${fila} must not need an operator`);
+    }
+    // Exact rows only: no other method on them, and no prefix row.
+    for (const fila of ['POST /', 'PUT /', 'DELETE /', 'POST /consola/', 'POST /panel/', 'GET /consola//']) {
+      assert.ok(!EXENCIONES_OPERADOR.has(fila), `${fila} must stay protected`);
+    }
+  });
+
+  test('DEC-203 GET / answers the static page without a cookie, a header or a database', async () => {
+    const respuesta = await app.inject({ method: 'GET', url: '/' });
+    assert.equal(respuesta.statusCode, 200);
+    assert.match(String(respuesta.headers['content-type']), /^text\/html/);
+    assert.equal(respuesta.headers['x-paso-guard'], '1', 'it got past the guard by its exact row');
+    assert.equal(respuesta.headers['set-cookie'], undefined);
+    assert.match(respuesta.body, /href="\/panel"[^>]*>Ir a mi panel</);
+    assert.match(respuesta.body, /href="\/consola"[^>]*>Ir a la consola</);
+    // The pool points at a closed port: an answer proves no query was needed.
+  });
+
+  test('DEC-203 GET /consola/ and GET /panel/ redirect with 308 to the canonical URL, setting no cookie', async () => {
+    for (const [url, destino] of [['/consola/', '/consola'], ['/panel/', '/panel']] as const) {
+      const respuesta = await app.inject({ method: 'GET', url, headers: { cookie: 'zd_consola_session=x; zd_panel_session=y' } });
+      assert.equal(respuesta.statusCode, 308, url);
+      assert.equal(respuesta.headers.location, destino, url);
+      assert.equal(respuesta.headers['set-cookie'], undefined, url);
+      assert.equal(respuesta.headers['x-paso-guard'], '1', url);
+    }
+  });
+
+  test('DEC-203 another method on / and a look-alike URL stay refused by the guard', async () => {
+    for (const [metodo, url] of [['POST', '/'], ['DELETE', '/'], ['POST', '/panel/'], ['GET', '/consola//'], ['GET', '/panel/x']] as const) {
+      const respuesta = await app.inject({ method: metodo, url });
+      assert.equal(respuesta.statusCode, 401, `${metodo} ${url}`);
+      assert.equal(respuesta.headers['x-paso-guard'], undefined, `${metodo} ${url}`);
+    }
+  });
+
   test('every exempt row names a registered route', () => {
     for (const fila of EXENCIONES_OPERADOR) {
       assert.ok(rutas.has(fila), `${fila} is exempt but no such route is registered`);

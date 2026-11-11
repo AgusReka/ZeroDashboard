@@ -49,6 +49,10 @@ What each path records:
 - **WHEN** an operator runs `UPDATE x SET y = 1`
 - **THEN** the answer is the usual `fallo` with `categoria` "no-es-lectura", and the row says `resultado` "fallo", `fase` "ejecucion", `categoria` "no-es-lectura"
 
+#### Scenario: A statement refused by its first word records nothing (DEC-204)
+- **WHEN** an operator runs `UPDATE x SET y = 1` and the first-word pre-check refuses it
+- **THEN** the answer carries `categoria` "no-es-lectura" and `palabra`, nothing was sent to the target, and no row is written (the path audits what it executes against a client's database, DEC-159)
+
 #### Scenario: A refused request records nothing
 - **WHEN** `POST /consultas/ejecutar` names an unknown connection
 - **THEN** the answer is 404 and no row is written

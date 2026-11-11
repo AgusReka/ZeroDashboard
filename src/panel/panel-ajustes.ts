@@ -6,7 +6,8 @@ import { destinatariosDe } from '../automatizaciones/automatizaciones-rutas.js';
 import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { conTenantActivo } from '../aislamiento/contexto-tenant.js';
 import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
-import { prepararSentencia, validarDeclaracion } from '../ejecucion/parametros.js';
+import { validarDeclaracion } from '../ejecucion/parametros.js';
+import { prepararSentenciaDeAutomatizacion } from '../automatizaciones/umbral.js';
 import { levantarSesionPanel } from './panel-auth.js';
 import { DIAS_PRESET, horarioPresetDeCron, type Dias } from './panel-automatizaciones.js';
 
@@ -148,7 +149,8 @@ export function proyectarAjustes(
  * `dias`, `destinatarios`), never as JSON pointers or `cron`.
  *
  * `umbral` is merged into the stored `valores` and the result goes through the same
- * `prepararSentencia` the alta uses, so the DEC-60 shape rules apply unchanged. When only
+ * `prepararSentencia` the alta uses (through `prepararSentenciaDeAutomatizacion`, which adds the
+ * DEC-205 rule: `umbral` is an integer, 0 or more), so the DEC-60 shape rules apply. When only
  * one of `hora` and `dias` is sent, the other comes from the stored preset.
  */
 export function resolverAjustes(
@@ -174,7 +176,7 @@ export function resolverAjustes(
   if (umbral !== undefined) {
     const valores = { ...valoresComoMapa(fila.valores), umbral };
     const preparada = declaraUmbral(plantilla.parametros)
-      ? prepararSentencia(sanearSql(plantilla.sql), plantilla.parametros, valores)
+      ? prepararSentenciaDeAutomatizacion(sanearSql(plantilla.sql), plantilla.parametros, valores)
       : null;
     if (preparada === null || !preparada.ok) {
       campos.push('umbral');

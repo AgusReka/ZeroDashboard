@@ -1,6 +1,6 @@
 # ZeroDashboard
 
-Plataforma que ofrece automatizaciones operativas a e-commerce pequeños sin modificar su plataforma de venta. El cliente expone una réplica de solo lectura de su base; ZeroDashboard se conecta, mapea ese esquema a un contrato canónico y ejecuta sobre él un catálogo de automatizaciones que avisan por correo. La consola (`/consola`) es la herramienta del implementador (P1); el panel (`/panel`) es la del administrador del negocio (P2).
+Plataforma que ofrece automatizaciones operativas a e-commerce pequeños sin modificar su plataforma de venta. El cliente expone una réplica de solo lectura de su base; ZeroDashboard se conecta, mapea ese esquema a un contrato canónico y ejecuta sobre él un catálogo de automatizaciones que avisan por correo. La consola (`/consola`) es la herramienta del implementador (P1); el panel (`/panel`) es la del administrador del negocio (P2). La página de inicio (`/`) lleva a cada una: «Ir a mi panel» y «Ir a la consola». `/consola/` y `/panel/`, con barra final, redirigen a su ruta.
 
 ## Estado actual
 
@@ -86,7 +86,7 @@ docker compose --profile demo --profile correo up -d --build
 curl http://localhost:3000/health   # {"status":"ready","db":"connected"}
 ```
 
-Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
+El punto de partida es `http://localhost:3000/`, con las dos puertas. Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
 
 1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y una automatización activa sobre la plantilla `stock-fisico`. Los avisos llegan a Mailpit, en `http://localhost:8026`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
 2. **Reportes.** En **Reportes**, «Nuevo reporte», probarlo contra la conexión de la demo y guardarlo. La guía trae un SQL de ejemplo: [Reportes](docs/guia/09-reportes.md#escribir-el-sql).

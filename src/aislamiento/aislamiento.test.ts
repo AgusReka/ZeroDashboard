@@ -847,7 +847,8 @@ describe(
         headers: cabeceras(a),
         payload: {
           conexionId: b.conexionId,
-          sql: `DELETE FROM "ConsultaGuardada" WHERE "tenantId" = '${b.tenantId}'`,
+          // Inside a WITH, so it gets past the first-word pre-check (DEC-204) and meets the lookup.
+          sql: `WITH x AS (DELETE FROM "ConsultaGuardada" WHERE "tenantId" = '${b.tenantId}' RETURNING 1) SELECT * FROM x`,
         },
       });
 

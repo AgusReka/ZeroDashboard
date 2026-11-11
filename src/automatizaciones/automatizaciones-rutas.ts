@@ -6,7 +6,8 @@ import { camposInvalidos } from '../compartido/campos-invalidos.js';
 import { sanearSql } from '../ejecucion/consulta-ejecucion.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
 import { direccionValida } from './correo.js';
-import { prepararSentencia, type ProblemaParametro } from '../ejecucion/parametros.js';
+import type { ProblemaParametro } from '../ejecucion/parametros.js';
+import { NOMBRE_UMBRAL, prepararSentenciaDeAutomatizacion } from './umbral.js';
 import { registerVistaPreviaRoute, type OpcionesVistaPrevia } from './vista-previa.js';
 
 /**
@@ -211,6 +212,14 @@ export type ResolucionAjusteOperador =
   | { ok: true; datos: DatosAjusteOperador }
   | { ok: false; campos: string[]; problemas?: ProblemaParametro[] };
 
+/** The stored `umbral`, read as an own key of the stored map, or `undefined` when there is none. */
+function umbralGuardado(valores: unknown): unknown {
+  if (typeof valores !== 'object' || valores === null || Array.isArray(valores)) {
+    return undefined;
+  }
+  return Object.entries(valores).find(([nombre]) => nombre === NOMBRE_UMBRAL)?.[1];
+}
+
 /**
  * Checks an adjust body with the alta's own rules and returns the columns to write. It is
  * not the panel's `resolverAjustes`: that one knows only `umbral` and the three preset
@@ -224,6 +233,8 @@ export function resolverAjusteOperador(
   plantilla: { sql: string; parametros: unknown },
   zona: string,
   tope: number,
+  /** DEC-205: the `valores` stored on the automation, so an unchanged `umbral` resent by the PUT is not refused. */
+  valoresGuardados?: unknown,
 ): ResolucionAjusteOperador {
   const campos: string[] = [];
   const datos: DatosAjusteOperador = {};
@@ -264,7 +275,11 @@ export function resolverAjusteOperador(
 
   if (cuerpo.valores !== undefined) {
     // Only the verdict is used, as in the alta: every run composes the statement again.
-    const preparada = prepararSentencia(sanearSql(plantilla.sql), plantilla.parametros, cuerpo.valores);
+    // DEC-205: `umbral` must be an integer, 0 or more, except for the very value already stored, which
+    // the operator may resend unchanged (this PUT replaces `valores` whole) even if it is an older decimal.
+    const preparada = prepararSentenciaDeAutomatizacion(sanearSql(plantilla.sql), plantilla.parametros, cuerpo.valores, {
+      guardado: umbralGuardado(valoresGuardados),
+    });
     if (preparada.ok) {
       datos.valores = cuerpo.valores;
     } else {
@@ -396,7 +411,8 @@ export function registerAutomatizacionRoutes(
       // The CH-11 value rules against the stored declaration, exactly as the test route
       // applies them. Only the verdict is used here: the statement is composed again on
       // every run, because DEC-68 lets the template change in place after this check.
-      const preparada = prepararSentencia(sanearSql(plantilla.sql), plantilla.parametros, valores);
+      // DEC-205: on top of the DEC-60 shape, `umbral` is an integer, 0 or more (nothing is stored yet to resend).
+      const preparada = prepararSentenciaDeAutomatizacion(sanearSql(plantilla.sql), plantilla.parametros, valores);
       if (!preparada.ok) {
         return reply.code(400).send({
           error: 'solicitud-invalida',
@@ -506,7 +522,7 @@ export function registerAutomatizacionRoutes(
       }
       const actual = await prisma.automatizacion.findUnique({
         where: { id: request.params.id },
-        select: { activo: true, plantillaId: true },
+        select: { activo: true, plantillaId: true, valores: true },
       });
       if (actual === null) {
         return reply.code(404).send({ error: 'automatizacion-no-encontrada' });
@@ -522,7 +538,7 @@ export function registerAutomatizacionRoutes(
         return reply.code(404).send({ error: 'plantilla-no-encontrada' });
       }
 
-      const resolucion = resolverAjusteOperador(request.body, plantilla, zonaHoraria, topeFilas);
+      const resolucion = resolverAjusteOperador(request.body, plantilla, zonaHoraria, topeFilas, actual.valores);
       if (!resolucion.ok) {
         return reply.code(400).send({
           error: 'solicitud-invalida',

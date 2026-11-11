@@ -24,6 +24,6 @@ tenant, consulta, SQL, sentencia, parámetro (`:umbral`), réplica, esquema, map
 
 ## Fórmulas
 - Falla (panel): **qué no pasó** + **por qué en términos de negocio** + **qué hacemos nosotros** + **si tenés que hacer algo**. "No pudimos armar tu resumen de esta mañana. Tu tienda tardó demasiado en responder. Lo intentamos de nuevo a las 09:30; no tenés que hacer nada."
-- Error (consola): **qué se rechazó** + **regla** + **dato técnico en mono**. "La consulta fue rechazada: solo se permiten lecturas. Se encontró UPDATE en la línea 3."
+- Error (consola): **qué se rechazó** + **regla** + **dato técnico en mono**. "La consulta fue rechazada: solo se permiten lecturas. Se encontró UPDATE." (sin número de línea: DEC-204).
 - Confirmación destructiva: el botón repite la acción y el objeto ("Revocar token", "Operar sobre Panadería La Espiga"); nunca "Sí" / "Aceptar".
 - Vacío: qué falta + cuándo aparece + acción.

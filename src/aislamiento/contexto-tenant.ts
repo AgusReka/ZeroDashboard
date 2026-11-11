@@ -186,6 +186,16 @@ export const ESTILOS_EXENTOS: ReadonlySet<string> = new Set(
   RUTAS_ESTILOS.map((ruta) => 'GET ' + ruta),
 );
 
+/**
+ * UX review lote 4 (DEC-203): the start page and the two trailing-slash redirects, three exact
+ * rows. Their registrar (`src/inicio/inicio-rutas.ts`) takes the app and nothing else, so no
+ * handler can read a session or a scoped model: the DEC-24 argument again. Exact on purpose:
+ * `GET /` is not a prefix, a look-alike URL and any other method stay scoped, and `GET /consola`
+ * and `GET /panel` (the handlers that do read the cookie) keep their own rows. Exported so the
+ * operator guard builds its own list from this set, and a row cannot be exempt in one and not the other.
+ */
+export const INICIO_EXENTOS: ReadonlySet<string> = new Set(['GET /', 'GET /consola/', 'GET /panel/']);
+
 function esExenta(metodo: string, patron: string | undefined): boolean {
   if (patron === undefined) {
     return false;
@@ -204,6 +214,10 @@ function esExenta(metodo: string, patron: string | undefined): boolean {
     metodo === 'GET' &&
     (patron === '/health' || patron === '/consola' || patron === '/contrato' || patron === '/panel')
   ) {
+    return true;
+  }
+  // The start page and its two redirects read no session and no data (DEC-203); see INICIO_EXENTOS.
+  if (INICIO_EXENTOS.has(`${metodo} ${patron}`)) {
     return true;
   }
   // The template catalog is shared by every tenant (DEC-61); see PLANTILLAS_EXENTAS.

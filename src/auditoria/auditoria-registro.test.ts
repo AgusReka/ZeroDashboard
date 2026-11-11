@@ -196,14 +196,28 @@ describe(
       assert.ok(!JSON.stringify(fila).includes('valor-que-no-se-guarda'));
     });
 
-    test('a read-only rejection is recorded as a failure with its phase and category', async () => {
-      const r = await post('/consultas/ejecutar', { conexionId, sql: `UPDATE ${ESQUEMA}.producto SET nombre = 'x'` });
+    test('a read-only rejection by the engine is recorded as a failure with its phase and category', async () => {
+      // A write inside a WITH passes the first-word pre-check (DEC-204), so the engine refuses it.
+      const r = await post('/consultas/ejecutar', {
+        conexionId,
+        sql: `WITH x AS (UPDATE ${ESQUEMA}.producto SET nombre = 'x' RETURNING id) SELECT id FROM x`,
+      });
       assert.equal(r.json().resultado, 'fallo');
+      assert.equal(r.json().categoria, 'no-es-lectura');
       const fila = (await registros()).at(-1)!;
       assert.equal(fila.resultado, 'fallo');
       assert.equal(fila.fase, r.json().fase);
       assert.equal(fila.categoria, r.json().categoria);
       assert.equal(fila.filas, null);
+    });
+
+    test('DEC-204 a statement refused by its first word is not sent, so it writes no row', async () => {
+      const antes = (await registros()).length;
+      const r = await post('/consultas/ejecutar', { conexionId, sql: `UPDATE ${ESQUEMA}.producto SET nombre = 'x'` });
+      assert.equal(r.statusCode, 200);
+      assert.equal(r.json().categoria, 'no-es-lectura');
+      assert.equal(r.json().palabra, 'UPDATE');
+      assert.equal((await registros()).length, antes);
     });
 
     test('a request refused before the engine writes nothing', async () => {
@@ -268,6 +282,44 @@ describe(
       assert.equal(fila.origen, 'conexion-prueba');
       assert.equal(fila.sql, 'SELECT 1');
       assert.equal(fila.resultado, r.json().resultado);
+    });
+
+    test('UX review C-05 GET /conexiones carries the last test of each connection, read from the audit, and nothing else new', async () => {
+      const prueba = await post(`/conexiones/${conexionId}/prueba`, {});
+      assert.equal(prueba.statusCode, 200, prueba.body);
+      const lista = await app.inject({ method: 'GET', url: '/conexiones', headers: { cookie, 'x-tenant-id': tenantId } });
+      assert.equal(lista.statusCode, 200, lista.body);
+      const fila = lista.json().conexiones.find((c: { id: string }) => c.id === conexionId);
+      assert.deepEqual(Object.keys(fila.ultimaPrueba).sort(), ['categoria', 'codigo', 'fecha', 'resultado']);
+      assert.equal(fila.ultimaPrueba.resultado, prueba.json().resultado);
+      assert.equal(fila.ultimaPrueba.categoria, prueba.json().categoria);
+      assert.ok(!Number.isNaN(Date.parse(fila.ultimaPrueba.fecha)));
+      assert.ok(!lista.body.includes('credencial'));
+      // The most recent test wins: an older failure does not replace it. (The audit table refuses
+      // UPDATE and DELETE by trigger, DEC-162, so the row is added in the past and stays.)
+      await db.registroEjecucion.create({
+        data: {
+          tenantId, tenantNombre: 'x', operadorId, operadorNombre: operador, origen: 'conexion-prueba', conexionId,
+          sql: 'SELECT 1', resultado: 'fallo', fase: 'conexion', categoria: 'credenciales-invalidas', codigo: '28P01',
+          creadoEn: new Date(Date.now() - 3_600_000),
+        },
+      });
+      const despues = (await app.inject({ method: 'GET', url: '/conexiones', headers: { cookie, 'x-tenant-id': tenantId } })).json();
+      const vigente = despues.conexiones.find((c: { id: string }) => c.id === conexionId).ultimaPrueba;
+      assert.equal(vigente.categoria, fila.ultimaPrueba.categoria);
+      assert.equal(vigente.fecha, fila.ultimaPrueba.fecha);
+    });
+
+    test('UX review C-05 a connection never tested has ultimaPrueba null, and another tenant tests do not count', async () => {
+      const otro = await db.tenant.create({ data: { nombre: `CH-20 otro ${Date.now()}` } });
+      const sinPrueba = await db.conexion.create({
+        data: { tenantId: otro.id, nombre: 'sin prueba', motor: 'postgres', host: 'x', puerto: 5432, baseDeDatos: 'x', usuarioDb: 'x', credencial: 'x' },
+      });
+      const lista = await app.inject({ method: 'GET', url: '/conexiones', headers: { cookie, 'x-tenant-id': otro.id } });
+      assert.equal(lista.statusCode, 200, lista.body);
+      assert.deepEqual(lista.json().conexiones.map((c: { id: string; ultimaPrueba: unknown }) => [c.id, c.ultimaPrueba]), [[sinPrueba.id, null]]);
+      await db.conexion.deleteMany({ where: { tenantId: otro.id } });
+      await db.tenant.delete({ where: { id: otro.id } });
     });
 
     test('a failed audit write keeps the answer and logs an error without the statement', async () => {

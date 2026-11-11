@@ -40,7 +40,7 @@ The system SHALL store operators in a table `Operador` with a unique `nombre` an
 ### Requirement: Operator Guard
 The system SHALL register, in the application entry point, a guard that runs on every request before the tenant header hooks and that cannot be disabled by configuration. A request whose method and route pattern are not in the closed exemption list SHALL be answered 401 before any handler or tenant check unless it carries a valid console session: 401 `sesion-expirada` when the session exists but has expired (its row is deleted on use), 401 `sesion-invalida` in every other case (no cookie, unknown token). A request matching no route SHALL be treated as not exempt. A valid session SHALL attach `{ id, nombre }` of the operator to the request.
 
-The exemption list SHALL be exactly: `GET /health`; `GET /consola`; `POST /consola/ingresar`; each `GET` row of the shared stylesheet; `GET /panel`; and each row of the panel's public routes (`/api/panel/*`). The agents' WebSocket upgrade is outside the routing and SHALL keep working without a console session. `GET /contrato`, `/plantillas`, `/tenants` and every other console route SHALL be guarded.
+The exemption list SHALL be exactly: `GET /health`; `GET /consola`; `POST /consola/ingresar`; each `GET` row of the shared stylesheet; `GET /panel`; the start page and its two trailing-slash redirects, `GET /`, `GET /consola/` and `GET /panel/` (DEC-203); and each row of the panel's public routes (`/api/panel/*`). The agents' WebSocket upgrade is outside the routing and SHALL keep working without a console session. `GET /contrato`, `/plantillas`, `/tenants` and every other console route SHALL be guarded.
 
 #### Scenario: An unauthenticated console call is refused before the tenant check
 - **GIVEN** no cookie
@@ -54,6 +54,13 @@ The exemption list SHALL be exactly: `GET /health`; `GET /consola`; `POST /conso
 #### Scenario: Exempt routes need no session
 - **WHEN** `GET /health`, `GET /ui/styles.css`, `GET /panel` or `POST /api/panel/auth/ingresar` is called without a console cookie
 - **THEN** none of them answers 401 `sesion-invalida`
+
+#### Scenario: The start page and the trailing-slash redirects need no session
+- **WHEN** `GET /` is called without a cookie
+- **THEN** the answer is 200 HTML with two links, `/panel` (primary) and `/consola`, and no `Set-Cookie`
+- **WHEN** `GET /consola/` or `GET /panel/` is called, with or without a cookie
+- **THEN** the answer is 308 with `Location` `/consola` or `/panel`, and no `Set-Cookie`
+- **AND** `POST /` and any other method on those URLs stay guarded
 
 #### Scenario: An unmatched URL is refused
 - **WHEN** `GET /no-existe` is called without a cookie

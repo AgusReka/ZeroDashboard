@@ -181,6 +181,31 @@ describe(
       }
     });
 
+    // ---- UX review P-06 (DEC-205): umbral is an integer, 0 or more -------------------------
+
+    test('DEC-205 a decimal, negative or text umbral is a 400 naming the business field with no text, and nothing is written', async () => {
+      const n = await negocio('umbral-invalido');
+      const id = await automatizacion(n);
+      for (const umbral of [2.5, -1, '3', null]) {
+        const respuesta = await guardar(n, id, { umbral });
+        assert.equal(respuesta.statusCode, 400, `${String(umbral)}: ${respuesta.body}`);
+        assert.deepEqual(respuesta.json(), { error: 'solicitud-invalida', campos: ['umbral'] });
+      }
+      assert.deepEqual((await fila(id)).valores, { umbral: 20 });
+      assert.equal((await guardar(n, id, { umbral: 0 })).statusCode, 200);
+      assert.deepEqual((await fila(id)).valores, { umbral: 0 });
+    });
+
+    test('DEC-205 a decimal already stored is still read, and other fields can still be changed over it', async () => {
+      const n = await negocio('umbral-guardado');
+      const id = await automatizacion(n);
+      await db.automatizacion.update({ where: { id }, data: { valores: { umbral: 2.5 } } });
+      assert.equal((await leer(n, id)).json().umbral, 2.5);
+      const hora = await guardar(n, id, { hora: '10:15' });
+      assert.equal(hora.statusCode, 200, hora.body);
+      assert.deepEqual((await fila(id)).valores, { umbral: 2.5 });
+    });
+
     // ---- channel (CH-44, DEC-197) -----------------------------------------------------
 
     const vincular = (n: Negocio, chatId = 987654321n) =>

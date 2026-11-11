@@ -150,7 +150,7 @@ class Nodo {
 const PANTALLAS_DEL_TENANT = ['conexiones', 'agentes', 'mapeo', 'usuarios', 'tablero', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
 
 /** C-02, C-04, C-08, C-12: the places a result is shown as a banner. */
-const BANNERS_DE_RESULTADO = ['tenant-banner', 'conexion-banner', 'consulta-aviso', 'mapeo-banner'];
+const BANNERS_DE_RESULTADO = ['tenant-banner', 'conexion-banner', 'consulta-aviso', 'mapeo-banner', 'mapeo-conexion-banner'];
 
 /** The ids the console's script looks up, plus the two table sections. */
 const IDS = [
@@ -586,6 +586,8 @@ interface Escenario {
   oyentesVentana: Map<string, Array<() => void>>;
   /** C-19: what the script last wrote to `document.title`. */
   titulo?: string;
+  /** C-02: the tenant id the browser remembers from an earlier visit, put in localStorage before the script runs. */
+  tenantGuardado?: string;
 }
 
 /**
@@ -623,6 +625,9 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
   };
 
   const almacenamiento = new Map<string, string>();
+  if (escenario.tenantGuardado !== undefined) {
+    almacenamiento.set('zerodashboard.tenantActivo', escenario.tenantGuardado);
+  }
   const ventana = {
     // CH-29: a 401 and the logout both reload, so the server serves the login screen.
     location: {
@@ -856,7 +861,10 @@ describe('the console document, served by the real route', () => {
   async function arrancar(
     tenants: Array<{ id: string; nombre: string; creadoEn?: string }> = [{ id: 't-1', nombre: 'Food Store' }],
     respuestaTenants: { status: number; cuerpo: unknown } = { status: 200, cuerpo: { tenants } },
-    hash = '',
+    // C-02: an empty hash now opens Tenants while no tenant is selected, so the fixtures written for Consultas ask for it by hash.
+    hash = '#consultas',
+    /** C-02: the remembered tenant, and the answers the boot asks for after the tenant list. */
+    inicio: { tenantGuardado?: string; adicionales?: Array<{ status: number; cuerpo: unknown }> } = {},
   ): Promise<Escenario> {
     const nodos = new Map<string, Nodo>();
     for (const id of IDS) {
@@ -873,11 +881,12 @@ describe('the console document, served by the real route', () => {
       nodos,
       encabezado: new Nodo('thead'),
       cuerpoTabla: new Nodo('tbody'),
-      respuestas: [respuestaTenants],
+      respuestas: [respuestaTenants, ...(inicio.adicionales ?? [])],
       peticiones: [],
       recargas: 0,
       ubicacion: { hash },
       oyentesVentana: new Map(),
+      ...(inicio.tenantGuardado === undefined ? {} : { tenantGuardado: inicio.tenantGuardado }),
     };
 
     ejecutarConsola(script, escenario);
@@ -9198,6 +9207,211 @@ describe('the console document, served by the real route', () => {
     await enviar(escenario, { error: 'interno' }, 500, 'guardar', 'click');
     assert.equal(nodo(escenario, 'consulta-aviso-titulo').textContent, 'No se pudo guardar la consulta');
     assert.equal(nodo(escenario, 'consulta-aviso-cuerpo').textContent, 'La aplicación respondió HTTP 500.');
+  });
+
+  test('C-07 (DEC-204) a statement refused by its first word says read-only and names the word, in the existing banner', async () => {
+    const escenario = await conConexiones();
+    abrirNueva(escenario);
+    escribir(escenario, 'sql', 'UPDATE producto SET stock = 0');
+    escribir(escenario, 'conexion', 'c-1', 'change');
+    await enviar(escenario, { resultado: 'fallo', fase: 'ejecucion', categoria: 'no-es-lectura', codigo: null, duracionMs: 0, palabra: 'UPDATE' });
+    const aviso = nodo(escenario, 'consulta-aviso');
+    assert.equal(aviso.hidden, false);
+    assert.equal(aviso.getAttribute('data-tono'), 'error');
+    assert.equal(aviso.getAttribute('role'), 'alert');
+    assert.equal(nodo(escenario, 'consulta-aviso-cuerpo').textContent, 'La consulta fue rechazada: solo se permiten lecturas. Se encontró UPDATE.');
+    assert.ok(!/SQLSTATE/.test(nodo(escenario, 'consulta-aviso-cuerpo').textContent), 'no SQLSTATE: nothing reached the engine');
+
+    // The engine's own refusal (no word) keeps its sentence, and a syntax error keeps its own: the two are told apart.
+    escribir(escenario, 'sql', 'WITH x AS (DELETE FROM t RETURNING 1) SELECT * FROM x');
+    await enviar(escenario, { resultado: 'fallo', fase: 'ejecucion', categoria: 'no-es-lectura', codigo: '0A000', duracionMs: 4 });
+    assert.match(nodo(escenario, 'consulta-aviso-cuerpo').textContent, /intenta escribir o modificar la estructura de la base.*\(SQLSTATE 0A000\)$/);
+    escribir(escenario, 'sql', 'SELEC 1');
+    await enviar(escenario, { resultado: 'fallo', fase: 'ejecucion', categoria: 'error-sintaxis', codigo: '42601', duracionMs: 4 });
+    assert.match(nodo(escenario, 'consulta-aviso-cuerpo').textContent, /^La sentencia es inválida/);
+  });
+
+  // ---- C-02: the start screen -----------------------------------------------------------------
+
+  const TENANTS_INICIO = [{ id: 't-1', nombre: 'Food Store' }];
+  const LISTA_TENANTS = { status: 200, cuerpo: { tenants: [{ id: 't-1', nombre: 'Food Store', activo: true, creadoEn: '2026-10-01T10:00:00.000Z' }] } };
+
+  test('C-02 with no hash and no tenant the console opens Tenants, and lists them', async () => {
+    const escenario = await arrancar(TENANTS_INICIO, undefined, '', { adicionales: [LISTA_TENANTS] });
+    soloVisible(escenario, 'tenants');
+    assert.equal(escenario.titulo, 'Tenants — ZeroDashboard');
+    assert.deepEqual(escenario.peticiones.map((p) => p.url).sort(), ['/tenants', '/tenants?incluirInactivos=true']);
+  });
+
+  test('C-02 with no hash and a remembered tenant that is still active it opens Consultas, without passing through Tenants', async () => {
+    const escenario = await arrancar(TENANTS_INICIO, undefined, '', {
+      tenantGuardado: 't-1',
+      adicionales: respuestasDeTenant(),
+    });
+    soloVisible(escenario, 'consultas');
+    assert.equal(escenario.titulo, 'Consultas — ZeroDashboard');
+    assert.ok(!escenario.peticiones.some((p) => p.url.startsWith('/tenants?')), 'Tenants was never loaded');
+    assert.equal(escenario.peticiones[0]?.url, '/tenants');
+    assert.ok(escenario.peticiones.some((p) => p.url === '/consultas-guardadas' && p.tenant === 't-1'));
+  });
+
+  test('C-02 a remembered tenant that is no longer active sends the empty hash to Tenants once the list answers', async () => {
+    const escenario = await arrancar(TENANTS_INICIO, undefined, '', { tenantGuardado: 't-viejo', adicionales: [LISTA_TENANTS] });
+    soloVisible(escenario, 'tenants');
+    assert.equal(escenario.titulo, 'Tenants — ZeroDashboard');
+    assert.ok(escenario.peticiones.some((p) => p.url === '/tenants?incluirInactivos=true'));
+  });
+
+  test('C-02 only an empty hash is decided by the tenant: a named screen stays, and an unknown hash still falls back to Consultas', async () => {
+    soloVisible(await arrancar(undefined, undefined, '#frescura'), 'frescura');
+    soloVisible(await arrancar(undefined, undefined, '#no-existe'), 'consultas');
+    soloVisible(await arrancar(undefined, undefined, '#conexiones'), 'conexiones');
+  });
+
+  test('C-02 choosing a tenant from the Tenants start screen leaves the screen where it is', async () => {
+    const escenario = await arrancar(TENANTS_INICIO, undefined, '', { adicionales: [LISTA_TENANTS] });
+    soloVisible(escenario, 'tenants');
+    await elegirTenant(escenario);
+    soloVisible(escenario, 'tenants');
+  });
+
+  // ---- C-05: the last test of each connection -------------------------------------------------
+
+  const ULTIMA_OK = { resultado: 'ok', categoria: null, codigo: null, fecha: '2026-11-10T12:57:17.144Z' };
+  const ULTIMA_FALLO = { resultado: 'fallo', categoria: 'credenciales-invalidas', codigo: '28P01', fecha: '2026-11-10T12:57:17.144Z' };
+
+  test('C-05 the Conexiones list shows the last test of each connection as a badge and a date: OK, Falló, Sin probar, and none when absent', async () => {
+    const escenario = await abrirConexiones([
+      { ...CONEXION_LISTADA, id: 'c-1', ultimaPrueba: ULTIMA_OK },
+      { ...CONEXION_LISTADA, id: 'c-2', nombre: 'Mala', ultimaPrueba: ULTIMA_FALLO },
+      { ...CONEXION_LISTADA, id: 'c-3', nombre: 'Nunca', ultimaPrueba: null },
+      { ...CONEXION_LISTADA, id: 'c-4', nombre: 'Sin dato' },
+    ]);
+    assert.ok(marcado().includes("<th>Última prueba</th><th>Prueba</th>"));
+    const filas = nodo(escenario, 'conexiones-cuerpo').hijos;
+    const ultima = (i: number): Nodo => filas[i].hijos[5];
+    assert.match(ultima(0).textContent, /^OK/);
+    assert.equal(ultima(0).porClase('estado-frescura estado-frescura--prueba-ok').length, 1);
+    assert.match(ultima(1).textContent, /^Falló/);
+    assert.equal(ultima(1).porClase('estado-frescura estado-frescura--prueba-falla').length, 1);
+    assert.equal(ultima(2).textContent, 'Sin probar');
+    assert.equal(ultima(2).porClase('estado-frescura estado-frescura--prueba-sin').length, 1);
+    assert.equal(ultima(3).textContent, 'Sin probar', 'an answer without the field reads as never tested');
+    // The state is an icon and a word, never the color alone.
+    assert.ok(buscar(ultima(1), (n) => n.tagName === 'svg').length >= 1);
+    for (const i of [0, 1]) assert.match(ultima(i).textContent, /10\/11\/2026 \d\d:\d\d/, 'with its date');
+    assert.ok(!/2026-11-10T/.test(ultima(0).textContent), 'no raw ISO');
+  });
+
+  test('C-05 «Probar conexión» updates the badge of its row with the result it just got', async () => {
+    const escenario = await abrirConexiones([{ ...CONEXION_LISTADA, ultimaPrueba: ULTIMA_OK }]);
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: { resultado: 'fallo', categoria: 'credenciales-invalidas', codigo: '28P01', host: 'db.cliente.test', puerto: 5432, duracionMs: 30 },
+    });
+    const fila = nodo(escenario, 'conexiones-cuerpo').hijos[0];
+    botonesCon(fila, 'Probar conexión')[0].disparar('click');
+    await asentarVarias();
+    assert.match(fila.hijos[5].textContent, /^Falló/);
+    assert.equal(fila.hijos[5].porClase('estado-frescura estado-frescura--prueba-falla').length, 1);
+    assert.match(fila.hijos[6].textContent, /credenciales-invalidas/, 'the line next to the button keeps its text');
+  });
+
+  test('C-05 the connection selectors add the last test to the name, and say nothing when the list does not carry it', async () => {
+    const conPrueba = [
+      { id: 'c-1', nombre: 'Buena', ultimaPrueba: ULTIMA_OK },
+      { id: 'c-2', nombre: 'Mala', ultimaPrueba: ULTIMA_FALLO },
+      { id: 'c-3', nombre: 'Nunca', ultimaPrueba: null },
+      { id: 'c-4', nombre: 'Vieja' },
+    ];
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [], 't-1', undefined, conPrueba);
+    const textos = nodo(escenario, 'conexion').options.map((o) => o.textContent);
+    assert.deepEqual(textos, [
+      'Elegí una conexión',
+      'Buena (c-1…) · última prueba OK',
+      'Mala (c-2…) · última prueba falló',
+      'Nunca (c-3…) · sin probar',
+      'Vieja (c-4…)',
+    ]);
+    // The value is still the full id.
+    assert.deepEqual(nodo(escenario, 'conexion').options.map((o) => o.value), ['', 'c-1', 'c-2', 'c-3', 'c-4']);
+  });
+
+  test('C-05 Mapeo warns when the chosen connection last test failed, and the warning goes away with another choice', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        conexiones: [
+          { ...CONEXION_LISTADA, id: 'c-1', ultimaPrueba: ULTIMA_OK },
+          { ...CONEXION_LISTADA, id: 'c-2', nombre: 'Mala', ultimaPrueba: ULTIMA_FALLO },
+        ],
+        truncado: false,
+      },
+    });
+    irA(escenario, '#mapeo');
+    await asentarVarias();
+    assert.deepEqual(nodo(escenario, 'mapeo-conexion').options.map((o) => o.textContent), [
+      'Elegí una conexión',
+      'Réplica principal · última prueba OK',
+      'Mala · última prueba falló',
+    ]);
+    const aviso = nodo(escenario, 'mapeo-conexion-banner');
+    assert.equal(aviso.hidden, true);
+
+    const elegir = async (id: string): Promise<void> => {
+      escenario.respuestas.push(
+        { status: 200, cuerpo: { validacionMapeo: informeDePrueba() } },
+        { status: 200, cuerpo: { vistasCanonicas: [] } },
+      );
+      const selector = nodo(escenario, 'mapeo-conexion');
+      selector.value = id;
+      selector.disparar('change');
+      await asentarVarias();
+    };
+    await elegir('c-2');
+    assert.equal(aviso.hidden, false);
+    assert.equal(aviso.getAttribute('data-tono'), 'warn');
+    assert.equal(aviso.getAttribute('role'), 'alert');
+    assert.equal(nodo(escenario, 'mapeo-conexion-banner-titulo').textContent, 'La última prueba de esta conexión falló');
+    assert.match(nodo(escenario, 'mapeo-conexion-banner-cuerpo').textContent, /rechazó las credenciales guardadas[\s\S]*\(SQLSTATE 28P01\)/);
+    assert.match(nodo(escenario, 'mapeo-conexion-banner-cuerpo').textContent, /Probá la conexión de nuevo en Conexiones/);
+    // The mapping itself is still read: the warning does not block it.
+    assert.equal(escenario.peticiones.some((p) => p.url === '/conexiones/c-2/validacion-mapeo'), true);
+
+    await elegir('c-1');
+    assert.equal(aviso.hidden, true);
+    await elegir('c-2');
+    assert.equal(aviso.hidden, false);
+    await elegir('');
+    assert.equal(aviso.hidden, true);
+  });
+
+  test('C-05 a connection with an unknown or a missing last test raises no warning in Mapeo', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    escenario.respuestas.push({
+      status: 200,
+      cuerpo: {
+        conexiones: [
+          { ...CONEXION_LISTADA, id: 'c-1', ultimaPrueba: null },
+          { ...CONEXION_LISTADA, id: 'c-2', nombre: 'Vieja' },
+        ],
+        truncado: false,
+      },
+    });
+    irA(escenario, '#mapeo');
+    await asentarVarias();
+    for (const id of ['c-1', 'c-2']) {
+      escenario.respuestas.push({ status: 200, cuerpo: { validacionMapeo: informeDePrueba() } }, { status: 200, cuerpo: { vistasCanonicas: [] } });
+      const selector = nodo(escenario, 'mapeo-conexion');
+      selector.value = id;
+      selector.disparar('change');
+      await asentarVarias();
+      assert.equal(nodo(escenario, 'mapeo-conexion-banner').hidden, true, id);
+    }
   });
 
   test('C-04 C-08 C-12 every result banner is the shared one, hidden at load, with its three tone icons and an alert role', () => {
