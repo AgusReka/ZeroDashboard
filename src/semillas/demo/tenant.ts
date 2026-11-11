@@ -62,10 +62,26 @@ export async function verificarBaseDeReplica(
   throw new Error(mensajeSinRespuesta(sondeo.fase, sondeo.categoria, sondeo.codigo));
 }
 
+/** Creates the tenant row when missing. The agent step runs it first: its row needs the tenant's. */
+export async function sembrarFilaTenant(
+  prisma: Pick<ClienteSemilla, 'tenant'>,
+  tenant: TenantDemo,
+  creadas: string[],
+): Promise<void> {
+  const tenantId = tenant.ids.tenant;
+  await crearSiFalta(
+    creadas,
+    `${tenant.prefijoEtiqueta}tenant`,
+    () => prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } }),
+    () => prisma.tenant.create({ data: { id: tenantId, nombre: tenant.nombre } }),
+  );
+}
+
 /**
  * Seeds one tenant from its descriptor: the tenant, its connection, the optional saved query,
  * its panel user, the five views with the probe and the daily automation. `agenteId` binds the
- * connection to an agent when the row is created; it stays `null` until the agent unit.
+ * connection to an agent when the row is created (an existing connection stays as it is); it is
+ * `null` for a direct connection. The probe is always direct.
  * Throws, naming the cause, when the replica does not answer or an entity is not valid after
  * the probe; the views of this run are then removed and the automation is not created.
  */
@@ -79,12 +95,7 @@ export async function sembrarTenant(
   const etiqueta = (nombre: string): string => `${tenant.prefijoEtiqueta}${nombre}`;
   const { tenant: tenantId, conexion: conexionId } = tenant.ids;
 
-  await crearSiFalta(
-    creadas,
-    etiqueta('tenant'),
-    () => prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } }),
-    () => prisma.tenant.create({ data: { id: tenantId, nombre: tenant.nombre } }),
-  );
+  await sembrarFilaTenant(prisma, tenant, creadas);
 
   await crearSiFalta(
     creadas,
@@ -102,7 +113,7 @@ export async function sembrarTenant(
           baseDeDatos: tenant.replica.baseDatos,
           usuarioDb: tenant.replica.usuario,
           // Enciphered like any registered connection (CH-07); no agent unless the caller
-          // binds one: the replica is reachable directly inside the Compose network.
+          // binds one. Host and port stay as the agent sees them (DEC-207).
           credencial: cifrarCredencial(contexto.claveReplica),
           soloLectura: true,
           agenteId,

@@ -3,6 +3,7 @@ import { LARGO_MINIMO_CLAVE, validarClave } from '../operador-alta.js';
 import { correoValido, normalizarCorreo } from '../usuarios/usuarios-panel.js';
 import { hashearClave } from '../compartido/crypto-auth.js';
 import type { ClienteSemilla, TenantDemo } from './demo/comun.js';
+import { FORMATO_TOKEN_AGENTE, sembrarAgente } from './demo/agente.js';
 import { sembrarCanales } from './demo/canales.js';
 import { IDS_REPORTES_DEMO, sembrarReportes } from './demo/reportes.js';
 import { sembrarTablero } from './demo/tableros.js';
@@ -17,7 +18,8 @@ export type { ClienteSemilla } from './demo/comun.js';
  * `POST /conexiones/:id/validacion-mapeo`, one saved query, a panel user and an active
  * automation. CH-49 adds a second tenant, "Café del Puerto", on its own replica database; both
  * run the same steps (`demo/tenant.ts`) from a descriptor. `prisma/seed.ts` calls it only when
- * the variable is exactly `1`.
+ * the variable is exactly `1`. With `DEMO_AGENTE_TOKEN` Food Store also gets an agent and its
+ * connection is created bound to it (`demo/agente.ts`, DEC-207).
  *
  * Every row has a fixed id and is created only if absent (DEC-125's rule): an existing row
  * is never updated or deleted, so a restart leaves the owner's edits alone. The one
@@ -146,6 +148,8 @@ export interface EntornoDemo {
   clavePanel: string;
   /** Optional (CH-49 c): the chat Food Store is linked to; `null` when unset or empty. */
   telegramChatId: bigint | null;
+  /** Optional (CH-49 d): the token of Food Store's agent; `null` when unset or empty. Never logged. */
+  agenteToken: string | null;
 }
 
 /** A signed 64-bit integer, the range of the `BigInt` column. */
@@ -165,6 +169,20 @@ function chatIdDeTelegram(env: NodeJS.ProcessEnv): bigint | null {
     }
   }
   throw new Error('Invalid environment variable: DEMO_TELEGRAM_CHAT_ID must be a Telegram chat id');
+}
+
+/** The agent token, or `null` when the variable is unset or empty. Never echoes the value. */
+function tokenDeAgente(env: NodeJS.ProcessEnv): string | null {
+  const valor = env.DEMO_AGENTE_TOKEN;
+  if (valor === undefined || valor === '') {
+    return null;
+  }
+  if (!FORMATO_TOKEN_AGENTE.test(valor)) {
+    throw new Error(
+      'Invalid environment variable: DEMO_AGENTE_TOKEN must be an agent token (zda_ followed by 43 characters)',
+    );
+  }
+  return valor;
 }
 
 function variable(env: NodeJS.ProcessEnv, nombre: string): string {
@@ -195,7 +213,14 @@ export function leerEntornoDemo(env: NodeJS.ProcessEnv = process.env): EntornoDe
   }
 
   const clavePanel = variable(env, 'DEMO_PANEL_CLAVE');
-  return { claveReplica, claveOperador, correoPanel, clavePanel, telegramChatId: chatIdDeTelegram(env) };
+  return {
+    claveReplica,
+    claveOperador,
+    correoPanel,
+    clavePanel,
+    telegramChatId: chatIdDeTelegram(env),
+    agenteToken: tokenDeAgente(env),
+  };
 }
 
 export interface DependenciasDemo {
@@ -213,6 +238,8 @@ export interface ResumenDemo {
  * cause, when the replica does not answer or an entity is not valid after the probe; in
  * both cases the tenant's automation is not created and its views of this run are removed.
  * Café del Puerto is checked against an old replica volume before any of its rows exists.
+ * With an agent token, Food Store's agent comes before its tenant step (the connection is created
+ * bound to it); the replica is still probed directly.
  * After both tenants come the four global reports and each tenant's dashboard (CH-49 b2), then
  * Food Store's Telegram link (when a chat id is set) and its every-minute automations (CH-49 c).
  */
@@ -249,7 +276,10 @@ export async function sembrarDemo(
     creadas,
   };
 
-  await sembrarTenant(prisma, tenantFoodStore(entorno), contexto);
+  const foodStore = tenantFoodStore(entorno);
+  const agenteId =
+    entorno.agenteToken === null ? null : await sembrarAgente(prisma, foodStore, entorno.agenteToken, creadas);
+  await sembrarTenant(prisma, foodStore, contexto, agenteId);
 
   const cafe = tenantCafe(entorno);
   const cafeExiste = await prisma.tenant.findUnique({ where: { id: cafe.ids.tenant }, select: { id: true } });

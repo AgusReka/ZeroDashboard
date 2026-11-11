@@ -21,6 +21,7 @@ export type ClienteSemilla = Pick<
   PrismaClient,
   | 'operador'
   | 'tenant'
+  | 'agente'
   | 'conexion'
   | 'vistaCanonica'
   | 'consultaGuardada'

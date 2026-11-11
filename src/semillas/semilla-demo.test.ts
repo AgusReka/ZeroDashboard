@@ -9,6 +9,8 @@ import type { ResultadoSondeo, SondeoEntidad } from '../ejecucion/consulta-ejecu
 import { CONTRATO_CANONICO, type TipoSemantico } from '../contrato/contrato.js';
 import { descifrarCredencial } from '../compartido/cripto-credencial.js';
 import { verificarClave } from '../compartido/crypto-auth.js';
+import { hashTokenAgente } from '../agente/agente-token.js';
+import { ID_AGENTE_DEMO } from './demo/agente.js';
 import { IDS_CANALES_DEMO } from './demo/canales.js';
 import { IDS_REPORTES_DEMO, REPORTES_DEMO } from './demo/reportes.js';
 import { IDS_DEMO, correoPanelCafe, leerEntornoDemo, sembrarDemo, type EntornoDemo } from './semilla-demo.js';
@@ -37,6 +39,10 @@ const ENV_COMPLETO: NodeJS.ProcessEnv = {
   DEMO_PANEL_CORREO: ' Demo-CH31@Prueba.test ',
   DEMO_PANEL_CLAVE: 'ch31-clave-panel',
 };
+
+/** Valid by format only: the seed never contacts an agent. */
+const TOKEN = `zda_${'A'.repeat(43)}`;
+const OTRO_TOKEN = `zda_${'B'.repeat(43)}`;
 
 const OID = pg.types.builtins;
 /** A column type each semantic category accepts (see `aceptaTipo`). */
@@ -137,6 +143,35 @@ describe('semilla demo — environment', () => {
     assert.equal(chat('-9223372036854775808'), -9223372036854775808n);
   });
 
+  test('the agent token is optional: unset and empty both read as no token', () => {
+    assert.equal(leerEntornoDemo(ENV_COMPLETO).agenteToken, null);
+    assert.equal(leerEntornoDemo({ ...ENV_COMPLETO, DEMO_AGENTE_TOKEN: '' }).agenteToken, null);
+  });
+
+  test('a well-formed agent token is read as it is', () => {
+    assert.equal(leerEntornoDemo({ ...ENV_COMPLETO, DEMO_AGENTE_TOKEN: TOKEN }).agenteToken, TOKEN);
+  });
+
+  for (const invalido of [
+    'abc',
+    `zda_${'A'.repeat(42)}`,
+    `zda_${'A'.repeat(44)}`,
+    `zdb_${'A'.repeat(43)}`,
+    `zda_${'A'.repeat(42)}!`,
+    ` zda_${'A'.repeat(43)}`,
+    `zda_${'A'.repeat(43)}\n`,
+  ]) {
+    test(`the agent token of ${invalido.length} characters starting "${invalido.trim().slice(0, 4)}" is refused naming the variable, without echoing it`, () => {
+      assert.throws(
+        () => leerEntornoDemo({ ...ENV_COMPLETO, DEMO_AGENTE_TOKEN: invalido }),
+        (error: Error) =>
+          error.message ===
+            'Invalid environment variable: DEMO_AGENTE_TOKEN must be an agent token (zda_ followed by 43 characters)' &&
+          !error.message.includes(invalido.trim()),
+      );
+    });
+  }
+
   for (const invalido of ['abc', '1.5', ' 12', '12 ', '+12', '--1', '9223372036854775808', '-9223372036854775809', '12345678901234567890']) {
     test(`the Telegram chat id "${invalido}" is refused naming the variable, without echoing it`, () => {
       assert.throws(
@@ -169,6 +204,8 @@ describe(
         await db.consultaGuardadaVersion.deleteMany({ where: { tenantId } });
         await db.consultaGuardada.deleteMany({ where: { tenantId } });
         await db.conexion.deleteMany({ where: { tenantId } });
+        // The agent goes after its connections (RESTRICT) and before the tenant.
+        await db.agente.deleteMany({ where: { tenantId } });
         await db.sesionPanel.deleteMany({ where: { tenantId } });
         await db.usuario.deleteMany({ where: { tenantId } });
         await db.tenant.deleteMany({ where: { id: tenantId } });
@@ -619,6 +656,111 @@ describe(
       assert.equal(await db.vinculoTelegram.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
       const correo = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_CANALES_DEMO.automatizacionCorreo } });
       assert.deepEqual([correo.activo, correo.valores], [false, { umbral: 20 }]);
+    });
+
+    // ---- CH-49 (d): the seeded agent ---------------------------------------------------------
+
+    const entornoConAgente = (token: string = TOKEN): EntornoDemo => ({ ...entorno, agenteToken: token });
+    const agenteIdDeLaConexion = async () =>
+      (await db.conexion.findUniqueOrThrow({ where: { id: IDS_DEMO.conexion } })).agenteId;
+
+    test('with a token Food Store gets an agent that holds only the hash, and its connection is bound to it', async () => {
+      const { creadas } = await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_OK });
+
+      assert.deepEqual(
+        creadas.filter((c) => c === 'tenant' || c === 'agente' || c === 'conexion'),
+        ['tenant', 'agente', 'conexion'],
+      );
+      assert.equal(creadas.some((c) => c.includes(TOKEN)), false);
+
+      const agente = await db.agente.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.tenant } });
+      assert.deepEqual([agente.id, agente.tokenHash, agente.revocadoEn], [ID_AGENTE_DEMO, hashTokenAgente(TOKEN), null]);
+      // No column of the agent's row, nor of the connection's, carries the token.
+      assert.equal(JSON.stringify(agente).includes(TOKEN), false);
+
+      const conexion = await db.conexion.findUniqueOrThrow({ where: { id: IDS_DEMO.conexion } });
+      assert.equal(conexion.agenteId, ID_AGENTE_DEMO);
+      // Host and port stay as the agent sees them; the credential is still the replica's.
+      assert.deepEqual([conexion.host, conexion.puerto], ['replica-demo', 5432]);
+      assert.equal(JSON.stringify(conexion).includes(TOKEN), false);
+      assert.equal(descifrarCredencial(conexion.credencial), entorno.claveReplica);
+
+      // Café del Puerto stays direct, and Food Store's views are validated all the same.
+      assert.equal((await db.conexion.findUniqueOrThrow({ where: { id: IDS_DEMO.cafe.conexion } })).agenteId, null);
+      assert.equal(await db.agente.count({ where: { tenantId: IDS_DEMO.cafe.tenant } }), 0);
+      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
+    });
+
+    test('the token never reaches the log', async () => {
+      const registro: string[] = [];
+      const espiar = (...args: unknown[]) => void registro.push(args.map(String).join(' '));
+      const originales = { log: console.log, info: console.info, warn: console.warn, error: console.error };
+      Object.assign(console, { log: espiar, info: espiar, warn: espiar, error: espiar });
+      try {
+        await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_OK });
+      } finally {
+        Object.assign(console, originales);
+      }
+      assert.equal(registro.some((linea) => linea.includes(TOKEN)), false);
+    });
+
+    test('without a token there is no agent and the connection is direct', async () => {
+      const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+
+      assert.equal(creadas.includes('agente'), false);
+      assert.equal(await db.agente.count({ where: { tenantId: IDS_DEMO.tenant } }), 0);
+      assert.equal(await agenteIdDeLaConexion(), null);
+    });
+
+    test('an agent the tenant already has is untouched, whatever its token, and the new connection binds to it', async () => {
+      await db.tenant.create({ data: { id: IDS_DEMO.tenant, nombre: 'Food Store' } });
+      const propio = await db.agente.create({
+        data: {
+          id: '00000000-0000-4000-8000-0000000000a1',
+          tenantId: IDS_DEMO.tenant,
+          tokenHash: hashTokenAgente(OTRO_TOKEN),
+        },
+      });
+
+      const { creadas } = await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_OK });
+
+      assert.equal(creadas.includes('agente'), false);
+      assert.equal(await db.agente.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+      const agente = await db.agente.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.tenant } });
+      assert.deepEqual(
+        [agente.id, agente.tokenHash, agente.tokenEmitidoEn.getTime()],
+        [propio.id, hashTokenAgente(OTRO_TOKEN), propio.tokenEmitidoEn.getTime()],
+      );
+      assert.equal(await agenteIdDeLaConexion(), propio.id);
+    });
+
+    test('a direct connection that already exists stays direct when a token is added later', async () => {
+      await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+
+      const { creadas } = await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_NUNCA });
+
+      assert.deepEqual(creadas, ['agente']);
+      assert.equal(await db.agente.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+      assert.equal(await agenteIdDeLaConexion(), null);
+    });
+
+    test('a second run with the token creates nothing and keeps the binding', async () => {
+      await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_OK });
+
+      const { creadas } = await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_NUNCA });
+
+      assert.deepEqual(creadas, []);
+      assert.equal(await db.agente.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+      assert.equal(await agenteIdDeLaConexion(), ID_AGENTE_DEMO);
+    });
+
+    test('a probe that fails after the agent was created leaves it, and the retry finishes the demo bound', async () => {
+      await assert.rejects(sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_FALLO }));
+      assert.equal(await db.agente.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+
+      await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_OK });
+      assert.equal(await agenteIdDeLaConexion(), ID_AGENTE_DEMO);
+      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
     });
   },
 );

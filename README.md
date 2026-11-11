@@ -102,6 +102,23 @@ docker compose --profile demo --profile correo down -v
 docker compose --profile demo --profile correo up -d --build
 ```
 
+**Con el agente (opcional).** Con `DEMO_AGENTE_TOKEN` la conexión de Food Store pasa por un agente en lugar de ser directa, y la demo puede mostrar una falla provocada. Es un atajo de demo: el agente comparte la red de la app; en producción vive en la red del cliente y se levanta con `docker-compose.agente.yml` (ver [Conexión por agente](#conexión-por-agente)). El token es de demo y no se reutiliza; la base guarda solo su hash. Se genera uno y se pone en `.env`:
+
+```bash
+node -e "console.log('zda_'+require('crypto').randomBytes(32).toString('base64url'))"   # DEMO_AGENTE_TOKEN=zda_...
+docker compose --profile demo --profile correo --profile agente up -d --build
+```
+
+La conexión queda por agente solo si se crea con el token ya definido: una conexión directa que ya existe no se convierte (para eso, el arranque limpio). Si el tenant ya tenía un agente con otro token, el servicio `agente` termina con código 2.
+
+Al reconstruir `app` (`--build`) hay que recrear también el agente, porque comparte su red:
+
+```bash
+docker compose --profile agente up -d --force-recreate agente
+```
+
+**Falla provocada.** Con el agente arriba, las ejecuciones de Food Store salen bien. `docker compose stop agente` y, en la siguiente ejecución (en un minuto), falla con código `ESINAGENTE`: la consola muestra la ejecución fallida y el panel la muestra «con falla». `docker compose start agente` y la siguiente vuelve a salir bien. No se siembra nada roto.
+
 Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
 
 1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y las automatizaciones sobre la plantilla `stock-fisico`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
