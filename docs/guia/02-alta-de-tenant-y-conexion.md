@@ -43,11 +43,13 @@ En «Nueva conexión»:
 
 Si la réplica corre en Docker en la misma máquina que la aplicación, `localhost` no sirve como servidor: dentro del contenedor, es el propio contenedor. Usar `host.docker.internal` o el nombre del servicio en la red de Compose.
 
+Cada campo trae su ayuda debajo (la del servidor repite la advertencia de Docker y la del usuario pide un rol de solo lectura). Si falta alguno, el pop-up lo nombra sin enviar nada («Completá: Servidor, Usuario.»), y un puerto fuera de 1 a 65535 tiene su propia frase.
+
 ## 2B. Conexión por agente
 
 El agente corre junto a la réplica, en la red del cliente, y abre la conexión hacia la aplicación (DEC-94).
 
-1. **Agentes** → «Crear agente». La consola muestra el token una sola vez («Este es el token del agente. Copialo ahora: no se vuelve a mostrar.»). Se copia con «Copiar» y se cierra con «Ya lo guardé».
+1. **Agentes** → «Crear agente». La consola muestra el token una sola vez («Este es el token del agente. Copialo ahora: no se vuelve a mostrar.»). Se copia con «Copiar token» y se cierra con «Ya lo guardé».
 2. En el host del cliente, completar `.env.agente` a partir de `.env.agente.example` con tres variables y levantar el agente:
 
    | Variable | Contenido |
@@ -70,7 +72,7 @@ Notas del agente:
 
 ## 3. Probar
 
-«Guardar y probar» registra la conexión y la prueba en el mismo paso. Si la prueba falla, la conexión queda guardada y un aviso de error dice que la conexión se guardó, por qué falló la prueba y que hay que registrarla de nuevo con los datos corregidos. Después, «Probar» en la fila repite la prueba.
+«Guardar y probar» registra la conexión y la prueba en el mismo paso. Si la prueba falla, la conexión queda guardada y un aviso de error dice que la conexión se guardó, por qué falló la prueba y que hay que registrarla de nuevo con los datos corregidos. Después, «Probar conexión» en la fila repite la prueba.
 
 | Categoría | Significa |
 |---|---|

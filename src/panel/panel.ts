@@ -62,6 +62,8 @@ const CABEZA_PAGINA = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZeroDashboard — Panel</title>
+<!-- UX review C-19: an empty icon, so the browser does not ask the server for /favicon.ico on every load. -->
+<link rel="icon" href="data:,">
 <!-- CH-21a (DEC-124): the shared stylesheet, served by the exact exempt GET routes. -->
 <link rel="stylesheet" href="/ui/styles.css">
 <style>
@@ -302,7 +304,7 @@ ${MARCADO_TABLERO}  <!-- «Avisos» (CH-48): the automations list and, after it,
     </div>
     <div id="telegram-codigo" class="panel-telegram" hidden>
       <div id="telegram-codigo-nuevo" hidden>
-        <p class="zd-muted">Tocá «Abrir Telegram» y después «Iniciar». También podés mandarle este código a nuestro bot:</p>
+        <p class="zd-muted">Tocá «Abrir Telegram» y después «Iniciar». También podés mandarle este código a <span id="telegram-bot">nuestro bot</span>:</p>
         <p id="telegram-codigo-valor" class="zd-mono panel-telegram__codigo"></p>
         <a id="telegram-abrir" class="zd-btn zd-btn--primary" target="_blank" rel="noopener">Abrir Telegram</a>
       </div>
@@ -680,6 +682,15 @@ function alternarAjustes(item, tarjeta, boton) {
     boton.disabled = false;
   });
 }
+// P-09: «un producto llegue a 5 unidades o menos», the same sentence the help of the «Ajustar» form uses.
+function textoDeRegla(umbral) {
+  return 'un producto llegue a ' + umbral.toLocaleString('es-AR') + (umbral === 1 ? ' unidad' : ' unidades') + ' o menos';
+}
+// P-09: the addresses, or «Telegram» (the linked chat itself is never sent to the page); '' when there is nothing to say.
+function textoDeDestino(item) {
+  if (item.porTelegram === true) { return 'Telegram'; }
+  return Array.isArray(item.destinatarios) ? item.destinatarios.join(', ') : '';
+}
 function tarjetaActiva(item, zona) {
   var esActiva = item.estado === 'activa';
   var esConFalla = item.estado === 'con_falla';
@@ -722,6 +733,10 @@ function tarjetaActiva(item, zona) {
   }
   if (item.proximaEjecucion) { dato(tiempos, 'Próxima revisión', formatear(item.proximaEjecucion, zona)); }
   if (item.frecuencia) { dato(tiempos, 'Frecuencia', item.frecuencia); }
+  // P-09: the rule in force and where the notice goes, so the person does not have to open «Ajustar» to know.
+  if (typeof item.umbral === 'number') { dato(tiempos, 'Te avisamos cuando', textoDeRegla(item.umbral)); }
+  var destino = textoDeDestino(item);
+  if (destino !== '') { dato(tiempos, 'Te lo enviamos a', destino); }
   tarjeta.appendChild(tiempos);
   if (esActiva || esConFalla) {
     var acciones = nodo('div', 'panel-acciones');
@@ -834,6 +849,8 @@ function pintarTelegram() {
     mostrar('telegram-codigo-previo', !conCodigo);
     if (conCodigo) {
       document.getElementById('telegram-codigo-valor').textContent = telegram.codigo.slice(0, 4) + ' ' + telegram.codigo.slice(4);
+      // P-05: which bot «nuestro bot» is, so the code can be sent by hand when «Abrir Telegram» does not work.
+      document.getElementById('telegram-bot').textContent = typeof telegram.bot === 'string' && telegram.bot !== '' ? '@' + telegram.bot : 'nuestro bot';
       var abrir = document.getElementById('telegram-abrir');
       var enlaceValido = typeof telegram.enlace === 'string' && telegram.enlace.indexOf(ENLACE_TELEGRAM) === 0;
       // The only link built from a server value, and only toward Telegram.
@@ -871,7 +888,7 @@ function cargarTelegram() {
       fallarTelegram(MENSAJE_ERROR);
       return;
     }
-    telegram = { estado: datos.estado, vinculadoEn: datos.vinculadoEn, venceEn: datos.venceEn };
+    telegram = { estado: datos.estado, bot: datos.bot, vinculadoEn: datos.vinculadoEn, venceEn: datos.venceEn };
     pintarTelegram();
   }).catch(function () {
     fallarTelegram(MENSAJE_ERROR);
@@ -897,6 +914,7 @@ function crearCodigoTelegram(boton) {
     }
     if (telegram.estado !== 'vinculado') { telegram.estado = 'codigo-pendiente'; }
     telegram.codigo = datos.codigo;
+    if (typeof datos.bot === 'string') { telegram.bot = datos.bot; }
     telegram.enlace = datos.enlace;
     telegram.venceEn = datos.venceEn;
     pintarTelegram();

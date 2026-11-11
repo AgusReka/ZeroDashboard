@@ -36,7 +36,7 @@ El comando lee solo `DATABASE_URL`. Con la demo (`SEED_DEMO=1`) la semilla crea 
 Pantalla **Usuarios del panel**, del tenant activo.
 
 1. «Nuevo usuario» → «Correo» y «Nombre (opcional)» → «Crear usuario».
-2. El sistema **genera la clave** (nadie la escribe) y la muestra una sola vez: «Esta es la clave del usuario. Pasásela por un canal seguro: no se vuelve a mostrar.» Se copia con «Copiar» y se cierra con «Ya la guardé» (DEC-155).
+2. El sistema **genera la clave** (nadie la escribe) y la muestra una sola vez, dentro de «Qué enviarle al usuario»: la dirección del panel (la de la consola más `/panel`), el correo y la clave. «Copiar datos de acceso» copia las tres líneas juntas, «Copiar clave» solo la clave, y «Ya la guardé» cierra el bloque y borra los tres datos (DEC-155). «Reponer clave» muestra el mismo bloque.
 
 | Acción | Efecto |
 |---|---|
@@ -69,9 +69,9 @@ La baja es irreversible: no hay ruta de reactivación. El tenant ya no se puede 
 
 Pantalla **Auditoría**, del tenant activo: qué se ejecutó contra su réplica, cuándo y por quién.
 
-- Filtros: «Desde», «Hasta» (por día) y «Resultado» (Todos, OK, Falló), con «Filtrar».
+- Filtros: «Desde», «Hasta» (por día) y «Resultado» (Todos, OK, Falló), con «Filtrar auditoría».
 - Columnas: Fecha y hora, Operador, Origen, Conexión, Consulta, SQL, Filas, Duración, Resultado.
-- «Origen»: Consulta, Prueba de plantilla, Validación de mapeo, Prueba de conexión, Vista previa de automatización (DEC-195). «Consulta» dice «nombre vN» si se corrió una consulta guardada sin editar, «Plantilla <id>» o «Ad hoc».
+- «Origen»: Consulta, Prueba de plantilla, Validación de mapeo, Prueba de conexión, Vista previa de automatización (DEC-195). «Consulta» dice «nombre vN» si se corrió una consulta guardada sin editar; «Plantilla» o «Reporte» con el nombre y un fragmento del id (el id completo, al pasar el cursor) si fue una prueba de plantilla o de reporte; o «Ad hoc». Si no se pueden leer los nombres, la celda dice el rótulo y el id.
 - Se guarda la sentencia tal como se ejecutó, nunca los valores de los parámetros ni las filas (DEC-160).
 - Es un registro que ni la API ni la base permiten modificar o borrar (DEC-162). Muestra las 200 más recientes.
 - No incluye las corridas programadas: esas están en las ejecuciones de cada automatización (DEC-159).

@@ -32,7 +32,7 @@ P2 links the business's Telegram from the panel without technical data (N5, DEC-
 - **THEN** `estado` is `sin-vincular`
 
 ### Requirement: Create a Code
-`POST /api/panel/telegram/codigo` SHALL create the tenant's code, replacing any previous one, and answer 201 `{ codigo, enlace, venceEn }`, where `enlace` is `https://t.me/<bot>?start=<codigo>`. The plain code SHALL appear only in this response. When the bot is not available it SHALL answer 409 `telegram-no-disponible` and store nothing.
+`POST /api/panel/telegram/codigo` SHALL create the tenant's code, replacing any previous one, and answer 201 `{ codigo, bot, enlace, venceEn }` (`bot` is the bot's public username, added by the UX review P-05 so the card can name it), where `enlace` is `https://t.me/<bot>?start=<codigo>`. The plain code SHALL appear only in this response. When the bot is not available it SHALL answer 409 `telegram-no-disponible` and store nothing.
 
 #### Scenario: Code created
 - **GIVEN** a configured bot
@@ -56,7 +56,7 @@ P2 links the business's Telegram from the panel without technical data (N5, DEC-
 The panel SHALL show a card titled «Avisos por Telegram» below «Mis automatizaciones», in the «Avisos» content (`client-panel-dashboard`, "Dashboard Section of the Panel Page"), loaded from `GET /api/panel/telegram`, with:
 - **no-disponible**: «Por ahora no podés recibir avisos por Telegram.» and no action;
 - **sin-vincular**: a short explanation and «Vincular Telegram»;
-- **codigo-pendiente** and after creating a code: the code (when this page created it), «Abrir Telegram» pointing to `enlace`, the instruction to send it to the bot, the expiry time in the tenant's time zone, and «Generar otro código»; a code created earlier, whose plain value the page no longer has, shows only the expiry and «Generar otro código»;
+- **codigo-pendiente** and after creating a code: the code (when this page created it), «Abrir Telegram» pointing to `enlace`, the instruction to send it to the bot, named by its username next to the code (`@<bot>`, from the code response or else from the state; «nuestro bot» when the page has no name), the expiry time in the tenant's time zone, and «Generar otro código»; a code created earlier, whose plain value the page no longer has, shows only the expiry and «Generar otro código»;
 - **vinculado**: «Telegram vinculado» with the date, «Vincular otro chat» and «Desvincular», which asks for confirmation first.
 
 The card SHALL follow the panel surface rules of the design guide, the panel glossary (no «tenant», «chat_id», «token» or «bot API»), voseo, and the common loading and error states. Stored or received text SHALL be escaped before it is inserted. The card SHALL load whether or not the dashboard navigation is shown.

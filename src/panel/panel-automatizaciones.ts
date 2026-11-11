@@ -109,9 +109,12 @@ export interface FilaAutomatizacion {
   id: string;
   activo: boolean;
   cron: string;
-  /** CH-44 (DEC-197): read only to decide `sinVinculo`; the value itself never leaves. */
+  /** CH-44 (DEC-197): read to decide `sinVinculo` and, since P-09, `porTelegram`; the stored value itself never leaves. */
   canal?: string;
-  plantilla: { titulo: string | null; descripcion: string | null };
+  /** P-09 (UX review): the stored values and recipients, read only to say the rule and where the notice goes. */
+  valores?: unknown;
+  destinatarios?: string[];
+  plantilla: { titulo: string | null; descripcion: string | null; parametros?: unknown };
 }
 
 /** The latest finished run of one automation (never `en-curso`), as stored. */
@@ -132,6 +135,25 @@ export interface ItemActiva {
   proximaEjecucion: string | null;
   /** CH-44 (DEC-197): present only for an active Telegram automation with no linked chat. */
   sinVinculo?: true;
+  /**
+   * P-09 (UX review): the rule in force, present only when the template declares a numeric `umbral` and a
+   * finite one is stored. The same value the «Ajustar» form reads; nothing else of `valores` leaves.
+   */
+  umbral?: number;
+  /** P-09: the stored addresses of an email automation, in the order they were saved. Absent on Telegram or with none. */
+  destinatarios?: string[];
+  /** P-09: the notice goes to the linked Telegram chat. The chat itself never leaves, and neither does the stored channel. */
+  porTelegram?: true;
+}
+
+/** Whether the template declares the `umbral` parameter as a number, the only value the panel reads or edits. */
+function declaraUmbral(parametros: unknown): boolean {
+  return (
+    Array.isArray(parametros) &&
+    parametros.some(
+      (d) => typeof d === 'object' && d !== null && (d as { nombre?: unknown }).nombre === 'umbral' && (d as { tipo?: unknown }).tipo === 'numero',
+    )
+  );
 }
 
 /**
@@ -183,6 +205,19 @@ export function proyectarActiva(
   }
   if (fila.activo && fila.canal === 'telegram' && !vinculado) {
     item.sinVinculo = true;
+  }
+  const valores = fila.valores;
+  const umbral =
+    typeof valores === 'object' && valores !== null && !Array.isArray(valores)
+      ? (valores as Record<string, unknown>).umbral
+      : undefined;
+  if (declaraUmbral(fila.plantilla.parametros) && typeof umbral === 'number' && Number.isFinite(umbral)) {
+    item.umbral = umbral;
+  }
+  if (fila.canal === 'telegram') {
+    item.porTelegram = true;
+  } else if (fila.destinatarios !== undefined && fila.destinatarios.length > 0) {
+    item.destinatarios = [...fila.destinatarios];
   }
   return item;
 }
@@ -289,7 +324,9 @@ export function registerPanelAutomatizacionesRoutes(
                 activo: true,
                 cron: true,
                 canal: true,
-                plantilla: { select: { titulo: true, descripcion: true } },
+                valores: true,
+                destinatarios: true,
+                plantilla: { select: { titulo: true, descripcion: true, parametros: true } },
               },
               orderBy: [{ creadaEn: 'desc' }, { id: 'asc' }],
               take: LIMITE_LISTADO + 1,

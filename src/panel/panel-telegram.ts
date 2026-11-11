@@ -118,6 +118,8 @@ export function registerPanelTelegramRoutes(app: FastifyInstance, deps: Dependen
     request.log.info({ evento: 'telegram-codigo', tenantId: sesion.tenantId }, 'telegram code created');
     return reply.code(201).send({
       codigo,
+      // P-05 (UX review): the bot's public username, so the person can find it without the link.
+      bot,
       enlace: `https://t.me/${bot}?start=${codigo}`,
       venceEn: venceEn.toISOString(),
     });

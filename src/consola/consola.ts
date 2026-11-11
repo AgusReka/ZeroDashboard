@@ -96,7 +96,9 @@ function documentoConsola(nombreOperador: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZeroDashboard — Consola de consultas</title>
+<title>Consultas — ZeroDashboard</title>
+<!-- C-19: an empty icon, so the browser does not ask the server for /favicon.ico on every load (the guard answered it with an error). -->
+<link rel="icon" href="data:,">
 <!--
   CH-21a (DEC-124): the shared stylesheet, served by exact exempt GET routes. The style
   element below is the console's bridge, not a second design: it styles the nodes the
@@ -154,6 +156,8 @@ function documentoConsola(nombreOperador: string): string {
   .parametro-nombre:focus-visible, .parametro-tipo:focus-visible, .parametro-valor:focus-visible {
     outline: var(--focus-width) solid var(--focus-ring); outline-offset: 0; border-color: var(--focus-ring); }
   #agregar-parametro { margin-top: var(--space-4); }
+  /* C-13: a parameter's help sits under its control, inside the label the script builds. */
+  .parametro-ayuda { font-size: var(--text-help); font-weight: var(--weight-regular); color: var(--text-2); }
   .controles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-5); margin-top: var(--space-5); }
   .controles > div { width: 10rem; }
   .controles .zd-label { margin: 0 0 var(--space-2); }
@@ -182,6 +186,19 @@ function documentoConsola(nombreOperador: string): string {
   .zd-table-wrap:not(:has(th, td)) { border: 0; }
   .zd-table td { white-space: pre-wrap; vertical-align: top; }
   .zd-table td.nulo { color: var(--text-3); font-style: italic; }
+  /* C-19: a column of numbers lines up on the right, in tabular mono (the script marks it with .num). */
+  .zd-table th.num, .zd-table td.num { text-align: right; }
+  .zd-table td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  /* C-19: the automation's state is a badge, an icon and a word (the script builds the node, so local classes). */
+  .estado-auto { display: inline-flex; align-items: center; gap: var(--space-2); height: 22px; padding: 0 var(--space-4) 0 var(--space-3);
+    border-radius: var(--radius-pill); border: var(--border-width) solid var(--neutral-border); background: var(--neutral-soft);
+    color: var(--neutral-text); font-size: var(--text-xs); font-weight: var(--weight-semibold); white-space: nowrap; line-height: 1; }
+  .estado-auto--activa { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok-text); }
+  .estado-auto svg { width: 14px; height: 14px; flex: none; }
+  /* C-14: the three access data of a new panel user, one under the other. */
+  .datos-acceso { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-3) var(--space-6); margin: 0 0 var(--space-5); font-size: var(--text-sm); }
+  .datos-acceso dt { color: var(--text-3); }
+  .datos-acceso dd { margin: 0; overflow-wrap: anywhere; }
   /* CH-32a PR2 (DEC-173): the query pop-up holds the whole form and the result, so it is wider than the
      shared dialog; every pop-up's unsaved-changes question sits in its actions row, level with the buttons. */
   #consulta-dialogo .zd-dialog { width: min(1100px, 100%); }
@@ -456,7 +473,7 @@ ${avisoResultado('tenant-banner', '<a id="tenant-siguiente" class="zd-btn zd-btn
 <section id="pantalla-conexiones" aria-labelledby="titulo-conexiones" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-conexiones" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-conexiones" class="zd-h1">Conexiones</h1>
     <p class="zd-pagehead__desc">Cómo llega la consola a la réplica del tenant. Probá cada conexión antes de usarla.</p>
   </div>
@@ -482,15 +499,24 @@ ${avisoResultado('conexion-banner')}
 <div id="conexion-dialogo" class="zd-dialog-backdrop" hidden>
   <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="conexion-dialogo-titulo">
     <h2 id="conexion-dialogo-titulo" class="zd-dialog__title">Nueva conexión</h2>
-    <form id="conexion-alta" class="zd-form">
-      <div><label for="cx-nombre" class="zd-label">Nombre</label><input id="cx-nombre" class="zd-input" type="text" autocomplete="off" required></div>
-      <div><label for="cx-host" class="zd-label">Servidor</label><input id="cx-host" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-      <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required></div>
-      <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
-      <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required></div>
+    <!--
+      C-06: each field says what goes in it, and a missing one is named in #cx-resultado (the pop-up's own line, as
+      «Nuevo tenant» does) instead of the browser's bubble: novalidate hands the check to the script.
+    -->
+    <form id="conexion-alta" class="zd-form" novalidate>
+      <div><label for="cx-nombre" class="zd-label">Nombre</label><input id="cx-nombre" class="zd-input" type="text" autocomplete="off" required aria-describedby="cx-nombre-ayuda">
+        <p id="cx-nombre-ayuda" class="zd-help">Cómo vas a reconocer esta conexión en las listas. Puede repetirse.</p></div>
+      <div><label for="cx-host" class="zd-label">Servidor</label><input id="cx-host" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required aria-describedby="cx-host-ayuda">
+        <p id="cx-host-ayuda" class="zd-help">Nombre o dirección donde escucha la réplica, tal como la ve la aplicación. Si la réplica corre en Docker en esta misma máquina, localhost no sirve: usá host.docker.internal o el nombre del servicio.</p></div>
+      <div><label for="cx-puerto" class="zd-label">Puerto</label><input id="cx-puerto" class="zd-input" type="number" min="1" max="65535" value="5432" required aria-describedby="cx-puerto-ayuda">
+        <p id="cx-puerto-ayuda" class="zd-help">El de PostgreSQL es 5432.</p></div>
+      <div><label for="cx-base" class="zd-label">Base de datos</label><input id="cx-base" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required aria-describedby="cx-base-ayuda">
+        <p id="cx-base-ayuda" class="zd-help">La base del negocio que se va a leer.</p></div>
+      <div><label for="cx-usuario" class="zd-label">Usuario</label><input id="cx-usuario" class="zd-input zd-input--code" type="text" autocomplete="off" spellcheck="false" required aria-describedby="cx-usuario-ayuda">
+        <p id="cx-usuario-ayuda" class="zd-help">Un rol de solo lectura: con uno que escribe, o superusuario, la consola se niega a ejecutar.</p></div>
       <div><label for="cx-via" class="zd-label">Cómo llega</label><select id="cx-via" class="zd-select"><option value="">Directa</option></select></div>
-      <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required></div>
-      <p class="ayuda">La contraseña se guarda cifrada y no se vuelve a mostrar.</p>
+      <div><label for="cx-clave" class="zd-label">Contraseña</label><input id="cx-clave" class="zd-input" type="password" autocomplete="new-password" required aria-describedby="cx-clave-ayuda">
+        <p id="cx-clave-ayuda" class="zd-help">La contraseña se guarda cifrada y no se vuelve a mostrar.</p></div>
     </form>
     <p id="cx-resultado" class="ayuda" role="status"></p>
     <div class="zd-dialog__actions">
@@ -514,7 +540,7 @@ ${avisoResultado('conexion-banner')}
 <section id="pantalla-agentes" aria-labelledby="titulo-agentes" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-agentes" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-agentes" class="zd-h1">Agentes</h1>
     <p class="zd-pagehead__desc">El agente corre en la red del cliente y abre la conexión hacia la consola: el cliente no expone puertos.</p>
   </div>
@@ -525,7 +551,7 @@ ${estadoSinTenant('agentes')}
   <p class="ayuda">Este es el token del agente. Copialo ahora: no se vuelve a mostrar.</p>
   <code id="agente-secreto-valor"></code>
   <div class="zd-form-actions">
-    <button id="agente-copiar" class="zd-btn zd-btn--secondary" type="button">Copiar</button>
+    <button id="agente-copiar" class="zd-btn zd-btn--secondary" type="button">Copiar token</button>
     <button id="agente-guardado" class="zd-btn zd-btn--ghost" type="button">Ya lo guardé</button>
   </div>
 </div>
@@ -540,7 +566,7 @@ ${estadoSinTenant('agentes')}
 <section id="pantalla-usuarios" aria-labelledby="titulo-usuarios" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-usuarios" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-usuarios" class="zd-h1">Usuarios del panel</h1>
     <p class="zd-pagehead__desc">Quién del negocio entra al panel. La clave la genera el sistema y se muestra una sola vez.</p>
   </div>
@@ -570,11 +596,21 @@ ${estadoSinTenant('usuarios')}
     </div>
   </div>
 </div>
+<!--
+  C-14: what to send the user, in one block: where the panel is, which email to use and the generated password. The
+  password is shown once; the address and the email are filled in with it and cleared with it (olvidarSecretos).
+-->
 <div id="usuario-secreto" class="zd-card" role="alert" hidden>
-  <p class="ayuda">Esta es la clave del usuario. Pasásela por un canal seguro: no se vuelve a mostrar.</p>
-  <code id="usuario-secreto-valor"></code>
+  <h2 class="zd-h3">Qué enviarle al usuario</h2>
+  <p class="ayuda">Mandale estos tres datos por un canal seguro. La clave no se vuelve a mostrar.</p>
+  <dl class="datos-acceso">
+    <dt>Dirección del panel</dt><dd><code id="usuario-secreto-url"></code></dd>
+    <dt>Correo</dt><dd><code id="usuario-secreto-correo"></code></dd>
+    <dt>Clave</dt><dd><code id="usuario-secreto-valor"></code></dd>
+  </dl>
   <div class="zd-form-actions">
-    <button id="usuario-copiar" class="zd-btn zd-btn--secondary" type="button">Copiar</button>
+    <button id="usuario-copiar-todo" class="zd-btn zd-btn--primary" type="button">Copiar datos de acceso</button>
+    <button id="usuario-copiar" class="zd-btn zd-btn--secondary" type="button">Copiar clave</button>
     <button id="usuario-guardado" class="zd-btn zd-btn--ghost" type="button">Ya la guardé</button>
   </div>
 </div>
@@ -594,12 +630,12 @@ ${estadoSinTenant('usuarios')}
 <section id="pantalla-tablero" aria-labelledby="titulo-tablero" data-change="CH-46" data-estado="existe" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-tablero" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-tablero" class="zd-h1">Tablero del cliente</h1>
     <p class="zd-pagehead__desc">Qué reportes ve el cliente en su panel y en qué orden. Hasta 8, todos sobre la misma conexión.</p>
   </div>
   <div class="zd-pagehead__actions">
-    <button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar</button>
+    <button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar tablero</button>
   </div>
 </header>
 ${estadoSinTenant('tablero')}
@@ -620,7 +656,7 @@ ${estadoSinTenant('tablero')}
     <label for="tablero-agregar-reporte" class="zd-label">Agregar reporte</label>
     <select id="tablero-agregar-reporte" class="zd-select"></select>
   </div>
-  <button id="tablero-agregar" class="zd-btn zd-btn--secondary" type="button">Agregar</button>
+  <button id="tablero-agregar" class="zd-btn zd-btn--secondary" type="button">Agregar reporte</button>
 </div>
 <p id="tablero-tope" class="ayuda" role="status"></p>
 </section>
@@ -632,7 +668,7 @@ ${estadoSinTenant('tablero')}
 <section id="pantalla-tiempos" aria-labelledby="titulo-tiempos" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-tiempos" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-tiempos" class="zd-h1">Tiempos de alta</h1>
     <p class="zd-pagehead__desc">En qué etapa está cada conexión del tenant y cuándo llegó. Las marcas miden tiempo transcurrido, no esfuerzo: la conexión cuenta desde que se registró y la validación muestra solo la última.</p>
   </div>
@@ -686,7 +722,7 @@ ${estadoSinTenant('tiempos')}
       <label for="plantilla-prueba-conexion" class="zd-label">Conexión</label>
       <select id="plantilla-prueba-conexion" class="zd-select"></select>
       <div id="plantilla-prueba-valores"></div>
-      <button id="plantilla-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+      <button id="plantilla-probar" class="zd-btn zd-btn--secondary" type="button">Probar plantilla</button>
       <p id="plantilla-prueba-aviso" class="ayuda" role="status"></p>
       <div class="zd-table-wrap zd-table-scroll"><table id="plantilla-prueba-tabla" class="zd-table"></table></div>
     </section>
@@ -761,7 +797,7 @@ ${estadoSinTenant('tiempos')}
         <label for="plantilla-f-conexion" class="zd-label">Conexión</label>
         <select id="plantilla-f-conexion" class="zd-select"></select>
         <div id="plantilla-f-valores"></div>
-        <button id="plantilla-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+        <button id="plantilla-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar plantilla</button>
         <p id="plantilla-f-resultado" class="ayuda" role="status"></p>
         <div class="zd-table-wrap zd-table-scroll"><table id="plantilla-f-tabla" class="zd-table"></table></div>
       </div>
@@ -774,7 +810,7 @@ ${estadoSinTenant('tiempos')}
         <button id="plantilla-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
       </span>
       <button id="plantilla-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
-      <button id="plantilla-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="plantilla-form" aria-describedby="plantilla-dialogo-estado" disabled>Guardar</button>
+      <button id="plantilla-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="plantilla-form" aria-describedby="plantilla-dialogo-estado" disabled>Guardar plantilla</button>
       <button id="plantilla-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
   </div>
@@ -830,7 +866,7 @@ ${estadoSinTenant('tiempos')}
         <label for="reporte-prueba-periodo" class="zd-label">Período</label>
         <select id="reporte-prueba-periodo" class="zd-select"></select>
       </div>
-      <button id="reporte-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+      <button id="reporte-probar" class="zd-btn zd-btn--secondary" type="button">Probar reporte</button>
       <p id="reporte-prueba-aviso" class="ayuda" role="status"></p>
       <div class="zd-table-wrap zd-table-scroll"><table id="reporte-prueba-tabla" class="zd-table"></table></div>
     </section>
@@ -905,7 +941,7 @@ ${estadoSinTenant('tiempos')}
           <label for="reporte-f-prueba-periodo" class="zd-label">Período de la prueba</label>
           <select id="reporte-f-prueba-periodo" class="zd-select"></select>
         </div>
-        <button id="reporte-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar</button>
+        <button id="reporte-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar reporte</button>
         <p id="reporte-f-resultado" class="ayuda" role="status"></p>
         <div class="zd-table-wrap zd-table-scroll"><table id="reporte-f-tabla" class="zd-table"></table></div>
       </div>
@@ -918,7 +954,7 @@ ${estadoSinTenant('tiempos')}
         <button id="reporte-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
       </span>
       <button id="reporte-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
-      <button id="reporte-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="reporte-form" aria-describedby="reporte-dialogo-estado" disabled>Guardar</button>
+      <button id="reporte-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="reporte-form" aria-describedby="reporte-dialogo-estado" disabled>Guardar reporte</button>
       <button id="reporte-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
     </div>
   </div>
@@ -954,7 +990,7 @@ ${estadoSinTenant('tiempos')}
 <section id="pantalla-mapeo" aria-labelledby="titulo-mapeo" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-mapeo" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-mapeo" class="zd-h1">Mapeo y validación</h1>
     <p class="zd-pagehead__desc">Por cada entidad del contrato, la consulta que la arma desde la réplica del cliente. Validar la prueba sin leer filas.</p>
   </div>
@@ -998,7 +1034,7 @@ ${avisoResultado('mapeo-banner')}
 <section id="pantalla-consultas" aria-labelledby="titulo-consultas">
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-consultas" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-consultas" class="zd-h1">Consultas</h1>
     <p class="zd-pagehead__desc">Solo lectura. La sentencia se ejecuta dentro de una transacción de solo lectura y se rechaza si el rol conectado puede escribir.</p>
   </div>
@@ -1059,7 +1095,7 @@ ${estadoSinTenant('consultas')}
         the server names an undeclared or unused parameter, and this page shows that answer.
         Every button here is type="button" so none of them submits the form.
       -->
-      <p class="ayuda">Parámetros: declare cada :nombre que use la sentencia. Un valor vacío no se envía.</p>
+      <p class="ayuda">Parámetros: declará cada :nombre que use la sentencia. Un valor vacío no se envía.</p>
       <div id="parametros"></div>
       <button id="agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
 
@@ -1114,7 +1150,7 @@ ${estadoSinTenant('consultas')}
         <button id="consulta-nueva-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
         <button id="consulta-nueva-cancelar" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
       </span>
-      <button id="ejecutar" class="zd-btn zd-btn--secondary" type="submit" form="formulario">Probar</button>
+      <button id="ejecutar" class="zd-btn zd-btn--secondary" type="submit" form="formulario">Ejecutar consulta</button>
       <button id="guardar" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled>Guardar consulta</button>
       <button id="version-boton" class="zd-btn zd-btn--primary" type="button" aria-describedby="guardado-ayuda" disabled hidden>Guardar como versión nueva</button>
       <button id="consulta-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
@@ -1155,8 +1191,9 @@ ${estadoSinTenant('consultas')}
 <section id="pantalla-automatizaciones" aria-labelledby="titulo-automatizaciones" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-automatizaciones" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-automatizaciones" class="zd-h1">Automatizaciones</h1>
+    <p class="zd-pagehead__desc">Cada una ejecuta una plantilla contra una conexión del tenant, según un horario. Se puede ajustar sin perder su historial; para cambiar la plantilla o la conexión, se desactiva y se crea otra.</p>
   </div>
   <div class="zd-pagehead__actions">
     <button id="auto-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
@@ -1171,8 +1208,6 @@ ${estadoSinTenant('automatizaciones')}
   changed by deactivating the automation and creating it again.
 -->
 <section id="automatizaciones">
-  <h2 class="zd-h2">Automatizaciones</h2>
-  <p class="ayuda">Ejecuta una plantilla del catálogo contra una conexión del tenant activo según un horario cron de cinco campos, en la zona horaria configurada del despliegue. Una automatización se puede ajustar sin perder su historial: sus valores, su horario y sus destinatarios. Para cambiar la plantilla o la conexión, se desactiva y se crea otra; una automatización desactivada no se reactiva.</p>
 
   <!--
     CH-21c (DEC-129): creation is a two-step wizard. The stepper and both panels are static
@@ -1201,7 +1236,7 @@ ${estadoSinTenant('automatizaciones')}
       <div id="auto-plantilla" class="zd-templates" role="radiogroup" aria-label="Plantilla"></div>
 
       <div class="zd-form-actions">
-        <button id="auto-siguiente" class="zd-btn zd-btn--primary" type="button" disabled>Siguiente</button>
+        <button id="auto-siguiente" class="zd-btn zd-btn--primary" type="button" disabled>Completar parámetros</button>
         <button id="auto-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
       </div>
     </div>
@@ -1248,7 +1283,7 @@ ${estadoSinTenant('automatizaciones')}
       <!-- CH-40 (DEC-186): no max attribute; the row cap is the server's configuration, and its 400 names the field. -->
       <label for="auto-minimo" class="zd-label">Mínimo de filas para avisar</label>
       <input id="auto-minimo" class="zd-input" type="number" min="1" step="1" value="1" inputmode="numeric" aria-describedby="auto-minimo-ayuda">
-      <p id="auto-minimo-ayuda" class="ayuda">El correo sale solo si la consulta devuelve al menos esta cantidad de filas.</p>
+      <p id="auto-minimo-ayuda" class="ayuda">El correo sale solo si la consulta devuelve al menos esta cantidad de filas. Es cuántos productos tienen que cumplir la condición, no el valor de la condición: con 3, solo avisa cuando hay 3 o más productos.</p>
 
       <!-- CH-21c (DEC-131): a schematic of the notification email. Text nodes only, filled by the
            script; it never shows a row of any result. -->
@@ -1381,7 +1416,7 @@ ${estadoSinTenant('automatizaciones')}
 <section id="pantalla-frescura" aria-labelledby="titulo-frescura" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-frescura" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-frescura" class="zd-h1">Frescura de datos</h1>
   </div>
 </header>
@@ -1421,7 +1456,7 @@ ${estadoSinTenant('frescura')}
 <section id="pantalla-auditoria" aria-labelledby="titulo-auditoria" hidden>
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
-    <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
+    <div class="zd-pagehead__meta"><span id="alcance-auditoria" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-auditoria" class="zd-h1">Auditoría</h1>
     <p class="zd-pagehead__desc">Qué se ejecutó contra la réplica del tenant, cuándo y por quién. Es un registro: no se modifica ni se borra.</p>
   </div>
@@ -1432,7 +1467,7 @@ ${estadoSinTenant('auditoria')}
   <div><label for="aud-hasta" class="zd-label">Hasta</label><input id="aud-hasta" class="zd-input" type="date"></div>
   <div><label for="aud-resultado" class="zd-label">Resultado</label>
     <select id="aud-resultado" class="zd-select"><option value="">Todos</option><option value="ok">OK</option><option value="fallo">Falló</option></select></div>
-  <button id="aud-filtrar" class="zd-btn zd-btn--secondary" type="button">Filtrar</button>
+  <button id="aud-filtrar" class="zd-btn zd-btn--secondary" type="button">Filtrar auditoría</button>
 </div>
 <p id="auditoria-aviso" class="ayuda" role="status"></p>
 <div class="zd-table-wrap zd-table-scroll">
@@ -1810,13 +1845,36 @@ function textoDeCelda(valor) {
   return String(valor);
 }
 
+// C-19: a number as the design guide reads it for a column: a JSON number, or the text of one (the driver hands
+// numeric and bigint columns over as strings) with no leading zero, so a code such as 007 stays text.
+function esValorNumerico(valor) {
+  if (typeof valor === 'number') { return isFinite(valor); }
+  if (typeof valor !== 'string' || !/^-?[0-9]+([.][0-9]+)?$/.test(valor)) { return false; }
+  var digitos = valor.charAt(0) === '-' ? valor.slice(1) : valor;
+  return !(digitos.length > 1 && digitos.charAt(0) === '0' && digitos.charAt(1) !== '.');
+}
+
+// A column is numeric when it has a value and every value it has is a number (NULL does not count against it).
+function columnaNumerica(filas, indice) {
+  var conValor = false;
+  for (var i = 0; i < filas.length; i++) {
+    var valor = filas[i][indice];
+    if (valor === null || valor === undefined) { continue; }
+    if (!esValorNumerico(valor)) { return false; }
+    conValor = true;
+  }
+  return conValor;
+}
+
 function renderizar(cuerpo) {
   vaciar(encabezado);
   vaciar(cuerpoTabla);
 
+  var numericas = cuerpo.columnas.map(function (nombre, indice) { return columnaNumerica(cuerpo.filas, indice); });
   var filaEncabezado = document.createElement('tr');
-  cuerpo.columnas.forEach(function (nombre) {
+  cuerpo.columnas.forEach(function (nombre, indice) {
     var celda = document.createElement('th');
+    if (numericas[indice]) { celda.className = 'num'; }
     celda.textContent = String(nombre);
     filaEncabezado.appendChild(celda);
   });
@@ -1824,9 +1882,10 @@ function renderizar(cuerpo) {
 
   cuerpo.filas.forEach(function (fila) {
     var tr = document.createElement('tr');
-    fila.forEach(function (valor) {
+    fila.forEach(function (valor, indice) {
       var celda = document.createElement('td');
       if (valor === null || valor === undefined) { celda.className = 'nulo'; }
+      else if (numericas[indice]) { celda.className = 'num'; }
       celda.textContent = textoDeCelda(valor);
       tr.appendChild(celda);
     });
@@ -1923,7 +1982,11 @@ var CONTROLES_DEL_TENANT = ['conexion-nueva', 'usuario-nuevo', 'consulta-nueva',
 
 function aplicarSinTenant() {
   var sin = tenantActivo === null;
+  // C-19: the scope tag of each screen names the tenant it works on, as the design guide asks.
+  var filaActiva = sin ? null : filaDeTenant(tenantActivo);
+  var alcance = 'Del tenant activo' + (filaActiva === null ? '' : ': ' + String(filaActiva.nombre));
   PANTALLAS_DEL_TENANT.forEach(function (nombre) {
+    document.getElementById('alcance-' + nombre).textContent = alcance;
     var seccion = document.getElementById('pantalla-' + nombre);
     if (sin) { seccion.setAttribute('data-sin-tenant', ''); } else { seccion.removeAttribute('data-sin-tenant'); }
     document.getElementById('sin-tenant-' + nombre).hidden = !sin;
@@ -2133,7 +2196,7 @@ function crearEditorParametros(contenedor, alCambiar, conValor) {
 
     var quitar = document.createElement('button');
     quitar.type = 'button';
-    quitar.textContent = 'Quitar';
+    quitar.textContent = 'Quitar parámetro';
     quitar.addEventListener('click', function () {
       contenedor.removeChild(fila.nodo);
       filas.splice(filas.indexOf(fila), 1);
@@ -3100,16 +3163,60 @@ async function elegirPlantilla(id) {
     if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
     detalle = resultado.cuerpo.plantilla;
   }
-  filasValoresAuto = construirValores(contenedorValoresAuto, detalle.parametros);
+  filasValoresAuto = construirValores(contenedorValoresAuto, detalle.parametros, detalle);
 }
 
-// One labelled value control per declared parameter, appended to contenedor; the entries valoresDe reads.
+// C-13: what each parameter of a built-in template means, in words. The catalog carries only the parameter's name and
+// type, so, like the template cards' description (DESCRIPCIONES_PLANTILLA), the label and the help live here, keyed by
+// the template's automatizacion label and the parameter's name. Any other template or parameter keeps its own name as
+// the label and has no help: nothing is invented for a template an operator wrote.
+var PARAMETROS_PLANTILLA = {
+  'stock-fisico': {
+    'umbral': {
+      etiqueta: 'Stock mínimo por producto',
+      ayuda: 'Avisa cuando un producto llega a esta cantidad de stock o menos. Es el valor de la condición; cuántos productos tienen que cumplirla se elige más abajo, en «Mínimo de filas para avisar».'
+    }
+  },
+  'stock-producible': {
+    'umbral': {
+      etiqueta: 'Unidades armables mínimas por producto',
+      ayuda: 'Avisa cuando, con los insumos disponibles, se pueden armar esta cantidad de unidades o menos de un producto. Cuántos productos tienen que cumplirlo se elige más abajo, en «Mínimo de filas para avisar».'
+    }
+  }
+};
+
+function descripcionDeParametro(plantilla, nombre) {
+  var etiqueta = plantilla !== null && typeof plantilla === 'object' ? String(plantilla.automatizacion) : '';
+  if (Object.prototype.hasOwnProperty.call(PARAMETROS_PLANTILLA, etiqueta)
+      && Object.prototype.hasOwnProperty.call(PARAMETROS_PLANTILLA[etiqueta], nombre)) {
+    return PARAMETROS_PLANTILLA[etiqueta][nombre];
+  }
+  return { etiqueta: nombre, ayuda: '' };
+}
+
+var contadorAyudas = 0;
+
+// One labelled value control per declared parameter, appended to contenedor; the entries valoresDe reads. The label
+// and the help come from the template (descripcionDeParametro); the entry keeps the parameter's own name for the
+// request. plantilla is optional: the template pop-ups declare parameters of their own and have no template yet.
 // Shared by the wizard and the adjust pop-up (CH-33).
-function construirValores(contenedor, parametros) {
+function construirValores(contenedor, parametros, plantilla) {
   var entradas = [];
   (Array.isArray(parametros) ? parametros : []).forEach(function (parametro) {
-    var entrada = { nombre: String(parametro.nombre), tipo: String(parametro.tipo), valor: controlDeValor(String(parametro.tipo)) };
-    contenedor.appendChild(rotular(entrada.nombre, entrada.valor));
+    var nombre = String(parametro.nombre);
+    var entrada = { nombre: nombre, tipo: String(parametro.tipo), valor: controlDeValor(String(parametro.tipo)) };
+    var texto = descripcionDeParametro(plantilla, nombre);
+    var rotulo = rotular(texto.etiqueta, entrada.valor);
+    if (texto.ayuda !== '') {
+      contadorAyudas += 1;
+      var ayuda = document.createElement('span');
+      ayuda.id = 'parametro-ayuda-' + contadorAyudas;
+      ayuda.className = 'parametro-ayuda';
+      ayuda.textContent = texto.ayuda;
+      entrada.valor.setAttribute('aria-describedby', ayuda.id);
+      rotulo.appendChild(ayuda);
+    }
+    contenedor.appendChild(rotulo);
     entradas.push(entrada);
   });
   return entradas;
@@ -3296,7 +3403,7 @@ async function listarAutomatizaciones() {
       }
       var nombre = nombresPlantilla[fila.plantillaId];
       return [nombre === undefined ? String(fila.plantillaId) : nombre, nombreDeConexion(fila.conexionId),
-        celdaDeHorario(fila.cron), fila.activo === true ? 'activa' : 'desactivada', fechaHoraTenant(fila.creadaEn), acciones];
+        celdaDeHorario(fila.cron), insigniaAutomatizacion(fila.activo === true), fechaHoraTenant(fila.creadaEn), acciones];
     }),
     'automatizacion',
     resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' automatizaciones más recientes.' : null
@@ -3512,7 +3619,7 @@ function llenarAjuste(guardada, plantilla) {
   var nombre = nombresPlantilla[guardada.plantillaId];
   resumenAjuste.textContent = 'Plantilla: ' + (nombre === undefined ? String(plantilla.nombre) : nombre) +
     ' · Conexión: ' + nombreDeConexion(guardada.conexionId) + '. La plantilla y la conexión no se cambian.';
-  filasValoresAjuste = construirValores(contenedorValoresAjuste, plantilla.parametros);
+  filasValoresAjuste = construirValores(contenedorValoresAjuste, plantilla.parametros, plantilla);
   var valores = guardada.valores !== null && typeof guardada.valores === 'object' ? guardada.valores : {};
   filasValoresAjuste.forEach(function (entrada) {
     if (Object.prototype.hasOwnProperty.call(valores, entrada.nombre) && valores[entrada.nombre] !== null) {
@@ -3852,8 +3959,22 @@ var ICONOS_FRESCURA = {
     ['circle', { cx: '12', cy: '12', r: '10' }],
     ['path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }],
     ['path', { d: 'M12 17h.01' }]
-  ]
+  ],
+  // C-19: the automation's two states reuse the same icon builder.
+  'auto-activa': [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm9 12 2 2 4-4' }]],
+  'auto-desactivada': [['circle', { cx: '12', cy: '12', r: '10' }], ['path', { d: 'm4.9 4.9 14.2 14.2' }]]
 };
+
+// C-19: «Activa» / «Desactivada» as a badge: an icon and a word, never the color alone.
+function insigniaAutomatizacion(activa) {
+  var nodo = document.createElement('span');
+  nodo.className = activa ? 'estado-auto estado-auto--activa' : 'estado-auto';
+  nodo.appendChild(iconoDeEstado(activa ? 'auto-activa' : 'auto-desactivada'));
+  var texto = document.createElement('span');
+  texto.textContent = activa ? 'Activa' : 'Desactivada';
+  nodo.appendChild(texto);
+  return nodo;
+}
 
 // The client twin of evaluarFrescura in src/tenants/frescura.ts, pinned by the same vectors: an
 // undeclared window is its own state, and a window equal to the tolerance is still al-dia.
@@ -5065,7 +5186,7 @@ function renderizarPantallaConexiones(conexiones) {
     celdaTenant(fila, String(cx.usuarioDb));
     var prueba = celdaTenant(fila, '');
     var resultado = document.createElement('span');
-    prueba.appendChild(botonTenant('Probar', async function () {
+    prueba.appendChild(botonTenant('Probar conexión', async function () {
       resultado.textContent = 'Probando…';
       resultado.textContent = await probarConexionPorId(String(cx.id));
     }));
@@ -5137,6 +5258,7 @@ var CAMPOS_DE_TEXTO_CONEXION = ['cx-nombre', 'cx-host', 'cx-base', 'cx-usuario',
 });
 
 function limpiarFormularioConexion() {
+  CAMPOS_DE_TEXTO_CONEXION.concat([entradaPuertoConexion]).forEach(function (campo) { campo.removeAttribute('aria-invalid'); });
   CAMPOS_DE_TEXTO_CONEXION.forEach(function (campo) { campo.value = ''; });
   entradaPuertoConexion.value = '5432';
   resultadoConexion.textContent = '';
@@ -5179,9 +5301,39 @@ var guardandoConexion = false;
 // once, so it never stays in the page; it is never written back (rule 7). On a 201 the connection is
 // tested, the pop-up closes and the screen's notice says it was saved and how the test went, also when the
 // test failed (the connection exists). Any refusal is written inside the pop-up, which stays open.
+// C-06: a missing field is named in the pop-up's own line, as «Nuevo tenant» does, and the first one takes the focus.
+// The form carries novalidate, so this is the only check before the request; the server's own 400 stays as it was.
+var CAMPOS_OBLIGATORIOS_CONEXION = [['cx-nombre', 'Nombre'], ['cx-host', 'Servidor'], ['cx-puerto', 'Puerto'],
+  ['cx-base', 'Base de datos'], ['cx-usuario', 'Usuario'], ['cx-clave', 'Contraseña']];
+
+function revisarFormularioConexion() {
+  var faltan = [];
+  var primero = null;
+  CAMPOS_OBLIGATORIOS_CONEXION.forEach(function (par) {
+    var campo = document.getElementById(par[0]);
+    var vacio = campo.value.trim() === '';
+    if (vacio) { faltan.push(par[1]); if (primero === null) { primero = campo; } }
+    if (vacio) { campo.setAttribute('aria-invalid', 'true'); } else { campo.removeAttribute('aria-invalid'); }
+  });
+  var mensajes = [];
+  if (faltan.length > 0) { mensajes.push('Completá: ' + faltan.join(', ') + '.'); }
+  var puerto = Number(entradaPuertoConexion.value);
+  var puertoMalo = entradaPuertoConexion.value.trim() !== '' && (!isFinite(puerto) || Math.floor(puerto) !== puerto || puerto < 1 || puerto > 65535);
+  if (puertoMalo) {
+    mensajes.push('El puerto tiene que ser un número entero entre 1 y 65535.');
+    entradaPuertoConexion.setAttribute('aria-invalid', 'true');
+    if (primero === null) { primero = entradaPuertoConexion; }
+  }
+  if (mensajes.length === 0) { return true; }
+  resultadoConexion.textContent = mensajes.join(' ');
+  primero.focus();
+  return false;
+}
+
 formularioConexion.addEventListener('submit', async function (evento) {
   evento.preventDefault();
   if (guardandoConexion) { return; }
+  if (!revisarFormularioConexion()) { return; }
   var campoClave = document.getElementById('cx-clave');
   var cuerpoAlta = {
     nombre: document.getElementById('cx-nombre').value.trim(),
@@ -5239,9 +5391,12 @@ formularioConexion.addEventListener('submit', async function (evento) {
 
 // Each entry is a notice and the node that holds the secret's text. The secret lives only
 // there, and only until it is dismissed, the screen changes or the tenant changes.
+// C-14: the user's notice also holds the panel address and the email, the rest of what is sent along with the password;
+// extras are cleared together with it.
 var SECRETOS = [
-  { contenedor: document.getElementById('agente-secreto'), valor: document.getElementById('agente-secreto-valor') },
-  { contenedor: document.getElementById('usuario-secreto'), valor: document.getElementById('usuario-secreto-valor') }
+  { contenedor: document.getElementById('agente-secreto'), valor: document.getElementById('agente-secreto-valor'), extras: [] },
+  { contenedor: document.getElementById('usuario-secreto'), valor: document.getElementById('usuario-secreto-valor'),
+    extras: [document.getElementById('usuario-secreto-url'), document.getElementById('usuario-secreto-correo')] }
 ];
 
 function mostrarSecreto(indice, texto) {
@@ -5252,13 +5407,13 @@ function mostrarSecreto(indice, texto) {
 function olvidarSecretos() {
   SECRETOS.forEach(function (secreto) {
     secreto.valor.textContent = '';
+    secreto.extras.forEach(function (extra) { extra.textContent = ''; });
     secreto.contenedor.hidden = true;
   });
 }
 
-// Copies the shown secret when the browser allows it; otherwise asks to copy by hand.
-function copiarSecreto(indice, aviso) {
-  var texto = SECRETOS[indice].valor.textContent;
+// Copies a text when the browser allows it; otherwise asks to copy by hand.
+function copiarTexto(texto, aviso) {
   var portapapeles = window.navigator && window.navigator.clipboard;
   if (!portapapeles || texto === '') { aviso.textContent = 'Seleccioná el texto y copialo a mano.'; return; }
   portapapeles.writeText(texto).then(function () {
@@ -5266,6 +5421,11 @@ function copiarSecreto(indice, aviso) {
   }, function () {
     aviso.textContent = 'Seleccioná el texto y copialo a mano.';
   });
+}
+
+// Copies the shown secret.
+function copiarSecreto(indice, aviso) {
+  copiarTexto(SECRETOS[indice].valor.textContent, aviso);
 }
 
 // ---- CH-30c (DEC-121, screen C-05 "Agentes"): Agentes ------------------------------------
@@ -5376,9 +5536,33 @@ var formularioUsuario = document.getElementById('usuario-alta');
 document.getElementById('usuario-guardado').addEventListener('click', olvidarSecretos);
 document.getElementById('usuario-copiar').addEventListener('click', function () { copiarSecreto(1, avisoUsuarios); });
 
+// C-14: what a new panel user is sent, as one text: where the panel is, which email to use and the password. The
+// address is this page's own origin plus /panel; a page with no origin (it has one in every browser) says the path.
+function direccionDelPanel() {
+  var origen = window.location && typeof window.location.origin === 'string' ? window.location.origin : '';
+  return origen + '/panel';
+}
+
+function mostrarAccesoUsuario(correo, clave) {
+  mostrarSecreto(1, clave);
+  document.getElementById('usuario-secreto-url').textContent = direccionDelPanel();
+  document.getElementById('usuario-secreto-correo').textContent = String(correo);
+}
+
+function correoDelUsuario(cuerpo, respaldo) {
+  var usuario = cuerpo !== null && typeof cuerpo === 'object' ? cuerpo.usuario : null;
+  return usuario !== null && typeof usuario === 'object' && typeof usuario.correo === 'string' ? usuario.correo : respaldo;
+}
+
+document.getElementById('usuario-copiar-todo').addEventListener('click', function () {
+  copiarTexto('Dirección del panel: ' + document.getElementById('usuario-secreto-url').textContent +
+    '\\nCorreo: ' + document.getElementById('usuario-secreto-correo').textContent +
+    '\\nClave: ' + SECRETOS[1].valor.textContent, avisoUsuarios);
+});
+
 // One write on a user (reset, deactivate, reactivate): shows a generated password when the
 // answer carries one, then reloads the list.
-async function accionUsuario(id, verbo) {
+async function accionUsuario(id, verbo, correo) {
   var respuesta;
   try {
     respuesta = await pedir('/usuarios/' + encodeURIComponent(id) + '/' + verbo, { method: 'POST' });
@@ -5391,7 +5575,7 @@ async function accionUsuario(id, verbo) {
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (manejarFalloDeTenant(cuerpo)) { return; }
   if (respuesta.status === 200 && cuerpo !== null && typeof cuerpo.clave === 'string') {
-    mostrarSecreto(1, cuerpo.clave);
+    mostrarAccesoUsuario(correoDelUsuario(cuerpo, correo), cuerpo.clave);
   } else if (respuesta.status !== 200) {
     avisoUsuarios.textContent = 'No se pudo completar la acción (HTTP ' + respuesta.status + ').';
   }
@@ -5405,7 +5589,7 @@ function botonReponerClave(td, usuario) {
     var aviso = document.createElement('span');
     aviso.textContent = 'Se cierran sus sesiones abiertas.';
     td.appendChild(aviso);
-    td.appendChild(botonTenant('Reponer clave de ' + String(usuario.correo), function () { accionUsuario(String(usuario.id), 'clave'); }));
+    td.appendChild(botonTenant('Reponer clave de ' + String(usuario.correo), function () { accionUsuario(String(usuario.id), 'clave', String(usuario.correo)); }));
     td.appendChild(botonTenant('Cancelar', function () { accionesUsuario(td, usuario); }));
   });
 }
@@ -5417,11 +5601,11 @@ function accionesUsuario(td, usuario) {
     td.appendChild(botonReponerClave(td, usuario));
     td.appendChild(botonTenant('Desactivar', function () {
       vaciar(td);
-      td.appendChild(botonTenant('Desactivar ' + String(usuario.correo), function () { accionUsuario(id, 'desactivar'); }));
+      td.appendChild(botonTenant('Desactivar ' + String(usuario.correo), function () { accionUsuario(id, 'desactivar', String(usuario.correo)); }));
       td.appendChild(botonTenant('Cancelar', function () { accionesUsuario(td, usuario); }));
     }));
   } else {
-    td.appendChild(botonTenant('Reactivar', function () { accionUsuario(id, 'reactivar'); }));
+    td.appendChild(botonTenant('Reactivar', function () { accionUsuario(id, 'reactivar', String(usuario.correo)); }));
     td.appendChild(botonReponerClave(td, usuario));
   }
 }
@@ -5527,7 +5711,7 @@ formularioUsuario.addEventListener('submit', async function (evento) {
   }
   dialogoUsuario.cerrar();
   avisoUsuarios.textContent = '';
-  mostrarSecreto(1, cuerpo.clave);
+  mostrarAccesoUsuario(correoDelUsuario(cuerpo, cuerpoAlta.correo), cuerpo.clave);
   await cargarPantallaUsuarios();
 });
 
@@ -5747,7 +5931,7 @@ async function cargarPantallaPlantillas() {
     celdaTenant(fila, String(plantilla.automatizacion));
     celdaTenant(fila, String(plantilla.formato));
     celdaTenant(fila, toleranciaTexto(plantilla.toleranciaFrescuraMinutos));
-    celdaTenant(fila, '').appendChild(botonTenant('Ver', function () { verPlantilla(String(plantilla.id)); }));
+    celdaTenant(fila, '').appendChild(botonTenant('Ver plantilla', function () { verPlantilla(String(plantilla.id)); }));
     cuerpoPlantillas.appendChild(fila);
   });
   avisoPlantillas.textContent = cuerpo.truncado === true
@@ -6462,7 +6646,7 @@ async function cargarPantallaReportes() {
     celdaTenant(fila, String(reporte.nombre));
     celdaTenant(fila, String(reporte.titulo));
     celdaTenant(fila, etiquetaVisualizacion(reporte.visualizacion));
-    celdaTenant(fila, '').appendChild(botonTenant('Ver', function () { verReporte(String(reporte.id)); }));
+    celdaTenant(fila, '').appendChild(botonTenant('Ver reporte', function () { verReporte(String(reporte.id)); }));
     cuerpoReportes.appendChild(fila);
   });
   avisoReportes.textContent = cuerpo.truncado === true
@@ -6707,7 +6891,7 @@ function dibujarColumnasReporte() {
     caja.appendChild(rotuloColumna);
     caja.appendChild(rotuloTitulo);
     if (esTabla) {
-      var quitar = botonTenant('Quitar', function () {
+      var quitar = botonTenant('Quitar columna', function () {
         if (filasColumnasReporte.length <= 1) { return; }
         filasColumnasReporte.splice(indice, 1);
         dibujarColumnasReporte();
@@ -7042,7 +7226,7 @@ function bloqueDeEntidad(fila) {
       ejemplo.appendChild(botonTenant('Usar de punto de partida', function () { usarEjemplo(entidad); }));
       bloque.appendChild(ejemplo);
     }
-    bloque.appendChild(botonTenant('Guardar', function () { guardarVista(entidad); }));
+    bloque.appendChild(botonTenant('Guardar mapeo', function () { guardarVista(entidad); }));
     bloque.appendChild(diagnostico);
     contenedorEntidades.appendChild(bloque);
     bloquesMapeo[entidad] = { estado: estado, editor: editor, diagnostico: diagnostico };
@@ -7287,7 +7471,20 @@ function duracionAuditoria(ms) {
   return (Math.round(ms / 100) / 10).toFixed(1).replace('.', ',') + ' s';
 }
 
-function filaAuditoria(registro, nombres) {
+// C-17: the Consulta cell of a template or report test names it, with the id as a secondary datum (a short code, the
+// whole id on hover). When the name could not be read, the cell keeps the label and the whole id, as before.
+function celdaOrigenAuditoria(rotulo, id, nombre) {
+  if (nombre === undefined) { return rotulo + ' ' + id; }
+  var celda = document.createElement('span');
+  celda.appendChild(document.createTextNode(rotulo + ' ' + nombre + ' '));
+  var codigo = document.createElement('code');
+  codigo.textContent = id.slice(0, 8) + '…';
+  codigo.setAttribute('title', id);
+  celda.appendChild(codigo);
+  return celda;
+}
+
+function filaAuditoria(registro, nombres, nombresOrigen) {
   var fila = document.createElement('tr');
   var fecha = new Date(String(registro.creadoEn));
   var dos = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -7298,10 +7495,19 @@ function filaAuditoria(registro, nombres) {
     ? ORIGENES_AUDITORIA[registro.origen] : String(registro.origen));
   var idConexion = String(registro.conexionId);
   celdaTenant(fila, Object.prototype.hasOwnProperty.call(nombres, idConexion) ? nombres[idConexion] : idConexion.slice(0, 8));
-  celdaTenant(fila, registro.consultaNombre
-    ? String(registro.consultaNombre) + ' v' + String(registro.consultaVersion)
-    : (registro.plantillaId ? 'Plantilla ' + String(registro.plantillaId)
-      : (registro.reporteId ? 'Reporte ' + String(registro.reporteId) : 'Ad hoc')));
+  if (registro.consultaNombre) {
+    celdaTenant(fila, String(registro.consultaNombre) + ' v' + String(registro.consultaVersion));
+  } else if (registro.plantillaId) {
+    var idPlantilla = String(registro.plantillaId);
+    var origenPlantilla = celdaOrigenAuditoria('Plantilla', idPlantilla, nombresOrigen['plantilla:' + idPlantilla]);
+    if (typeof origenPlantilla === 'string') { celdaTenant(fila, origenPlantilla); } else { celdaTenant(fila, '').appendChild(origenPlantilla); }
+  } else if (registro.reporteId) {
+    var idReporte = String(registro.reporteId);
+    var origenReporte = celdaOrigenAuditoria('Reporte', idReporte, nombresOrigen['reporte:' + idReporte]);
+    if (typeof origenReporte === 'string') { celdaTenant(fila, origenReporte); } else { celdaTenant(fila, '').appendChild(origenReporte); }
+  } else {
+    celdaTenant(fila, 'Ad hoc');
+  }
   var sql = String(registro.sql);
   var detalle = document.createElement('details');
   var resumen = document.createElement('summary');
@@ -7317,6 +7523,17 @@ function filaAuditoria(registro, nombres) {
     ? 'OK'
     : 'Falló: ' + mensajeDeFallo({ fase: registro.fase, categoria: registro.categoria, codigo: registro.codigo }));
   return fila;
+}
+
+// Reads a global list and keeps each row's name under prefijo + id; any failure leaves the names out and says nothing.
+async function leerNombresDeOrigen(url, clave, prefijo, destino) {
+  try {
+    var respuesta = await fetch(url).then(siNoAutenticado);
+    if (respuesta.status !== 200) { return; }
+    var lista = await respuesta.json();
+    if (lista === null || typeof lista !== 'object' || !Array.isArray(lista[clave])) { return; }
+    lista[clave].forEach(function (fila) { destino[prefijo + String(fila.id)] = String(fila.nombre); });
+  } catch (sinNombres) { /* the cell falls back to the id */ }
 }
 
 async function cargarPantallaAuditoria() {
@@ -7364,8 +7581,16 @@ async function cargarPantallaAuditoria() {
     avisoAuditoria.textContent = 'No se pudo leer la auditoría (HTTP ' + respuesta.status + ').';
     return;
   }
+  // C-17: the names of the templates and the reports the rows point at. Another courtesy: asked for only when a row
+  // needs one, and when a list cannot be read the cell shows the id.
+  var nombresOrigen = {};
+  var conPlantilla = cuerpo.registros.some(function (registro) { return !registro.consultaNombre && registro.plantillaId; });
+  var conReporte = cuerpo.registros.some(function (registro) { return !registro.consultaNombre && !registro.plantillaId && registro.reporteId; });
+  if (conPlantilla) { await leerNombresDeOrigen('/plantillas', 'plantillas', 'plantilla:', nombresOrigen); }
+  if (conReporte) { await leerNombresDeOrigen('/reportes', 'reportes', 'reporte:', nombresOrigen); }
+  if (g !== generacionAuditoria) { return; }
   vaciar(cuerpoAuditoria);
-  cuerpo.registros.forEach(function (registro) { cuerpoAuditoria.appendChild(filaAuditoria(registro, nombres)); });
+  cuerpo.registros.forEach(function (registro) { cuerpoAuditoria.appendChild(filaAuditoria(registro, nombres, nombresOrigen)); });
   avisoAuditoria.textContent = cuerpo.registros.length === 0
     ? 'No hay ejecuciones registradas con estos filtros.'
     : (cuerpo.truncado === true ? 'Se muestran las 200 ejecuciones más recientes. Acotá las fechas para ver las anteriores.' : '');
@@ -7806,6 +8031,13 @@ botonGuardarTablero.addEventListener('click', guardarTablero);
 // shows Consultas. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
 var PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tablero', 'tiempos','consultas', 'automatizaciones', 'frescura', 'auditoria'];
+// C-19: the tab names the screen that is open (the same words as the navigation).
+var TITULOS_PANTALLA = {
+  'tenants': 'Tenants', 'plantillas': 'Plantillas', 'reportes': 'Reportes', 'contrato': 'Contrato canónico',
+  'conexiones': 'Conexiones', 'agentes': 'Agentes', 'mapeo': 'Mapeo y validación', 'usuarios': 'Usuarios del panel',
+  'tablero': 'Tablero del cliente', 'tiempos': 'Tiempos de alta', 'consultas': 'Consultas',
+  'automatizaciones': 'Automatizaciones', 'frescura': 'Frescura de datos', 'auditoria': 'Auditoría'
+};
 function mostrarPantalla() {
   // C-02, C-04, C-12: a result belongs to the visit that produced it.
   ocultarResultado('tenant-banner');
@@ -7813,6 +8045,7 @@ function mostrarPantalla() {
   ocultarResultado('mapeo-banner');
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
+  document.title = TITULOS_PANTALLA[activa] + ' — ZeroDashboard';
   olvidarSecretos();
   PANTALLAS.forEach(function (nombre) {
     document.getElementById('pantalla-' + nombre).hidden = nombre !== activa;
@@ -7869,6 +8102,7 @@ const DOCUMENTO_INGRESO = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZeroDashboard — Ingreso a la consola</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/ui/styles.css">
 <style>
   [hidden] { display: none !important; }

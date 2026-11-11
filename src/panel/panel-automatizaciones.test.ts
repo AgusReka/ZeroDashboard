@@ -186,6 +186,55 @@ describe('proyectarActiva — the notice for a Telegram automation with no chat 
   });
 });
 
+describe('proyectarActiva — the rule and the recipients (P-09)', () => {
+  const AHORA_FIJO = new Date('2026-10-07T12:00:00Z');
+  const PARAMETROS = [{ nombre: 'umbral', tipo: 'numero' }];
+  const item = (parche: Partial<FilaAutomatizacion>, extra: Partial<FilaAutomatizacion['plantilla']> = {}) =>
+    proyectarActiva(
+      fila({ plantilla: { ...TEXTO_FISICO, parametros: PARAMETROS, ...extra }, valores: { umbral: 5 }, ...parche }),
+      null,
+      AHORA_FIJO,
+      'UTC',
+    );
+
+  test('the minimum is carried when the template declares it as a number and a finite one is stored', () => {
+    assert.equal(item({}).umbral, 5);
+    assert.equal(item({ valores: { umbral: 0 } }).umbral, 0);
+    assert.equal(item({ valores: { umbral: 2.5 } }).umbral, 2.5);
+  });
+
+  test('it is left out when the template does not declare it, declares another type, or the stored value is no finite number', () => {
+    assert.equal('umbral' in item({}, { parametros: [] }), false);
+    assert.equal('umbral' in item({}, { parametros: undefined }), false);
+    assert.equal('umbral' in item({}, { parametros: [{ nombre: 'umbral', tipo: 'texto' }] }), false);
+    assert.equal('umbral' in item({}, { parametros: [{ nombre: 'otro', tipo: 'numero' }] }), false);
+    for (const valores of [{ umbral: '5' }, { umbral: null }, { umbral: Number.POSITIVE_INFINITY }, {}, null, [], 'x']) {
+      assert.equal('umbral' in item({ valores }), false, JSON.stringify(valores));
+    }
+  });
+
+  test('only the umbral of the stored values leaves; the rest of them never does', () => {
+    const conSecreto = item({ valores: { umbral: 5, deposito: 'Norte', clave: 'x' } });
+    assert.ok(!JSON.stringify(conSecreto).includes('Norte'));
+    assert.equal('valores' in conSecreto, false);
+  });
+
+  test('an email automation carries its addresses in the order stored; with none, nothing', () => {
+    assert.deepEqual(item({ canal: 'correo', destinatarios: ['b@x.com', 'a@x.com'] }).destinatarios, ['b@x.com', 'a@x.com']);
+    assert.deepEqual(item({ destinatarios: ['a@x.com'] }).destinatarios, ['a@x.com'], 'a row with no channel reads as email');
+    assert.equal('destinatarios' in item({ destinatarios: [] }), false);
+    assert.equal('destinatarios' in item({}), false);
+  });
+
+  test('a Telegram automation says so and carries no address and no channel column', () => {
+    const porTelegram = item({ canal: 'telegram', destinatarios: ['a@x.com'] });
+    assert.equal(porTelegram.porTelegram, true);
+    assert.equal('destinatarios' in porTelegram, false, 'the list kept for going back does not leave');
+    assert.equal('canal' in porTelegram, false);
+    assert.equal('porTelegram' in item({ canal: 'correo' }), false);
+  });
+});
+
 describe('proyectarActiva — allow-list without technical fields', () => {
   test('1.4 no forbidden key and no stored value reaches the item', () => {
     const item = proyectarActiva(FILA_CRUDA, EJECUCION_CRUDA, AHORA, 'UTC');
@@ -204,6 +253,7 @@ describe('proyectarActiva — allow-list without technical fields', () => {
     assert.equal(item.id, 'aut-1');
     assert.deepEqual(Object.keys(item).sort(), [
       'descripcion',
+      'destinatarios',
       'estado',
       'frecuencia',
       'id',
@@ -822,6 +872,42 @@ describe(
       );
       assert.equal(cuerpo.activas[0]?.id, id);
       assert.deepEqual(Object.keys(propios(cuerpo)[0] ?? {}).sort(), ['descripcion', 'titulo']);
+    });
+
+    test('P-09 the list carries the umbral and the addresses of its own tenant, and nothing else of the stored values', async () => {
+      const n = await negocio('p09');
+      const declarada = await db.plantilla.create({
+        data: {
+          nombre: NOMBRE_PLANTILLA,
+          sql: SQL_SECRETO,
+          entidades: ['producto'],
+          automatizacion: 'stock-fisico',
+          formato: 'correo-html',
+          toleranciaFrescuraMinutos: 30,
+          parametros: [{ nombre: 'umbral', tipo: 'numero' }],
+          ...TEXTO_A,
+        },
+      });
+      plantillaIds.push(declarada.id);
+      const id = await automatizacion(n, declarada.id, { valores: { umbral: 7, deposito: 'Norte' } });
+      await db.automatizacion.update({ where: { id }, data: { destinatarios: ['panel-demo@example.com', 'otra@example.com'] } });
+      const otro = await negocio('p09-otro');
+      const ajena = await automatizacion(otro, declarada.id, { valores: { umbral: 99 } });
+      await db.automatizacion.update({ where: { id: ajena }, data: { destinatarios: ['ajeno@example.com'] } });
+
+      const { respuesta, cuerpo } = await leer(n);
+      assert.equal(respuesta.statusCode, 200, respuesta.body);
+      const propia = cuerpo.activas.find((a) => a.id === id) as Record<string, unknown>;
+      assert.equal(propia.umbral, 7);
+      assert.deepEqual(propia.destinatarios, ['panel-demo@example.com', 'otra@example.com']);
+      for (const texto of ['Norte', 'ajeno@example.com', ajena]) assert.ok(!respuesta.body.includes(texto), texto);
+      assert.ok(!clavesDe(cuerpo).has('valores'));
+      assert.ok(!clavesDe(cuerpo).has('canal'));
+
+      await db.automatizacion.update({ where: { id }, data: { canal: 'telegram' } });
+      const enTelegram = (await leer(n)).cuerpo.activas.find((a) => a.id === id) as Record<string, unknown>;
+      assert.equal(enTelegram.porTelegram, true);
+      assert.ok(!('destinatarios' in enTelegram));
     });
 
     test('2.11 at the limit is not truncated; one over is cut to the limit and disponibles is unaffected', async () => {

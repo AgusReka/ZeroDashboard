@@ -673,6 +673,43 @@ describe(
         assert.ok(!/\b(lun|mar|mié|jue|vie|sáb|dom)\b/i.test(nodos(corrida).map((n) => n.textContent).join(' ')), 'no weekday in the dates');
       });
 
+      describe('P-09: the card says the rule in force and where the notice goes', () => {
+        async function pintarItem(item: object) {
+          const { script } = await shellConScript();
+          const corrida = correrScript(script, {
+            'GET /api/panel/automatizaciones': { status: 200, cuerpo: { activas: [item], disponibles: [], zonaHoraria: 'UTC', truncado: false } },
+            'GET /api/panel/telegram': { status: 200, cuerpo: { estado: 'sin-vincular', bot: 'zd_bot' } },
+          });
+          await esperar();
+          return corrida;
+        }
+
+        test('the minimum and the addresses read as a sentence, without opening «Ajustar»', async () => {
+          const corrida = await pintarItem({ ...ITEM, umbral: 5, destinatarios: ['panel-demo@example.com', 'otra@example.com'] });
+          assert.equal(conTexto(corrida, 'Te avisamos cuando').length, 1);
+          assert.equal(conTexto(corrida, 'un producto llegue a 5 unidades o menos').length, 1);
+          assert.equal(conTexto(corrida, 'Te lo enviamos a').length, 1);
+          assert.equal(conTexto(corrida, 'panel-demo@example.com, otra@example.com').length, 1);
+        });
+
+        test('a unit is singular, a thousand has its separator, and zero is still a rule', async () => {
+          assert.equal(conTexto(await pintarItem({ ...ITEM, umbral: 1 }), 'un producto llegue a 1 unidad o menos').length, 1);
+          assert.equal(conTexto(await pintarItem({ ...ITEM, umbral: 1500 }), 'un producto llegue a 1.500 unidades o menos').length, 1);
+          assert.equal(conTexto(await pintarItem({ ...ITEM, umbral: 0 }), 'un producto llegue a 0 unidades o menos').length, 1);
+        });
+
+        test('by Telegram it says so, and never a chat; with neither datum the rows are not drawn', async () => {
+          const telegram = await pintarItem({ ...ITEM, umbral: 5, porTelegram: true });
+          assert.equal(conTexto(telegram, 'Te lo enviamos a').length, 1);
+          assert.equal(conTexto(telegram, 'Telegram').length >= 1, true);
+          const sinDatos = await pintarItem(ITEM);
+          assert.equal(conTexto(sinDatos, 'Te avisamos cuando').length, 0);
+          assert.equal(conTexto(sinDatos, 'Te lo enviamos a').length, 0);
+          // A value that is not a number is not shown as a rule.
+          assert.equal(conTexto(await pintarItem({ ...ITEM, umbral: '5' }), 'Te avisamos cuando').length, 0);
+        });
+      });
+
       test('P-08: formatear keeps the zone, zero-pads and never reads 24:00 at midnight', async () => {
         const { script } = await shellConScript();
         const formatear = new Function(`${funcionDe(script, 'relleno')}\n${funcionDe(script, 'formatear')}\nreturn formatear;`)() as (iso: string, zona: string) => string;
@@ -779,6 +816,40 @@ describe(
       assert.equal(corrida.el('estado-vacio').hidden, false, 'the list painted its own state');
       corrida.clic('telegram-reintentar');
       assert.equal(corrida.pedidos.filter((p) => p === 'GET /api/panel/telegram').length, 2);
+    });
+
+    test('P-05: the card names the bot next to the code, from the code answer or else from the state, and says so as text', async () => {
+      const { script, html } = await shellConScript();
+      assert.match(html, /mandarle este código a <span id="telegram-bot">nuestro bot<\/span>:/, 'a sentence that still reads without the name');
+      const conBot = (estado: object, codigo: object) => correrScript(script, {
+        'GET /api/panel/automatizaciones': LISTA,
+        'GET /api/panel/telegram': { status: 200, cuerpo: estado },
+        'POST /api/panel/telegram/codigo': { status: 201, cuerpo: { codigo: '7KQ2M9XA', enlace: 'https://t.me/zd_bot?start=x', venceEn: '2026-11-05T13:10:00.000Z', ...codigo } },
+      });
+      // The code answer carries the bot's name.
+      const delCodigo = conBot({ estado: 'sin-vincular', bot: 'zd_bot' }, { bot: 'otro_bot' });
+      await esperar();
+      delCodigo.clic('telegram-vincular');
+      await esperar();
+      assert.equal(delCodigo.el('telegram-bot').textContent, '@otro_bot');
+      // Without it, the one the state read.
+      const delEstado = conBot({ estado: 'sin-vincular', bot: 'zd_bot' }, {});
+      await esperar();
+      delEstado.clic('telegram-vincular');
+      await esperar();
+      assert.equal(delEstado.el('telegram-bot').textContent, '@zd_bot');
+      // With neither, the sentence keeps saying «nuestro bot».
+      const sinNombre = conBot({ estado: 'sin-vincular' }, {});
+      await esperar();
+      sinNombre.clic('telegram-vincular');
+      await esperar();
+      assert.equal(sinNombre.el('telegram-bot').textContent, 'nuestro bot');
+      // A name with markup stays text.
+      const hostil = conBot({ estado: 'sin-vincular' }, { bot: '<b>x</b>' });
+      await esperar();
+      hostil.clic('telegram-vincular');
+      await esperar();
+      assert.equal(hostil.el('telegram-bot').textContent, '@<b>x</b>');
     });
 
     test('CH-43 P-07: creating a code shows it through textContent, a 409 repaints as unavailable, and unlinking asks first', async (t) => {
