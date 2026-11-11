@@ -239,14 +239,16 @@ It SHALL NOT read or list replica metadata.
 ### Requirement: Leaving the Query Editor With Unsaved Changes (DEC-208)
 The editor has unsaved changes when its name, description, SQL, parameter declaration or note differ from the loaded or empty state.
 
-**Leaving by address.** Leaving with unsaved changes, by the breadcrumb or by a change of address, SHALL open a C1 confirmation «¿Descartar los cambios?» with «Descartar cambios» and «Seguir editando». «Seguir editando» SHALL restore the editor's address and keep every typed value.
+**Leaving by address.** Leaving with unsaved changes, by the breadcrumb or by any change of address, SHALL put the editor's address back and show the editor's own unsaved-changes line «Hay cambios sin guardar.» with «Descartar cambios» and «Seguir editando» (the same one «Cancelar» and Escape show).
+- «Descartar cambios» SHALL close the editor and go on to the address the operator asked for.
+- «Seguir editando» SHALL keep the editor, its address and every typed value.
 
 **Leaving by tenant switch.** The «Cambiar tenant» pop-up SHALL include Consultas in its unsaved-changes warning. Confirming the switch discards the changes.
 
 #### Scenario: Breadcrumb with changes
 - **GIVEN** the operator typed SQL at `#consultas/nueva`
 - **WHEN** the operator presses the «Consultas» breadcrumb
-- **THEN** the discard confirmation opens, and «Seguir editando» keeps the SQL and the address `#consultas/nueva`
+- **THEN** the address stays `#consultas/nueva`, the editor says «Hay cambios sin guardar.», and «Seguir editando» keeps the SQL
 
 #### Scenario: Tenant switch with changes
 - **GIVEN** the editor has unsaved changes
