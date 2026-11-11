@@ -62,11 +62,11 @@ Chain strategy: stacked-to-main
 - [x] b2.3 Tests: the four entries pass; extra key, wrong role, empty title and glossary term are rejected; an existing dashboard is untouched; each report's columns over `VALUES` views equal its declared columns.
 
 ## c — Telegram and every-minute automations
-- [ ] c.1 `leerEntornoDemo`: `DEMO_TELEGRAM_CHAT_ID` (signed 64-bit, error without the value).
-- [ ] c.2 `demo/canales.ts`: the link when missing; the email every-minute automation (umbral 10, minimum 2, three recipients); the Telegram one only with a link.
+- [x] c.1 `leerEntornoDemo`: `DEMO_TELEGRAM_CHAT_ID` (signed 64-bit, error without the value).
+- [x] c.2 `demo/canales.ts`: the link when missing; the email every-minute automation (umbral 10, minimum 2, three recipients); the Telegram one only with a link.
 - [ ] c.3 Compose forwards `DEMO_TELEGRAM_CHAT_ID`; `.env.example` lists it empty.
-- [ ] c.4 Tests: link created, skipped, never overwritten; malformed id rejected without echo; Telegram automation only with a link; email automation shape.
-- [ ] c.5 README «Probar la demo completa»: what comes seeded (two tenants, dashboards, every-minute email, Telegram with both variables), the clean start with `down -v`, how to stop the every-minute automations («Desactivar», one-way), the data check query, and the stale CH-48 sentence removed.
+- [x] c.4 Tests: link created, skipped, never overwritten; malformed id rejected without echo; Telegram automation only with a link; email automation shape.
+- [x] c.5 README «Probar la demo completa»: what comes seeded (two tenants, dashboards, every-minute email, Telegram with both variables), the clean start with `down -v`, how to stop the every-minute automations («Desactivar», one-way), the data check query, and the stale CH-48 sentence removed.
 
 ## d — Agent
 - [ ] d.1 `leerEntornoDemo`: `DEMO_AGENTE_TOKEN` (format check, error without the value).

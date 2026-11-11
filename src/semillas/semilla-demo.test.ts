@@ -9,6 +9,7 @@ import type { ResultadoSondeo, SondeoEntidad } from '../ejecucion/consulta-ejecu
 import { CONTRATO_CANONICO, type TipoSemantico } from '../contrato/contrato.js';
 import { descifrarCredencial } from '../compartido/cripto-credencial.js';
 import { verificarClave } from '../compartido/crypto-auth.js';
+import { IDS_CANALES_DEMO } from './demo/canales.js';
 import { IDS_REPORTES_DEMO, REPORTES_DEMO } from './demo/reportes.js';
 import { IDS_DEMO, correoPanelCafe, leerEntornoDemo, sembrarDemo, type EntornoDemo } from './semilla-demo.js';
 
@@ -122,6 +123,30 @@ describe('semilla demo — environment', () => {
     assert.equal(entorno.correoPanel, 'demo-ch31@prueba.test');
     assert.equal(entorno.claveReplica, 'ch31-clave-replica');
   });
+
+  test('the Telegram chat id is optional: unset and empty both read as no chat', () => {
+    assert.equal(leerEntornoDemo(ENV_COMPLETO).telegramChatId, null);
+    assert.equal(leerEntornoDemo({ ...ENV_COMPLETO, DEMO_TELEGRAM_CHAT_ID: '' }).telegramChatId, null);
+  });
+
+  test('a Telegram chat id is read as a bigint, negative group ids and the 64-bit limits included', () => {
+    const chat = (valor: string) => leerEntornoDemo({ ...ENV_COMPLETO, DEMO_TELEGRAM_CHAT_ID: valor }).telegramChatId;
+    assert.equal(chat('123456789'), 123456789n);
+    assert.equal(chat('-1001234567890'), -1001234567890n);
+    assert.equal(chat('9223372036854775807'), 9223372036854775807n);
+    assert.equal(chat('-9223372036854775808'), -9223372036854775808n);
+  });
+
+  for (const invalido of ['abc', '1.5', ' 12', '12 ', '+12', '--1', '9223372036854775808', '-9223372036854775809', '12345678901234567890']) {
+    test(`the Telegram chat id "${invalido}" is refused naming the variable, without echoing it`, () => {
+      assert.throws(
+        () => leerEntornoDemo({ ...ENV_COMPLETO, DEMO_TELEGRAM_CHAT_ID: invalido }),
+        (error: Error) =>
+          error.message === 'Invalid environment variable: DEMO_TELEGRAM_CHAT_ID must be a Telegram chat id' &&
+          !error.message.includes(invalido.trim()),
+      );
+    });
+  }
 });
 
 // ---- live PostgreSQL -------------------------------------------------------------------
@@ -137,6 +162,7 @@ describe(
     async function limpiar(): Promise<void> {
       for (const tenantId of [IDS_DEMO.tenant, IDS_DEMO.cafe.tenant]) {
         await db.tablero.deleteMany({ where: { tenantId } });
+        await db.vinculoTelegram.deleteMany({ where: { tenantId } });
         await db.ejecucion.deleteMany({ where: { tenantId } });
         await db.automatizacion.deleteMany({ where: { tenantId } });
         await db.vistaCanonica.deleteMany({ where: { tenantId } });
@@ -192,7 +218,7 @@ describe(
       ).map((f) => f.id);
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
-      assert.equal(creadas.length, 26, creadas.join(', '));
+      assert.equal(creadas.length, 27, creadas.join(', '));
 
       const operador = await db.operador.findUniqueOrThrow({ where: { id: IDS_DEMO.operador } });
       assert.equal(operador.nombre, 'demo');
@@ -319,7 +345,7 @@ describe(
 
       // Each tenant keeps its own rows.
       assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [5, 1, 0, 1, 1]);
-      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
     });
 
     test('the four reports and both dashboards are seeded after the tenants, by fixed id', async () => {
@@ -413,7 +439,7 @@ describe(
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_NUNCA });
 
       assert.deepEqual(creadas, []);
-      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
       assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [5, 1, 0, 1, 1]);
       assert.equal(await reportesSembrados(), 4);
       assert.equal(await tablerosDeLaDemo(), 2);
@@ -442,7 +468,7 @@ describe(
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
       assert.ok(creadas.includes('automatizacion'));
-      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
     });
 
     test('an entity that is not valid after the probe throws naming it, and nothing depends on it', async () => {
@@ -504,6 +530,95 @@ describe(
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_NUNCA });
 
       assert.deepEqual(creadas, []);
+    });
+
+    // ---- CH-49 (c): the every-minute automations and the Telegram link -----------------------
+
+    const CHAT = 5550001234n;
+    const entornoConChat = (): EntornoDemo => ({ ...entorno, telegramChatId: CHAT });
+
+    test('without a chat id the email automation is created and no link or Telegram automation is', async () => {
+      const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+
+      assert.ok(creadas.includes('automatizacion:correo-cada-minuto'));
+      assert.equal(creadas.includes('vinculo-telegram'), false);
+      assert.equal(creadas.includes('automatizacion:telegram-cada-minuto'), false);
+      assert.equal(await db.vinculoTelegram.count({ where: { tenantId: IDS_DEMO.tenant } }), 0);
+      assert.equal(await db.automatizacion.count({ where: { id: IDS_CANALES_DEMO.automatizacionTelegram } }), 0);
+
+      const correo = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_CANALES_DEMO.automatizacionCorreo } });
+      assert.deepEqual(
+        [correo.tenantId, correo.plantillaId, correo.conexionId, correo.valores, correo.cron, correo.minimoFilas, correo.canal, correo.activo],
+        [IDS_DEMO.tenant, ID_STOCK_FISICO, IDS_DEMO.conexion, { umbral: 10 }, '* * * * *', 2, 'correo', true],
+      );
+      assert.deepEqual(correo.destinatarios, [
+        'demo-ch31@prueba.test',
+        'encargado@food-store.example',
+        'compras@food-store.example',
+      ]);
+      // The daily automation stays as it was.
+      const diaria = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_DEMO.automatizacion } });
+      assert.deepEqual([diaria.cron, diaria.valores, diaria.minimoFilas], ['0 9 * * *', { umbral: 5 }, 1]);
+      // Café del Puerto gets neither.
+      assert.equal(await db.automatizacion.count({ where: { tenantId: IDS_DEMO.cafe.tenant, cron: '* * * * *' } }), 0);
+    });
+
+    test('with a chat id Food Store is linked, the Telegram automation exists and the id is not logged', async () => {
+      const registro: string[] = [];
+      const espiar = (...args: unknown[]) => void registro.push(args.map(String).join(' '));
+      const originales = { log: console.log, info: console.info, warn: console.warn, error: console.error };
+      Object.assign(console, { log: espiar, info: espiar, warn: espiar, error: espiar });
+      let creadas: string[];
+      try {
+        ({ creadas } = await sembrarDemo(db, entornoConChat(), { sondear: SONDEAR_OK }));
+      } finally {
+        Object.assign(console, originales);
+      }
+
+      assert.deepEqual(
+        creadas.filter((c) => c === 'vinculo-telegram' || c.endsWith('cada-minuto')),
+        ['vinculo-telegram', 'automatizacion:correo-cada-minuto', 'automatizacion:telegram-cada-minuto'],
+      );
+      assert.equal(creadas.some((c) => c.includes(String(CHAT))), false);
+      assert.equal(registro.some((linea) => linea.includes(String(CHAT))), false);
+
+      const vinculo = await db.vinculoTelegram.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.tenant } });
+      assert.deepEqual([vinculo.id, vinculo.chatId], [IDS_CANALES_DEMO.vinculo, CHAT]);
+      assert.equal(await db.vinculoTelegram.count({ where: { tenantId: IDS_DEMO.cafe.tenant } }), 0);
+
+      const telegram = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_CANALES_DEMO.automatizacionTelegram } });
+      assert.deepEqual(
+        [telegram.tenantId, telegram.plantillaId, telegram.conexionId, telegram.valores, telegram.cron, telegram.minimoFilas, telegram.canal, telegram.destinatarios, telegram.activo],
+        [IDS_DEMO.tenant, ID_STOCK_FISICO, IDS_DEMO.conexion, { umbral: 10 }, '* * * * *', 1, 'telegram', [], true],
+      );
+    });
+
+    test('a link the tenant already has, even to another chat, is untouched; the Telegram automation still follows it', async () => {
+      await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
+      const otro = await db.vinculoTelegram.create({ data: { tenantId: IDS_DEMO.tenant, chatId: 777n } });
+
+      const { creadas } = await sembrarDemo(db, entornoConChat(), { sondear: SONDEAR_NUNCA });
+
+      assert.deepEqual(creadas, ['automatizacion:telegram-cada-minuto']);
+      const vinculo = await db.vinculoTelegram.findUniqueOrThrow({ where: { tenantId: IDS_DEMO.tenant } });
+      assert.deepEqual([vinculo.id, vinculo.chatId], [otro.id, 777n]);
+      assert.equal(await db.vinculoTelegram.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+    });
+
+    test('a second run with the chat id creates nothing and keeps the owner’s edit of the every-minute automation', async () => {
+      await sembrarDemo(db, entornoConChat(), { sondear: SONDEAR_OK });
+      await db.automatizacion.update({
+        where: { id: IDS_CANALES_DEMO.automatizacionCorreo },
+        data: { activo: false, valores: { umbral: 20 } },
+      });
+
+      const { creadas } = await sembrarDemo(db, entornoConChat(), { sondear: SONDEAR_NUNCA });
+
+      assert.deepEqual(creadas, []);
+      assert.deepEqual(await cuentas(), [5, 3, 1, 1, 1]);
+      assert.equal(await db.vinculoTelegram.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+      const correo = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_CANALES_DEMO.automatizacionCorreo } });
+      assert.deepEqual([correo.activo, correo.valores], [false, { umbral: 20 }]);
     });
   },
 );

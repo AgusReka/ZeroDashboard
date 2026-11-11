@@ -3,6 +3,7 @@ import { LARGO_MINIMO_CLAVE, validarClave } from '../operador-alta.js';
 import { correoValido, normalizarCorreo } from '../usuarios/usuarios-panel.js';
 import { hashearClave } from '../compartido/crypto-auth.js';
 import type { ClienteSemilla, TenantDemo } from './demo/comun.js';
+import { sembrarCanales } from './demo/canales.js';
 import { IDS_REPORTES_DEMO, sembrarReportes } from './demo/reportes.js';
 import { sembrarTablero } from './demo/tableros.js';
 import { sembrarTenant, verificarBaseDeReplica, type ContextoTenantDemo } from './demo/tenant.js';
@@ -135,7 +136,7 @@ function tenantCafe(entorno: EntornoDemo): TenantDemo {
   };
 }
 
-/** The four variables the seed needs besides the ones the app already requires. */
+/** The variables the seed needs besides the ones the app already requires. */
 export interface EntornoDemo {
   /** The read-only role's password: also what `REPLICA_DEMO_PASSWORD` gives the container. */
   claveReplica: string;
@@ -143,6 +144,27 @@ export interface EntornoDemo {
   /** Already normalized. */
   correoPanel: string;
   clavePanel: string;
+  /** Optional (CH-49 c): the chat Food Store is linked to; `null` when unset or empty. */
+  telegramChatId: bigint | null;
+}
+
+/** A signed 64-bit integer, the range of the `BigInt` column. */
+const MINIMO_CHAT_ID = -(2n ** 63n);
+const MAXIMO_CHAT_ID = 2n ** 63n - 1n;
+
+/** The chat id as a `bigint`, or `null` when the variable is unset or empty. Never echoes the value. */
+function chatIdDeTelegram(env: NodeJS.ProcessEnv): bigint | null {
+  const valor = env.DEMO_TELEGRAM_CHAT_ID;
+  if (valor === undefined || valor === '') {
+    return null;
+  }
+  if (/^-?\d{1,19}$/.test(valor)) {
+    const chatId = BigInt(valor);
+    if (chatId >= MINIMO_CHAT_ID && chatId <= MAXIMO_CHAT_ID) {
+      return chatId;
+    }
+  }
+  throw new Error('Invalid environment variable: DEMO_TELEGRAM_CHAT_ID must be a Telegram chat id');
 }
 
 function variable(env: NodeJS.ProcessEnv, nombre: string): string {
@@ -173,7 +195,7 @@ export function leerEntornoDemo(env: NodeJS.ProcessEnv = process.env): EntornoDe
   }
 
   const clavePanel = variable(env, 'DEMO_PANEL_CLAVE');
-  return { claveReplica, claveOperador, correoPanel, clavePanel };
+  return { claveReplica, claveOperador, correoPanel, clavePanel, telegramChatId: chatIdDeTelegram(env) };
 }
 
 export interface DependenciasDemo {
@@ -191,7 +213,8 @@ export interface ResumenDemo {
  * cause, when the replica does not answer or an entity is not valid after the probe; in
  * both cases the tenant's automation is not created and its views of this run are removed.
  * Café del Puerto is checked against an old replica volume before any of its rows exists.
- * After both tenants come the four global reports and each tenant's dashboard (CH-49 b2).
+ * After both tenants come the four global reports and each tenant's dashboard (CH-49 b2), then
+ * Food Store's Telegram link (when a chat id is set) and its every-minute automations (CH-49 c).
  */
 export async function sembrarDemo(
   prisma: ClienteSemilla,
@@ -239,6 +262,8 @@ export async function sembrarDemo(
   await sembrarReportes(prisma, creadas);
   await sembrarTablero(prisma, tenantFoodStore(entorno), creadas);
   await sembrarTablero(prisma, cafe, creadas);
+
+  await sembrarCanales(prisma, tenantFoodStore(entorno), entorno.telegramChatId, creadas);
 
   return { creadas };
 }
