@@ -1543,7 +1543,7 @@ ${estadoSinTenant('auditoria')}
 <p id="auditoria-aviso" class="ayuda" role="status"></p>
 <div class="zd-table-wrap zd-table-scroll">
   <table class="zd-table">
-    <thead><tr><th>Fecha y hora</th><th>Operador</th><th>Origen</th><th>Conexión</th><th>Consulta</th><th>SQL</th><th>Filas</th><th>Duración</th><th>Resultado</th></tr></thead>
+    <thead><tr><th>Fecha y hora (hora de tu navegador)</th><th>Operador</th><th>Origen</th><th>Conexión</th><th>Consulta</th><th>SQL</th><th>Filas</th><th>Duración</th><th>Resultado</th></tr></thead>
     <tbody id="auditoria-cuerpo"></tbody>
   </table>
 </div>
@@ -1579,8 +1579,8 @@ var MENSAJES = {
   'conexion:base-inexistente': 'La base de datos indicada en la conexión no existe en el destino.',
   'conexion:error-desconocido': 'La conexión con el destino falló por un motivo no reconocido.',
   'permisos:rol-superusuario': 'El rol conectado es superusuario: evita toda verificación de permisos, así que la ejecución se rechaza sin enviar la sentencia.',
-  'permisos:rol-con-escritura-en-tabla': 'El rol conectado tiene permiso de escritura (INSERT, UPDATE, DELETE o TRUNCATE) sobre al menos una tabla. Use un rol de solo lectura.',
-  'permisos:rol-con-create-en-esquema': 'El rol conectado tiene permiso CREATE a nivel de esquema. Use un rol de solo lectura.',
+  'permisos:rol-con-escritura-en-tabla': 'El rol conectado tiene permiso de escritura (INSERT, UPDATE, DELETE o TRUNCATE) sobre al menos una tabla. Usá un rol de solo lectura.',
+  'permisos:rol-con-create-en-esquema': 'El rol conectado tiene permiso CREATE a nivel de esquema. Usá un rol de solo lectura.',
   'ejecucion:tiempo-agotado': 'La consulta superó el tiempo máximo de ejecución y fue cancelada.',
   'ejecucion:no-es-lectura': 'La sentencia intenta escribir o modificar la estructura de la base, y la transacción es de solo lectura. Nada se ejecutó.',
   'ejecucion:permiso-denegado': 'El rol conectado no tiene permiso sobre alguno de los objetos que la consulta necesita.',
@@ -1628,7 +1628,7 @@ var MENSAJES_PARAMETRO = {
   'nombre-invalido': 'el nombre no es válido: debe empezar con una letra o un guion bajo y seguir con letras, dígitos o guiones bajos',
   'nombre-duplicado': 'está declarado más de una vez',
   'tipo-desconocido': 'el tipo debe ser texto, numero, booleano o fecha',
-  'posicional-a-mano': 'es un parámetro posicional escrito a mano; use :nombre y declárelo',
+  'posicional-a-mano': 'es un parámetro posicional escrito a mano; usá :nombre y declaralo',
   'sin-declarar': 'aparece en la sentencia pero no está declarado',
   'sin-usar': 'está declarado pero la sentencia no lo usa',
   'valor-faltante': 'no tiene valor',
@@ -1839,6 +1839,25 @@ function ocupado(boton, gerundio) {
   boton.disabled = true;
   boton.setAttribute('aria-busy', 'true');
   boton.textContent = gerundio;
+}
+
+// CH-52 (E4, lenguaje.md «Errores HTTP de la consola»): what could not be done, what to do, and the code last. A
+// sentence never names an API path. accion is an infinitive phrase («cargar la lista de tenants»); a 401 never gets
+// here, because siNoAutenticado reloads to the login screen first.
+var AVISO_SIN_RED = 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.';
+var DESCRIPCIONES_GLOBALES = { '/plantillas': 'las plantillas', '/reportes': 'los reportes', '/contrato': 'el contrato canónico' };
+
+function mensajeHttp(estado, accion) {
+  var codigo = ' Código: HTTP ' + estado + '.';
+  if (estado === 403) { return 'Tu sesión no tiene permiso para ' + accion + '. Volvé a ingresar.' + codigo; }
+  if (estado === 404) { return 'No se pudo ' + accion + ': no encontramos lo que pediste. Puede que lo hayan dado de baja.' + codigo; }
+  if (estado === 409) { return 'No se pudo ' + accion + ': algo cambió o está en uso. Recargá la pantalla y probá de nuevo.' + codigo; }
+  if (estado >= 500) { return 'La consola tuvo un error interno al ' + accion + '. Probá de nuevo; si se repite, revisá el log del servidor.' + codigo; }
+  return 'No se pudo ' + accion + '. Revisá los datos y probá de nuevo.' + codigo;
+}
+
+function mensajeIlegible(estado, accion) {
+  return 'La consola recibió una respuesta que no pudo leer al ' + accion + '. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP ' + estado + '.';
 }
 
 function libre(boton) {
@@ -2124,7 +2143,7 @@ function describirPagina(cuerpo) {
     aviso.className = 'corte';
     aviso.textContent = 'Resultado cortado en el tope configurado de ' +
       cuerpo.paginacion.topeFilas + ' filas. No hay página siguiente: ' +
-      'acote la consulta o cambie el tope del despliegue.';
+      'acotá la consulta o cambiá el tope del despliegue.';
     estado.appendChild(aviso);
   }
 
@@ -2265,7 +2284,7 @@ async function cargarTenants() {
   try {
     respuesta = await fetch('/tenants').then(siNoAutenticado);
   } catch (fallaDeRed) {
-    mostrarBanner('No se pudo contactar con la aplicación para leer la lista de tenants.');
+    mostrarBanner('No pudimos conectar con el servidor de la consola para cargar la lista de tenants. Revisá tu conexión y probá de nuevo.');
     return;
   }
 
@@ -2273,7 +2292,7 @@ async function cargarTenants() {
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
 
   if (cuerpo === null || respuesta.status !== 200) {
-    mostrarBanner('No se pudo leer la lista de tenants (HTTP ' + respuesta.status + ').');
+    mostrarBanner(mensajeHttp(respuesta.status, 'cargar la lista de tenants'));
     return;
   }
 
@@ -2509,7 +2528,7 @@ function mensajeDeSolicitudInvalida(cuerpo, declaracion) {
     var fila = partes[1] === 'parametros' ? declaracion[Number(partes[2])] : undefined;
     return fila && partes[3] ? 'el ' + partes[3] + ' del parámetro «' + fila.nombre + '»' : String(campo);
   }).join(', ') : '';
-  return 'La solicitud es inválida. Revise estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.';
+  return 'La solicitud es inválida. Revisá estos campos: ' + (campos === '' ? 'el cuerpo enviado' : campos) + '.';
 }
 
 // CH-20 (DEC-161): the run names the loaded saved query, by id and version, only while the
@@ -2638,7 +2657,7 @@ async function ejecutar(desplazamiento) {
   } catch (fallaDeRed) {
     // A rejected fetch must not be silent either: the page says so instead.
     libre(botonEjecutar);
-    avisarEnConsulta('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    avisarEnConsulta(AVISO_SIN_RED);
     return;
   }
   libre(botonEjecutar);
@@ -2656,7 +2675,7 @@ async function ejecutar(desplazamiento) {
   // in the page banner otherwise.
   if (cuerpo === null) {
     limpiarResultados();
-    avisarEnConsulta('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    avisarEnConsulta(mensajeIlegible(respuesta.status, 'ejecutar la consulta'));
     return;
   }
   if (respuesta.status === 404) {
@@ -2679,7 +2698,7 @@ async function ejecutar(desplazamiento) {
   }
   if (respuesta.status !== 200) {
     limpiarResultados();
-    avisarEnConsulta('La aplicación respondió HTTP ' + respuesta.status + '.');
+    avisarEnConsulta(mensajeHttp(respuesta.status, 'ejecutar la consulta'));
     return;
   }
   if (cuerpo.resultado !== 'ok') {
@@ -2787,7 +2806,7 @@ async function listarGuardadas() {
     respuesta = await pedir('/consultas-guardadas');
   } catch (fallaDeRed) {
     // A failed listing must never break the execute path: it reports and returns.
-    mostrarBanner('No se pudo contactar con la aplicación para leer las consultas guardadas.');
+    mostrarBanner('No pudimos conectar con el servidor de la consola para cargar las consultas guardadas. Revisá tu conexión y probá de nuevo.');
     return;
   }
   if (respuesta === null) { return; }
@@ -2797,7 +2816,7 @@ async function listarGuardadas() {
 
   if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null || respuesta.status !== 200) {
-    mostrarBanner('No se pudieron leer las consultas guardadas (HTTP ' + respuesta.status + ').');
+    mostrarBanner(mensajeHttp(respuesta.status, 'cargar las consultas guardadas'));
     return;
   }
 
@@ -2836,7 +2855,7 @@ async function guardar() {
   } catch (fallaDeRed) {
     guardando = false;
     actualizarGuardado();
-    avisarEnConsulta('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.', TITULO_CONSULTA_NO_GUARDADA);
+    avisarEnConsulta(AVISO_SIN_RED, TITULO_CONSULTA_NO_GUARDADA);
     return;
   }
   guardando = false;
@@ -2849,7 +2868,7 @@ async function guardar() {
   if (manejarFalloDeTenant(cuerpo)) { return; }
   // A refusal stays in the pop-up, written inside it; only a save closes it.
   if (cuerpo === null) {
-    avisarEnConsulta('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').', TITULO_CONSULTA_NO_GUARDADA);
+    avisarEnConsulta(mensajeIlegible(respuesta.status, 'guardar la consulta'), TITULO_CONSULTA_NO_GUARDADA);
     return;
   }
   if (respuesta.status === 400) {
@@ -2857,7 +2876,7 @@ async function guardar() {
     return;
   }
   if (respuesta.status !== 201) {
-    avisarEnConsulta('La aplicación respondió HTTP ' + respuesta.status + '.', TITULO_CONSULTA_NO_GUARDADA);
+    avisarEnConsulta(mensajeHttp(respuesta.status, 'guardar la consulta'), TITULO_CONSULTA_NO_GUARDADA);
     return;
   }
 
@@ -2876,7 +2895,7 @@ async function cargarGuardada(id) {
   try {
     respuesta = await pedir('/consultas-guardadas/' + encodeURIComponent(id));
   } catch (fallaDeRed) {
-    mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    mostrarBanner(AVISO_SIN_RED);
     return false;
   }
   if (respuesta === null) { return false; }
@@ -2886,7 +2905,7 @@ async function cargarGuardada(id) {
 
   if (manejarFalloDeTenant(cuerpo)) { return false; }
   if (cuerpo === null) {
-    mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    mostrarBanner(mensajeIlegible(respuesta.status, 'abrir la consulta guardada'));
     return false;
   }
   if (respuesta.status === 404) {
@@ -2897,7 +2916,7 @@ async function cargarGuardada(id) {
     return false;
   }
   if (respuesta.status !== 200) {
-    mostrarBanner('La aplicación respondió HTTP ' + respuesta.status + '.');
+    mostrarBanner(mensajeHttp(respuesta.status, 'abrir la consulta guardada'));
     return false;
   }
 
@@ -3242,7 +3261,7 @@ async function pedirAutomatizacion(url, opciones) {
   try {
     respuesta = await pedir(url, opciones);
   } catch (fallaDeRed) {
-    mostrarBanner('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    mostrarBanner(AVISO_SIN_RED);
     return null;
   }
   if (respuesta === null) { return null; }
@@ -3250,7 +3269,7 @@ async function pedirAutomatizacion(url, opciones) {
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (manejarFalloDeTenant(cuerpo)) { return null; }
   if (cuerpo === null) {
-    mostrarBanner('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    mostrarBanner(mensajeIlegible(respuesta.status, 'completar el pedido'));
     return null;
   }
   return { status: respuesta.status, cuerpo: cuerpo };
@@ -3259,7 +3278,7 @@ async function pedirAutomatizacion(url, opciones) {
 function textoDeRechazo(resultado) {
   var error = resultado.cuerpo.error;
   return Object.prototype.hasOwnProperty.call(MENSAJES_AUTOMATIZACION, error)
-    ? MENSAJES_AUTOMATIZACION[error] : 'La aplicación respondió HTTP ' + resultado.status + '.';
+    ? MENSAJES_AUTOMATIZACION[error] : mensajeHttp(resultado.status, 'completar el pedido');
 }
 
 function mostrarRechazo(resultado) {
@@ -3619,7 +3638,7 @@ async function listarAutomatizaciones() {
   var filas = Array.isArray(resultado.cuerpo.automatizaciones) ? resultado.cuerpo.automatizaciones : [];
   renderizarTabla(
     tablaAutomatizaciones,
-    ['Plantilla', 'Conexión', 'Horario', 'Estado', 'Creada', 'Acciones'],
+    ['Plantilla', 'Conexión', 'Horario', 'Estado', 'Creada (hora de tu navegador)', 'Acciones'],
     filas.map(function (fila) {
       var acciones = document.createElement('span');
       var nombre = nombresPlantilla[fila.plantillaId];
@@ -3735,13 +3754,13 @@ function mensajeDe400DeAutomatizacion(cuerpo, enviadas) {
     ? 'El horario no es una expresión cron estándar de cinco campos (minuto hora día-del-mes mes día-de-la-semana).'
     : posicion !== -1
       ? (direccion === null ? 'Un correo no es válido' : 'El correo «' + direccion + '» no es válido') +
-        '. Escriba direcciones como operaciones@empresa.com, separadas por comas.'
+        '. Escribí direcciones como operaciones@empresa.com, separadas por comas.'
       : campos.indexOf('/destinatarios') !== -1
-        ? 'Hay más de 5 destinatarios. Escriba hasta 5 direcciones distintas.'
+        ? 'Hay más de 5 destinatarios. Escribí hasta 5 direcciones distintas.'
         : campos.indexOf('/minimoFilas') !== -1
           ? 'El mínimo de filas no es válido: tiene que ser un número entero desde 1 hasta el tope de filas del motor.'
           : campos.indexOf('/canal') !== -1
-            ? 'El canal no es válido: elija Correo o Telegram.'
+            ? 'El canal no es válido: elegí Correo o Telegram.'
             : mensajeDeSolicitudInvalida(cuerpo, []);
 }
 
@@ -4026,7 +4045,7 @@ async function verEjecuciones(id) {
   renderizarTabla(
     tablaEjecuciones,
     // CH-17b: Intentos goes last so every existing column keeps its position (DEC-103).
-    ['Inicio', 'Fin', 'Duración (ms)', 'Filas', 'Estado', 'Notificación', 'Error', 'Intentos'],
+    ['Inicio (UTC)', 'Fin (UTC)', 'Duración (ms)', 'Filas', 'Estado', 'Notificación', 'Error', 'Intentos'],
     filas.map(function (fila) {
       var cantidad = textoOpcional(fila.filas) + (fila.corte === 'tope-de-filas' ? ' (cortado en el tope)' : '');
       return [String(fila.iniciadaEn), textoOpcional(fila.finalizadaEn), textoOpcional(fila.duracionMs),
@@ -4384,7 +4403,7 @@ async function guardarFrescura(cuerpo) {
   mostrarFrescura();
   if (resultado !== null) {
     avisoFrescura.textContent = resultado.status === 400 ? MENSAJE_VENTANA
-      : 'La aplicación respondió HTTP ' + resultado.status + '.';
+      : mensajeHttp(resultado.status, 'guardar la frescura');
   }
 }
 
@@ -4425,7 +4444,7 @@ var MENSAJES_VERSIONES = {
 function mensajeDeVersiones(resultado) {
   var error = resultado.cuerpo.error;
   return Object.prototype.hasOwnProperty.call(MENSAJES_VERSIONES, error)
-    ? MENSAJES_VERSIONES[error] : 'La aplicación respondió HTTP ' + resultado.status + '.';
+    ? MENSAJES_VERSIONES[error] : mensajeHttp(resultado.status, 'leer el historial de versiones');
 }
 
 function rutaVersiones(id, numero) {
@@ -4696,7 +4715,7 @@ function motivoDeGuardadoCerrado() {
   if (ultimaPruebaOk !== null && entradaNombre.value.trim() === '') {
     return 'Escribí un nombre para poder guardarla.';
   }
-  return 'Probá la consulta para poder guardarla.';
+  return 'Ejecutá la consulta para poder guardarla.';
 }
 
 // C-08: a refusal of a run or a save is a banner inside the pop-up, above the status line, while it is open; closed, it
@@ -4912,7 +4931,7 @@ async function guardarNuevaVersion() {
   } else if (resultado.status === 400) {
     avisarEnConsulta(mensajeDeSolicitudInvalida(resultado.cuerpo, declaracion), TITULO_CONSULTA_NO_GUARDADA);
   } else {
-    avisarEnConsulta('La aplicación respondió HTTP ' + resultado.status + '.', TITULO_CONSULTA_NO_GUARDADA);
+    avisarEnConsulta(mensajeHttp(resultado.status, 'guardar la versión'), TITULO_CONSULTA_NO_GUARDADA);
   }
 }
 
@@ -5236,13 +5255,13 @@ async function cargarTenantsPantalla() {
   try {
     respuesta = await fetch('/tenants?incluirInactivos=true').then(siNoAutenticado);
   } catch (fallaDeRed) {
-    avisoTenant.textContent = 'No se pudo contactar con la aplicación para leer los tenants.';
+    avisoTenant.textContent = 'No pudimos conectar con el servidor de la consola para cargar los tenants. Revisá tu conexión y probá de nuevo.';
     return;
   }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.tenants)) {
-    avisoTenant.textContent = 'No se pudo leer la lista de tenants (HTTP ' + respuesta.status + ').';
+    avisoTenant.textContent = mensajeHttp(respuesta.status, 'cargar la lista de tenants');
     return;
   }
   renderizarTenants(cuerpo.tenants);
@@ -5299,7 +5318,7 @@ async function darDeBaja(tenant, nombre) {
       body: JSON.stringify({ nombre: nombre })
     }).then(siNoAutenticado);
   } catch (fallaDeRed) {
-    avisoBaja.textContent = 'No se pudo contactar con la aplicación.';
+    avisoBaja.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta.status !== 200) {
@@ -5307,7 +5326,7 @@ async function darDeBaja(tenant, nombre) {
     try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
     avisoBaja.textContent = cuerpo !== null && cuerpo.error === 'confirmacion-no-coincide'
       ? 'El nombre no coincide con el del tenant. No se dio de baja.'
-      : 'No se pudo dar de baja el tenant (HTTP ' + respuesta.status + ').';
+      : mensajeHttp(respuesta.status, 'dar de baja el tenant');
     return;
   }
   dialogoBaja.cerrar();
@@ -5359,12 +5378,12 @@ async function crearTenant(elegir) {
     }).then(siNoAutenticado);
   } catch (fallaDeRed) {
     creandoTenant = false;
-    avisoDialogoTenant.textContent = 'No se pudo contactar con la aplicación.';
+    avisoDialogoTenant.textContent = AVISO_SIN_RED;
     return;
   }
   creandoTenant = false;
   if (respuesta.status !== 201) {
-    avisoDialogoTenant.textContent = 'No se pudo crear el tenant (HTTP ' + respuesta.status + ').';
+    avisoDialogoTenant.textContent = mensajeHttp(respuesta.status, 'crear el tenant');
     return;
   }
   var cuerpo = null;
@@ -5421,13 +5440,13 @@ async function pedirPrueba(id) {
   try {
     respuesta = await pedir('/conexiones/' + encodeURIComponent(id) + '/prueba', { method: 'POST' });
   } catch (fallaDeRed) {
-    return { mensaje: 'No se pudo contactar con la aplicación.' };
+    return { mensaje: AVISO_SIN_RED };
   }
   if (respuesta === null) { return { mensaje: 'Elegí un tenant.' }; }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (manejarFalloDeTenant(cuerpo)) { return { mensaje: '' }; }
-  if (respuesta.status !== 200) { return { mensaje: 'La prueba no se pudo hacer (HTTP ' + respuesta.status + ').' }; }
+  if (respuesta.status !== 200) { return { mensaje: mensajeHttp(respuesta.status, 'probar la conexión') }; }
   return { cuerpo: cuerpo };
 }
 
@@ -5518,7 +5537,7 @@ async function cargarPantallaConexiones() {
   try {
     respuesta = await pedir('/conexiones');
   } catch (fallaDeRed) {
-    avisoConexiones.textContent = 'No se pudo contactar con la aplicación.';
+    avisoConexiones.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { return; }
@@ -5526,7 +5545,7 @@ async function cargarPantallaConexiones() {
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.conexiones)) {
-    avisoConexiones.textContent = 'No se pudo leer la lista de conexiones (HTTP ' + respuesta.status + ').';
+    avisoConexiones.textContent = mensajeHttp(respuesta.status, 'cargar la lista de conexiones');
     return;
   }
   renderizarPantallaConexiones(cuerpo.conexiones);
@@ -5669,7 +5688,7 @@ formularioConexion.addEventListener('submit', async function (evento) {
     });
   } catch (fallaDeRed) {
     guardandoConexion = false;
-    resultadoConexion.textContent = 'No se pudo contactar con la aplicación.';
+    resultadoConexion.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { guardandoConexion = false; llevarBannerA(dialogoConexion, resultadoConexion); return; }
@@ -5683,7 +5702,7 @@ formularioConexion.addEventListener('submit', async function (evento) {
   }
   if (respuesta.status !== 201 || cuerpo === null || cuerpo.conexion === undefined) {
     guardandoConexion = false;
-    resultadoConexion.textContent = 'No se pudo registrar la conexión (HTTP ' + respuesta.status + ').';
+    resultadoConexion.textContent = mensajeHttp(respuesta.status, 'registrar la conexión');
     return;
   }
   resultadoConexion.textContent = 'Guardada. Probando…';
@@ -5788,7 +5807,7 @@ async function cargarPantallaAgentes() {
   }
   var respuesta;
   try { respuesta = await pedir('/agentes'); } catch (fallaDeRed) {
-    avisoAgentes.textContent = 'No se pudo contactar con la aplicación.';
+    avisoAgentes.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { return; }
@@ -5796,7 +5815,7 @@ async function cargarPantallaAgentes() {
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.agentes)) {
-    avisoAgentes.textContent = 'No se pudo leer el agente (HTTP ' + respuesta.status + ').';
+    avisoAgentes.textContent = mensajeHttp(respuesta.status, 'cargar el agente');
     return;
   }
   avisoAgentes.textContent = '';
@@ -5808,7 +5827,7 @@ async function emitirTokenAgente() {
   try {
     respuesta = await pedir('/agentes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
   } catch (fallaDeRed) {
-    avisoAgentes.textContent = 'No se pudo contactar con la aplicación.';
+    avisoAgentes.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { return; }
@@ -5820,7 +5839,7 @@ async function emitirTokenAgente() {
   } else if (respuesta.status === 409) {
     avisoAgentes.textContent = 'El tenant ya tiene un agente activo.';
   } else {
-    avisoAgentes.textContent = 'No se pudo emitir el token (HTTP ' + respuesta.status + ').';
+    avisoAgentes.textContent = mensajeHttp(respuesta.status, 'emitir el token');
   }
   await cargarPantallaAgentes();
 }
@@ -5830,12 +5849,12 @@ async function revocarAgente(id) {
   try {
     respuesta = await pedir('/agentes/' + encodeURIComponent(id) + '/revocar', { method: 'POST' });
   } catch (fallaDeRed) {
-    avisoAgentes.textContent = 'No se pudo contactar con la aplicación.';
+    avisoAgentes.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { return; }
   if (respuesta.status !== 200 && respuesta.status !== 409) {
-    avisoAgentes.textContent = 'No se pudo revocar el token (HTTP ' + respuesta.status + ').';
+    avisoAgentes.textContent = mensajeHttp(respuesta.status, 'revocar el token');
   }
   await cargarPantallaAgentes();
 }
@@ -5884,7 +5903,7 @@ async function accionUsuario(id, verbo, correo) {
   try {
     respuesta = await pedir('/usuarios/' + encodeURIComponent(id) + '/' + verbo, { method: 'POST' });
   } catch (fallaDeRed) {
-    avisoUsuarios.textContent = 'No se pudo contactar con la aplicación.';
+    avisoUsuarios.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { return; }
@@ -5894,7 +5913,7 @@ async function accionUsuario(id, verbo, correo) {
   if (respuesta.status === 200 && cuerpo !== null && typeof cuerpo.clave === 'string') {
     mostrarAccesoUsuario(correoDelUsuario(cuerpo, correo), cuerpo.clave);
   } else if (respuesta.status !== 200) {
-    avisoUsuarios.textContent = 'No se pudo completar la acción (HTTP ' + respuesta.status + ').';
+    avisoUsuarios.textContent = mensajeHttp(respuesta.status, 'completar la acción');
   }
   await cargarPantallaUsuarios();
 }
@@ -5959,7 +5978,7 @@ async function cargarPantallaUsuarios() {
   if (avisoUsuarios.textContent === AVISO_USUARIOS_SIN_TENANT) { avisoUsuarios.textContent = ''; }
   var respuesta;
   try { respuesta = await pedir('/usuarios'); } catch (fallaDeRed) {
-    avisoUsuarios.textContent = 'No se pudo contactar con la aplicación.';
+    avisoUsuarios.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { return; }
@@ -5967,7 +5986,7 @@ async function cargarPantallaUsuarios() {
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.usuarios)) {
-    avisoUsuarios.textContent = 'No se pudo leer la lista de usuarios (HTTP ' + respuesta.status + ').';
+    avisoUsuarios.textContent = mensajeHttp(respuesta.status, 'cargar la lista de usuarios');
     return;
   }
   renderizarUsuarios(cuerpo.usuarios);
@@ -6020,7 +6039,7 @@ formularioUsuario.addEventListener('submit', async function (evento) {
       body: JSON.stringify(cuerpoAlta)
     });
   } catch (fallaDeRed) {
-    avisoDialogoUsuario.textContent = 'No se pudo contactar con la aplicación.';
+    avisoDialogoUsuario.textContent = AVISO_SIN_RED;
     return;
   }
   if (respuesta === null) { llevarBannerA(dialogoUsuario, avisoDialogoUsuario); return; }
@@ -6033,7 +6052,7 @@ formularioUsuario.addEventListener('submit', async function (evento) {
     return;
   }
   if (respuesta.status !== 201 || cuerpo === null || typeof cuerpo.clave !== 'string') {
-    avisoDialogoUsuario.textContent = 'No se pudo crear el usuario (HTTP ' + respuesta.status + ').';
+    avisoDialogoUsuario.textContent = mensajeHttp(respuesta.status, 'crear el usuario');
     return;
   }
   dialogoUsuario.cerrar();
@@ -6057,13 +6076,13 @@ function toleranciaTexto(minutos) {
 async function leerGlobal(url, aviso) {
   var respuesta;
   try { respuesta = await fetch(url).then(siNoAutenticado); } catch (fallaDeRed) {
-    aviso.textContent = 'No se pudo contactar con la aplicación.';
+    aviso.textContent = AVISO_SIN_RED;
     return null;
   }
   var cuerpo = null;
   try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; }
   if (cuerpo === null || respuesta.status !== 200) {
-    aviso.textContent = 'No se pudo leer ' + url + ' (HTTP ' + respuesta.status + ').';
+    aviso.textContent = mensajeHttp(respuesta.status, 'cargar ' + (DESCRIPCIONES_GLOBALES[url] || 'los datos de la pantalla'));
     return null;
   }
   return cuerpo;
@@ -6147,9 +6166,9 @@ function mensajeDePruebaInvalida(cuerpo) {
 function mostrarResultadoPrueba(nodo, leido) {
   var aviso = nodo.aviso;
   var cuerpo = leido.cuerpo;
-  if (leido.red) { aviso.textContent = 'No se pudo contactar con la aplicación.'; return false; }
+  if (leido.red) { aviso.textContent = AVISO_SIN_RED; return false; }
   if (cuerpo === null) {
-    aviso.textContent = 'La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + leido.status + ').';
+    aviso.textContent = mensajeIlegible(leido.status, 'probar la plantilla');
     return false;
   }
   if (leido.status === 409 && cuerpo.error === 'vista-canonica-no-aprobada') {
@@ -6162,7 +6181,7 @@ function mostrarResultadoPrueba(nodo, leido) {
   if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) { aviso.textContent = MENSAJES_ERROR[cuerpo.error]; return false; }
   if (leido.status === 404) { aviso.textContent = 'La plantilla o la conexión ya no existen.'; return false; }
   if (leido.status === 400) { aviso.textContent = mensajeDePruebaInvalida(cuerpo); return false; }
-  if (leido.status !== 200) { aviso.textContent = 'La aplicación respondió HTTP ' + leido.status + '.'; return false; }
+  if (leido.status !== 200) { aviso.textContent = mensajeHttp(leido.status, 'probar la plantilla'); return false; }
   if (cuerpo.resultado !== 'ok') { aviso.textContent = mensajeDeFallo(cuerpo); return false; }
   var columnas = Array.isArray(cuerpo.columnas) ? cuerpo.columnas.map(String) : [];
   var filas = (Array.isArray(cuerpo.filas) ? cuerpo.filas : []).map(function (fila) {
@@ -6677,7 +6696,7 @@ formularioPlantilla.addEventListener('submit', async function (evento) {
     return;
   }
   if (resultado.red) {
-    rechazoPlantilla = 'No se pudo contactar con la aplicación.';
+    rechazoPlantilla = AVISO_SIN_RED;
   } else if (resultado.status === 400 && cuerpo !== null && typeof cuerpo === 'object') {
     rechazoPlantilla = mensajeDeRechazoPlantilla(cuerpo);
   } else if (resultado.status === 409 && cuerpo !== null && cuerpo.error === 'plantilla-en-uso') {
@@ -6686,7 +6705,7 @@ formularioPlantilla.addEventListener('submit', async function (evento) {
   } else if (resultado.status === 404 && editando) {
     rechazoPlantilla = 'La plantilla ya no existe en el catálogo.';
   } else {
-    rechazoPlantilla = 'No se pudo guardar la plantilla (HTTP ' + resultado.status + ').';
+    rechazoPlantilla = mensajeHttp(resultado.status, 'guardar la plantilla');
   }
   actualizarGuardadoPlantilla();
 });
@@ -6857,9 +6876,9 @@ function mostrarResultadoReporte(nodo, leido, asignadas) {
   var aviso = nodo.aviso;
   var cuerpo = leido.cuerpo;
   vaciar(nodo.tabla);
-  if (leido.red) { aviso.textContent = 'No se pudo contactar con la aplicación.'; return false; }
+  if (leido.red) { aviso.textContent = AVISO_SIN_RED; return false; }
   if (cuerpo === null || typeof cuerpo !== 'object') {
-    aviso.textContent = 'La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + leido.status + ').';
+    aviso.textContent = mensajeIlegible(leido.status, 'probar el reporte');
     return false;
   }
   if (leido.status === 409 && cuerpo.error === 'vista-canonica-no-aprobada') {
@@ -6872,7 +6891,7 @@ function mostrarResultadoReporte(nodo, leido, asignadas) {
   if (Object.prototype.hasOwnProperty.call(MENSAJES_ERROR, cuerpo.error)) { aviso.textContent = MENSAJES_ERROR[cuerpo.error]; return false; }
   if (leido.status === 404) { aviso.textContent = 'El reporte o la conexión ya no existen.'; return false; }
   if (leido.status === 400) { aviso.textContent = mensajeDeRechazoReporte(cuerpo); return false; }
-  if (leido.status !== 200) { aviso.textContent = 'La aplicación respondió HTTP ' + leido.status + '.'; return false; }
+  if (leido.status !== 200) { aviso.textContent = mensajeHttp(leido.status, 'probar el reporte'); return false; }
   if (cuerpo.resultado !== 'ok') { aviso.textContent = mensajeDeFallo(cuerpo); return false; }
   var faltantes = Array.isArray(cuerpo.faltantes) ? cuerpo.faltantes.map(String) : [];
   if (faltantes.length > 0) {
@@ -7382,7 +7401,7 @@ formularioReporte.addEventListener('submit', async function (evento) {
     return;
   }
   if (resultado.red) {
-    rechazoReporte = 'No se pudo contactar con la aplicación.';
+    rechazoReporte = AVISO_SIN_RED;
   } else if (resultado.status === 400 && cuerpo !== null && typeof cuerpo === 'object') {
     rechazoReporte = mensajeDeRechazoReporte(cuerpo);
   } else if (resultado.status === 409 && editando && cuerpo !== null && typeof cuerpo === 'object' && cuerpo.error === 'reporte-en-uso') {
@@ -7391,7 +7410,7 @@ formularioReporte.addEventListener('submit', async function (evento) {
   } else if (resultado.status === 404 && editando) {
     rechazoReporte = 'El reporte ya no existe en el catálogo.';
   } else {
-    rechazoReporte = 'No se pudo guardar el reporte (HTTP ' + resultado.status + ').';
+    rechazoReporte = mensajeHttp(resultado.status, 'guardar el reporte');
   }
   actualizarGuardadoReporte();
 });
@@ -7483,7 +7502,7 @@ function urlMapeo(sufijo) {
 async function leerMapeo(url, opciones) {
   var respuesta;
   try { respuesta = await pedir(url, opciones); } catch (fallaDeRed) {
-    avisoMapeo.textContent = 'No se pudo contactar con la aplicación.';
+    avisoMapeo.textContent = AVISO_SIN_RED;
     return null;
   }
   if (respuesta === null) { return null; }
@@ -7509,7 +7528,7 @@ async function guardarVista(entidad) {
   } else if (leido.status === 400 && leido.cuerpo !== null && Array.isArray(leido.cuerpo.campos)) {
     avisoMapeo.textContent = 'Revisá estos campos: ' + leido.cuerpo.campos.join(', ') + '.';
   } else {
-    avisoMapeo.textContent = 'No se pudo guardar la vista (HTTP ' + leido.status + ').';
+    avisoMapeo.textContent = mensajeHttp(leido.status, 'guardar la vista');
   }
 }
 
@@ -7694,7 +7713,7 @@ async function cargarMapeoDeConexion(id) {
   if (id === '') { conexionMapeo = null; avisoMapeo.textContent = 'Elegí una conexión para ver su mapeo.'; return; }
   var informe = await leerMapeo(urlMapeo('/validacion-mapeo'));
   if (informe === null || informe.status !== 200 || informe.cuerpo === null) {
-    if (informe !== null) { avisoMapeo.textContent = 'No se pudo leer el mapeo (HTTP ' + informe.status + ').'; }
+    if (informe !== null) { avisoMapeo.textContent = mensajeHttp(informe.status, 'cargar el mapeo'); }
     return;
   }
   avisoMapeo.textContent = '';
@@ -7764,7 +7783,7 @@ document.getElementById('mapeo-validar').addEventListener('click', async functio
   if (leido === null) { return; }
   avisoMapeo.textContent = '';
   if (leido.status !== 200 || leido.cuerpo === null) {
-    mostrarResultado('mapeo-banner', 'error', 'No se pudo validar el mapeo', 'La aplicación respondió HTTP ' + leido.status + '.');
+    mostrarResultado('mapeo-banner', 'error', 'No se pudo validar el mapeo', mensajeHttp(leido.status, 'validar el mapeo'));
     return;
   }
   if (leido.cuerpo.resultado === 'fallo') {
@@ -7920,7 +7939,7 @@ async function cargarPantallaAuditoria() {
   try {
     respuesta = await pedir('/auditoria' + filtros.query);
   } catch (fallaDeRed) {
-    if (g === generacionAuditoria) { avisoAuditoria.textContent = 'No se pudo contactar con la aplicación.'; }
+    if (g === generacionAuditoria) { avisoAuditoria.textContent = AVISO_SIN_RED; }
     return;
   }
   if (respuesta === null) { return; }
@@ -7933,7 +7952,7 @@ async function cargarPantallaAuditoria() {
     return;
   }
   if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.registros)) {
-    avisoAuditoria.textContent = 'No se pudo leer la auditoría (HTTP ' + respuesta.status + ').';
+    avisoAuditoria.textContent = mensajeHttp(respuesta.status, 'cargar la auditoría');
     return;
   }
   // C-17: the names of the templates and the reports the rows point at. Another courtesy: asked for only when a row
@@ -8045,7 +8064,7 @@ async function cargarPantallaTiempos() {
   try {
     respuesta = await pedir('/tiempos-alta');
   } catch (fallaDeRed) {
-    if (g === generacionTiempos) { avisoTiempos.textContent = 'No se pudo contactar con la aplicación.'; }
+    if (g === generacionTiempos) { avisoTiempos.textContent = AVISO_SIN_RED; }
     return;
   }
   if (respuesta === null) { return; }
@@ -8054,7 +8073,7 @@ async function cargarPantallaTiempos() {
   if (g !== generacionTiempos) { return; }
   if (manejarFalloDeTenant(cuerpo)) { return; }
   if (cuerpo === null || respuesta.status !== 200 || !Array.isArray(cuerpo.conexiones)) {
-    avisoTiempos.textContent = 'No se pudo leer los tiempos de alta (HTTP ' + respuesta.status + ').';
+    avisoTiempos.textContent = mensajeHttp(respuesta.status, 'cargar los tiempos de alta');
     return;
   }
   vaciar(listaTiempos);
@@ -8279,9 +8298,9 @@ async function cargarPantallaTablero() {
   var tablero = lecturas[0];
   // null: the banner already says why (tenant refusal).
   if (tablero === null) { avisoTablero.textContent = ''; return; }
-  if (tablero.red) { avisoTablero.textContent = 'No se pudo contactar con la aplicación.'; return; }
+  if (tablero.red) { avisoTablero.textContent = AVISO_SIN_RED; return; }
   if (tablero.status !== 200 || !respuestaTableroValida(tablero.cuerpo)) {
-    avisoTablero.textContent = 'No se pudo leer el tablero (HTTP ' + tablero.status + ').';
+    avisoTablero.textContent = mensajeHttp(tablero.status, 'cargar el tablero');
     return;
   }
   leerRespuestaTablero(tablero.cuerpo);
@@ -8317,7 +8336,7 @@ var ETIQUETAS_CAMPO_TABLERO = { conexionId: 'conexión', reportes: 'reportes' };
 // A refused save, as one legible line.
 function mensajeDeRechazoTablero(leido) {
   var cuerpo = leido.cuerpo !== null && typeof leido.cuerpo === 'object' ? leido.cuerpo : {};
-  if (leido.red) { return 'No se pudo contactar con la aplicación.'; }
+  if (leido.red) { return AVISO_SIN_RED; }
   if (leido.status === 404 && cuerpo.error === 'conexion-no-encontrada') {
     return 'La conexión elegida ya no existe en este tenant. Elegí otra y guardá de nuevo.';
   }
@@ -8334,7 +8353,7 @@ function mensajeDeRechazoTablero(leido) {
     });
     return 'Revisá estos campos: ' + (etiquetas.length === 0 ? 'el cuerpo enviado' : etiquetas.join(', ')) + '.';
   }
-  return 'No se pudo guardar el tablero (HTTP ' + leido.status + ').';
+  return mensajeHttp(leido.status, 'guardar el tablero');
 }
 
 // «Guardar»: the connection and the ids in screen order. guardandoTablero keeps a second press from saving twice.
