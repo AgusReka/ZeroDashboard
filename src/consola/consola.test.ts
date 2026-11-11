@@ -67,6 +67,11 @@ class Nodo {
     return this.hijos[0] ?? null;
   }
 
+  /** CH-53: the element children, as the saved-queries search walks them. */
+  get children(): Nodo[] {
+    return this.hijos;
+  }
+
   get textContent(): string {
     if (this.hijos.length > 0) {
       return this.hijos.map((hijo) => hijo.textContent).join('');
@@ -565,6 +570,9 @@ const IDS = [
   'mapeo-lista', 'mapeo-campos', 'mapeo-campos-titulo', 'mapeo-campos-lista', 'mapeo-pendientes', 'mapeo-regla', 'mapeo-bloqueado',
   // CH-53: the query editor's empty result state; the saved list and the result table, which the script now toggles.
   'consulta-vacio', 'guardado', 'resultados',
+  // CH-53b: the saved list's search, counter and no-match state; the editor's versions button and reference panel.
+  'consultas-busqueda', 'consultas-contador', 'consultas-sin-coincidencias', 'consultas-sin-coincidencias-texto', 'consultas-limpiar',
+  'consulta-versiones', 'consultas-referencia', 'consultas-referencia-parametros', 'consultas-referencia-contrato',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -579,7 +587,7 @@ const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conex
   'tenant-cambio', 'tc-confirmar', 'auto-vacio', 'mapeo-automatizaciones-bloque', 'tenant-siguiente',
   'tenant-activo-id', 'nav-tenant-id', 'tc-sin-guardar', 'pantalla-desconocida',
   'confirmacion-dialogo', 'confirmacion-lista', 'confirmacion-extra', 'confirmacion-primaria', 'confirmacion-peligro',
-  'mapeo-campos', 'mapeo-pendientes', 'mapeo-bloqueado',
+  'mapeo-campos', 'mapeo-pendientes', 'mapeo-bloqueado', 'consultas-sin-coincidencias', 'consulta-versiones',
   ...PANTALLAS_DEL_TENANT.map((nombre) => 'sin-tenant-' + nombre), ...BANNERS_DE_RESULTADO];
 
 /**
@@ -4046,6 +4054,76 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     return escenario;
   }
+
+  // ---- CH-53b: the saved list's search, the reference panel and versions from the editor -------------
+
+  test('CH-53 the saved list filters by name and description as the operator types, with a counter and a no-match state', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [
+      FILA_GUARDADA,
+      { ...FILA_GUARDADA, id: 'q-2', nombre: 'Ventas del mes', descripcion: 'Facturación' },
+    ]);
+    const visibles = (): string[] => nodo(escenario, 'guardadas').hijos.filter((li) => !li.hidden).map((li) => li.hijos[0].textContent);
+    assert.equal(nodo(escenario, 'consultas-contador').textContent, '2 consultas');
+    const antes = escenario.peticiones.length;
+    escribir(escenario, 'consultas-busqueda', 'factur');
+    assert.deepEqual(visibles(), ['Ventas del mes'], 'the description counts too');
+    assert.equal(nodo(escenario, 'consultas-contador').textContent, '1 consulta');
+    escribir(escenario, 'consultas-busqueda', 'STÓCK');
+    assert.deepEqual(visibles(), ['Stock'], 'case and accents aside');
+    escribir(escenario, 'consultas-busqueda', 'xyz');
+    assert.deepEqual(visibles(), []);
+    assert.equal(nodo(escenario, 'consultas-sin-coincidencias').hidden, false);
+    assert.equal(nodo(escenario, 'consultas-sin-coincidencias-texto').textContent, 'Ninguna consulta coincide con «xyz».');
+    nodo(escenario, 'consultas-limpiar').disparar('click');
+    assert.deepEqual(visibles(), ['Stock', 'Ventas del mes']);
+    assert.equal(nodo(escenario, 'consultas-sin-coincidencias').hidden, true);
+    assert.equal(escenario.peticiones.length, antes, 'the search sends nothing');
+  });
+
+  test('CH-53 with no saved queries the list says how to get one', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, []);
+    assert.equal(nodo(escenario, 'guardadas').hijos[0].textContent, 'Todavía no hay consultas guardadas. Ejecutá una y guardala para volver a usarla.');
+    assert.equal(nodo(escenario, 'consultas-contador').textContent, '');
+  });
+
+  test('CH-53 the reference panel lists the contract and the declared parameters, with links, and reads nothing new', async () => {
+    const antes = (await conConsulta()).peticiones.length;
+    const escenario = await conConsultaCargada();
+    const contrato = nodo(escenario, 'consultas-referencia-contrato').hijos.map((li) => li.textContent);
+    assert.equal(contrato.length, CONTRATO_CANONICO.length);
+    assert.ok(contrato[0].startsWith(CONTRATO_CANONICO[0].nombre + ': '), contrato[0]);
+    assert.deepEqual(nodo(escenario, 'consultas-referencia-parametros').hijos.map((li) => li.textContent), [':a (numero)']);
+    assert.ok(!escenario.peticiones.some((p) => p.url === '/contrato'), 'the contract is the embedded one');
+    assert.ok(escenario.peticiones.length >= antes);
+    assert.match(marcado(), /<details id="consultas-referencia" class="consulta-referencia" open>[\s\S]*?Consultas lee las tablas propias de la réplica[\s\S]*?href="#mapeo">Ir a Mapeo y validación<\/a>[\s\S]*?href="#plantillas">Ir a Plantillas<\/a>/);
+  });
+
+  test('CH-53 «Versiones» in the editor opens the history of the loaded query, and is hidden for a new one', async () => {
+    const escenario = await conConsultaCargada();
+    assert.equal(nodo(escenario, 'consulta-versiones').hidden, false);
+    escenario.respuestas.push({ status: 200, cuerpo: { versiones: [], truncado: false } });
+    nodo(escenario, 'consulta-versiones').disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/consultas-guardadas/q-1/versiones');
+    assert.equal(nodo(escenario, 'versiones').hidden, false);
+    assert.match(marcado(), /<div id="versiones-comparacion" class="zd-compare"><\/div>/);
+  });
+
+  test('CH-53 an address naming no saved query goes back to the list and says why', async () => {
+    const escenario = await conConsulta();
+    escenario.respuestas.push(
+      { status: 200, cuerpo: { conexiones: [], truncado: false } },
+      { status: 404, cuerpo: { error: 'consulta-guardada-no-encontrada' } },
+      { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
+    );
+    irA(escenario, '#consultas/no-existe');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'consulta-dialogo').hidden, true);
+    assert.equal(escenario.ubicacion.hash, '#consultas');
+    assert.equal(nodo(escenario, 'banner').textContent, 'Esa consulta guardada ya no existe. Se actualizó la lista.');
+  });
 
   /** Presses «Guardar como versión N+1» with `respuestas` queued, and lets it settle (after an ok `probarOk`). */
   async function guardarVersion(escenario: Escenario, ...respuestas: Array<{ status: number; cuerpo: unknown }>): Promise<void> {
@@ -9574,14 +9652,15 @@ describe('the console document, served by the real route', () => {
     const [, , , , creada] = celdasDeFila(escenario);
     assert.equal(creada.textContent, localDe('2026-09-28T00:00:00.000Z'));
     assert.match(creada.textContent, /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+    // CH-53 (T8): the saved query shows its last edit.
     const fecha = nodo(escenario, 'guardadas').hijos[0].hijos[1];
-    assert.equal(fecha.textContent, localDe('2026-10-01T10:00:00.000Z'));
-    assert.ok(!textoDeLaPagina(escenario).includes('2026-10-01T10:00:00.000Z'), 'no raw ISO instant on the page');
+    assert.equal(fecha.textContent, localDe(String(FILA_GUARDADA.actualizadaEn)));
+    assert.ok(!textoDeLaPagina(escenario).includes(String(FILA_GUARDADA.actualizadaEn)), 'no raw ISO instant on the page');
   });
 
   test('C-16 a date that does not parse is shown as it came', async () => {
     const escenario = await arrancar();
-    await elegirTenant(escenario, [{ ...FILA_GUARDADA, creadaEn: 'sin-fecha' }], [automatizacion({ creadaEn: 'sin-fecha' })]);
+    await elegirTenant(escenario, [{ ...FILA_GUARDADA, actualizadaEn: 'sin-fecha' }], [automatizacion({ creadaEn: 'sin-fecha' })]);
     assert.equal(celdasDeFila(escenario)[4].textContent, 'sin-fecha');
     assert.equal(nodo(escenario, 'guardadas').hijos[0].hijos[1].textContent, 'sin-fecha');
   });

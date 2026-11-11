@@ -56,7 +56,7 @@ The Consultas screen SHALL have two views under one section.
 **The editor (Query Editor Subview):**
 - «Nueva consulta» SHALL navigate to `#consultas/nueva`, with the editor empty and the breadcrumb «Consultas › Nueva consulta».
 - «Abrir» SHALL navigate to `#consultas/{id}`, with that query loaded and the breadcrumb «Consultas › {nombre} · versión N».
-- An address whose id is not a saved query of the active tenant SHALL show «No encontramos esa consulta.» with a link to the list.
+- An address whose id is not a saved query of the active tenant SHALL go back to the list (`#consultas`) and say «Esa consulta guardada ya no existe. Se actualizó la lista.»
 
 **The version history** SHALL open in a wide side panel, from the list and from the editor's header.
 
@@ -69,7 +69,7 @@ The Consultas screen SHALL have two views under one section.
 
 #### Scenario: An unknown query address
 - **WHEN** the hash is `#consultas/no-existe`
-- **THEN** the screen says «No encontramos esa consulta.» with a link to the list, and no execution is possible
+- **THEN** the address goes back to `#consultas`, the list is shown, and the page says «Esa consulta guardada ya no existe. Se actualizó la lista.»
 
 ### Requirement: Result Next to the Execute Button
 In the query editor, the status line, the result area and the pager SHALL come right after the editor and «Ejecutar consulta», and before the save controls' reason line. The reference panel SHALL be beside them, not between them.
@@ -155,7 +155,7 @@ With a saved query loaded in the editor, the console SHALL offer «Guardar como 
 - **THEN** the loaded query is forgotten, the list of the new tenant is shown and the action disappears
 
 ### Requirement: Console Displays the List of Saved Queries
-The console SHALL display the tenant's saved queries in a table, using the metadata-only list endpoint. Each row shows:
+The console SHALL display the tenant's saved queries as a list of rows, using the metadata-only list endpoint. Each row shows:
 - `nombre` and `descripcion`;
 - `actualizadaEn` as «Última edición»;
 - «Abrir» and «Versiones».
@@ -193,12 +193,11 @@ The query editor SHALL be laid out in this order.
 
 **2. Context bar**, above the editor:
 - the connection picker;
-- one test-value field per declared parameter, labelled with `:nombre` in mono;
 - «Filas por página».
 
 **3. The SQL editor**, at least 8 lines tall, then:
-- «Ejecutar consulta», with the text «Ctrl + Enter» next to it;
-- the collapsible parameter declaration (name, type).
+- the parameter rows: name, type and test value, the value labelled with the name it fills;
+- «Ejecutar consulta», with the text «Ctrl + Enter» next to it.
 
 **4. Below the editor:**
 - the status line with rows, duration and connection, plus the existing cap notice when the result was cut;
