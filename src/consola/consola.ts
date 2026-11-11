@@ -177,6 +177,14 @@ function documentoConsola(nombreOperador: string): string {
   button:not(.zd-btn):hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
   button:not(.zd-btn):disabled { cursor: not-allowed; opacity: .5; }
   .ver-ejecuciones + .desactivar, .ver-ejecuciones + .ajustar, .ajustar + .desactivar { margin-left: var(--space-3); }
+  /* CH-51 (T4): a row action that deactivates, revokes or gives a baja looks destructive (the script sets data-tono,
+     never a class: G3'), always last in its row and with an icon, so it is never mistaken for a harmless one. */
+  button[data-tono="error"]:not(.zd-btn) { color: var(--error-text); border-color: var(--error-border); }
+  button[data-tono="error"]:not(.zd-btn)::before { content: ""; width: 12px; height: 12px; margin-right: var(--space-2);
+    background: currentColor; -webkit-mask: var(--icono-alerta) center / contain no-repeat; mask: var(--icono-alerta) center / contain no-repeat; }
+  button[data-tono="error"]:not(.zd-btn):hover:not(:disabled) { background: var(--error-soft); border-color: var(--error); }
+  :root { --icono-alerta: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E"); }
+  #confirmacion-lista { margin: var(--space-3) 0 0; padding-left: var(--space-6); }
   /* One alert region; a multi-line refusal keeps its line breaks. */
   .banner { margin: var(--space-6) 0 0; padding: var(--space-5) var(--space-6); border: var(--border-width) solid var(--error-border);
     border-left: var(--space-2) solid var(--error); border-radius: var(--radius-md); background: var(--error-soft);
@@ -371,6 +379,31 @@ function documentoConsola(nombreOperador: string): string {
       <span id="tc-confirmar" hidden></span>
       <button id="tc-operar" class="zd-btn zd-btn--primary" type="button" disabled>Operar sobre el tenant</button>
       <button id="tc-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  CH-51 (admin.md §8, C1–C2): one confirmation pop-up for every destructive or impactful action of a row. The script
+  writes the title, the consequence and the list as text, and shows one of the two action buttons: the primary one
+  for something that can be undone (C1), the danger one for something that cannot (C2). The restore note lives here
+  too, shown only for «Restaurar versión». The tenant baja keeps its own pop-up, with the typed name (C3, DEC-175).
+-->
+<div id="confirmacion-dialogo" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmacion-titulo" aria-describedby="confirmacion-consecuencia">
+    <h2 id="confirmacion-titulo" class="zd-dialog__title"></h2>
+    <p id="confirmacion-consecuencia"></p>
+    <ul id="confirmacion-lista" hidden></ul>
+    <div id="confirmacion-extra" class="zd-form" hidden>
+      <div>
+        <label for="confirmacion-nota" class="zd-label">Nota de la versión (opcional)</label>
+        <input id="confirmacion-nota" class="zd-input" type="text" maxlength="500" autocomplete="off">
+      </div>
+    </div>
+    <div class="zd-dialog__actions">
+      <button id="confirmacion-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+      <button id="confirmacion-primaria" class="zd-btn zd-btn--primary" type="button" hidden></button>
+      <button id="confirmacion-peligro" class="zd-btn zd-btn--danger" type="button" hidden></button>
     </div>
   </div>
 </div>
@@ -1817,16 +1850,38 @@ function vaciar(nodo) {
 
 // --- Pop-ups (CH-32a, CH-32b; DEC-173) --------------------------------------------------------
 // Every create form opens in a pop-up. Cancelar and Escape close it without sending anything; with
-// something typed they first ask «Descartar cambios». A tenant switch closes it at once. Not added
-// (DEC-173 does not ask): a focus trap, returning the focus, and closing by a click on the backdrop.
+// something typed they first ask «Descartar cambios». A tenant switch closes it at once. Since CH-51 the
+// focus stays inside an open pop-up (Tab and Shift+Tab wrap) and returns to the control that opened it
+// when it closes. Not added (DEC-173 does not ask): closing by a click on the backdrop.
 // opciones: { fondo, primerCampo, cancelar, confirmar, descartar, seguir, hayCambios, alAbrir, alCerrar }
+// primerCampo may be a function, for a pop-up whose first focus depends on how it was opened (CH-51).
 var dialogos = [];
 
+// CH-51: the controls the focus can reach inside a pop-up, in document order; hidden or disabled ones are skipped.
+function controlesEnfocables(fondo) {
+  if (typeof fondo.querySelectorAll !== 'function') { return []; }
+  return Array.prototype.slice.call(fondo.querySelectorAll('button, input, select, textarea, a[href]')).filter(function (control) {
+    if (control.disabled) { return false; }
+    for (var nodo = control; nodo !== null && nodo !== undefined && nodo !== fondo; nodo = nodo.parentNode) {
+      if (nodo.hidden) { return false; }
+    }
+    return true;
+  });
+}
+
 function crearDialogo(opciones) {
+  var abridor = null;
   function cerrar() {
+    var estabaAbierto = !opciones.fondo.hidden;
     opciones.fondo.hidden = true;
-    opciones.confirmar.hidden = true;
+    if (opciones.confirmar) { opciones.confirmar.hidden = true; }
     if (opciones.alCerrar) { opciones.alCerrar(); }
+    // CH-51: the focus goes back where it was when the pop-up opened, if that control is still on the page.
+    var volver = abridor;
+    abridor = null;
+    if (estabaAbierto && volver !== null && volver !== undefined && volver.isConnected !== false && typeof volver.focus === 'function') {
+      volver.focus();
+    }
   }
   function pedirCerrar() {
     if (opciones.hayCambios()) {
@@ -1835,15 +1890,31 @@ function crearDialogo(opciones) {
     }
     cerrar();
   }
-  function abrir() {
-    opciones.confirmar.hidden = true;
+  function abrir(origen) {
+    if (opciones.fondo.hidden) { abridor = origen !== undefined && origen !== null ? origen : (document.activeElement || null); }
+    if (opciones.confirmar) { opciones.confirmar.hidden = true; }
     if (opciones.alAbrir) { opciones.alAbrir(); }
     opciones.fondo.hidden = false;
-    opciones.primerCampo.focus();
+    var primero = typeof opciones.primerCampo === 'function' ? opciones.primerCampo() : opciones.primerCampo;
+    primero.focus();
   }
   opciones.cancelar.addEventListener('click', pedirCerrar);
   opciones.fondo.addEventListener('keydown', function (evento) {
-    if (evento.key === 'Escape') { pedirCerrar(); }
+    if (evento.key === 'Escape') { pedirCerrar(); return; }
+    // CH-51: Tab and Shift+Tab wrap around the pop-up's controls instead of leaving it.
+    if (evento.key !== 'Tab') { return; }
+    var controles = controlesEnfocables(opciones.fondo);
+    if (controles.length === 0) { return; }
+    var actual = document.activeElement;
+    var primero = controles[0];
+    var ultimo = controles[controles.length - 1];
+    if (evento.shiftKey && (actual === primero || controles.indexOf(actual) === -1)) {
+      evento.preventDefault();
+      ultimo.focus();
+    } else if (!evento.shiftKey && (actual === ultimo || controles.indexOf(actual) === -1)) {
+      evento.preventDefault();
+      primero.focus();
+    }
   });
   // A confirmation (CH-33, the tenant baja) never has changes to discard and brings neither button.
   if (opciones.descartar) { opciones.descartar.addEventListener('click', cerrar); }
@@ -1857,6 +1928,64 @@ function crearDialogo(opciones) {
 function cerrarDialogos() {
   dialogos.forEach(function (dialogo) { dialogo.cerrar(); });
 }
+
+// --- Graded confirmation (CH-51, admin.md §8) --------------------------------------------------
+// confirmar({ nivel: 'c1' | 'c2', titulo, consecuencia, lista?, verbo, nota? }) answers a promise: true only when the
+// action button was pressed; «Cancelar», Escape and a tenant switch answer false. C1 is reversible with impact and
+// starts on its action; C2 cannot be undone, uses the danger button and starts on «Cancelar». Every value is text.
+var botonConfirmacionCancelar = document.getElementById('confirmacion-cancelar');
+var botonConfirmacionPrimaria = document.getElementById('confirmacion-primaria');
+var botonConfirmacionPeligro = document.getElementById('confirmacion-peligro');
+var notaConfirmacion = document.getElementById('confirmacion-nota');
+var nivelConfirmacion = 'c1';
+var resolverConfirmacion = null;
+
+var dialogoConfirmacion = crearDialogo({
+  fondo: document.getElementById('confirmacion-dialogo'),
+  primerCampo: function () { return nivelConfirmacion === 'c2' ? botonConfirmacionCancelar : botonConfirmacionPrimaria; },
+  cancelar: botonConfirmacionCancelar,
+  hayCambios: function () { return false; },
+  alCerrar: function () {
+    var resolver = resolverConfirmacion;
+    resolverConfirmacion = null;
+    if (resolver !== null) { resolver(false); }
+  }
+});
+
+function confirmar(opciones) {
+  // A second request replaces the first, which answers no.
+  if (resolverConfirmacion !== null) { var anterior = resolverConfirmacion; resolverConfirmacion = null; anterior(false); }
+  nivelConfirmacion = opciones.nivel === 'c2' ? 'c2' : 'c1';
+  document.getElementById('confirmacion-titulo').textContent = opciones.titulo;
+  document.getElementById('confirmacion-consecuencia').textContent = opciones.consecuencia;
+  var lista = document.getElementById('confirmacion-lista');
+  vaciar(lista);
+  (Array.isArray(opciones.lista) ? opciones.lista : []).forEach(function (texto) {
+    var item = document.createElement('li');
+    item.textContent = texto;
+    lista.appendChild(item);
+  });
+  lista.hidden = !Array.isArray(opciones.lista) || opciones.lista.length === 0;
+  notaConfirmacion.value = '';
+  document.getElementById('confirmacion-extra').hidden = opciones.nota !== true;
+  botonConfirmacionPrimaria.textContent = opciones.verbo;
+  botonConfirmacionPeligro.textContent = opciones.verbo;
+  botonConfirmacionPrimaria.hidden = nivelConfirmacion !== 'c1';
+  botonConfirmacionPeligro.hidden = nivelConfirmacion !== 'c2';
+  return new Promise(function (resolver) {
+    resolverConfirmacion = resolver;
+    dialogoConfirmacion.abrir();
+  });
+}
+
+function aceptarConfirmacion() {
+  var resolver = resolverConfirmacion;
+  resolverConfirmacion = null;
+  dialogoConfirmacion.cerrar();
+  if (resolver !== null) { resolver(true); }
+}
+botonConfirmacionPrimaria.addEventListener('click', aceptarConfirmacion);
+botonConfirmacionPeligro.addEventListener('click', aceptarConfirmacion);
 
 // The pop-up covers the page banner, so while it is open a refusal is written in its own status
 // line; closed, it goes to the banner as everywhere else. Text only.
@@ -3470,15 +3599,19 @@ async function listarAutomatizaciones() {
     ['Plantilla', 'Conexión', 'Horario', 'Estado', 'Creada', 'Acciones'],
     filas.map(function (fila) {
       var acciones = document.createElement('span');
+      var nombre = nombresPlantilla[fila.plantillaId];
       acciones.appendChild(boton('Ver ejecuciones', 'ver-ejecuciones', function () { verEjecuciones(fila.id); }));
       // Only while it can still happen (DEC-79): previewing the message (DEC-195), adjusting in place (DEC-174)
-      // and deactivating.
+      // and deactivating, which is last and looks destructive (CH-51, T4).
       if (fila.activo === true) {
         acciones.appendChild(boton('Vista previa', 'vista-previa', function () { abrirVistaPrevia(String(fila.id)); }));
         acciones.appendChild(boton('Ajustar', 'ajustar', function () { abrirAjuste(String(fila.id)); }));
-        acciones.appendChild(boton('Desactivar', 'desactivar', function () { desactivar(fila.id); }));
+        var botonDesactivar = boton('Desactivar', 'desactivar', function () {
+          desactivar(fila.id, (nombre === undefined ? String(fila.plantillaId) : nombre) + ' · ' + nombreDeConexion(fila.conexionId));
+        });
+        botonDesactivar.setAttribute('data-tono', 'error');
+        acciones.appendChild(botonDesactivar);
       }
-      var nombre = nombresPlantilla[fila.plantillaId];
       return [nombre === undefined ? String(fila.plantillaId) : nombre, nombreDeConexion(fila.conexionId),
         celdaDeHorario(fila.cron), insigniaAutomatizacion(fila.activo === true), fechaHoraTenant(fila.creadaEn), acciones];
     }),
@@ -3596,7 +3729,16 @@ function numeroDeMinimo(texto) {
   return /^[0-9]+$/.test(limpio) ? Number(limpio) : limpio;
 }
 
-async function desactivar(id) {
+// CH-51 (C2): a deactivated automation cannot be reactivated (DEC-79), so nothing is sent until the operator confirms.
+async function desactivar(id, etiqueta) {
+  var confirmado = await confirmar({
+    nivel: 'c2',
+    titulo: '¿Desactivar ' + etiqueta + '?',
+    consecuencia: 'No se puede deshacer: una automatización desactivada no se reactiva.',
+    lista: ['Sus ejecuciones pasadas siguen disponibles.'],
+    verbo: 'Desactivar automatización'
+  });
+  if (!confirmado) { return; }
   ocultarBanner();
   var resultado = await pedirAutomatizacion('/automatizaciones/' + encodeURIComponent(id) + '/desactivar', { method: 'POST' });
   if (resultado === null) { return; }
@@ -4370,21 +4512,18 @@ async function restaurarVersion(numero, nota) {
   await abrirVersiones({ id: consulta.id, nombre: nueva.nombre });
 }
 
-// The confirmation repeats the action and its object (never "Sí"), and takes an optional note.
-function pedirConfirmacion(celda, numero) {
-  vaciar(celda);
-  var nota = document.createElement('input');
-  nota.type = 'text';
-  nota.maxLength = 500;
-  nota.placeholder = 'nota (opcional)';
-  celda.appendChild(nota);
-  celda.appendChild(botonDeVersion('Restaurar versión ' + numero, function () {
-    restaurarVersion(numero, nota.value.trim());
-  }));
-  celda.appendChild(botonDeVersion('Cancelar', function () {
-    vaciar(celda);
-    celda.appendChild(accionesDeVersion(celda, numero));
-  }));
+// The confirmation repeats the action and its object (never "Sí"), and takes an optional note. CH-51 (C1): it is the
+// shared confirmation pop-up, since a restore can be undone by restoring again and deletes nothing (DEC-172).
+async function pedirConfirmacion(numero) {
+  var confirmado = await confirmar({
+    nivel: 'c1',
+    titulo: '¿Restaurar la versión ' + numero + '?',
+    consecuencia: 'Se crea una versión nueva con el contenido de la versión ' + numero + '. No se borra nada.',
+    verbo: 'Restaurar versión ' + numero,
+    nota: true
+  });
+  if (!confirmado) { return; }
+  await restaurarVersion(numero, notaConfirmacion.value.trim());
 }
 
 function botonDeVersion(texto, accion) {
@@ -4395,10 +4534,10 @@ function botonDeVersion(texto, accion) {
   return boton;
 }
 
-function accionesDeVersion(celda, numero) {
+function accionesDeVersion(numero) {
   var acciones = document.createElement('span');
   acciones.appendChild(botonDeVersion('Comparar con la actual', function () { compararVersion(numero); }));
-  acciones.appendChild(botonDeVersion('Restaurar', function () { pedirConfirmacion(celda, numero); }));
+  acciones.appendChild(botonDeVersion('Restaurar', function () { pedirConfirmacion(numero); }));
   return acciones;
 }
 
@@ -4421,7 +4560,7 @@ function filaDeVersion(version, conAcciones) {
     item.appendChild(insigniaVigente());
   } else if (conAcciones) {
     var celda = document.createElement('span');
-    celda.appendChild(accionesDeVersion(celda, version.version));
+    celda.appendChild(accionesDeVersion(version.version));
     item.appendChild(celda);
   }
   return item;
@@ -5047,7 +5186,10 @@ function accionesTenant(td, tenant) {
   vaciar(td);
   // CH-50 (N7): one path to change the tenant, the pop-up that confirms «Operar sobre …».
   td.appendChild(botonTenant('Elegir como activo', function () { abrirCambioTenant(tenant.id); }));
-  td.appendChild(botonTenant('Dar de baja', function () { abrirBaja(tenant); }));
+  // CH-51 (T4): the baja is destructive, so its row button looks it; it keeps its own pop-up with the typed name (C3).
+  var baja = botonTenant('Dar de baja', function () { abrirBaja(tenant); });
+  baja.setAttribute('data-tono', 'error');
+  td.appendChild(baja);
 }
 
 function renderizarTenants(tenants) {
@@ -5596,12 +5738,19 @@ function renderizarAgente(agente) {
     return;
   }
   lineaAgente('Activo · creado el ' + fechaTenant(agente.creadoEn) + ' · token emitido el ' + fechaTenant(agente.tokenEmitidoEn));
-  estadoAgente.appendChild(botonTenant('Revocar', function () {
-    vaciar(estadoAgente);
-    lineaAgente('Al revocar el token, las conexiones que pasan por este agente dejan de funcionar hasta emitir uno nuevo.');
-    estadoAgente.appendChild(botonTenant('Revocar el token', function () { revocarAgente(String(agente.id)); }));
-    estadoAgente.appendChild(botonTenant('Cancelar', function () { renderizarAgente(agente); }));
-  }));
+  // CH-51 (C2): a revoked token is not restored; only a new one brings the connections back.
+  var revocar = botonTenant('Revocar', async function () {
+    var confirmado = await confirmar({
+      nivel: 'c2',
+      titulo: '¿Revocar el token del agente?',
+      consecuencia: 'No se puede deshacer: el token revocado deja de servir.',
+      lista: ['Las conexiones que pasan por este agente dejan de funcionar hasta que emitas un token nuevo.'],
+      verbo: 'Revocar token'
+    });
+    if (confirmado) { revocarAgente(String(agente.id)); }
+  });
+  revocar.setAttribute('data-tono', 'error');
+  estadoAgente.appendChild(revocar);
 }
 
 async function cargarPantallaAgentes() {
@@ -5723,15 +5872,17 @@ async function accionUsuario(id, verbo, correo) {
   await cargarPantallaUsuarios();
 }
 
-// «Reponer clave» closes the user's open sessions, so it asks first, in the row, as «Desactivar» does.
-function botonReponerClave(td, usuario) {
-  return botonTenant('Reponer clave', function () {
-    vaciar(td);
-    var aviso = document.createElement('span');
-    aviso.textContent = 'Se cierran sus sesiones abiertas.';
-    td.appendChild(aviso);
-    td.appendChild(botonTenant('Reponer clave de ' + String(usuario.correo), function () { accionUsuario(String(usuario.id), 'clave', String(usuario.correo)); }));
-    td.appendChild(botonTenant('Cancelar', function () { accionesUsuario(td, usuario); }));
+// «Reponer clave» closes the user's open sessions, so it asks first. CH-51 (C1): in the shared confirmation pop-up.
+function botonReponerClave(usuario) {
+  return botonTenant('Reponer clave', async function () {
+    var correo = String(usuario.correo);
+    var confirmado = await confirmar({
+      nivel: 'c1',
+      titulo: '¿Reponer la clave de ' + correo + '?',
+      consecuencia: 'La clave actual deja de funcionar y se cierran sus sesiones abiertas. La nueva se muestra una sola vez.',
+      verbo: 'Reponer clave'
+    });
+    if (confirmado) { accionUsuario(String(usuario.id), 'clave', correo); }
   });
 }
 
@@ -5739,15 +5890,23 @@ function accionesUsuario(td, usuario) {
   vaciar(td);
   var id = String(usuario.id);
   if (usuario.activo === true) {
-    td.appendChild(botonReponerClave(td, usuario));
-    td.appendChild(botonTenant('Desactivar', function () {
-      vaciar(td);
-      td.appendChild(botonTenant('Desactivar ' + String(usuario.correo), function () { accionUsuario(id, 'desactivar', String(usuario.correo)); }));
-      td.appendChild(botonTenant('Cancelar', function () { accionesUsuario(td, usuario); }));
-    }));
+    td.appendChild(botonReponerClave(usuario));
+    // CH-51 (C1, T4): it can be undone with «Reactivar», so the primary action confirms; the row button looks destructive.
+    var desactivarUsuario = botonTenant('Desactivar', async function () {
+      var correo = String(usuario.correo);
+      var confirmado = await confirmar({
+        nivel: 'c1',
+        titulo: '¿Desactivar a ' + correo + '?',
+        consecuencia: 'No va a poder entrar al panel hasta que lo reactives.',
+        verbo: 'Desactivar usuario'
+      });
+      if (confirmado) { accionUsuario(id, 'desactivar', correo); }
+    });
+    desactivarUsuario.setAttribute('data-tono', 'error');
+    td.appendChild(desactivarUsuario);
   } else {
     td.appendChild(botonTenant('Reactivar', function () { accionUsuario(id, 'reactivar', String(usuario.correo)); }));
-    td.appendChild(botonReponerClave(td, usuario));
+    td.appendChild(botonReponerClave(usuario));
   }
 }
 

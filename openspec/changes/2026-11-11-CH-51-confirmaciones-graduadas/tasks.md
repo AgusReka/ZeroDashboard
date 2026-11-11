@@ -30,35 +30,51 @@ Chain strategy: —
 | 4 | Agent, user and version call sites | same | `npm test`; typecheck | Revert call sites |
 
 ## 1. Pop-up focus
-- [ ] 1.1 Test harness: `document.activeElement`, a `focus()` that sets it, and Tab/Shift+Tab `keydown` events carrying `shiftKey`.
-- [ ] 1.2 `crearDialogo`:
+- [x] 1.1 Test harness: `document.activeElement`, a `focus()` that sets it, and Tab/Shift+Tab `keydown` events carrying `shiftKey`.
+- [x] 1.2 `crearDialogo`:
   - `abrir(abridor)` stores the opener;
   - `cerrar()` returns the focus to it;
   - Tab and Shift+Tab wrap inside `opciones.fondo`.
-- [ ] 1.3 Pass the opener from every `.abrir()` call site that has one (the buttons of «Nuevo …», row actions).
-- [ ] 1.4 Tests: focus returns to «Nuevo usuario» after «Cancelar»; Tab on the last control goes to the first.
+- [x] 1.3 Pass the opener from every `.abrir()` call site that has one (the buttons of «Nuevo …», row actions).
+- [x] 1.4 Tests: focus returns to «Nuevo usuario» after «Cancelar»; Tab on the last control goes to the first.
 
 ## 2. Confirmation pop-up
-- [ ] 2.1 Markup `#confirmacion-dialogo` (design §2); add its ids to `IDS` and the start-hidden list.
-- [ ] 2.2 `confirmar({ nivel, titulo, consecuencia, lista, verbo, extra })` → `Promise<boolean>`, all text by `textContent`. Resolve `false` on a tenant switch (`cerrarDialogos`).
-- [ ] 2.3 Tests:
+- [x] 2.1 Markup `#confirmacion-dialogo` (design §2); add its ids to `IDS` and the start-hidden list.
+- [x] 2.2 `confirmar({ nivel, titulo, consecuencia, lista, verbo, extra })` → `Promise<boolean>`, all text by `textContent`. Resolve `false` on a tenant switch (`cerrarDialogos`).
+- [x] 2.3 Tests:
   - C1: the primary button is visible and focused;
   - C2: the danger button is visible, "No se puede deshacer." is present and «Cancelar» is focused;
   - Escape resolves `false`.
 
 ## 3. Automation deactivate and T4
-- [ ] 3.1 `desactivar(id)` awaits `confirmar({nivel:'c2', titulo:'¿Desactivar {plantilla} · {conexión}?', …, verbo:'Desactivar automatización'})`.
-- [ ] 3.2 Row actions (L3416): «Desactivar» last, with `data-tono="error"`.
-- [ ] 3.3 Bridge rule `button[data-tono="error"]:not(.zd-btn)` using the error tokens from `public/ui/tokens/colors.css`.
-- [ ] 3.4 Tenant baja action button (L458): `zd-btn--danger` (server markup).
-- [ ] 3.5 Tests: the first click sends nothing; confirm sends one POST; cancel sends none; the row's last button carries `data-tono="error"`. Update the existing deactivate case.
+- [x] 3.1 `desactivar(id)` awaits `confirmar({nivel:'c2', titulo:'¿Desactivar {plantilla} · {conexión}?', …, verbo:'Desactivar automatización'})`.
+- [x] 3.2 Row actions (L3416): «Desactivar» last, with `data-tono="error"`.
+- [x] 3.3 Bridge rule `button[data-tono="error"]:not(.zd-btn)` using the error tokens from `public/ui/tokens/colors.css`.
+- [x] 3.4 Tenant baja action button (L458): `zd-btn--danger` (server markup).
+- [x] 3.5 Tests: the first click sends nothing; confirm sends one POST; cancel sends none; the row's last button carries `data-tono="error"`. Update the existing deactivate case.
 
 ## 4. Remaining call sites
-- [ ] 4.1 Agent «Revocar»: C2 «Revocar token»; remove the inline confirmation nodes; `data-tono="error"`.
-- [ ] 4.2 User «Desactivar» (C1 «Desactivar usuario», `data-tono="error"`) and «Reponer clave» (C1 «Reponer clave»); remove the inline nodes.
-- [ ] 4.3 Version «Restaurar»: C1 «Restaurar versión {n}» with the note input moved into `confirmacion-extra` while open; remove the in-panel confirmation.
-- [ ] 4.4 Tests: rewrite the inline-confirmation cases of agents, users and versions for the pop-up; drop removed ids from `IDS`.
+- [x] 4.1 Agent «Revocar»: C2 «Revocar token»; remove the inline confirmation nodes; `data-tono="error"`.
+- [x] 4.2 User «Desactivar» (C1 «Desactivar usuario», `data-tono="error"`) and «Reponer clave» (C1 «Reponer clave»); remove the inline nodes.
+- [x] 4.3 Version «Restaurar»: C1 «Restaurar versión {n}» with the note input moved into `confirmacion-extra` while open; remove the in-panel confirmation.
+- [x] 4.4 Tests: rewrite the inline-confirmation cases of agents, users and versions for the pop-up; drop removed ids from `IDS`.
 
 ## 5. Verify
-- [ ] 5.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass.
-- [ ] 5.2 A grep finds no remaining inline confirmation in `consola.ts`, and every destructive row action carries `data-tono="error"`.
+- [x] 5.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass.
+- [x] 5.2 A grep finds no remaining inline confirmation in `consola.ts`, and every destructive row action carries `data-tono="error"`.
+
+## Apply notes (2026-11-11)
+
+**Delivery.** The diff was 532 changed lines in `src/` (442 added, 90 removed), above the 400-line budget. At the review workload decision the user chose **one PR with `size:exception`** over the 51a/51b split. The native attempt ledger recorded attempt 1 as passed with the budget exceeded, and the objective was reset with that maintainer decision.
+
+**Evidence.**
+- `consola.test.ts`: 489/489.
+- `TEST_DB_PORT=5434 TEST_DB_PASSWORD=postgres npm run test:db`: 2313/2317. The 4 failures are the known `conexiones` false positives with the `postgres` password.
+- `npx tsc -p tsconfig.json --noEmit`: ok.
+- `scripts/smoke.sh` was not run, for the same reason as in CH-50: it runs `docker compose down` on the developer stack.
+
+**Deviations.**
+- **Task 1.3 (pass the opener).** Not needed at each call site: `abrir()` defaults to `document.activeElement`, which is the clicked control. `abrir(origen)` still accepts an explicit one.
+- **The restore note.** It is a server-rendered input, `confirmacion-nota`, inside `confirmacion-extra`, instead of moving the panel's script-built input. The script-built input no longer exists.
+- **Button order.** The new confirmation pop-up puts «Cancelar» on the left (admin.md F7 and C). The existing pop-ups keep their current order (action, then «Cancelar»), outside this change's scope.
+- **Shift+Tab.** It wraps from the first control to the last. The focus trap reads `querySelectorAll` in the browser; the test hands the controls to the fake DOM.
