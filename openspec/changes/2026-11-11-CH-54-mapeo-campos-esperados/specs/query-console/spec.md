@@ -24,14 +24,14 @@ The Mapeo y validación screen SHALL, for the active tenant, let the operator ch
 - `alias-sin-comillas` → «Usá el alias entre comillas dobles»;
 - `duplicada` → «La columna aparece dos veces».
 
-The cast hint goes in mono, and extra columns are listed as «Columnas que sobran: …».
+The cast hint goes in mono, as «Probá castear con {pista}». A probe that did not run, and columns the contract does not have («Columna que sobra: …»), concern the whole statement and are listed in the entity block, under its editor.
 
 **Actions:**
 - "Guardar" SHALL send the entity's SQL to `PUT /conexiones/:id/vistas-canonicas/:entidad` and then show the entity as "Sin validar".
 - "Validar" SHALL send `POST /conexiones/:id/validacion-mapeo` and show the new report.
 - When the answer is a session failure (`resultado: "fallo"`), it SHALL show the phase, category and code apart, and keep showing the last stored report.
 
-**Summary:** the summary of the last report SHALL say «{n} de {m} entidades válidas». Each pending entity in it SHALL be a link that selects that entity. Above «Validar mapeo», one line SHALL state what makes the mapping valid: each obligatory entity mapped, probed without error and with every field matching.
+**Summary:** the summary of the last report SHALL say «{n} de {m} entidades válidas». Under it, each pending entity (invalid, not validated, or obligatory and unmapped) SHALL have a button «Ir a {entidad}» that selects that entity. Above «Validar mapeo», one line SHALL state what makes the mapping valid: each obligatory entity mapped, probed without error and with every field matching.
 
 **Automations:** the three automations SHALL appear with their state, as icon and text, and every reason.
 

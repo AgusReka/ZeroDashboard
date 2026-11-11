@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { OperadorAutenticado } from './consola-auth.js';
 import { escaparHtml } from '../automatizaciones/correo.js';
 import { EJEMPLOS_MAPEO } from './mapeo-ejemplos.js';
+import { CONTRATO_CANONICO } from '../contrato/contrato.js';
 
 /**
  * The whole console: one self-contained HTML document held as a constant.
@@ -185,6 +186,23 @@ function documentoConsola(nombreOperador: string): string {
   button[data-tono="error"]:not(.zd-btn):hover:not(:disabled) { background: var(--error-soft); border-color: var(--error); }
   :root { --icono-alerta: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E"); }
   #confirmacion-lista { margin: var(--space-3) 0 0; padding-left: var(--space-6); }
+  /* CH-54: Mapeo in three columns (entities, editor, expected fields); one column on a narrow screen. The selected
+     entity and each field's verdict are attributes the script sets (aria-current, data-tono), never classes (G3'). */
+  .mapeo-columnas { display: grid; grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr) minmax(14rem, 19rem); gap: var(--space-6); align-items: start; margin-top: var(--space-6); }
+  @media (max-width: 60rem) { .mapeo-columnas { grid-template-columns: minmax(0, 1fr); } }
+  .mapeo-lista { display: grid; gap: var(--space-2); }
+  .mapeo-lista > button:not(.zd-btn) { justify-content: space-between; width: 100%; height: auto; min-height: var(--control-h); gap: var(--space-4); }
+  .mapeo-lista > button[aria-current="true"] { background: var(--surface-selected); border-color: var(--border-strong); color: var(--accent-text); }
+  .mapeo-lista > button[data-tono="ok"] .mapeo-estado { color: var(--ok-text); }
+  .mapeo-lista > button[data-tono="error"] .mapeo-estado { color: var(--error-text); }
+  .mapeo-campos { padding: var(--space-5); border: var(--border-width) solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-card); }
+  .mapeo-campos h3 { margin: 0 0 var(--space-4); font-size: var(--text-sm); }
+  #mapeo-campos-lista { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
+  #mapeo-campos-lista li[data-tono="ok"] .mapeo-veredicto { color: var(--ok-text); }
+  #mapeo-campos-lista li[data-tono="error"] .mapeo-veredicto { color: var(--error-text); }
+  .mapeo-campo-nombre, .mapeo-pista { font-family: var(--font-mono); }
+  .mapeo-campo-tipo, .mapeo-veredicto, .mapeo-pista { display: block; font-size: var(--text-xs); color: var(--text-2); }
+  .mapeo-pendientes { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-5); }
   /* CH-52 (E1): the page notice is the shared Banner; a multi-line refusal keeps its line breaks, and the tone the
      script sets as data-tono picks the colors (the same pairs as the result banners). */
   .banner-pagina { margin: var(--space-6) 0 0; white-space: pre-wrap; }
@@ -1068,6 +1086,13 @@ ${estadoSinTenant('tiempos')}
   </div>
 </header>
 ${estadoSinTenant('mapeo')}
+<!-- CH-54 (E6): a tenant with no connection has nothing to map yet; the screen says what is missing and where. -->
+<div id="mapeo-bloqueado" class="zd-state" hidden>
+  <span class="zd-state__icon">${SVG_ABIERTO}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
+  <p class="zd-state__title">Primero registrá una conexión</p>
+  <p class="zd-state__body">El mapeo se escribe sobre la réplica que llega por esa conexión.</p>
+  <div class="zd-state__actions"><a class="zd-btn zd-btn--primary" href="#conexiones">Ir a Conexiones</a></div>
+</div>
 <div>
   <label for="mapeo-conexion" class="zd-label">Conexión</label>
   <select id="mapeo-conexion" class="zd-select"></select>
@@ -1077,6 +1102,9 @@ ${estadoSinTenant('mapeo')}
 ${avisoResultado('mapeo-conexion-banner')}
 <!-- C-12: the summary of «Validar mapeo» (valid or not, how many entities, which automations stay available), as a banner. -->
 ${avisoResultado('mapeo-banner')}
+<!-- CH-54: after a validation, one button per entity that still needs work; it selects that entity. -->
+<div id="mapeo-pendientes" class="mapeo-pendientes" hidden></div>
+<p id="mapeo-regla" class="ayuda">El mapeo es válido cuando cada entidad obligatoria tiene su SELECT guardado, corre sin error y devuelve todos sus campos con el nombre y el tipo del contrato.</p>
 <!-- CH-34 (DEC-176): static, closed by default; the per-entity examples are built by the script. -->
 <details id="mapeo-guia" class="zd-card">
   <summary>Cómo mapear</summary>
@@ -1089,7 +1117,18 @@ ${avisoResultado('mapeo-banner')}
   </ol>
   <p class="ayuda">Las entidades opcionales pueden quedar sin mapear. Cada entidad trae un ejemplo sobre la réplica de demo.</p>
 </details>
-<div id="mapeo-entidades"></div>
+<!--
+  CH-54 (admin.md §13 Mapeo): the entities with their state on the left, the selected entity's editor in the middle,
+  and the contract fields it must return on the right, with each field's verdict once the mapping was validated.
+-->
+<div class="mapeo-columnas">
+  <div id="mapeo-lista" class="mapeo-lista" aria-label="Entidades del contrato"></div>
+  <div id="mapeo-entidades"></div>
+  <aside id="mapeo-campos" class="mapeo-campos" aria-labelledby="mapeo-campos-titulo" hidden>
+    <h3 id="mapeo-campos-titulo">Campos esperados</h3>
+    <ul id="mapeo-campos-lista"></ul>
+  </aside>
+</div>
 <!-- C-11: the automations of the mapping appear once a connection's report is on screen, not as an empty table. -->
 <div id="mapeo-automatizaciones-bloque" hidden>
   <h2 class="zd-h2">Automatizaciones</h2>
@@ -7487,8 +7526,105 @@ var conexionMapeo = null;
 
 // CH-34 (DEC-176): one fixed example SELECT per entity, a constant written once by the server.
 var EJEMPLOS_MAPEO = ${jsonEnScript(EJEMPLOS_MAPEO)};
+// CH-54: the canonical contract, embedded like the examples (DEC-176), so each entity shows the fields it must return
+// before anything is validated and without another request. It is the same constant GET /contrato serves.
+var CONTRATO = ${jsonEnScript(CONTRATO_CANONICO)};
 
 var ESTADOS_ENTIDAD = { 'no-mapeada': 'Sin mapear', 'no-validado': 'Sin validar', valida: 'Válida', invalida: 'Inválida' };
+// CH-54: each field's verdict in words; an unknown verdict is shown as it came, never hidden.
+var VEREDICTOS_CAMPO = {
+  ok: 'Coincide',
+  ausente: 'Falta en el SELECT',
+  'alias-sin-comillas': 'Usá el alias entre comillas dobles',
+  duplicada: 'La columna aparece dos veces'
+};
+var entidadMapeo = null;
+var ultimoInformeMapeo = null;
+
+function textoDeVeredicto(campo) {
+  if (campo.veredicto === 'tipo-incorrecto') {
+    return 'Tipo distinto: llega ' + (campo.tipoObservado ? String(campo.tipoObservado) : String(campo.tipoPostgres || 'otro tipo'));
+  }
+  return Object.prototype.hasOwnProperty.call(VEREDICTOS_CAMPO, campo.veredicto) ? VEREDICTOS_CAMPO[campo.veredicto] : String(campo.veredicto);
+}
+
+function filaDeInforme(entidad) {
+  var filas = ultimoInformeMapeo !== null && Array.isArray(ultimoInformeMapeo.entidades) ? ultimoInformeMapeo.entidades : [];
+  for (var i = 0; i < filas.length; i++) { if (String(filas[i].entidad) === entidad) { return filas[i]; } }
+  return null;
+}
+
+// CH-54: the contract fields of the selected entity, and, once the mapping was validated, each one's verdict.
+function renderizarCampos(entidad) {
+  var lista = document.getElementById('mapeo-campos-lista');
+  vaciar(lista);
+  var definicion = null;
+  CONTRATO.forEach(function (e) { if (e.nombre === entidad) { definicion = e; } });
+  document.getElementById('mapeo-campos').hidden = definicion === null;
+  if (definicion === null) { return; }
+  document.getElementById('mapeo-campos-titulo').textContent = 'Campos esperados de ' + entidad;
+  var fila = filaDeInforme(entidad);
+  var diagnosticos = fila !== null && fila.diagnostico && Array.isArray(fila.diagnostico.campos) ? fila.diagnostico.campos : [];
+  definicion.campos.forEach(function (campo) {
+    var item = document.createElement('li');
+    var nombre = document.createElement('span');
+    nombre.className = 'mapeo-campo-nombre';
+    nombre.textContent = campo.nombre;
+    var tipo = document.createElement('span');
+    tipo.className = 'mapeo-campo-tipo';
+    tipo.textContent = campo.tipo + ' · ' + (campo.obligatoriedad === 'obligatorio' ? 'obligatorio' : 'opcional');
+    item.appendChild(nombre);
+    item.appendChild(tipo);
+    var diagnostico = null;
+    diagnosticos.forEach(function (d) { if (String(d.campo) === campo.nombre) { diagnostico = d; } });
+    if (diagnostico !== null) {
+      item.setAttribute('data-tono', diagnostico.veredicto === 'ok' ? 'ok' : 'error');
+      var veredicto = document.createElement('span');
+      veredicto.className = 'mapeo-veredicto';
+      veredicto.textContent = textoDeVeredicto(diagnostico);
+      item.appendChild(veredicto);
+      if (diagnostico.pista && diagnostico.pista.sugerencia) {
+        var pista = document.createElement('span');
+        pista.className = 'mapeo-pista';
+        pista.textContent = 'Probá castear con ' + String(diagnostico.pista.sugerencia);
+        item.appendChild(pista);
+      }
+    }
+    lista.appendChild(item);
+  });
+}
+
+// CH-54: one entity at a time: its block is shown, its list button is current, and its fields go to the right.
+function seleccionarEntidad(entidad) {
+  entidadMapeo = entidad;
+  Object.keys(bloquesMapeo).forEach(function (nombre) {
+    var bloque = bloquesMapeo[nombre];
+    bloque.contenedor.hidden = nombre !== entidad;
+    if (nombre === entidad) { bloque.boton.setAttribute('aria-current', 'true'); } else { bloque.boton.removeAttribute('aria-current'); }
+  });
+  renderizarCampos(entidad);
+}
+
+// The first entity that is not valid, or the first one when all are: where the work is.
+function entidadInicialMapeo(informe) {
+  var filas = Array.isArray(informe.entidades) ? informe.entidades : [];
+  for (var i = 0; i < filas.length; i++) { if (filas[i].estado !== 'valida') { return String(filas[i].entidad); } }
+  return filas.length > 0 ? String(filas[0].entidad) : null;
+}
+
+// CH-54: after a validation, one button per entity that still needs work, each selecting it.
+function mostrarPendientesMapeo(informe) {
+  var contenedor = document.getElementById('mapeo-pendientes');
+  vaciar(contenedor);
+  var filas = Array.isArray(informe.entidades) ? informe.entidades : [];
+  filas.forEach(function (fila) {
+    var pendiente = fila.estado === 'invalida' || fila.estado === 'no-validado' || (fila.estado === 'no-mapeada' && fila.obligatoriedad !== 'opcional');
+    if (!pendiente) { return; }
+    var entidad = String(fila.entidad);
+    contenedor.appendChild(botonTenant('Ir a ' + entidad, function () { seleccionarEntidad(entidad); }));
+  });
+  contenedor.hidden = contenedor.firstChild === null;
+}
 
 function textoDeEstado(estado) {
   return 'Estado: ' + (ESTADOS_ENTIDAD[estado] || String(estado));
@@ -7523,6 +7659,7 @@ async function guardarVista(entidad) {
   if (leido.status === 200 || leido.status === 201) {
     // DEC-41: replacing a view always resets it to not validated.
     bloque.estado.textContent = textoDeEstado('no-validado');
+    pintarBotonEntidad(bloque, entidad, 'no-validado');
     vaciar(bloque.diagnostico);
     avisoMapeo.textContent = 'Se guardó la vista de ' + entidad + '. Validá el mapeo para comprobarla.';
   } else if (leido.status === 400 && leido.cuerpo !== null && Array.isArray(leido.cuerpo.campos)) {
@@ -7546,19 +7683,39 @@ function usarEjemplo(entidad) {
   }
 }
 
-// Builds the entity's block the first time and keeps it, so a repaint never loses an edit.
+// CH-54: the entity's button in the list says its state in words; the tone is an attribute (G3').
+function pintarBotonEntidad(bloque, entidad, estado) {
+  vaciar(bloque.boton);
+  var nombre = document.createElement('span');
+  nombre.textContent = entidad;
+  var texto = document.createElement('span');
+  texto.className = 'mapeo-estado';
+  texto.textContent = ESTADOS_ENTIDAD[estado] || String(estado);
+  bloque.boton.appendChild(nombre);
+  bloque.boton.appendChild(texto);
+  bloque.boton.setAttribute('data-tono', estado === 'valida' ? 'ok' : (estado === 'invalida' ? 'error' : 'pendiente'));
+}
+
+// Builds the entity's block the first time and keeps it, so a repaint never loses an edit. CH-54: the block starts
+// hidden (one entity at a time), its editor has a label, and the entity gets a button in the list on the left.
 function bloqueDeEntidad(fila) {
   var entidad = String(fila.entidad);
   if (bloquesMapeo[entidad] === undefined) {
     var bloque = document.createElement('div');
+    bloque.hidden = true;
     var titulo = document.createElement('h3');
     titulo.textContent = entidad + ' · ' + (fila.obligatoriedad === 'obligatorio' ? 'obligatoria' : 'opcional');
     var estado = document.createElement('p');
     var editor = document.createElement('textarea');
     editor.spellcheck = false;
+    editor.id = 'mapeo-sql-' + entidad;
+    var rotulo = document.createElement('label');
+    rotulo.htmlFor = editor.id;
+    rotulo.textContent = 'SELECT de ' + entidad;
     var diagnostico = document.createElement('ul');
     bloque.appendChild(titulo);
     bloque.appendChild(estado);
+    bloque.appendChild(rotulo);
     bloque.appendChild(editor);
     // The example is text (a pre) and the copy goes through usarEjemplo; plain elements, no classes.
     if (typeof EJEMPLOS_MAPEO[entidad] === 'string') {
@@ -7575,15 +7732,21 @@ function bloqueDeEntidad(fila) {
     bloque.appendChild(botonTenant('Guardar mapeo', function () { guardarVista(entidad); }));
     bloque.appendChild(diagnostico);
     contenedorEntidades.appendChild(bloque);
-    bloquesMapeo[entidad] = { estado: estado, editor: editor, diagnostico: diagnostico };
+    var boton = botonTenant(entidad, function () { seleccionarEntidad(entidad); });
+    document.getElementById('mapeo-lista').appendChild(boton);
+    bloquesMapeo[entidad] = { contenedor: bloque, boton: boton, estado: estado, editor: editor, diagnostico: diagnostico };
   }
   return bloquesMapeo[entidad];
 }
 
+// CH-54: the per-field verdicts go to the expected-fields column; the block keeps what concerns the whole statement
+// (the probe did not run, columns the contract does not have).
 function renderizarInforme(informe) {
+  ultimoInformeMapeo = informe;
   (Array.isArray(informe.entidades) ? informe.entidades : []).forEach(function (fila) {
     var bloque = bloqueDeEntidad(fila);
     bloque.estado.textContent = textoDeEstado(fila.estado);
+    pintarBotonEntidad(bloque, String(fila.entidad), fila.estado);
     vaciar(bloque.diagnostico);
     var diagnostico = fila.diagnostico;
     if (diagnostico && diagnostico.sondeo && diagnostico.sondeo.resultado === 'fallo') {
@@ -7591,21 +7754,14 @@ function renderizarInforme(informe) {
       linea.textContent = 'La consulta no corrió: ' + String(diagnostico.sondeo.categoria);
       bloque.diagnostico.appendChild(linea);
     }
-    (diagnostico && Array.isArray(diagnostico.campos) ? diagnostico.campos : []).forEach(function (campo) {
-      if (campo.veredicto === 'ok') { return; }
-      var item = document.createElement('li');
-      item.textContent = String(campo.campo) + ': ' + String(campo.veredicto) +
-        (campo.columna ? ' · columna ' + String(campo.columna) : '') +
-        (campo.tipoObservado ? ' · tipo ' + String(campo.tipoObservado) : '') +
-        (campo.pista && campo.pista.sugerencia ? ' · probá castear con ' + String(campo.pista.sugerencia) : '');
-      bloque.diagnostico.appendChild(item);
-    });
     (diagnostico && Array.isArray(diagnostico.columnasSobrantes) ? diagnostico.columnasSobrantes : []).forEach(function (sobrante) {
       var item = document.createElement('li');
-      item.textContent = 'Columna sobrante: ' + String(sobrante.columna);
+      item.textContent = 'Columna que sobra: ' + String(sobrante.columna);
       bloque.diagnostico.appendChild(item);
     });
   });
+  var elegida = entidadMapeo !== null && bloquesMapeo[entidadMapeo] !== undefined ? entidadMapeo : entidadInicialMapeo(informe);
+  if (elegida !== null) { seleccionarEntidad(elegida); }
   vaciar(cuerpoAutomatizacionesMapeo);
   var automatizaciones = Array.isArray(informe.automatizaciones) ? informe.automatizaciones : [];
   automatizaciones.forEach(function (auto) {
@@ -7702,10 +7858,22 @@ function avisarPruebaFallida(id) {
     '\\nEs probable que «Validar mapeo» tampoco logre conectarse. Probá la conexión de nuevo en Conexiones.');
 }
 
+// CH-54: everything that belongs to the connection being left: the entity list, the selection, the fields, the links.
+function limpiarEntidadesMapeo() {
+  bloquesMapeo = {};
+  entidadMapeo = null;
+  ultimoInformeMapeo = null;
+  vaciar(contenedorEntidades);
+  vaciar(document.getElementById('mapeo-lista'));
+  vaciar(document.getElementById('mapeo-campos-lista'));
+  document.getElementById('mapeo-campos').hidden = true;
+  vaciar(document.getElementById('mapeo-pendientes'));
+  document.getElementById('mapeo-pendientes').hidden = true;
+}
+
 async function cargarMapeoDeConexion(id) {
   conexionMapeo = id;
-  bloquesMapeo = {};
-  vaciar(contenedorEntidades);
+  limpiarEntidadesMapeo();
   vaciar(cuerpoAutomatizacionesMapeo);
   bloqueAutomatizacionesMapeo.hidden = true;
   ocultarResultado('mapeo-banner');
@@ -7732,8 +7900,8 @@ async function cargarMapeoDeConexion(id) {
 
 async function cargarPantallaMapeo() {
   vaciar(selectorMapeo);
-  bloquesMapeo = {};
-  vaciar(contenedorEntidades);
+  limpiarEntidadesMapeo();
+  document.getElementById('mapeo-bloqueado').hidden = true;
   vaciar(cuerpoAutomatizacionesMapeo);
   bloqueAutomatizacionesMapeo.hidden = true;
   ocultarResultado('mapeo-banner');
@@ -7759,6 +7927,8 @@ async function cargarPantallaMapeo() {
   avisoMapeo.textContent = leido.cuerpo.conexiones.length === 0
     ? 'Registrá una conexión antes de mapear.'
     : 'Elegí una conexión para ver su mapeo.';
+  // CH-54 (E6): with no connection there is nothing to map: the blocked state says what is missing and where.
+  document.getElementById('mapeo-bloqueado').hidden = leido.cuerpo.conexiones.length !== 0;
 }
 
 selectorMapeo.addEventListener('change', function () { cargarMapeoDeConexion(selectorMapeo.value); });
@@ -7795,6 +7965,7 @@ document.getElementById('mapeo-validar').addEventListener('click', async functio
   renderizarInforme(informe);
   var resumen = resumenDeMapeo(informe);
   mostrarResultado('mapeo-banner', resumen.tono, resumen.titulo, resumen.cuerpo);
+  mostrarPendientesMapeo(informe);
 });
 
 // ---- CH-30e1 (DEC-163, screen C-12): Auditoría ------------------------------------------------
