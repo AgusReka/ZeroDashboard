@@ -77,4 +77,4 @@ Chain strategy: stacked-to-main
 
 ## Close
 - [x] z.1 `docs/02-mapa-de-changes.md` CH-49 row.
-- [ ] z.2 `npm run build` and `npm run test:db` pass apart from the known failures.
+- [x] z.2 `npm run build` and `npm run test:db` pass apart from the known failures. Build exit 0; `test:db` 2305/2309, the 4 failures are the known `conexiones.test.ts` cases (2026-11-11).
