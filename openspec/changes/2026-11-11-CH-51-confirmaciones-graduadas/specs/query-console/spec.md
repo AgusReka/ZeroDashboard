@@ -18,7 +18,7 @@ Two levels SHALL be used:
 - **C1** (reversible with impact): primary action button. The focus starts on it.
 - **C2** (irreversible): the line "No se puede deshacer." is included, and the action button is danger. The focus starts on «Cancelar».
 
-«Cancelar» and Escape SHALL close the pop-up without sending anything. Actions that are reversible and harmless (test, execute, duplicate, preview: C0) SHALL NOT ask. A tenant's baja keeps its own pop-up with the typed name (C3, DEC-175), with a danger action button and the focus starting on «Cancelar».
+«Cancelar» and Escape SHALL close the pop-up without sending anything. Actions that are reversible and harmless (test, execute, duplicate, preview: C0) SHALL NOT ask. A tenant's baja keeps its own pop-up with the typed name (C3, DEC-175), with a danger action button; its focus starts on the name field, because typing the name is the safeguard of C3 and the action stays disabled until it matches.
 
 #### Scenario: Cancel sends nothing
 - **GIVEN** the confirmation pop-up is open for any action

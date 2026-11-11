@@ -31,6 +31,8 @@ import { ENTIDADES_CANONICAS } from '../mapeo/vistas-canonicas.js';
 interface EventoFalso {
   preventDefault: () => void;
   key?: string;
+  /** CH-51: Shift+Tab walks the pop-up's controls backwards. */
+  shiftKey?: boolean;
 }
 
 /** A DOM node, reduced to what the console's script actually touches. */
@@ -93,8 +95,15 @@ class Nodo {
     return this.hijos.filter((hijo) => hijo.tagName === 'option');
   }
 
-  /** Loading a saved query focuses the editor; there is no focus to model here. */
-  focus(): void {}
+  /**
+   * CH-51: the one focus model the pop-ups need. The last node focused is the document's `activeElement`; there is
+   * no layout and no tab order beyond what a test hands to `querySelectorAll`.
+   */
+  static enfocado: Nodo | null = null;
+
+  focus(): void {
+    Nodo.enfocado = this;
+  }
 
   /** CH-21c: the stepper's aria-current is the only attribute the script sets by name. */
   setAttribute(nombre: string, valor: string): void {
@@ -546,6 +555,9 @@ const IDS = [
   'tenant-activo-id', 'tenant-sin-ayuda', 'nav-tenant-nombre', 'nav-tenant-id', 'nav-tenant-hint', 'nav-investigacion',
   'tc-sin-guardar', 'tc-sin-guardar-texto', 'prueba-sobre-plantillas', 'prueba-sobre-reportes',
   'pantalla-desconocida', 'desconocida-volver',
+  // CH-51: the one graded confirmation pop-up (title, consequence, list, the restore note and its three buttons).
+  'confirmacion-dialogo', 'confirmacion-titulo', 'confirmacion-consecuencia', 'confirmacion-lista', 'confirmacion-extra',
+  'confirmacion-nota', 'confirmacion-cancelar', 'confirmacion-primaria', 'confirmacion-peligro',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -559,6 +571,7 @@ const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conex
   'reporte-en-uso-aviso', 'reporte-editar', 'reporte-duplicar', 'reporte-dialogo-duplicar', 'pantalla-tablero',
   'tenant-cambio', 'tc-confirmar', 'auto-vacio', 'mapeo-automatizaciones-bloque', 'tenant-siguiente',
   'tenant-activo-id', 'nav-tenant-id', 'tc-sin-guardar', 'pantalla-desconocida',
+  'confirmacion-dialogo', 'confirmacion-lista', 'confirmacion-extra', 'confirmacion-primaria', 'confirmacion-peligro',
   ...PANTALLAS_DEL_TENANT.map((nombre) => 'sin-tenant-' + nombre), ...BANNERS_DE_RESULTADO];
 
 /**
@@ -628,7 +641,12 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
     set title(valor: string) {
       escenario.titulo = valor;
     },
+    // CH-51: where the focus is, so a pop-up can return it to the control that opened it.
+    get activeElement(): Nodo | null {
+      return Nodo.enfocado;
+    },
   };
+  Nodo.enfocado = null;
 
   const almacenamiento = new Map<string, string>();
   if (escenario.tenantGuardado !== undefined) {
@@ -1486,6 +1504,134 @@ describe('the console document, served by the real route', () => {
     return [paso[0] ?? 0, marca[0] ?? 0];
   }
 
+  // ---- CH-51: the one graded confirmation pop-up -------------------------------------------------
+
+  const confirmacionAbierta = (escenario: Escenario): boolean => !nodo(escenario, 'confirmacion-dialogo').hidden;
+
+  /** What the open confirmation says: level by its visible button, title, consequence, list and button text. */
+  function confirmacionVisible(escenario: Escenario): { nivel: string; titulo: string; consecuencia: string; lista: string[]; verbo: string } {
+    const peligro = !nodo(escenario, 'confirmacion-peligro').hidden;
+    assert.notEqual(peligro, !nodo(escenario, 'confirmacion-primaria').hidden, 'exactly one action button shows');
+    return {
+      nivel: peligro ? 'c2' : 'c1',
+      titulo: nodo(escenario, 'confirmacion-titulo').textContent,
+      consecuencia: nodo(escenario, 'confirmacion-consecuencia').textContent,
+      lista: nodo(escenario, 'confirmacion-lista').hidden ? [] : nodo(escenario, 'confirmacion-lista').hijos.map((li) => li.textContent),
+      verbo: nodo(escenario, peligro ? 'confirmacion-peligro' : 'confirmacion-primaria').textContent,
+    };
+  }
+
+  /** Presses the visible action button of the open confirmation and lets the request settle. */
+  async function aceptarConfirmacionCH51(escenario: Escenario): Promise<void> {
+    assert.equal(confirmacionAbierta(escenario), true, 'a confirmation is open');
+    const boton = nodo(escenario, nodo(escenario, 'confirmacion-peligro').hidden ? 'confirmacion-primaria' : 'confirmacion-peligro');
+    boton.disparar('click');
+    await asentarVarias();
+  }
+
+  /** Presses «Cancelar» on the open confirmation. */
+  async function cancelarConfirmacionCH51(escenario: Escenario): Promise<void> {
+    nodo(escenario, 'confirmacion-cancelar').disparar('click');
+    await asentarVarias();
+  }
+
+  /** Tenant t-1 with one active automation on food-store, listed. */
+  async function conAutomatizacionCH51(): Promise<{ escenario: Escenario; desactivar: Nodo }> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    const [fila] = filasDe(escenario, 'auto-lista', 'automatizacion');
+    return { escenario, desactivar: fila.porClase('desactivar')[0] };
+  }
+
+  test('CH-51 the markup has one confirmation pop-up: «Cancelar» first, then a primary and a danger button, both hidden', () => {
+    const html = marcado();
+    const dialogo = html.slice(html.indexOf('<div id="confirmacion-dialogo"'), html.indexOf('<div class="zd-shell">'));
+    assert.match(dialogo, /<div id="confirmacion-dialogo" class="zd-dialog-backdrop" hidden>/);
+    assert.match(dialogo, /role="dialog" aria-modal="true" aria-labelledby="confirmacion-titulo" aria-describedby="confirmacion-consecuencia"/);
+    assert.ok(dialogo.indexOf('id="confirmacion-cancelar"') < dialogo.indexOf('id="confirmacion-primaria"'), '«Cancelar» on the left (F7)');
+    assert.match(dialogo, /<button id="confirmacion-primaria" class="zd-btn zd-btn--primary" type="button" hidden><\/button>/);
+    assert.match(dialogo, /<button id="confirmacion-peligro" class="zd-btn zd-btn--danger" type="button" hidden><\/button>/);
+    assert.ok(!/(?<![\w-])>(Sí|Aceptar)</.test(dialogo), 'never "Sí" or "Aceptar"');
+  });
+
+  test('CH-51 a C2 confirmation starts on «Cancelar», a C1 one on its action', async () => {
+    const { escenario, desactivar } = await conAutomatizacionCH51();
+    desactivar.disparar('click');
+    await asentarVarias();
+    assert.equal(Nodo.enfocado, nodo(escenario, 'confirmacion-cancelar'), 'C2: the safe choice has the focus');
+    await cancelarConfirmacionCH51(escenario);
+
+    const usuarios = await abrirUsuarios();
+    botonesCon(filaUsuario(usuarios, 'ana@negocio.com'), 'Reponer clave')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(Nodo.enfocado, nodo(usuarios, 'confirmacion-primaria'), 'C1: the action has the focus');
+  });
+
+  test('CH-51 closing a pop-up returns the focus to the control that opened it, by «Cancelar» and by Escape', async () => {
+    const { escenario, desactivar } = await conAutomatizacionCH51();
+    desactivar.focus();
+    desactivar.disparar('click');
+    await asentarVarias();
+    assert.notEqual(Nodo.enfocado, desactivar);
+    await cancelarConfirmacionCH51(escenario);
+    assert.equal(Nodo.enfocado, desactivar, 'back on «Desactivar»');
+
+    desactivar.focus();
+    desactivar.disparar('click');
+    await asentarVarias();
+    const antes = escenario.peticiones.length;
+    nodo(escenario, 'confirmacion-dialogo').disparar('keydown', { key: 'Escape' });
+    await asentarVarias();
+    assert.equal(confirmacionAbierta(escenario), false);
+    assert.equal(escenario.peticiones.length, antes, 'Escape sends nothing');
+    assert.equal(Nodo.enfocado, desactivar);
+
+    // Every pop-up built on the same helper does it too: «Nuevo usuario».
+    const usuarios = await abrirUsuarios();
+    const nuevo = nodo(usuarios, 'usuario-nuevo');
+    nuevo.focus();
+    nuevo.disparar('click');
+    await asentarVarias();
+    nodo(usuarios, 'usuario-cancelar').disparar('click');
+    assert.equal(Nodo.enfocado, nuevo);
+  });
+
+  test('CH-51 Tab and Shift+Tab wrap around the controls of an open pop-up', async () => {
+    const { escenario, desactivar } = await conAutomatizacionCH51();
+    const fondo = nodo(escenario, 'confirmacion-dialogo');
+    const cancelar = nodo(escenario, 'confirmacion-cancelar');
+    const primaria = nodo(escenario, 'confirmacion-primaria');
+    const peligro = nodo(escenario, 'confirmacion-peligro');
+    // The fake has no tree for static markup: the pop-up's controls, in document order, are handed to it.
+    (fondo as unknown as { querySelectorAll: () => Nodo[] }).querySelectorAll = () => [cancelar, primaria, peligro];
+    desactivar.disparar('click');
+    await asentarVarias();
+    let evitado = false;
+    const evento = { preventDefault: () => { evitado = true; } };
+    peligro.focus();
+    fondo.disparar('keydown', { ...evento, key: 'Tab' });
+    assert.equal(Nodo.enfocado, cancelar, 'from the last to the first, skipping the hidden primary button');
+    assert.equal(evitado, true);
+    fondo.disparar('keydown', { ...evento, key: 'Tab', shiftKey: true });
+    assert.equal(Nodo.enfocado, peligro, 'from the first back to the last');
+  });
+
+  test('CH-51 a tenant switch closes an open confirmation and sends nothing', async () => {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otra' }]);
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    filasDe(escenario, 'auto-lista', 'automatizacion')[0].porClase('desactivar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(confirmacionAbierta(escenario), true);
+    await elegirTenant(escenario, [], [], 't-2');
+    await asentarVarias();
+    assert.equal(confirmacionAbierta(escenario), false);
+    assert.ok(!escenario.peticiones.some((p) => p.url.endsWith('/desactivar')), 'no deactivation reaches any tenant');
+  });
+
+  test('CH-51 the bridge styles destructive row actions by attribute, never by a class set from the script', () => {
+    assert.ok(marcado().includes('button[data-tono="error"]:not(.zd-btn) { color: var(--error-text); border-color: var(--error-border); }'));
+  });
+
   /** Spec "Viewing the automations list" and "Deactivating from the console". */
   test('the list shows plantilla, connection, schedule and state; deactivating reloads it', async () => {
     const escenario = await arrancar();
@@ -1505,12 +1651,33 @@ describe('the console document, served by the real route', () => {
     // CH-42 (DEC-195): and previewed, before «Ajustar».
     assert.deepEqual(botones(fila).map((nodo) => nodo.textContent), ['Ver ejecuciones', 'Vista previa', 'Ajustar', 'Desactivar']);
 
+    // CH-51 (T4): deactivating is the last action and looks destructive; the others do not.
+    assert.deepEqual(botones(fila).map((b) => b.getAttribute('data-tono')), [null, null, null, 'error']);
+
+    // CH-51 (C2): the first click sends nothing; it asks, saying it cannot be undone.
+    const antes = escenario.peticiones.length;
+    fila.porClase('desactivar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(escenario.peticiones.length, antes, 'nothing is sent before confirming');
+    assert.deepEqual(confirmacionVisible(escenario), {
+      nivel: 'c2',
+      titulo: '¿Desactivar Stock diario · food-store?',
+      consecuencia: 'No se puede deshacer: una automatización desactivada no se reactiva.',
+      lista: ['Sus ejecuciones pasadas siguen disponibles.'],
+      verbo: 'Desactivar automatización',
+    });
+    await cancelarConfirmacionCH51(escenario);
+    assert.equal(confirmacionAbierta(escenario), false);
+    assert.equal(escenario.peticiones.length, antes, '«Cancelar» sends nothing');
+
     escenario.respuestas.push(
       { status: 200, cuerpo: { automatizacion: automatizacion({ activo: false }) } },
       { status: 200, cuerpo: { automatizaciones: [automatizacion({ activo: false })], truncado: false } },
     );
     fila.porClase('desactivar')[0].disparar('click');
-    await asentar();
+    await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/automatizaciones/a-1/desactivar').length, 1, 'one deactivation');
 
     const baja = escenario.peticiones[escenario.peticiones.length - 2];
     assert.equal(baja.url, '/automatizaciones/a-1/desactivar');
@@ -3744,17 +3911,23 @@ describe('the console document, served by the real route', () => {
     const antes = escenario.peticiones.length;
     const fila = nodo(escenario, 'versiones-lista').hijos[1];
 
+    // CH-51 (C1): the shared confirmation pop-up, with the optional note.
     botonesCon(fila, 'Restaurar')[0].disparar('click');
-    assert.equal(botonesCon(fila, 'Restaurar versión 2').length, 1, 'the confirmation names the action and the version');
-    assert.equal(botonesCon(fila, 'Cancelar').length, 1);
-    assert.equal(botonesCon(fila, 'Restaurar').length, 0, 'the first button is gone, so nobody confirms by habit');
+    await asentarVarias();
+    assert.deepEqual(confirmacionVisible(escenario), {
+      nivel: 'c1',
+      titulo: '¿Restaurar la versión 2?',
+      consecuencia: 'Se crea una versión nueva con el contenido de la versión 2. No se borra nada.',
+      lista: [],
+      verbo: 'Restaurar versión 2',
+    });
+    assert.equal(nodo(escenario, 'confirmacion-extra').hidden, false, 'the optional note is offered');
     assert.equal(escenario.peticiones.length, antes, 'asking sends nothing');
 
-    botonesCon(fila, 'Cancelar')[0].disparar('click');
-    await asentarVarias();
+    await cancelarConfirmacionCH51(escenario);
+    assert.equal(confirmacionAbierta(escenario), false);
     assert.equal(escenario.peticiones.length, antes, 'cancelling sends nothing');
-    assert.equal(botonesCon(fila, 'Comparar con la actual').length, 1, 'the original actions are back');
-    assert.equal(botonesCon(fila, 'Restaurar').length, 1);
+    assert.equal(botonesCon(fila, 'Restaurar').length, 1, 'the row keeps its actions');
   });
 
   test('CH-25 confirming restores exactly once, with the note, then reloads the list and the panel', async () => {
@@ -3762,8 +3935,8 @@ describe('the console document, served by the real route', () => {
     await abrirPanel(escenario, TRES_VERSIONES);
     const fila = nodo(escenario, 'versiones-lista').hijos[1];
     botonesCon(fila, 'Restaurar')[0].disparar('click');
-    const campoNota = buscar(fila, (n) => n.tagName === 'input')[0];
-    campoNota.value = '  volvemos a la 2  ';
+    await asentarVarias();
+    nodo(escenario, 'confirmacion-nota').value = '  volvemos a la 2  ';
 
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
@@ -3771,8 +3944,7 @@ describe('the console document, served by the real route', () => {
       { status: 200, cuerpo: { versiones: [version(4, true, 'volvemos a la 2'), ...TRES_VERSIONES.map((v) => ({ ...v, esActual: false }))], truncado: false } },
     );
     const antes = escenario.peticiones.length;
-    botonesCon(fila, 'Restaurar versión 2')[0].disparar('click');
-    await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
 
     const nuevas = escenario.peticiones.slice(antes);
     assert.deepEqual(nuevas.map((p) => p.url), [
@@ -3793,14 +3965,15 @@ describe('the console document, served by the real route', () => {
     await abrirPanel(escenario, TRES_VERSIONES);
     const fila = nodo(escenario, 'versiones-lista').hijos[2];
     botonesCon(fila, 'Restaurar')[0].disparar('click');
+    await asentarVarias();
+    assert.equal(confirmacionVisible(escenario).verbo, 'Restaurar versión 1');
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
       { status: 200, cuerpo: { consultasGuardadas: [FILA_GUARDADA], truncado: false } },
       { status: 200, cuerpo: { versiones: [version(4, true)], truncado: false } },
     );
     const antes = escenario.peticiones.length;
-    botonesCon(fila, 'Restaurar versión 1')[0].disparar('click');
-    await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
     assert.deepEqual(escenario.peticiones[antes].cuerpo, {});
   });
 
@@ -3809,9 +3982,9 @@ describe('the console document, served by the real route', () => {
     await abrirPanel(escenario, TRES_VERSIONES);
     const fila = nodo(escenario, 'versiones-lista').hijos[1];
     botonesCon(fila, 'Restaurar')[0].disparar('click');
-    escenario.respuestas.push({ status: 409, cuerpo: { error: 'version-vigente' } });
-    botonesCon(fila, 'Restaurar versión 2')[0].disparar('click');
     await asentarVarias();
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'version-vigente' } });
+    await aceptarConfirmacionCH51(escenario);
     assert.equal(nodo(escenario, 'versiones-estado').textContent, 'Esa ya es la versión vigente: no hay nada que restaurar.');
     assert.equal(nodo(escenario, 'versiones-lista').hijos.length, 3);
   });
@@ -4026,6 +4199,7 @@ describe('the console document, served by the real route', () => {
     await abrirPanel(escenario, TRES_VERSIONES);
     const fila = nodo(escenario, 'versiones-lista').hijos[1];
     botonesCon(fila, 'Restaurar')[0].disparar('click');
+    await asentarVarias();
     escenario.respuestas.push(
       { status: 200, cuerpo: { consultaGuardada: { id: 'q-1', nombre: 'Stock', version: 4 } } },
       { status: 200, cuerpo: { consultaGuardada: { ...COMPLETA, sql: 'SELECT 2', version: 4 } } },
@@ -4033,8 +4207,7 @@ describe('the console document, served by the real route', () => {
       { status: 200, cuerpo: { versiones: [version(4, true)], truncado: false } },
     );
     const antes = escenario.peticiones.length;
-    botonesCon(fila, 'Restaurar versión 2')[0].disparar('click');
-    await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
     assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), [
       '/consultas-guardadas/q-1/versiones/2/restaurar',
       '/consultas-guardadas/q-1',
@@ -4547,19 +4720,26 @@ describe('the console document, served by the real route', () => {
     assert.ok(!textoDeLaPagina(escenario).includes(TOKEN));
   });
 
-  test('CH-30c Revocar asks inline, explaining the impact, before sending', async () => {
+  test('CH-30c CH-51 Revocar asks first in the confirmation pop-up (C2), explaining the impact, before sending', async () => {
     const escenario = await abrirAgentes([AGENTE_ACTIVO]);
     const estado = nodo(escenario, 'agente-estado');
     const antes = escenario.peticiones.length;
+    assert.equal(botonesCon(estado, 'Revocar')[0].getAttribute('data-tono'), 'error', 'T4: it looks destructive');
     botonesCon(estado, 'Revocar')[0].disparar('click');
+    await asentarVarias();
     assert.equal(escenario.peticiones.length, antes);
-    assert.match(estado.textContent, /dejan de funcionar/);
+    assert.deepEqual(confirmacionVisible(escenario), {
+      nivel: 'c2',
+      titulo: '¿Revocar el token del agente?',
+      consecuencia: 'No se puede deshacer: el token revocado deja de servir.',
+      lista: ['Las conexiones que pasan por este agente dejan de funcionar hasta que emitas un token nuevo.'],
+      verbo: 'Revocar token',
+    });
     escenario.respuestas.push(
       { status: 200, cuerpo: { agente: { ...AGENTE_ACTIVO, revocadoEn: '2026-10-13T10:00:00.000Z' } } },
       { status: 200, cuerpo: { agentes: [{ ...AGENTE_ACTIVO, revocadoEn: '2026-10-13T10:00:00.000Z' }] } },
     );
-    botonesCon(estado, 'Revocar el token')[0].disparar('click');
-    await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
     assert.ok(escenario.peticiones.some((p) => p.url === '/agentes/a-1/revocar'));
     assert.match(estado.textContent, /Revocado/);
     assert.equal(botonesCon(estado, 'Emitir un token nuevo').length, 1);
@@ -4680,24 +4860,33 @@ describe('the console document, served by the real route', () => {
     );
     const fila = filaUsuario(escenario, 'ana@negocio.com');
     botonesCon(fila, 'Reponer clave')[0].disparar('click');
-    botonesCon(fila, 'Reponer clave de ana@negocio.com')[0].disparar('click');
     await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
     assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-1/clave'));
     assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
   });
 
-  test('CH-30c Desactivar asks inline first; Reactivar sends at once', async () => {
+  test('CH-30c CH-51 Desactivar asks first in the confirmation pop-up (C1); Reactivar sends at once', async () => {
     const escenario = await abrirUsuarios();
     const fila = filaUsuario(escenario, 'ana@negocio.com');
     const antes = escenario.peticiones.length;
+    // T4: the destructive one is last and looks it.
+    assert.deepEqual(botones(fila).map((b) => [b.textContent, b.getAttribute('data-tono')]), [['Reponer clave', null], ['Desactivar', 'error']]);
     botonesCon(fila, 'Desactivar')[0].disparar('click');
+    await asentarVarias();
     assert.equal(escenario.peticiones.length, antes);
+    assert.deepEqual(confirmacionVisible(escenario), {
+      nivel: 'c1',
+      titulo: '¿Desactivar a ana@negocio.com?',
+      consecuencia: 'No va a poder entrar al panel hasta que lo reactives.',
+      lista: [],
+      verbo: 'Desactivar usuario',
+    });
     escenario.respuestas.push(
       { status: 200, cuerpo: { usuario: { ...USUARIO_ACTIVO, activo: false } } },
       { status: 200, cuerpo: { usuarios: [{ ...USUARIO_ACTIVO, activo: false }, USUARIO_INACTIVO], truncado: false } },
     );
-    botonesCon(fila, 'Desactivar ana@negocio.com')[0].disparar('click');
-    await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
     assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-1/desactivar'));
     escenario.respuestas.push(
       { status: 200, cuerpo: { usuario: { ...USUARIO_INACTIVO, activo: true } } },
@@ -8577,20 +8766,24 @@ describe('the console document, served by the real route', () => {
     assert.equal(dialogoAbierto(escenario, 'usuario-dialogo'), true);
   });
 
-  test('CH-32b Reponer clave asks first, in the row, saying the sessions will close; Cancelar restores the actions and sends nothing', async () => {
+  test('CH-32b CH-51 Reponer clave asks first in the confirmation pop-up (C1), saying the sessions will close; Cancelar sends nothing', async () => {
     for (const correo of ['ana@negocio.com', 'beto@negocio.com']) {
       const escenario = await abrirUsuarios();
       const antes = escenario.peticiones.length;
       const fila = filaUsuario(escenario, correo);
       botonesCon(fila, 'Reponer clave')[0].disparar('click');
+      await asentarVarias();
       assert.equal(escenario.peticiones.length, antes, 'the first click sends nothing');
-      assert.equal(botonesCon(fila, 'Reponer clave de ' + correo).length, 1);
-      assert.equal(botonesCon(fila, 'Reponer clave').length, 0);
-      assert.ok(fila.textContent.includes('Se cierran sus sesiones abiertas.'), correo);
-      botonesCon(fila, 'Cancelar')[0].disparar('click');
-      assert.equal(botonesCon(fila, 'Reponer clave').length, 1, 'the actions are back');
-      assert.equal(botonesCon(fila, 'Reponer clave de ' + correo).length, 0);
-      assert.ok(!fila.textContent.includes('Se cierran sus sesiones abiertas.'));
+      assert.deepEqual(confirmacionVisible(escenario), {
+        nivel: 'c1',
+        titulo: '¿Reponer la clave de ' + correo + '?',
+        consecuencia: 'La clave actual deja de funcionar y se cierran sus sesiones abiertas. La nueva se muestra una sola vez.',
+        lista: [],
+        verbo: 'Reponer clave',
+      }, correo);
+      await cancelarConfirmacionCH51(escenario);
+      assert.equal(confirmacionAbierta(escenario), false);
+      assert.equal(botonesCon(fila, 'Reponer clave').length, 1, 'the row keeps its actions');
       assert.equal(escenario.peticiones.length, antes);
     }
   });
@@ -8603,8 +8796,8 @@ describe('the console document, served by the real route', () => {
     );
     const fila = filaUsuario(escenario, 'beto@negocio.com');
     botonesCon(fila, 'Reponer clave')[0].disparar('click');
-    botonesCon(fila, 'Reponer clave de beto@negocio.com')[0].disparar('click');
     await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
     assert.ok(escenario.peticiones.some((p) => p.url === '/usuarios/u-2/clave'));
     assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
   });
@@ -9623,8 +9816,8 @@ describe('the console document, served by the real route', () => {
     );
     const fila = filaUsuario(escenario, 'ana@negocio.com');
     botonesCon(fila, 'Reponer clave')[0].disparar('click');
-    botonesCon(fila, 'Reponer clave de ana@negocio.com')[0].disparar('click');
     await asentarVarias();
+    await aceptarConfirmacionCH51(escenario);
     assert.equal(nodo(escenario, 'usuario-secreto-correo').textContent, 'ana@negocio.com');
     assert.equal(nodo(escenario, 'usuario-secreto-valor').textContent, CLAVE);
     const html = marcado();
