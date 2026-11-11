@@ -1,6 +1,6 @@
 # Exploration: CH-49 — Demo data (second tenant, every-minute automation, linked Telegram, dashboard with reports)
 
-Status: **explored** (2026-11-10), decisions **partly answered** by the user on 2026-11-10: tenant 2 «Café del Puerto» on its own database `cafe_demo`; the every-minute automations **always active** (not behind a flag); Telegram linked from `DEMO_TELEGRAM_CHAT_ID` when set; the agent seeded and run as a compose service in its own profile, after a spike. Not asked yet, recommended: the provoked failure live (`docker compose stop agente`), the four reports, failing on an old replica volume, and the slicing. DEC-203 and DEC-204 are not registered yet. No research phase: everything is internal to the repository. Store: openspec. No story (map row: "Reemplaza el pendiente de datos de demo. Es la base del guion del video"). Depends on CH-44 (merged) and CH-48 (merged). Next free decision number: DEC-203.
+Status: **explored** (2026-11-10), decisions **partly answered** by the user on 2026-11-10: tenant 2 «Café del Puerto» on its own database `cafe_demo`; the every-minute automations **always active** (not behind a flag); Telegram linked from `DEMO_TELEGRAM_CHAT_ID` when set; the agent seeded and run as a compose service in its own profile, after a spike. Not asked yet, recommended: the provoked failure live (`docker compose stop agente`), the four reports, failing on an old replica volume, and the slicing. DEC-206 and DEC-207 are registered (PR #258). No research phase: everything is internal to the repository. Store: openspec. No story (map row: "Reemplaza el pendiente de datos de demo. Es la base del guion del video"). Depends on CH-44 (merged) and CH-48 (merged). Next free decision number: DEC-208 (the planned DEC-203 and DEC-204 were registered as DEC-206 and DEC-207).
 
 Goal: after `docker compose down -v` and one `up`, a fresh environment has everything the video script needs (map, "Pendientes fuera del código"): console with an active tenant and an agent connection, a read-only query and its rejection, a template written live and its preview, an automation with several recipients and a minimum of rows, email and Telegram received, client panel with threshold adjustment and the report dashboard, a provoked failure and tenant isolation.
 
@@ -58,7 +58,7 @@ Out of scope: any product behaviour change (no reactivation path, no new channel
 - Name: a legible, **distinct** one (the UX review asks for it, C-01 and C-20). Proposed «Café del Puerto» (open question 1). Fixed ids with a CH-49 prefix (`49d00000-0000-4000-8000-0000000000NN`), documented, so the video can show a foreign id answering `404` (rule 2).
 - Panel user of tenant 2: optional `DEMO_PANEL2_CORREO` / `DEMO_PANEL2_CLAVE`; when absent, derive the email with a `+cafe` tag on `DEMO_PANEL_CORREO` and reuse `DEMO_PANEL_CLAVE`, so the five required variables do not grow. (Design detail.)
 
-Needs a DEC (DEC-203).
+Needs a DEC (DEC-206).
 
 ### 2. The every-minute automation
 
@@ -71,7 +71,7 @@ Facts: `* * * * *` is a valid cron; a run notifies every minute while it has at 
 | (c) Not seeded; the video creates it live with cron `* * * * *` | Matches the script ("Alta con varios destinatarios y mínimo de filas" is a live step) and needs no flag. But rehearsals and the panel/Telegram steps need an existing one, and it costs video time |
 | (d) A manual runbook only | Nothing to maintain, nothing to test |
 
-*Recommended: (b), and the video's live "alta" step still creates its own.* The two seeded automations are on the Food Store tenant: an email one with **several recipients** (the panel user plus one or two `*.example` addresses, up to the DEC-187 limit of 5) and `minimoFilas` 2 or 3, and a Telegram one. The Telegram one is created **only when the tenant is linked** (decision 3); without a link it would show a «sin chat» warning that is not the story. For the numbers to work the replica data must give 2 or 3 products under the threshold (decision 5 / slice A: set stock of products 7, 8 and 9 to small, distinct values, for example 18, 9 and 4, and `umbral` 10). That also gives the panel step "ajuste de umbral" something to change (raising 10 to 20 adds a row; lowering it drops below the minimum and the run is `omitida-bajo-minimo`). Needs a DEC (inside DEC-203): a new demo variable and the "recording" mode.
+*Recommended: (b), and the video's live "alta" step still creates its own.* The two seeded automations are on the Food Store tenant: an email one with **several recipients** (the panel user plus one or two `*.example` addresses, up to the DEC-187 limit of 5) and `minimoFilas` 2 or 3, and a Telegram one. The Telegram one is created **only when the tenant is linked** (decision 3); without a link it would show a «sin chat» warning that is not the story. For the numbers to work the replica data must give 2 or 3 products under the threshold (decision 5 / slice A: set stock of products 7, 8 and 9 to small, distinct values, for example 18, 9 and 4, and `umbral` 10). That also gives the panel step "ajuste de umbral" something to change (raising 10 to 20 adds a row; lowering it drops below the minimum and the run is `omitida-bajo-minimo`). Needs a DEC (inside DEC-206): a new demo variable and the "recording" mode.
 
 ### 3. Telegram "linked"
 
@@ -83,7 +83,7 @@ The real flow needs a bot token and a person sending `/start <code>` from a real
 | (b) Never seeded; link live in the video with the real code flow | Shows the real flow, but needs network and a human at the phone during recording, and it adds seconds of waiting |
 | (c) **(a) when the variable is present, otherwise unlinked** | The demo works for anyone who clones the repo (no Telegram needed); the owner gets the linked state. The live flow stays available because the tenant is simply unlinked |
 
-*Recommended: (c).* Rules: create-if-absent per tenant (`tenantId` unique): an existing link, even to another chat, is never touched. Only the Food Store tenant is linked; the second tenant is left unlinked on purpose (DEC-196 allows sharing a chat, but one chat receiving both tenants' alerts would blur the isolation story). `TELEGRAM_BOT_TOKEN` stays a separate runtime variable: the seed does not read it. The README says the two together are what make the Telegram step work. Inside DEC-203.
+*Recommended: (c).* Rules: create-if-absent per tenant (`tenantId` unique): an existing link, even to another chat, is never touched. Only the Food Store tenant is linked; the second tenant is left unlinked on purpose (DEC-196 allows sharing a chat, but one chat receiving both tenants' alerts would blur the isolation story). `TELEGRAM_BOT_TOKEN` stays a separate runtime variable: the seed does not read it. The README says the two together are what make the Telegram step work. Inside DEC-206.
 
 ### 4. Reports and dashboard
 
@@ -102,7 +102,7 @@ Dashboards: Food Store gets all four, in that order; the second tenant gets thre
 
 Notes for the design phase: `numeric`/`bigint` arrive as strings (CH-48 turns a non-numeric `valor` into `no-disponible`), and `fechaCreacion` as an ISO string (CH-48 flagged label formatting); the seeded SQL should cast to `::numeric` and `::date`/`to_char` where it helps. Reports are global, so the existing dev DB (which may hold the junk report) keeps its own rows; fixed ids avoid collisions.
 
-*Recommended: as above.* Needs a DEC (inside DEC-203): a second writer of `Reporte`/`Tablero` (the seed) and the rule "a seeded report must pass `rechazoDeReporte`".
+*Recommended: as above.* Needs a DEC (inside DEC-206): a second writer of `Reporte`/`Tablero` (the seed) and the rule "a seeded report must pass `rechazoDeReporte`".
 
 ### 5. Idempotency, existing databases, how to start clean
 
@@ -139,7 +139,7 @@ Also: `replica-demo` data is **loaded once**, with timestamps relative to that m
 - Whether the shared namespace shares the embedded DNS on Docker Desktop for Windows is the one technical unknown: **a spike is the first task of the slice**. Fallback if it fails: publish the replica on `127.0.0.1` (host port) and run the agent with `network_mode: host`-equivalent behaviour on the host (not on Docker Desktop), i.e. option (a).
 - A new connection fixed id for the agent-backed connection when an old dev DB already has the direct one: create-if-absent means the old one stays direct. Clean start fixes it.
 
-Needs a DEC (DEC-204): a service in the main compose file that the agent file's header says should not live there, and a seeded agent token hash. Only if (b) is chosen.
+Needs a DEC (DEC-207): a service in the main compose file that the agent file's header says should not live there, and a seeded agent token hash. Only if (b) is chosen.
 
 ### 7. The provoked failure
 
@@ -155,7 +155,7 @@ Nothing in the seed needs to be broken for the video; a seeded failing artifact 
 
 ### 8. Slicing, size, tests
 
-A docs-only PR first with DEC-203 (and DEC-204 if the agent is in), as for DEC-199 and DEC-201/202.
+A docs-only PR first with DEC-206 (and DEC-207 if the agent is in), as for DEC-199 and DEC-201/202.
 
 | Slice | Content | Production | With tests / docs |
 |---|---|---|---|
@@ -170,8 +170,8 @@ Each slice ships on its own: after a, the replica is richer and nothing else cha
 
 | DEC | Content | Why it needs one |
 |---|---|---|
-| **DEC-203** | CH-49: the demo dataset and seed scheme. Second tenant in a second database with its own role; relative dates and adjusted stock in the replica; seeded global reports that must pass `rechazoDeReporte`, and the two dashboards; optional `DEMO_TELEGRAM_CHAT_ID` link; opt-in `DEMO_CADA_MINUTO` automations; fail-loud when the replica volume is old; `down -v` as the only clean start | Extends DEC-170/171; the seed becomes a writer of `Reporte`, `Tablero` and `VinculoTelegram`; new demo variables; AGENTS.md requires it before code |
-| **DEC-204** (only if 6 (b)) | CH-49: a demo agent as a sidecar sharing the app's network namespace, token from `DEMO_AGENTE_TOKEN`, seed writes only its hash | A service in the main compose file, an exception to "never together"; a seeded credential hash |
+| **DEC-206** | CH-49: the demo dataset and seed scheme. Second tenant in a second database with its own role; relative dates and adjusted stock in the replica; seeded global reports that must pass `rechazoDeReporte`, and the two dashboards; optional `DEMO_TELEGRAM_CHAT_ID` link; opt-in `DEMO_CADA_MINUTO` automations; fail-loud when the replica volume is old; `down -v` as the only clean start | Extends DEC-170/171; the seed becomes a writer of `Reporte`, `Tablero` and `VinculoTelegram`; new demo variables; AGENTS.md requires it before code |
+| **DEC-207** (only if 6 (b)) | CH-49: a demo agent as a sidecar sharing the app's network namespace, token from `DEMO_AGENTE_TOKEN`, seed writes only its hash | A service in the main compose file, an exception to "never together"; a seeded credential hash |
 | No DEC | Report titles and SQL (data), row counts, names, the README rewrite, the live-failure commands (guide material) | Content, not architecture |
 
 ## Open product questions (answer in one line each; recommended option first)
@@ -186,7 +186,7 @@ Each slice ships on its own: after a, the replica is richer and nothing else cha
 | 6 | Provoked failure | (a) live, with `docker compose stop agente` (or the replica); (b) a seeded failing connection and automation; (c) a seeded faulty report you add live | **(a)** |
 | 7 | Reports | (a) four reports, one per type (sales, top products, sales per day, stock table) and dashboards of 4 and 3; (b) fewer; (c) your own list | **(a)** |
 | 8 | Old replica volume with new code | (a) fail with a clear message telling to run `down -v`; (b) skip the new parts and warn | **(a)** |
-| 9 | Slicing | (a) docs PR with DEC-203/204, then a, b, c, d; (b) one PR | **(a)** |
+| 9 | Slicing | (a) docs PR with DEC-206/207, then a, b, c, d; (b) one PR | **(a)** |
 
 ## Risks
 
@@ -201,4 +201,4 @@ Each slice ships on its own: after a, the replica is richer and nothing else cha
 
 ## Ready for proposal
 
-Yes, once the user answers the nine questions above (or accepts the recommendations): then DEC-203 (and DEC-204 if the agent is in) are registered in `docs/01-decisiones.md` in a docs-only PR, and the proposal starts with slice CH-49a. No research phase. The only item that needs a spike before design is the agent sidecar's network namespace (decision 6 (b)).
+Yes, once the user answers the nine questions above (or accepts the recommendations): then DEC-206 (and DEC-207 if the agent is in) are registered in `docs/01-decisiones.md` in a docs-only PR, and the proposal starts with slice CH-49a. No research phase. The only item that needs a spike before design is the agent sidecar's network namespace (decision 6 (b)).
