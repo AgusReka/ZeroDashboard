@@ -4,7 +4,14 @@ Inputs: proposal.md, specs/project-environment/spec.md, design.md.
 
 DEC-206 and DEC-207 are registered on `docs/dec-206-207` (PR #258, stacked on #256) before any code (AGENTS.md). The DEC-207 network spike passed on 2026-11-10.
 
-Delivery: the session's strategy is **single-pr**, on branch `ch49/datos-demo`. The forecast below is well above the 400-line budget, so the review workload guard must resolve it before apply.
+Delivery: the session started as **single-pr**; at the review workload guard (2026-11-10) the user chose **five chained PRs, stacked to master**:
+- **a**: replica, on `ch49/datos-demo`, which carries the planning artifacts.
+- **b1**: `ch49/b1-segundo-tenant` from a.
+- **b2**: `ch49/b2-reportes` from b1.
+- **c**: `ch49/c-canales` from b2.
+- **d**: `ch49/d-agente` from c.
+
+Each PR targets the previous branch, and they merge in order.
 
 ## Review Workload Forecast
 
@@ -14,12 +21,12 @@ Delivery: the session's strategy is **single-pr**, on branch `ch49/datos-demo`. 
 | 400-line budget risk | High |
 | Chained PRs recommended | Yes |
 | Suggested split | Five chained PRs a → b1 → b2 → c → d, each near or under 400 lines with tests. Alternative: one PR with `size:exception` |
-| Delivery strategy | single-pr |
-| Chain strategy | pending (only if the user chooses to split) |
+| Delivery strategy | auto-chain (user's choice at the guard) |
+| Chain strategy | stacked-to-main |
 
-Decision needed before apply: Yes
+Decision needed before apply: No (resolved by the user)
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: stacked-to-main
 400-line budget risk: High
 
 ### Suggested Work Units
