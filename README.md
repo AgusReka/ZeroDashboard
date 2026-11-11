@@ -72,10 +72,10 @@ Después, `http://localhost:3000/consola` muestra «Ingresar». Detalle en [Usua
 
 | Perfil | Comando | Qué agrega |
 |---|---|---|
-| `demo` | `docker compose --profile demo up -d --build` | Réplica de demo `food_store` (servicio `replica-demo`, sin puerto en el host). Con `SEED_DEMO=1`, la siembra deja operador `demo`, tenant «Food Store», conexión, mapeo validado, una consulta, un usuario del panel y una automatización activa. |
+| `demo` | `docker compose --profile demo up -d --build` | Réplica de demo con las bases `food_store` y `cafe_demo` (servicio `replica-demo`, sin puerto en el host). Con `SEED_DEMO=1`, la siembra deja operador `demo`, los tenants «Food Store» y «Café del Puerto» con su conexión, mapeo validado, usuario del panel, tablero y automatizaciones activas. |
 | `correo` | `docker compose --profile correo up -d` | Mailpit para ver los correos: interfaz en `http://localhost:8026`. Hay que apuntar la app a él con `SMTP_HOST=mailpit` y `SMTP_PORT=1025`. |
 
-La demo exige `SEED_DEMO=1`, `REPLICA_DEMO_PASSWORD`, `DEMO_OPERADOR_CLAVE` (mínimo 12 caracteres), `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE`, en el entorno o en `.env`. Si falta alguna o la réplica no responde, la app no arranca y dice cuál falta. Solo el valor exacto `1` activa la siembra (DEC-171).
+La demo exige `SEED_DEMO=1`, `REPLICA_DEMO_PASSWORD`, `DEMO_OPERADOR_CLAVE` (mínimo 12 caracteres), `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE`, en el entorno o en `.env`. Si falta alguna o la réplica no responde, la app no arranca y dice cuál falta. Solo el valor exacto `1` activa la siembra (DEC-171). `DEMO_TELEGRAM_CHAT_ID` es opcional: con un id de chat válido vincula Food Store a Telegram; con un valor mal formado la app no arranca.
 
 ### Probar la demo completa
 
@@ -86,15 +86,54 @@ docker compose --profile demo --profile correo up -d --build
 curl http://localhost:3000/health   # {"status":"ready","db":"connected"}
 ```
 
+**Qué viene sembrado:**
+
+- Dos negocios: «Food Store» y «Café del Puerto», cada uno con su conexión, su mapeo validado, su usuario del panel y su tablero (cuatro reportes en Food Store, tres en Café). El usuario de Café es `DEMO_PANEL_CORREO` con `+cafe` antes de la `@` (`ana@dominio` pasa a `ana+cafe@dominio`) y la misma `DEMO_PANEL_CLAVE`.
+- Una consulta guardada y la automatización diaria de las 09:00 en Food Store; la de Café, también diaria.
+- Una automatización de Food Store **cada minuto**, por correo, sobre `stock-fisico`: umbral 10, mínimo de 2 filas y tres destinatarios (`DEMO_PANEL_CORREO`, `encargado@food-store.example` y `compras@food-store.example`). En un par de minutos llega a Mailpit, en `http://localhost:8026`.
+- Telegram, solo si están `DEMO_TELEGRAM_CHAT_ID` (el id numérico del chat; negativo si es un grupo) y `TELEGRAM_BOT_TOKEN`, y si quien tiene ese chat ya apretó «Start» en el bot: Food Store queda vinculado y se agrega otra automatización cada minuto, por Telegram. Si ya tenía un vínculo, no se toca. Café nunca se vincula.
+
+Las filas se crean una sola vez: reiniciar no pisa lo que se editó en el panel ni en la consola.
+
+**Arranque limpio.** La réplica de la demo se inicializa solo con el volumen vacío. Un volumen anterior no trae la base de Café y la app no arranca, con un mensaje que pide `down -v`. Para empezar de cero:
+
+```bash
+docker compose --profile demo --profile correo down -v
+docker compose --profile demo --profile correo up -d --build
+```
+
+**Con el agente (opcional).** Con `DEMO_AGENTE_TOKEN` la conexión de Food Store pasa por un agente en lugar de ser directa, y la demo puede mostrar una falla provocada. Es un atajo de demo: el agente comparte la red de la app; en producción vive en la red del cliente y se levanta con `docker-compose.agente.yml` (ver [Conexión por agente](#conexión-por-agente)). El token es de demo y no se reutiliza; la base guarda solo su hash. Se genera uno y se pone en `.env`:
+
+```bash
+node -e "console.log('zda_'+require('crypto').randomBytes(32).toString('base64url'))"   # DEMO_AGENTE_TOKEN=zda_...
+docker compose --profile demo --profile correo --profile agente up -d --build
+```
+
+La conexión queda por agente solo si se crea con el token ya definido: una conexión directa que ya existe no se convierte (para eso, el arranque limpio). Si el tenant ya tenía un agente con otro token, el servicio `agente` termina con código 2.
+
+Al reconstruir `app` (`--build`) hay que recrear también el agente, porque comparte su red:
+
+```bash
+docker compose --profile agente up -d --force-recreate agente
+```
+
+**Falla provocada.** Con el agente arriba, las ejecuciones de Food Store salen bien. `docker compose stop agente` y, en la siguiente ejecución (en un minuto), falla con código `ESINAGENTE`: la consola muestra la ejecución fallida y el panel la muestra «con falla». `docker compose start agente` y la siguiente vuelve a salir bien. No se siembra nada roto.
+
 El punto de partida es `http://localhost:3000/`, con las dos puertas. Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
 
-1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y una automatización activa sobre la plantilla `stock-fisico`. Los avisos llegan a Mailpit, en `http://localhost:8026`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
-2. **Reportes.** En **Reportes**, «Nuevo reporte», probarlo contra la conexión de la demo y guardarlo. La guía trae un SQL de ejemplo: [Reportes](docs/guia/09-reportes.md#escribir-el-sql).
-3. **Tablero del cliente.** En **Puesta en marcha → Tablero del cliente**, elegir la conexión, agregar y ordenar los reportes y guardar. Un reporte que ya está en un tablero ofrece «Duplicar y editar» en lugar de «Editar».
+1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y las automatizaciones sobre la plantilla `stock-fisico`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
+2. **Reportes y tablero del cliente.** Los cuatro reportes y los dos tableros ya están. En **Reportes** se puede crear otro y en **Puesta en marcha → Tablero del cliente** agregarlo. Guía: [Reportes](docs/guia/09-reportes.md#escribir-el-sql).
+3. **Panel del cliente.** En `http://localhost:3000/panel`, con `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE` (o la variante `+cafe`), cada negocio ve su tablero con números distintos.
 
-El panel del cliente está en `http://localhost:3000/panel`, con `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE`. Hoy muestra las automatizaciones y el vínculo de Telegram. El tablero de reportes llega con CH-48.
+**Detener los avisos cada minuto.** En la consola, en la automatización, «Desactivar»; no se puede reactivar (DEC-79). Un reinicio no la vuelve a crear: la fila sigue existiendo.
 
-Para probar Telegram hace falta además `TELEGRAM_BOT_TOKEN` (ver [Variables opcionales](#variables-opcionales)).
+**Probar el umbral.** En el panel, subir el umbral de la automatización por correo de 10 a 20 agrega una fila al aviso (el stock es 18, 9 y 4). Bajarlo a 5 deja una sola fila, menos que el mínimo de 2, y la ejecución queda «omitida-bajo-minimo»: no se envía nada.
+
+**Verificar los datos.** El aviso lee los productos sin receta con stock bajo el umbral; con 10 deben salir dos filas:
+
+```bash
+docker compose --profile demo exec replica-demo psql -U food_store_owner -d food_store -c   "SELECT nombre, \"stockDisponible\" FROM v_producto pr WHERE activo AND \"stockDisponible\"::numeric <= 10 AND NOT EXISTS (SELECT 1 FROM v_receta_componente rc WHERE rc.\"productoId\" = pr.id) ORDER BY 2"
+```
 
 Para bajar todo: `docker compose --profile demo --profile correo down`. Agregar `-v` borra también los volúmenes, y con ellos la base y la demo sembrada.
 

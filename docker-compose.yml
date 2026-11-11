@@ -64,6 +64,14 @@ services:
       DEMO_OPERADOR_CLAVE: ${DEMO_OPERADOR_CLAVE:-}
       DEMO_PANEL_CORREO: ${DEMO_PANEL_CORREO:-}
       DEMO_PANEL_CLAVE: ${DEMO_PANEL_CLAVE:-}
+      # Optional since CH-49: the Telegram chat Food Store is linked to (a signed integer, a
+      # negative one for a group). Unset or empty, no link and no Telegram automation are seeded;
+      # a malformed value makes the container refuse to start, without echoing it.
+      DEMO_TELEGRAM_CHAT_ID: ${DEMO_TELEGRAM_CHAT_ID:-}
+      # Optional since CH-49 (DEC-207): the token of Food Store's agent (zda_ plus 43 characters).
+      # Unset or empty, no agent is seeded and the connection is direct; a malformed one makes the
+      # container refuse to start, without echoing it. The seed stores only its hash.
+      DEMO_AGENTE_TOKEN: ${DEMO_AGENTE_TOKEN:-}
     ports:
       - "${APP_PORT}:${APP_PORT}"
 
@@ -106,6 +114,34 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # CH-49 (DEC-207): the demo's customer-side agent. A demo shortcut: it shares the app's
+  # network namespace, so it reaches the app over loopback (the one place `ws://` is accepted)
+  # and resolves `replica-demo` with the app's DNS. In production the agent lives in the
+  # client's network, and `docker-compose.agente.yml` stays the path for a real client. It
+  # starts only with the profile, `docker compose --profile demo --profile agente up`; the
+  # default `up` is unchanged. The token is `DEMO_AGENTE_TOKEN` (zda_ plus 43 characters, see the
+  # README); the seed stores only its hash. Recreating `app` (a rebuild) drops the shared
+  # network, so recreate this service too: `docker compose --profile agente up -d --force-recreate agente`.
+  agente:
+    profiles: ["agente"]
+    build:
+      context: .
+      target: agente
+    network_mode: "service:app"
+    depends_on: [app]
+    environment:
+      AGENT_SERVER_URL: ws://localhost:${APP_PORT}
+      # Not `:?`: Compose interpolates every service, profile or not, so a required variable
+      # would break each `docker compose` command that has no token. Empty, the agent refuses
+      # to start (exit 1, configuration), which `docker compose logs agente` shows.
+      AGENT_TOKEN: ${DEMO_AGENTE_TOKEN:-}
+      AGENT_ALLOWED_TARGETS: replica-demo:5432
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
 
 volumes:
   db-data:
