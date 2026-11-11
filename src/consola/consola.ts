@@ -56,6 +56,40 @@ export function jsonEnScript(valor: unknown): string {
     .replaceAll(String.fromCharCode(0x2029), '\\u2029');
 }
 
+const SVG_ABIERTO = '<svg class="zd-icon" aria-hidden="true" viewBox="0 0 24 24"';
+
+/**
+ * C-04, C-08, C-12: a result banner, the shared Banner markup written once here. It carries the three tone icons;
+ * the script (`mostrarResultado`) sets only `data-tono`, `role`, the two texts and `hidden`, so it never assigns a
+ * shared class (guard G3') and the bridge style picks the colors and the one icon by the tone. `acciones` is
+ * optional markup for the banner's action slot.
+ */
+function avisoResultado(id: string, acciones = ''): string {
+  return `<div id="${id}" class="zd-banner aviso-resultado" data-tono="error" role="alert" hidden>
+  ${SVG_ABIERTO} data-icono="ok"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+  ${SVG_ABIERTO} data-icono="warn"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+  ${SVG_ABIERTO} data-icono="error"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg>
+  <div><p id="${id}-titulo" class="zd-banner__title"></p><p id="${id}-cuerpo" class="zd-banner__body"></p></div>${acciones === '' ? '' : `
+  <div class="zd-banner__actions">${acciones}</div>`}
+</div>`;
+}
+
+/**
+ * C-02, C-11: the empty state of a tenant's screen while no tenant is selected (consola.md, «Comportamiento según el
+ * tenant»). The script shows it and sets data-sin-tenant on the screen; the button opens the tenant pop-up.
+ */
+function estadoSinTenant(pantalla: string): string {
+  return `<div id="sin-tenant-${pantalla}" class="zd-state" hidden>
+  <span class="zd-state__icon">${SVG_ABIERTO}><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4"></path><path d="M10 10h4"></path><path d="M10 14h4"></path><path d="M10 18h4"></path></svg></span>
+  <p class="zd-state__title">Elegí un tenant</p>
+  <p class="zd-state__body">Esta pantalla trabaja sobre un tenant. Elegí uno para seguir, o creá el primero en Tenants.</p>
+  <div class="zd-state__actions">
+    <button id="sin-tenant-${pantalla}-elegir" class="zd-btn zd-btn--primary" type="button">Elegir tenant</button>
+    <a class="zd-btn zd-btn--secondary" href="#tenants">Ir a Tenants</a>
+  </div>
+</div>`;
+}
+
 function documentoConsola(nombreOperador: string): string {
   return `<!doctype html>
 <html lang="es">
@@ -84,12 +118,26 @@ function documentoConsola(nombreOperador: string): string {
      the text saying so. Without :has() the bar stays violet, so the no-tenant text keeps its own
      underline to stay distinct from the active-tenant state. */
   #barra-tenant { flex-wrap: wrap; padding-block: var(--space-2); }
-  #tenant-activo { margin-left: auto; text-align: right; font-size: var(--text-md); font-weight: var(--weight-bold); }
+  #tenant-activo { font-size: var(--text-md); font-weight: var(--weight-bold); overflow-wrap: anywhere; }
   #tenant-activo.sin-tenant { text-decoration: underline; text-decoration-color: var(--warn); text-decoration-thickness: 2px; text-underline-offset: 3px; }
   .zd-tenantbar:has(#tenant-activo.sin-tenant) { background: var(--warn-soft); color: var(--warn-text); box-shadow: inset 0 -2px 0 var(--warn); }
-  #barra-tenant .zd-select { width: auto; max-width: 18rem; min-height: var(--control-h-sm); }
-  #barra-tenant .zd-select:focus-visible { outline-color: var(--tenant-on); border-color: var(--tenant-on); }
-  .zd-tenantbar:has(#tenant-activo.sin-tenant) .zd-select:focus-visible { outline-color: var(--warn-text); border-color: var(--warn-text); }
+  .zd-tenantbar:has(#tenant-activo.sin-tenant) .zd-tenantbar__btn:focus-visible { outline-color: var(--warn-text); }
+  /* C-01: the tenant is changed in a pop-up (the select lives there), so the bar only names it and offers the button. */
+  #tenant { width: 100%; }
+  /* C-02, C-11: with no tenant a screen of the tenant keeps its header and shows the empty state; the rest of the
+     screen stays out of sight (the script sets data-sin-tenant). */
+  section[data-sin-tenant] > :not(.zd-pagehead):not(.zd-state) { display: none; }
+  /* C-04, C-08, C-12: the result banners are the shared banner; the script only sets the tone, the text and hidden,
+     so the tone selects the colors and the one icon that shows. */
+  .aviso-resultado { margin: var(--space-5) 0; }
+  .aviso-resultado > .zd-icon { display: none; }
+  .aviso-resultado .zd-banner__body { white-space: pre-line; overflow-wrap: anywhere; }
+  .aviso-resultado[data-tono="ok"] { background: var(--ok-soft); border-color: var(--ok-border); }
+  .aviso-resultado[data-tono="warn"] { background: var(--warn-soft); border-color: var(--warn-border); }
+  .aviso-resultado[data-tono="error"] { background: var(--error-soft); border-color: var(--error-border); }
+  .aviso-resultado[data-tono="ok"] > .zd-icon[data-icono="ok"] { display: inline-block; color: var(--ok); }
+  .aviso-resultado[data-tono="warn"] > .zd-icon[data-icono="warn"] { display: inline-block; color: var(--warn); }
+  .aviso-resultado[data-tono="error"] > .zd-icon[data-icono="error"] { display: inline-block; color: var(--error); }
   .zd-h1 { margin: var(--space-8) 0 var(--space-2); }
   .zd-h2 { margin: var(--space-9) 0 var(--space-2); }
   .zd-label { display: block; margin: var(--space-5) 0 var(--space-2); }
@@ -257,13 +305,38 @@ function documentoConsola(nombreOperador: string): string {
   replayed later, which makes it a stored-input surface (regla 7).
 -->
 <header id="barra-tenant" class="zd-tenantbar">
-  <label for="tenant" class="zd-tenantbar__label">Tenant activo</label>
-  <select id="tenant" class="zd-select"></select>
+  <span class="zd-tenantbar__label">Tenant activo</span>
   <strong id="tenant-activo" class="sin-tenant">Ningún tenant seleccionado</strong>
+  <!-- C-01: the tenant is changed in the pop-up below, never by a bare select; the label says which of the two it is. -->
+  <button id="tenant-cambiar" class="zd-tenantbar__btn" type="button">Elegir tenant</button>
   <!-- CH-29 (DEC-154, C-01): who operates. The name is escaped by the server. -->
   <span id="operador" class="zd-operator">Operador: <strong>${escaparHtml(nombreOperador)}</strong></span>
   <button id="salir" class="zd-btn zd-btn--ghost zd-btn--sm" type="button">Salir</button>
 </header>
+
+<!--
+  C-01 (consola.md, «Cambiar tenant»): the list of tenants (name, a fragment of the id and the day it was created)
+  and a confirmation that names the tenant: nothing changes until «Operar sobre …». #tenant keeps its id and holds the
+  choice only; the script moves the active tenant on confirmation. Alta and baja live in Tenants, one link away.
+-->
+<div id="tenant-cambio" class="zd-dialog-backdrop" hidden>
+  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="tc-titulo">
+    <h2 id="tc-titulo" class="zd-dialog__title">Cambiar tenant</h2>
+    <p id="tc-texto">Las pantallas del tenant operan sobre el que confirmes acá. Revisá el nombre y el id antes de confirmar: puede haber dos tenants con el mismo nombre.</p>
+    <div class="zd-form">
+      <div>
+        <label for="tenant" class="zd-label">Tenant</label>
+        <select id="tenant" class="zd-select"></select>
+      </div>
+    </div>
+    <p class="ayuda">Para dar de alta o de baja un tenant, andá a <a id="tc-tenants" href="#tenants">Tenants</a>.</p>
+    <div class="zd-dialog__actions">
+      <span id="tc-confirmar" hidden></span>
+      <button id="tc-operar" class="zd-btn zd-btn--primary" type="button" disabled>Operar sobre el tenant</button>
+      <button id="tc-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
 
 <!--
   CH-30a (DEC-164, DEC-165): the shell of the design guide. The navigation links the screens
@@ -316,6 +389,8 @@ function documentoConsola(nombreOperador: string): string {
   </div>
 </header>
 <p id="tenant-aviso" class="ayuda" role="status"></p>
+<!-- C-02: after a creation, what was created and the next step of the setup, as a banner with its action. -->
+${avisoResultado('tenant-banner', '<a id="tenant-siguiente" class="zd-btn zd-btn--secondary zd-btn--sm" href="#conexiones" hidden>Siguiente: registrar la conexión</a>')}
 <!--
   CH-32b (DEC-173): «Nuevo tenant» opens here. «Crear tenant» creates it; «Crear y elegir» creates it and
   makes it the active one. Errors are written in the status line inside the pop-up, successes in the notice above.
@@ -389,7 +464,10 @@ function documentoConsola(nombreOperador: string): string {
     <button id="conexion-nueva" class="zd-btn zd-btn--primary" type="button">Nueva conexión</button>
   </div>
 </header>
+${estadoSinTenant('conexiones')}
 <p id="conexiones-aviso" class="ayuda" role="status"></p>
+<!-- C-04: how the test of a just-registered connection went, with what to do next, as a banner. -->
+${avisoResultado('conexion-banner')}
 <div class="zd-table-wrap zd-table-scroll">
   <table class="zd-table">
     <thead><tr><th>Nombre</th><th>Motor</th><th>Servidor</th><th>Base</th><th>Usuario</th><th>Prueba</th></tr></thead>
@@ -441,6 +519,7 @@ function documentoConsola(nombreOperador: string): string {
     <p class="zd-pagehead__desc">El agente corre en la red del cliente y abre la conexión hacia la consola: el cliente no expone puertos.</p>
   </div>
 </header>
+${estadoSinTenant('agentes')}
 <p id="agentes-aviso" class="ayuda" role="status"></p>
 <div id="agente-secreto" class="zd-card" role="alert" hidden>
   <p class="ayuda">Este es el token del agente. Copialo ahora: no se vuelve a mostrar.</p>
@@ -469,6 +548,7 @@ function documentoConsola(nombreOperador: string): string {
     <button id="usuario-nuevo" class="zd-btn zd-btn--primary" type="button">Nuevo usuario</button>
   </div>
 </header>
+${estadoSinTenant('usuarios')}
 <p id="usuarios-aviso" class="ayuda" role="status"></p>
 <!-- CH-32b (DEC-173): «Nuevo usuario» opens here. The generated password is shown once in the notice below. -->
 <div id="usuario-dialogo" class="zd-dialog-backdrop" hidden>
@@ -522,6 +602,7 @@ function documentoConsola(nombreOperador: string): string {
     <button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar</button>
   </div>
 </header>
+${estadoSinTenant('tablero')}
 <p id="tablero-aviso" class="ayuda" role="status"></p>
 <div class="tablero-bloque">
   <label for="tablero-conexion" class="zd-label">Conexión</label>
@@ -556,6 +637,7 @@ function documentoConsola(nombreOperador: string): string {
     <p class="zd-pagehead__desc">En qué etapa está cada conexión del tenant y cuándo llegó. Las marcas miden tiempo transcurrido, no esfuerzo: la conexión cuenta desde que se registró y la validación muestra solo la última.</p>
   </div>
 </header>
+${estadoSinTenant('tiempos')}
 <p id="tiempos-aviso" class="ayuda" role="status"></p>
 <div id="tiempos-lista"></div>
 </section>
@@ -880,11 +962,14 @@ function documentoConsola(nombreOperador: string): string {
     <button id="mapeo-validar" class="zd-btn zd-btn--primary" type="button">Validar mapeo</button>
   </div>
 </header>
+${estadoSinTenant('mapeo')}
 <div>
   <label for="mapeo-conexion" class="zd-label">Conexión</label>
   <select id="mapeo-conexion" class="zd-select"></select>
 </div>
 <p id="mapeo-aviso" class="ayuda" role="status"></p>
+<!-- C-12: the summary of «Validar mapeo» (valid or not, how many entities, which automations stay available), as a banner. -->
+${avisoResultado('mapeo-banner')}
 <!-- CH-34 (DEC-176): static, closed by default; the per-entity examples are built by the script. -->
 <details id="mapeo-guia" class="zd-card">
   <summary>Cómo mapear</summary>
@@ -898,12 +983,15 @@ function documentoConsola(nombreOperador: string): string {
   <p class="ayuda">Las entidades opcionales pueden quedar sin mapear. Cada entidad trae un ejemplo sobre la réplica de demo.</p>
 </details>
 <div id="mapeo-entidades"></div>
-<h2 class="zd-h2">Automatizaciones</h2>
-<div class="zd-table-wrap zd-table-scroll">
-  <table class="zd-table">
-    <thead><tr><th>Automatización</th><th>Estado</th><th>Motivos</th></tr></thead>
-    <tbody id="mapeo-automatizaciones"></tbody>
-  </table>
+<!-- C-11: the automations of the mapping appear once a connection's report is on screen, not as an empty table. -->
+<div id="mapeo-automatizaciones-bloque" hidden>
+  <h2 class="zd-h2">Automatizaciones</h2>
+  <div class="zd-table-wrap zd-table-scroll">
+    <table class="zd-table">
+      <thead><tr><th>Automatización</th><th>Estado</th><th>Motivos</th></tr></thead>
+      <tbody id="mapeo-automatizaciones"></tbody>
+    </table>
+  </div>
 </div>
 </section>
 
@@ -923,6 +1011,7 @@ function documentoConsola(nombreOperador: string): string {
     <button id="consulta-nueva" class="zd-btn zd-btn--primary" type="button">Nueva consulta</button>
   </div>
 </header>
+${estadoSinTenant('consultas')}
 
 <!--
   CH-32a PR2 (DEC-172, DEC-173): the query pop-up. A query is created and edited here and nowhere
@@ -1003,6 +1092,8 @@ function documentoConsola(nombreOperador: string): string {
 
     <!-- CH-30a: the result of a run, inside the pop-up. A refusal of a run or a save is written here too. -->
     <div>
+      <!-- C-08: a refusal of a run or of a save (the statement, the rule, the SQLSTATE) as a banner, next to the control that caused it. -->
+      ${avisoResultado('consulta-aviso')}
       <p id="estado" class="estado" hidden></p>
 
       <div class="zd-table-wrap zd-table-scroll">
@@ -1071,6 +1162,7 @@ function documentoConsola(nombreOperador: string): string {
     <button id="auto-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
   </div>
 </header>
+${estadoSinTenant('automatizaciones')}
 
 <!--
   CH-13 (DEC-78, DEC-79, DEC-80): outside #formulario for the reason saved queries are,
@@ -1268,9 +1360,21 @@ function documentoConsola(nombreOperador: string): string {
    </div>
   </div>
 
-  <div class="zd-table-wrap zd-table-scroll"><table id="auto-lista" class="zd-table"></table></div>
-  <h2 class="zd-h2">Ejecuciones</h2>
-  <div class="zd-table-wrap zd-table-scroll"><table id="auto-ejecuciones" class="zd-table"></table></div>
+  <div id="auto-listado">
+    <div class="zd-table-wrap zd-table-scroll"><table id="auto-lista" class="zd-table"></table></div>
+    <h2 class="zd-h2">Ejecuciones</h2>
+    <p id="ejecuciones-aviso" class="ayuda" role="status">Tocá «Ver ejecuciones» en una automatización para ver su historial.</p>
+    <div class="zd-table-wrap zd-table-scroll"><table id="auto-ejecuciones" class="zd-table"></table></div>
+  </div>
+  <!-- C-11: a tenant with no automations says so and offers the one action; the list and the executions appear once there is one. -->
+  <div id="auto-vacio" class="zd-state" hidden>
+    <span class="zd-state__icon">${SVG_ABIERTO}><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg></span>
+    <p class="zd-state__title">Este tenant no tiene automatizaciones</p>
+    <p class="zd-state__body">Creá la primera: elegís una conexión, una plantilla y el horario.</p>
+    <div class="zd-state__actions">
+      <button id="auto-vacio-nueva" class="zd-btn zd-btn--primary" type="button">Nueva automatización</button>
+    </div>
+  </div>
 </section>
 </section>
 
@@ -1281,6 +1385,7 @@ function documentoConsola(nombreOperador: string): string {
     <h1 id="titulo-frescura" class="zd-h1">Frescura de datos</h1>
   </div>
 </header>
+${estadoSinTenant('frescura')}
 
 <!--
   CH-24 (DEC-142 to DEC-145, screen C-22): what the implementer declared about the active
@@ -1321,6 +1426,7 @@ function documentoConsola(nombreOperador: string): string {
     <p class="zd-pagehead__desc">Qué se ejecutó contra la réplica del tenant, cuándo y por quién. Es un registro: no se modifica ni se borra.</p>
   </div>
 </header>
+${estadoSinTenant('auditoria')}
 <div class="controles">
   <div><label for="aud-desde" class="zd-label">Desde</label><input id="aud-desde" class="zd-input" type="date"></div>
   <div><label for="aud-hasta" class="zd-label">Hasta</label><input id="aud-hasta" class="zd-input" type="date"></div>
@@ -1480,6 +1586,7 @@ var CLAVE_TENANT = 'zerodashboard.tenantActivo';
 var SIN_TENANT = 'Elegí un tenant en la barra superior antes de operar. No se envió ninguna solicitud.';
 
 var selectorTenant = document.getElementById('tenant');
+var botonCambiarTenant = document.getElementById('tenant-cambiar');
 var indicadorTenant = document.getElementById('tenant-activo');
 var formulario = document.getElementById('formulario');
 var entradaConexion = document.getElementById('conexion');
@@ -1596,6 +1703,25 @@ function ocultarBanner() {
   banner.className = 'banner';
   banner.textContent = '';
   banner.hidden = true;
+  // C-08: every action that clears the page banner starts clean, the query pop-up's refusal included.
+  ocultarResultado('consulta-aviso');
+}
+
+// C-04, C-08, C-12: a result banner (the markup is written once by the server, one per place). tono: 'ok', 'warn' or
+// 'error'; the tone picks the colors and the icon, and an error or a warning is announced as an alert.
+function mostrarResultado(id, tono, titulo, cuerpo) {
+  var caja = document.getElementById(id);
+  caja.setAttribute('data-tono', tono);
+  caja.setAttribute('role', tono === 'ok' ? 'status' : 'alert');
+  document.getElementById(id + '-titulo').textContent = titulo;
+  document.getElementById(id + '-cuerpo').textContent = cuerpo;
+  caja.hidden = false;
+}
+
+function ocultarResultado(id) {
+  document.getElementById(id).hidden = true;
+  document.getElementById(id + '-titulo').textContent = '';
+  document.getElementById(id + '-cuerpo').textContent = '';
 }
 
 function vaciar(nodo) {
@@ -1673,6 +1799,7 @@ function limpiarResultados() {
   // over the next, uncut result.
   vaciar(estado);
   estado.hidden = true;
+  ocultarResultado('consulta-aviso');
   botonAnterior.disabled = true;
   botonSiguiente.disabled = true;
 }
@@ -1783,7 +1910,25 @@ function fijarTenant(id) {
       ' (' + tenantActivo.slice(0, 8) + '…)';
   }
   escribirTenantGuardado(tenantActivo);
+  botonCambiarTenant.textContent = tenantActivo === null ? 'Elegir tenant' : 'Cambiar tenant';
+  aplicarSinTenant();
   mostrarFrescura();
+}
+
+// C-02, C-11: while no tenant is selected each screen of the tenant shows its empty state (the bridge style hides
+// the rest of the screen through data-sin-tenant) and its controls are off; a tenant brings everything back.
+var PANTALLAS_DEL_TENANT = ['conexiones', 'agentes', 'mapeo', 'usuarios', 'tablero', 'tiempos', 'consultas', 'automatizaciones', 'frescura', 'auditoria'];
+var CONTROLES_DEL_TENANT = ['conexion-nueva', 'usuario-nuevo', 'consulta-nueva', 'auto-nueva', 'mapeo-conexion', 'mapeo-validar',
+  'aud-desde', 'aud-hasta', 'aud-resultado', 'aud-filtrar'];
+
+function aplicarSinTenant() {
+  var sin = tenantActivo === null;
+  PANTALLAS_DEL_TENANT.forEach(function (nombre) {
+    var seccion = document.getElementById('pantalla-' + nombre);
+    if (sin) { seccion.setAttribute('data-sin-tenant', ''); } else { seccion.removeAttribute('data-sin-tenant'); }
+    document.getElementById('sin-tenant-' + nombre).hidden = !sin;
+  });
+  CONTROLES_DEL_TENANT.forEach(function (id) { document.getElementById(id).disabled = sin; });
 }
 
 function renderizarSelector(tenants) {
@@ -1802,7 +1947,9 @@ function renderizarSelector(tenants) {
     // render as visible text (regla 7). The smoke test greps the served document for
     // the markup-assigning property name, so it must not appear even in a comment.
     // C-01: the id fragment tells apart two tenants that share a nombre, as the connection selectors do.
-    opcion.textContent = String(fila.nombre) + ' (' + String(fila.id).slice(0, 8) + '…)';
+    // C-01: and the day it was created, as the pop-up's list asks (name, id, alta).
+    var alta = fechaTenant(fila.creadoEn);
+    opcion.textContent = String(fila.nombre) + ' (' + String(fila.id).slice(0, 8) + '…)' + (alta === '' ? '' : ' · alta ' + alta);
     selectorTenant.appendChild(opcion);
   });
 
@@ -2397,7 +2544,7 @@ async function guardar() {
   } catch (fallaDeRed) {
     guardando = false;
     actualizarGuardado();
-    avisarEnConsulta('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.');
+    avisarEnConsulta('No se pudo contactar con la aplicación. Verifique que siga en línea e intente de nuevo.', TITULO_CONSULTA_NO_GUARDADA);
     return;
   }
   guardando = false;
@@ -2410,15 +2557,15 @@ async function guardar() {
   if (manejarFalloDeTenant(cuerpo)) { return; }
   // A refusal stays in the pop-up, written inside it; only a save closes it.
   if (cuerpo === null) {
-    avisarEnConsulta('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').');
+    avisarEnConsulta('La aplicación respondió algo que la consola no pudo interpretar (HTTP ' + respuesta.status + ').', TITULO_CONSULTA_NO_GUARDADA);
     return;
   }
   if (respuesta.status === 400) {
-    avisarEnConsulta(mensajeDeSolicitudInvalida(cuerpo, declaracion));
+    avisarEnConsulta(mensajeDeSolicitudInvalida(cuerpo, declaracion), TITULO_CONSULTA_NO_GUARDADA);
     return;
   }
   if (respuesta.status !== 201) {
-    avisarEnConsulta('La aplicación respondió HTTP ' + respuesta.status + '.');
+    avisarEnConsulta('La aplicación respondió HTTP ' + respuesta.status + '.', TITULO_CONSULTA_NO_GUARDADA);
     return;
   }
 
@@ -2533,6 +2680,8 @@ function renderizarTabla(tabla, columnas, filas, claseFila, aviso) {
 function limpiarAutomatizaciones() {
   vaciar(tablaAutomatizaciones);
   vaciar(tablaEjecuciones);
+  vistaAutomatizaciones(false);
+  document.getElementById('ejecuciones-aviso').textContent = AVISO_EJECUCIONES;
   catalogoPlantillas = [];
   nombresPlantilla = Object.create(null);
   generacionNombres += 1;
@@ -3152,6 +3301,16 @@ async function listarAutomatizaciones() {
     'automatizacion',
     resultado.cuerpo.truncado ? 'Se muestran solo las ' + filas.length + ' automatizaciones más recientes.' : null
   );
+  // C-11: with none, the empty state and its one action replace the list and the executions.
+  vistaAutomatizaciones(filas.length === 0);
+}
+
+// C-11: the list and the executions, or the empty state of a tenant with no automations.
+var AVISO_EJECUCIONES = 'Tocá «Ver ejecuciones» en una automatización para ver su historial.';
+
+function vistaAutomatizaciones(vacio) {
+  document.getElementById('auto-vacio').hidden = !vacio;
+  document.getElementById('auto-listado').hidden = vacio;
 }
 
 async function cargarAutomatizaciones() {
@@ -3514,6 +3673,7 @@ async function verEjecuciones(id) {
   if (resultado === null) { return; }
   if (resultado.status !== 200) { mostrarRechazo(resultado); await listarAutomatizaciones(); return; }
   var filas = Array.isArray(resultado.cuerpo.ejecuciones) ? resultado.cuerpo.ejecuciones : [];
+  document.getElementById('ejecuciones-aviso').textContent = '';
   renderizarTabla(
     tablaEjecuciones,
     // CH-17b: Intentos goes last so every existing column keeps its position (DEC-103).
@@ -4147,14 +4307,24 @@ function motivoDeGuardadoCerrado() {
   return 'Probá la consulta para poder guardarla.';
 }
 
-// A refusal of a run or a save is written in the pop-up's status line while it is open (see
-// avisarEnDialogo); these two names are what the query code calls.
-function avisarEnConsulta(texto) {
-  avisarEnDialogo(dialogoDeConsulta, estado, texto);
+// C-08: a refusal of a run or a save is a banner inside the pop-up, above the status line, while it is open; closed, it
+// goes to the page banner like every other refusal. The title says what did not happen, the text is the reason (and
+// the SQLSTATE, when the target gave one). These two names are what the query code calls.
+var TITULO_CONSULTA_NO_EJECUTADA = 'La consulta no se pudo ejecutar';
+var TITULO_CONSULTA_NO_GUARDADA = 'No se pudo guardar la consulta';
+
+function avisarEnConsulta(texto, titulo, tono) {
+  if (!dialogoDeConsulta.abierto()) { mostrarBanner(texto); return; }
+  mostrarResultado('consulta-aviso', tono || 'error', titulo || TITULO_CONSULTA_NO_EJECUTADA, texto);
 }
 
+// A helper that answered null has already written its refusal in the page banner, which is behind the pop-up: the same
+// sentence is moved into the pop-up's banner.
 function llevarBannerAlDialogo() {
-  llevarBannerA(dialogoDeConsulta, estado);
+  if (!dialogoDeConsulta.abierto() || banner.hidden) { return; }
+  var texto = banner.textContent;
+  ocultarBanner();
+  avisarEnConsulta(texto, TITULO_CONSULTA_NO_GUARDADA);
 }
 
 // What the pop-up shows by whether a query is loaded: its title, the loaded-query line and the version
@@ -4335,22 +4505,22 @@ async function guardarNuevaVersion() {
   var error = resultado.cuerpo.error;
   if (resultado.status === 404) {
     // The query is gone: the pop-up stays open as a new, untested query holding what was typed.
-    avisarEnConsulta('Esa consulta guardada ya no existe. Se actualizó la lista.');
+    avisarEnConsulta('Esa consulta guardada ya no existe. Se actualizó la lista.', TITULO_CONSULTA_NO_GUARDADA);
     olvidarConsultaCargada();
     ultimaPruebaOk = null;
     estadoPrueba = 'sin-probar';
     actualizarGuardado();
     await listarGuardadas();
   } else if (resultado.status === 409 && error === 'sin-cambios') {
-    avisarEnConsulta('No hay cambios respecto de la versión vigente.');
+    avisarEnConsulta('No hay cambios respecto de la versión vigente.', 'No se guardó la versión', 'warn');
   } else if (resultado.status === 409 && error === 'conflicto-de-edicion') {
-    avisarEnConsulta('Otra edición se guardó antes que esta. Volvé a cargar la consulta e intentá de nuevo.');
+    avisarEnConsulta('Otra edición se guardó antes que esta. Volvé a cargar la consulta e intentá de nuevo.', TITULO_CONSULTA_NO_GUARDADA);
   } else if (resultado.status === 400 && Array.isArray(resultado.cuerpo.campos) && resultado.cuerpo.campos.indexOf('/nota') !== -1) {
-    avisarEnConsulta('La nota tiene que ser un texto de hasta 500 caracteres.');
+    avisarEnConsulta('La nota tiene que ser un texto de hasta 500 caracteres.', TITULO_CONSULTA_NO_GUARDADA);
   } else if (resultado.status === 400) {
-    avisarEnConsulta(mensajeDeSolicitudInvalida(resultado.cuerpo, declaracion));
+    avisarEnConsulta(mensajeDeSolicitudInvalida(resultado.cuerpo, declaracion), TITULO_CONSULTA_NO_GUARDADA);
   } else {
-    avisarEnConsulta('La aplicación respondió HTTP ' + resultado.status + '.');
+    avisarEnConsulta('La aplicación respondió HTTP ' + resultado.status + '.', TITULO_CONSULTA_NO_GUARDADA);
   }
 }
 
@@ -4404,8 +4574,54 @@ function cambiarTenant(id) {
   if (!document.getElementById('pantalla-tablero').hidden) { cargarPantallaTablero(); } else { limpiarTablero(); }
 }
 
-selectorTenant.addEventListener('change', function () {
-  cambiarTenant(selectorTenant.value);
+// C-01 (consola.md): the tenant changes only on «Operar sobre …» in the pop-up. The select inside it is the list
+// (name, id fragment, alta) and holds the choice; choosing in it moves nothing. The pop-up opens on the tenant that is
+// active now, so «Cancelar» and Escape leave everything as it was.
+var botonOperarTenant = document.getElementById('tc-operar');
+
+var dialogoCambioTenant = crearDialogo({
+  fondo: document.getElementById('tenant-cambio'),
+  primerCampo: selectorTenant,
+  cancelar: document.getElementById('tc-cancelar'),
+  confirmar: document.getElementById('tc-confirmar'),
+  hayCambios: function () { return false; },
+  alAbrir: function () {
+    selectorTenant.value = tenantActivo === null ? '' : tenantActivo;
+    actualizarConfirmacionDeTenant();
+  }
+});
+
+// The confirmation names the chosen tenant; it stays off while nothing, or the tenant already active, is chosen.
+function actualizarConfirmacionDeTenant() {
+  var elegido = selectorTenant.value;
+  var fila = elegido === '' ? null : filaDeTenant(elegido);
+  botonOperarTenant.textContent = fila === null ? 'Operar sobre el tenant' : 'Operar sobre ' + String(fila.nombre);
+  botonOperarTenant.disabled = fila === null || elegido === tenantActivo;
+}
+
+selectorTenant.addEventListener('change', actualizarConfirmacionDeTenant);
+
+botonOperarTenant.addEventListener('click', function () {
+  var elegido = selectorTenant.value;
+  if (elegido === '') { return; }
+  dialogoCambioTenant.cerrar();
+  cambiarTenant(elegido);
+});
+
+botonCambiarTenant.addEventListener('click', function () {
+  dialogoCambioTenant.abrir();
+});
+
+// The empty state of every screen of the tenant offers the same pop-up (C-02).
+PANTALLAS_DEL_TENANT.forEach(function (nombre) {
+  document.getElementById('sin-tenant-' + nombre + '-elegir').addEventListener('click', function () {
+    dialogoCambioTenant.abrir();
+  });
+});
+
+// The link to Tenants (alta and baja) leaves the pop-up; the hash change shows the screen.
+document.getElementById('tc-tenants').addEventListener('click', function () {
+  dialogoCambioTenant.cerrar();
 });
 
 // The probe starts by re-evaluating Siguiente, so a placeholder choice disables it at once.
@@ -4414,6 +4630,11 @@ selectorConexionAuto.addEventListener('change', function () {
 });
 
 botonNuevaAuto.addEventListener('click', function () {
+  abrirAlta();
+});
+
+// C-11: the empty state of a tenant with no automations offers the same action as the header.
+document.getElementById('auto-vacio-nueva').addEventListener('click', function () {
   abrirAlta();
 });
 
@@ -4747,12 +4968,16 @@ async function crearTenant(elegir) {
   dialogoTenant.cerrar();
   await cargarTenantsPantalla();
   await cargarTenants();
+  // C-02: the result is a banner with the next step: with the tenant active, its connection; otherwise, choosing it.
+  var siguiente = document.getElementById('tenant-siguiente');
   if (elegir && creado !== '') {
     cambiarTenant(creado);
-    avisoTenant.textContent = 'Se creó el tenant «' + nombre + '» y quedó como activo.';
+    siguiente.hidden = false;
+    mostrarResultado('tenant-banner', 'ok', 'Tenant creado', 'Se creó el tenant «' + nombre + '» y quedó como activo. El paso siguiente de la puesta en marcha es registrar su conexión.');
     return;
   }
-  avisoTenant.textContent = 'Se creó el tenant «' + nombre + '».';
+  siguiente.hidden = true;
+  mostrarResultado('tenant-banner', 'ok', 'Tenant creado', 'Se creó el tenant «' + nombre + '». Elegilo en la lista con «Elegir como activo» para empezar a operar sobre él.');
 }
 
 document.getElementById('tenant-nuevo').addEventListener('click', function () {
@@ -4804,13 +5029,29 @@ async function probarConexionPorId(id) {
   return prueba.mensaje !== undefined ? prueba.mensaje : textoDePrueba(prueba.cuerpo);
 }
 
-// The notice a saved connection leaves on the screen: it was saved, and how its test went.
-function avisoDeGuardada(prueba) {
-  if (prueba.mensaje !== undefined) { return prueba.mensaje === '' ? '' : 'Guardada. ' + prueba.mensaje; }
+// C-04: what a saved connection leaves on the screen, as a banner: it was saved, and how its test went, with what to do
+// next when it failed (a registered connection is not edited: another one is registered). null when the page has
+// already said why there is nothing to show (a refusal about the tenant).
+function resultadoDeGuardada(prueba) {
+  if (prueba.mensaje !== undefined) {
+    return prueba.mensaje === '' ? null
+      : { tono: 'warn', titulo: 'La conexión se guardó, pero no se pudo probar', cuerpo: prueba.mensaje };
+  }
   var cuerpo = prueba.cuerpo;
-  if (cuerpo === null || typeof cuerpo !== 'object') { return 'Guardada. No se pudo leer el resultado de la prueba.'; }
-  if (cuerpo.resultado === 'ok') { return 'Guardada. Prueba: OK (' + cuerpo.duracionMs + ' ms).'; }
-  return 'Guardada. La prueba falló: ' + String(cuerpo.categoria) + (cuerpo.codigo ? ' (' + String(cuerpo.codigo) + ')' : '') + '.';
+  if (cuerpo === null || typeof cuerpo !== 'object') {
+    return { tono: 'warn', titulo: 'La conexión se guardó, pero no se pudo probar', cuerpo: 'No se pudo leer el resultado de la prueba. Probala desde la lista.' };
+  }
+  if (cuerpo.resultado === 'ok') {
+    return { tono: 'ok', titulo: 'Conexión guardada y probada', cuerpo: 'La prueba salió bien (' + cuerpo.duracionMs + ' ms). Ya se puede usar.' };
+  }
+  // The test answers without a fase, so its failures are read as the connection phase; a category the page has no
+  // sentence for is named as it came, with its code.
+  var fase = cuerpo.fase === undefined ? 'conexion' : cuerpo.fase;
+  var motivo = Object.prototype.hasOwnProperty.call(MENSAJES, String(fase) + ':' + String(cuerpo.categoria))
+    ? mensajeDeFallo({ fase: fase, categoria: cuerpo.categoria, codigo: cuerpo.codigo })
+    : 'La prueba falló: ' + String(cuerpo.categoria) + (cuerpo.codigo ? ' (' + String(cuerpo.codigo) + ')' : '') + '.';
+  return { tono: 'error', titulo: 'La conexión se guardó, pero la prueba falló',
+    cuerpo: motivo + '\\nRevisá los datos y registrá la conexión de nuevo: una conexión registrada no se edita.' };
 }
 
 function renderizarPantallaConexiones(conexiones) {
@@ -4990,7 +5231,8 @@ formularioConexion.addEventListener('submit', async function (evento) {
   if (tenant !== tenantActivo) { return; }
   dialogoConexion.cerrar();
   await cargarPantallaConexiones();
-  avisoConexiones.textContent = avisoDeGuardada(prueba);
+  var resultado = resultadoDeGuardada(prueba);
+  if (resultado === null) { ocultarResultado('conexion-banner'); } else { mostrarResultado('conexion-banner', resultado.tono, resultado.titulo, resultado.cuerpo); }
 });
 
 // ---- CH-30c: secrets shown once (agent tokens, panel passwords) --------------------------
@@ -6708,6 +6950,7 @@ var avisoMapeo = document.getElementById('mapeo-aviso');
 var selectorMapeo = document.getElementById('mapeo-conexion');
 var contenedorEntidades = document.getElementById('mapeo-entidades');
 var cuerpoAutomatizacionesMapeo = document.getElementById('mapeo-automatizaciones');
+var bloqueAutomatizacionesMapeo = document.getElementById('mapeo-automatizaciones-bloque');
 // One entry per entity block: its state line, its editor and its diagnostics list.
 var bloquesMapeo = {};
 var conexionMapeo = null;
@@ -6834,15 +7077,85 @@ function renderizarInforme(informe) {
     });
   });
   vaciar(cuerpoAutomatizacionesMapeo);
-  (Array.isArray(informe.automatizaciones) ? informe.automatizaciones : []).forEach(function (auto) {
+  var automatizaciones = Array.isArray(informe.automatizaciones) ? informe.automatizaciones : [];
+  automatizaciones.forEach(function (auto) {
     var fila = document.createElement('tr');
-    celdaTenant(fila, String(auto.automatizacion));
-    celdaTenant(fila, String(auto.estado));
-    celdaTenant(fila, (Array.isArray(auto.motivos) ? auto.motivos : []).map(function (m) {
-      return String(m.entidad) + (m.campo ? '.' + String(m.campo) : '') + ': ' + String(m.motivo);
-    }).join('; '));
+    celdaTenant(fila, nombreDeAutomatizacion(auto.automatizacion));
+    celdaTenant(fila, etiquetaDeEstadoMapeo(auto.estado));
+    celdaTenant(fila, (Array.isArray(auto.motivos) ? auto.motivos : []).map(motivoDeMapeo).join('; '));
     cuerpoAutomatizacionesMapeo.appendChild(fila);
   });
+  bloqueAutomatizacionesMapeo.hidden = automatizaciones.length === 0;
+}
+
+// C-12: the automations are named as the catalog names their template (the slug is the fallback while the catalog is
+// not loaded), their state and their reasons are said in words, and the validation ends in a summary banner.
+var ETIQUETAS_ESTADO_MAPEO = { aplicable: 'Disponible', bloqueada: 'Bloqueada', inaplicable: 'No aplica', pendiente: 'Pendiente de validar' };
+var VEREDICTOS_MAPEO = {
+  'ausente': 'falta la columna',
+  'tipo-incorrecto': 'la columna tiene otro tipo',
+  'alias-sin-comillas': 'el alias necesita comillas dobles',
+  'duplicada': 'la columna aparece más de una vez'
+};
+
+function etiquetaDeEstadoMapeo(estado) {
+  return Object.prototype.hasOwnProperty.call(ETIQUETAS_ESTADO_MAPEO, estado) ? ETIQUETAS_ESTADO_MAPEO[estado] : String(estado);
+}
+
+function nombreDeAutomatizacion(etiqueta) {
+  var nombres = [];
+  catalogoPlantillas.forEach(function (fila) {
+    if (String(fila.automatizacion) === String(etiqueta) && nombres.indexOf(fila.nombre) === -1) { nombres.push(fila.nombre); }
+  });
+  return nombres.length === 0 ? String(etiqueta) : nombres.join(', ');
+}
+
+function motivoDeMapeo(motivo) {
+  var entidad = String(motivo.entidad);
+  var campo = motivo.campo ? entidad + '.' + String(motivo.campo) : entidad;
+  switch (motivo.motivo) {
+    case 'entidad-no-mapeada': return 'Falta mapear: ' + entidad;
+    case 'no-validada': return 'Falta validar: ' + entidad;
+    case 'sondeo-fallido': return 'La consulta de ' + entidad + ' no corrió';
+    case 'columnas-sobrantes': return 'La consulta de ' + entidad + ' devuelve columnas que el contrato no tiene';
+    case 'diagnostico-ilegible': return 'No se pudo leer el diagnóstico de ' + entidad;
+    default:
+      return campo + ': ' + (Object.prototype.hasOwnProperty.call(VEREDICTOS_MAPEO, motivo.motivo) ? VEREDICTOS_MAPEO[motivo.motivo] : String(motivo.motivo));
+  }
+}
+
+// The summary of a validation: how many entities are valid, which ones need work and which automations stay available.
+// 'ok' only when nothing is pending: every required entity valid and no automation blocked or waiting.
+function resumenDeMapeo(informe) {
+  var entidades = Array.isArray(informe.entidades) ? informe.entidades : [];
+  var automatizaciones = Array.isArray(informe.automatizaciones) ? informe.automatizaciones : [];
+  var validas = entidades.filter(function (e) { return e.estado === 'valida'; }).length;
+  var pendientes = [];
+  var opcionalesSinMapear = [];
+  entidades.forEach(function (e) {
+    if (e.estado === 'invalida') { pendientes.push(String(e.entidad) + ' (inválida)'); }
+    else if (e.estado === 'no-validado') { pendientes.push(String(e.entidad) + ' (sin validar)'); }
+    else if (e.estado === 'no-mapeada') {
+      if (e.obligatoriedad === 'opcional') { opcionalesSinMapear.push(String(e.entidad)); }
+      else { pendientes.push(String(e.entidad) + ' (sin mapear)'); }
+    }
+  });
+  var disponibles = automatizaciones.filter(function (a) { return a.estado === 'aplicable'; });
+  var noDisponibles = automatizaciones.filter(function (a) { return a.estado !== 'aplicable'; });
+  var lineas = [validas + ' de ' + entidades.length + ' entidades válidas.'];
+  if (opcionalesSinMapear.length > 0) { lineas.push('Sin mapear, opcionales: ' + opcionalesSinMapear.join(', ') + '.'); }
+  if (pendientes.length > 0) { lineas.push('Revisá: ' + pendientes.join(', ') + '.'); }
+  if (noDisponibles.length > 0) {
+    lineas.push('No disponibles: ' + noDisponibles.map(function (a) {
+      return nombreDeAutomatizacion(a.automatizacion) + ' (' + etiquetaDeEstadoMapeo(a.estado).toLowerCase() + ')';
+    }).join(', ') + '.');
+  }
+  if (disponibles.length > 0) {
+    lineas.push(disponibles.length === 1 ? 'Disponible: ' + nombreDeAutomatizacion(disponibles[0].automatizacion) + '.'
+      : disponibles.length + ' automatizaciones disponibles.');
+  }
+  var limpio = pendientes.length === 0 && noDisponibles.length === 0;
+  return { tono: limpio ? 'ok' : 'warn', titulo: limpio ? 'Mapeo válido' : 'El mapeo necesita revisión', cuerpo: lineas.join('\\n') };
 }
 
 async function cargarMapeoDeConexion(id) {
@@ -6850,6 +7163,8 @@ async function cargarMapeoDeConexion(id) {
   bloquesMapeo = {};
   vaciar(contenedorEntidades);
   vaciar(cuerpoAutomatizacionesMapeo);
+  bloqueAutomatizacionesMapeo.hidden = true;
+  ocultarResultado('mapeo-banner');
   if (id === '') { conexionMapeo = null; avisoMapeo.textContent = 'Elegí una conexión para ver su mapeo.'; return; }
   var informe = await leerMapeo(urlMapeo('/validacion-mapeo'));
   if (informe === null || informe.status !== 200 || informe.cuerpo === null) {
@@ -6875,6 +7190,8 @@ async function cargarPantallaMapeo() {
   bloquesMapeo = {};
   vaciar(contenedorEntidades);
   vaciar(cuerpoAutomatizacionesMapeo);
+  bloqueAutomatizacionesMapeo.hidden = true;
+  ocultarResultado('mapeo-banner');
   conexionMapeo = null;
   if (tenantActivo === null) { avisoMapeo.textContent = 'Elegí un tenant para mapear sus conexiones.'; return; }
   var leido = await leerMapeo('/conexiones');
@@ -6899,25 +7216,27 @@ selectorMapeo.addEventListener('change', function () { cargarMapeoDeConexion(sel
 document.getElementById('mapeo-validar').addEventListener('click', async function () {
   if (conexionMapeo === null) { avisoMapeo.textContent = 'Elegí una conexión para validar.'; return; }
   avisoMapeo.textContent = 'Validando…';
+  ocultarResultado('mapeo-banner');
   var leido = await leerMapeo(urlMapeo('/validacion-mapeo'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({})
   });
   if (leido === null) { return; }
+  avisoMapeo.textContent = '';
   if (leido.status !== 200 || leido.cuerpo === null) {
-    avisoMapeo.textContent = 'No se pudo validar (HTTP ' + leido.status + ').';
+    mostrarResultado('mapeo-banner', 'error', 'No se pudo validar el mapeo', 'La aplicación respondió HTTP ' + leido.status + '.');
     return;
   }
   if (leido.cuerpo.resultado === 'fallo') {
     // A failed session writes nothing (CH-10): the last stored report stays on screen.
-    avisoMapeo.textContent = 'La validación no pudo conectarse: ' + String(leido.cuerpo.fase) + ' · ' +
-      String(leido.cuerpo.categoria) + (leido.cuerpo.codigo ? ' (' + String(leido.cuerpo.codigo) + ')' : '') +
-      '. Se mantiene el último resultado.';
+    mostrarResultado('mapeo-banner', 'error', 'La validación no pudo conectarse', mensajeDeFallo(leido.cuerpo) + '\\nSe mantiene el último resultado.');
     return;
   }
-  avisoMapeo.textContent = 'Validación terminada.';
-  renderizarInforme(leido.cuerpo.validacionMapeo || {});
+  var informe = leido.cuerpo.validacionMapeo || {};
+  renderizarInforme(informe);
+  var resumen = resumenDeMapeo(informe);
+  mostrarResultado('mapeo-banner', resumen.tono, resumen.titulo, resumen.cuerpo);
 });
 
 // ---- CH-30e1 (DEC-163, screen C-12): Auditoría ------------------------------------------------
@@ -7488,6 +7807,10 @@ botonGuardarTablero.addEventListener('click', guardarTablero);
 // place, so nothing else in this script depends on which screen is showing.
 var PANTALLAS = ['tenants', 'plantillas', 'reportes', 'contrato', 'conexiones', 'agentes', 'mapeo', 'usuarios', 'tablero', 'tiempos','consultas', 'automatizaciones', 'frescura', 'auditoria'];
 function mostrarPantalla() {
+  // C-02, C-04, C-12: a result belongs to the visit that produced it.
+  ocultarResultado('tenant-banner');
+  ocultarResultado('conexion-banner');
+  ocultarResultado('mapeo-banner');
   var pedida = String(window.location.hash || '').replace(/^#/, '');
   var activa = PANTALLAS.indexOf(pedida) === -1 ? 'consultas' : pedida;
   olvidarSecretos();
@@ -7512,6 +7835,8 @@ function mostrarPantalla() {
   if (activa === 'consultas') { cargarConexionesConsulta(); }
 }
 window.addEventListener('hashchange', mostrarPantalla);
+// C-02: until the tenant list answers there is no tenant, and the screens of the tenant say so.
+aplicarSinTenant();
 mostrarPantalla();
 
 // The tenant list comes first: nothing else on this page can be asked for until the

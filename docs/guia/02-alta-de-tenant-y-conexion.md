@@ -25,7 +25,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO lector_zerodashboard;
 
 ## 1. Crear y elegir el tenant
 
-«Crear tenant» solo crea; «Crear y elegir» además lo deja como tenant activo. Si se creó sin elegirlo, se elige con «Elegir como activo» en la fila, o desde el selector de la barra superior. La elección se recuerda en el navegador.
+«Crear tenant» solo crea; «Crear y elegir» además lo deja como tenant activo. Si se creó sin elegirlo, se elige con «Elegir como activo» en la fila, o con «Cambiar tenant» en la barra superior, que abre una lista con nombre, id y fecha de alta y pide confirmar con «Operar sobre …». La elección se recuerda en el navegador.
 
 Las pantallas de **Puesta en marcha** y **Trabajo diario** operan sobre el tenant activo. Con «Ningún tenant seleccionado» no se envía ninguna solicitud y la consola pide elegir uno.
 
@@ -70,7 +70,7 @@ Notas del agente:
 
 ## 3. Probar
 
-«Guardar y probar» registra la conexión y la prueba en el mismo paso. Si la prueba falla, la conexión queda guardada y el aviso dice «Guardada. La prueba falló: …». Después, «Probar» en la fila repite la prueba.
+«Guardar y probar» registra la conexión y la prueba en el mismo paso. Si la prueba falla, la conexión queda guardada y un aviso de error dice que la conexión se guardó, por qué falló la prueba y que hay que registrarla de nuevo con los datos corregidos. Después, «Probar» en la fila repite la prueba.
 
 | Categoría | Significa |
 |---|---|
