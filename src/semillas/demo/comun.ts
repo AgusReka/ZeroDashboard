@@ -41,7 +41,8 @@ export interface TenantDemo {
     /** By contract entity name, one id per canonical view. */
     vistas: Readonly<Record<string, string>>;
     usuario: string;
-    automatizacion: string;
+    /** Present only for the tenant that keeps the daily automation; Food Store's are in `canales.ts`. */
+    automatizacion?: string;
     /** Present only for the tenant that keeps the saved query. */
     consulta?: string;
   };

@@ -238,10 +238,10 @@ Both users SHALL take their password from `REPLICA_DEMO_PASSWORD`, SHALL have `C
 ### Requirement: Opt-In Demo Seed (DEC-171, DEC-206)
 When `SEED_DEMO=1`, the seed SHALL, after the catalog, create whatever is missing of:
 - operator `demo` with the password `DEMO_OPERADOR_CLAVE`;
-- tenant "Food Store", its connection to `replica-demo` (`food_store`) with the credential enciphered (CH-07), the five canonical views, one saved query, a panel user with `DEMO_PANEL_CORREO` and `DEMO_PANEL_CLAVE`, and the daily automation of "Alerta de stock físico" with the recipient `DEMO_PANEL_CORREO`;
+- tenant "Food Store", its connection to `replica-demo` (`food_store`) with the credential enciphered (CH-07), the five canonical views, one saved query and a panel user with `DEMO_PANEL_CORREO` and `DEMO_PANEL_CLAVE`;
 - tenant "Café del Puerto", its connection to `replica-demo` (`cafe_demo`), its five canonical views, its own panel user and one active daily automation;
 - the seeded reports and both dashboards ("Seeded Demo Reports and Dashboards");
-- Food Store's every-minute automations and, when configured, its Telegram link ("Seeded Every-Minute Automations and Telegram Link");
+- Food Store's every-minute automations, one per template, and, when configured, its Telegram link ("Seeded Every-Minute Automations and Telegram Link");
 - when configured, Food Store's agent ("Seeded Demo Agent").
 
 Each row SHALL have a fixed id, and an existing row SHALL NOT be read for change, changed or deleted. When it creates a tenant's views, it SHALL validate them with the same probe as `POST /conexiones/:id/validacion-mapeo`. When `SEED_DEMO` is unset or not `1`, the seed SHALL behave exactly as before. When `SEED_DEMO=1` and a required variable is missing, an optional variable is malformed, the replica does not answer, or an entity is not valid after the probe, the seed SHALL fail naming the cause and never a secret or personal value, and the app SHALL NOT start.
@@ -301,9 +301,9 @@ Each SHALL read only canonical entities, so it runs on both tenants, and each cl
 - **THEN** «Ventas» shows a value for 7 and 30 days, and the two tenants show different values
 
 ### Requirement: Seeded Every-Minute Automations and Telegram Link (DEC-206, DEC-79, DEC-186, DEC-187, DEC-196)
-With `SEED_DEMO=1`, the seed SHALL create on Food Store, by fixed id and only when missing, an active automation with the schedule `* * * * *`, the email channel, between 2 and 5 recipients and a `minimoFilas` above 1. These automations SHALL be created on every seeded start, with no opt-in variable. The existing daily automation SHALL be kept.
+With `SEED_DEMO=1`, the seed SHALL create on Food Store, by fixed id and only when missing, an active automation on the `stock-fisico` template with the schedule `* * * * *`, the email channel, between 2 and 5 recipients and a `minimoFilas` above 1. This automation SHALL be created on every seeded start, with no opt-in variable. Food Store SHALL have no daily automation; Café del Puerto keeps its own.
 
-When `DEMO_TELEGRAM_CHAT_ID` is set, the seed SHALL validate it as a signed 64-bit integer, and SHALL create Food Store's `VinculoTelegram` with that chat only if the tenant has no link. An existing link, even to another chat, SHALL NOT be touched. Only when Food Store is linked SHALL the seed also create, by fixed id and only when missing, an active every-minute automation on the Telegram channel. Café del Puerto SHALL NOT be linked. The seed SHALL NOT read `TELEGRAM_BOT_TOKEN`. A malformed chat id SHALL fail the seed naming `DEMO_TELEGRAM_CHAT_ID` without echoing its value. The chat id SHALL NOT be written to a log.
+When `DEMO_TELEGRAM_CHAT_ID` is set, the seed SHALL validate it as a signed 64-bit integer, and SHALL create Food Store's `VinculoTelegram` with that chat only if the tenant has no link. An existing link, even to another chat, SHALL NOT be touched. Only when Food Store is linked SHALL the seed also create, by fixed id and only when missing, an active every-minute automation on the Telegram channel and the `stock-producible` template (threshold 20, `minimoFilas` 1). Café del Puerto SHALL NOT be linked. The seed SHALL NOT read `TELEGRAM_BOT_TOKEN`. A malformed chat id SHALL fail the seed naming `DEMO_TELEGRAM_CHAT_ID` without echoing its value. The chat id SHALL NOT be written to a log.
 
 #### Scenario: The email arrives on a fresh demo
 - **GIVEN** a fresh demo with SMTP or the mail catcher configured

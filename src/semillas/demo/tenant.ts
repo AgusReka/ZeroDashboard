@@ -79,7 +79,7 @@ export async function sembrarFilaTenant(
 
 /**
  * Seeds one tenant from its descriptor: the tenant, its connection, the optional saved query,
- * its panel user, the five views with the probe and the daily automation. `agenteId` binds the
+ * its panel user, the five views with the probe and, when its descriptor has one, the daily automation. `agenteId` binds the
  * connection to an agent when the row is created (an existing connection stays as it is); it is
  * `null` for a direct connection. The probe is always direct.
  * Throws, naming the cause, when the replica does not answer or an entity is not valid after
@@ -198,22 +198,27 @@ export async function sembrarTenant(
     }
   }
 
-  await crearSiFalta(
-    creadas,
-    etiqueta('automatizacion'),
-    () => prisma.automatizacion.findUnique({ where: { id: tenant.ids.automatizacion }, select: { id: true } }),
-    () =>
-      prisma.automatizacion.create({
-        data: {
-          id: tenant.ids.automatizacion,
-          tenantId,
-          plantillaId: ID_STOCK_FISICO,
-          conexionId,
-          valores: { umbral: UMBRAL_DEMO },
-          cron: CRON_DEMO,
-          destinatarios: [tenant.correoPanel],
-          activo: true,
-        },
-      }),
-  );
+  // Only the tenant whose descriptor carries an id keeps the daily automation; Food Store's
+  // every-minute ones come after both tenants (`canales.ts`).
+  const automatizacionId = tenant.ids.automatizacion;
+  if (automatizacionId !== undefined) {
+    await crearSiFalta(
+      creadas,
+      etiqueta('automatizacion'),
+      () => prisma.automatizacion.findUnique({ where: { id: automatizacionId }, select: { id: true } }),
+      () =>
+        prisma.automatizacion.create({
+          data: {
+            id: automatizacionId,
+            tenantId,
+            plantillaId: ID_STOCK_FISICO,
+            conexionId,
+            valores: { umbral: UMBRAL_DEMO },
+            cron: CRON_DEMO,
+            destinatarios: [tenant.correoPanel],
+            activo: true,
+          },
+        }),
+    );
+  }
 }

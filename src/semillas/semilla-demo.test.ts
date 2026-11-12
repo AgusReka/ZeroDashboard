@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
-import { ID_STOCK_FISICO, sembrarCatalogoInicial } from '../plantillas/catalogo-inicial.js';
+import { ID_STOCK_FISICO, ID_STOCK_PRODUCIBLE, sembrarCatalogoInicial } from '../plantillas/catalogo-inicial.js';
 import { alcanzable, databaseUrl, motivoSkip } from '../consola/consola-auth-apoyo.js';
 import type { ResultadoSondeo, SondeoEntidad } from '../ejecucion/consulta-ejecucion.js';
 import { CONTRATO_CANONICO, type TipoSemantico } from '../contrato/contrato.js';
@@ -255,7 +255,7 @@ describe(
       ).map((f) => f.id);
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
-      assert.equal(creadas.length, 27, creadas.join(', '));
+      assert.equal(creadas.length, 26, creadas.join(', '));
 
       const operador = await db.operador.findUniqueOrThrow({ where: { id: IDS_DEMO.operador } });
       assert.equal(operador.nombre, 'demo');
@@ -291,13 +291,8 @@ describe(
       assert.equal(usuario.nombre, 'Usuario demo');
       assert.ok(await verificarClave(ENV_COMPLETO.DEMO_PANEL_CLAVE as string, usuario.claveHash));
 
-      const automatizacion = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_DEMO.automatizacion } });
-      assert.equal(automatizacion.plantillaId, ID_STOCK_FISICO);
-      assert.equal(automatizacion.conexionId, IDS_DEMO.conexion);
-      assert.deepEqual(automatizacion.valores, { umbral: 5 });
-      assert.equal(automatizacion.cron, '0 9 * * *');
-      assert.deepEqual(automatizacion.destinatarios, ['demo-ch31@prueba.test']);
-      assert.equal(automatizacion.activo, true);
+      // Food Store has no daily automation: its two every-minute ones are checked with the channels.
+      assert.equal(await db.automatizacion.count({ where: { tenantId: IDS_DEMO.tenant, cron: '0 9 * * *' } }), 0);
 
       const filas = await db.registroEjecucion.findMany({
         where: { tenantId: IDS_DEMO.tenant, id: { notIn: antes } },
@@ -382,7 +377,7 @@ describe(
 
       // Each tenant keeps its own rows.
       assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [5, 1, 0, 1, 1]);
-      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
     });
 
     test('the four reports and both dashboards are seeded after the tenants, by fixed id', async () => {
@@ -470,13 +465,13 @@ describe(
         where: { id: IDS_DEMO.consulta },
         data: { sql: editada, parametros: [], nombre: 'Editada por el dueño' },
       });
-      await db.automatizacion.update({ where: { id: IDS_DEMO.automatizacion }, data: { activo: false } });
+      await db.automatizacion.update({ where: { id: IDS_CANALES_DEMO.automatizacionCorreo }, data: { activo: false } });
       const antes = await db.registroEjecucion.count({ where: { tenantId: IDS_DEMO.tenant } });
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_NUNCA });
 
       assert.deepEqual(creadas, []);
-      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
       assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [5, 1, 0, 1, 1]);
       assert.equal(await reportesSembrados(), 4);
       assert.equal(await tablerosDeLaDemo(), 2);
@@ -484,7 +479,7 @@ describe(
       assert.equal(consulta.sql, editada);
       assert.equal(consulta.nombre, 'Editada por el dueño');
       assert.equal(
-        (await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_DEMO.automatizacion } })).activo,
+        (await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_CANALES_DEMO.automatizacionCorreo } })).activo,
         false,
       );
       assert.equal(await db.registroEjecucion.count({ where: { tenantId: IDS_DEMO.tenant } }), antes);
@@ -504,8 +499,8 @@ describe(
       assert.equal(await reportesSembrados(), 0);
 
       const { creadas } = await sembrarDemo(db, entorno, { sondear: SONDEAR_OK });
-      assert.ok(creadas.includes('automatizacion'));
-      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
+      assert.ok(creadas.includes('automatizacion:correo-cada-minuto'));
+      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
     });
 
     test('an entity that is not valid after the probe throws naming it, and nothing depends on it', async () => {
@@ -539,8 +534,8 @@ describe(
           !error.message.includes(entorno.claveReplica),
       );
 
-      // Food Store, seeded before the check, stays; nothing of the second tenant exists.
-      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
+      // Food Store, seeded before the check, stays (its every-minute automations come last, so none yet); nothing of the second tenant exists.
+      assert.deepEqual(await cuentas(), [5, 0, 1, 1, 1]);
       assert.equal(await db.tenant.count({ where: { id: IDS_DEMO.cafe.tenant } }), 0);
       assert.deepEqual(await cuentas(IDS_DEMO.cafe.tenant), [0, 0, 0, 0, 0]);
       assert.equal(await db.registroEjecucion.count({ where: { tenantId: IDS_DEMO.cafe.tenant } }), auditoriaAntes);
@@ -593,10 +588,9 @@ describe(
         'encargado@food-store.example',
         'compras@food-store.example',
       ]);
-      // The daily automation stays as it was.
-      const diaria = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_DEMO.automatizacion } });
-      assert.deepEqual([diaria.cron, diaria.valores, diaria.minimoFilas], ['0 9 * * *', { umbral: 5 }, 1]);
-      // Café del Puerto gets neither.
+      // Food Store has no daily automation any more: this one is its only automation without a chat id.
+      assert.equal(await db.automatizacion.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
+      // Café del Puerto gets no every-minute one.
       assert.equal(await db.automatizacion.count({ where: { tenantId: IDS_DEMO.cafe.tenant, cron: '* * * * *' } }), 0);
     });
 
@@ -626,7 +620,7 @@ describe(
       const telegram = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_CANALES_DEMO.automatizacionTelegram } });
       assert.deepEqual(
         [telegram.tenantId, telegram.plantillaId, telegram.conexionId, telegram.valores, telegram.cron, telegram.minimoFilas, telegram.canal, telegram.destinatarios, telegram.activo],
-        [IDS_DEMO.tenant, ID_STOCK_FISICO, IDS_DEMO.conexion, { umbral: 10 }, '* * * * *', 1, 'telegram', [], true],
+        [IDS_DEMO.tenant, ID_STOCK_PRODUCIBLE, IDS_DEMO.conexion, { umbral: 20 }, '* * * * *', 1, 'telegram', [], true],
       );
     });
 
@@ -652,7 +646,7 @@ describe(
       const { creadas } = await sembrarDemo(db, entornoConChat(), { sondear: SONDEAR_NUNCA });
 
       assert.deepEqual(creadas, []);
-      assert.deepEqual(await cuentas(), [5, 3, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
       assert.equal(await db.vinculoTelegram.count({ where: { tenantId: IDS_DEMO.tenant } }), 1);
       const correo = await db.automatizacion.findUniqueOrThrow({ where: { id: IDS_CANALES_DEMO.automatizacionCorreo } });
       assert.deepEqual([correo.activo, correo.valores], [false, { umbral: 20 }]);
@@ -688,7 +682,7 @@ describe(
       // Café del Puerto stays direct, and Food Store's views are validated all the same.
       assert.equal((await db.conexion.findUniqueOrThrow({ where: { id: IDS_DEMO.cafe.conexion } })).agenteId, null);
       assert.equal(await db.agente.count({ where: { tenantId: IDS_DEMO.cafe.tenant } }), 0);
-      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
     });
 
     test('the token never reaches the log', async () => {
@@ -760,7 +754,7 @@ describe(
 
       await sembrarDemo(db, entornoConAgente(), { sondear: SONDEAR_OK });
       assert.equal(await agenteIdDeLaConexion(), ID_AGENTE_DEMO);
-      assert.deepEqual(await cuentas(), [5, 2, 1, 1, 1]);
+      assert.deepEqual(await cuentas(), [5, 1, 1, 1, 1]);
     });
   },
 );
