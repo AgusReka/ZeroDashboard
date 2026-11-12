@@ -31,7 +31,7 @@ export interface RegistroPlantillaBody {
   nombre: string;
   sql: string;
   /** Checked by `problemasDePlantilla`; AJV only guarantees containers and keys. */
-  parametros: { nombre: string; tipo: string }[];
+  parametros: { nombre: string; tipo: string; etiqueta?: unknown; ayuda?: unknown }[];
   entidades: string[];
   automatizacion: string;
   formato: string;
@@ -88,8 +88,13 @@ export const registroPlantillaSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
+        // Same trick as the body: under `removeAdditional` an unknown key of an entry would be
+        // stripped silently, so `propertyNames` makes it a 400 instead (CH-57, DEC-209).
+        propertyNames: { enum: ['nombre', 'tipo', 'etiqueta', 'ayuda'] },
         required: ['nombre', 'tipo'],
-        properties: { nombre: {}, tipo: { enum: TIPOS_PARAMETRO } },
+        // CH-57 (DEC-209): the operator texts are listed so `removeAdditional` keeps them. They
+        // take `{}` (no `type`) so AJV cannot coerce a number into a string; the route checks it.
+        properties: { nombre: {}, tipo: { enum: TIPOS_PARAMETRO }, etiqueta: {}, ayuda: {} },
       },
     },
     entidades: {
@@ -140,6 +145,9 @@ export const LARGO_MAXIMO_TEXTO_CLIENTE = { titulo: 80, descripcion: 200 } as co
 /** Character caps of the message texts, measured after trimming. */
 export const LARGO_MAXIMO_MENSAJE = { encabezadoMensaje: 200, lineaMensaje: 300 } as const;
 
+/** Character caps of a parameter's operator texts (CH-57, DEC-209), measured after trimming. */
+export const LARGO_MAXIMO_TEXTO_PARAMETRO = { etiqueta: 60, ayuda: 240 } as const;
+
 /** Trimmed text, or `null` when absent, null or blank. */
 export function textoCliente(valor: string | null | undefined): string | null {
   const recortado = valor?.trim() ?? '';
@@ -163,6 +171,24 @@ function rechazoDeTextos(cuerpo: RegistroPlantillaBody): { campos: string[]; ter
     prohibidos.forEach((termino) => terminos.add(termino));
   }
   return { campos, terminos: [...terminos] };
+}
+
+/**
+ * The parameter operator texts (CH-57, DEC-209) that are not a string or break their cap, as
+ * JSON pointers (`/parametros/{i}/etiqueta`). A blank text is acceptable: it is stored as absent.
+ */
+function rechazoDeTextosDeParametros(cuerpo: RegistroPlantillaBody): string[] {
+  const campos: string[] = [];
+  cuerpo.parametros.forEach((parametro, indice) => {
+    for (const campo of ['etiqueta', 'ayuda'] as const) {
+      const valor = parametro[campo];
+      if (valor === undefined) continue;
+      if (typeof valor !== 'string' || valor.trim().length > LARGO_MAXIMO_TEXTO_PARAMETRO[campo]) {
+        campos.push(`/parametros/${indice}/${campo}`);
+      }
+    }
+  });
+  return campos;
 }
 
 /**
@@ -237,10 +263,11 @@ export function rechazoDePlantilla(
     };
   }
   const textos = rechazoDeTextos(cuerpo);
-  if (textos.campos.length > 0) {
+  const camposParametros = rechazoDeTextosDeParametros(cuerpo);
+  if (textos.campos.length > 0 || camposParametros.length > 0) {
     return {
       error: 'solicitud-invalida',
-      campos: textos.campos,
+      campos: [...textos.campos, ...camposParametros],
       ...(textos.terminos.length > 0 ? { terminos: textos.terminos } : {}),
     };
   }
@@ -263,12 +290,24 @@ export function rechazoDePlantilla(
   return null;
 }
 
-/** The columns a valid body writes; `parametros` keeps only `nombre` and `tipo`. */
+/**
+ * The columns a valid body writes; `parametros` keeps `nombre` and `tipo`, plus the trimmed,
+ * non-blank operator texts (CH-57, DEC-209). A blank text adds no key.
+ */
 export function datosDePlantilla(cuerpo: RegistroPlantillaBody) {
   return {
     nombre: cuerpo.nombre,
     sql: cuerpo.sql,
-    parametros: cuerpo.parametros.map(({ nombre, tipo }) => ({ nombre, tipo })),
+    parametros: cuerpo.parametros.map(({ nombre, tipo, etiqueta, ayuda }) => {
+      const textoEtiqueta = typeof etiqueta === 'string' ? textoCliente(etiqueta) : null;
+      const textoAyuda = typeof ayuda === 'string' ? textoCliente(ayuda) : null;
+      return {
+        nombre,
+        tipo,
+        ...(textoEtiqueta !== null ? { etiqueta: textoEtiqueta } : {}),
+        ...(textoAyuda !== null ? { ayuda: textoAyuda } : {}),
+      };
+    }),
     entidades: cuerpo.entidades,
     automatizacion: cuerpo.automatizacion,
     formato: cuerpo.formato,

@@ -1599,7 +1599,8 @@ ${estadoSinTenant('automatizaciones')}
     <p id="aj-destinatario-ayuda" class="ayuda">Hasta 5, separados por comas.</p>
 
     <label for="aj-minimo" class="zd-label">Mínimo de filas para avisar</label>
-    <input id="aj-minimo" class="zd-input" type="number" min="1" step="1" inputmode="numeric">
+    <input id="aj-minimo" class="zd-input" type="number" min="1" step="1" inputmode="numeric" aria-describedby="aj-minimo-ayuda">
+    <p id="aj-minimo-ayuda" class="ayuda">El correo sale solo si la consulta devuelve al menos esta cantidad de filas. Es cuántos productos tienen que cumplir la condición, no el valor de la condición: con 3, solo avisa cuando hay 3 o más productos.</p>
 
     <p id="aj-aviso" class="ayuda" role="status"></p>
     <div class="zd-dialog__actions">
@@ -2576,15 +2577,19 @@ function controlDeValor(tipo) {
 // CH-38: the editor of a declaration, one per container. The query pop-up builds its own below
 // (editorConsulta); the template pop-up builds a second one, without the per-row value control (its
 // test values are asked for in the test block). alCambiar runs after every change of the declaration.
-function crearEditorParametros(contenedor, alCambiar, conValor) {
+// CH-57 (DEC-209): conTextos adds the two optional operator texts of a template parameter (a label and a
+// help), used only by the template editor; the query editor never gets them.
+function crearEditorParametros(contenedor, alCambiar, conValor, conTextos) {
   var filas = [];
 
-  function agregar(nombre, tipo) {
+  function agregar(nombre, tipo, etiqueta, ayuda) {
     var fila = {
       nodo: document.createElement('div'),
       nombre: document.createElement('input'),
       tipo: document.createElement('select'),
-      valor: conValor ? controlDeValor(tipo) : null
+      valor: conValor ? controlDeValor(tipo) : null,
+      etiqueta: conTextos ? document.createElement('input') : null,
+      ayuda: conTextos ? document.createElement('input') : null
     };
     fila.nodo.className = 'parametro';
     fila.nombre.type = 'text';
@@ -2599,6 +2604,21 @@ function crearEditorParametros(contenedor, alCambiar, conValor) {
     });
     fila.tipo.className = 'parametro-tipo';
     fila.tipo.value = tipo;
+    if (conTextos) {
+      // Not part of the test fingerprint (declaracion() ignores them), but they are unsaved changes.
+      fila.etiqueta.type = 'text';
+      fila.etiqueta.autocomplete = 'off';
+      fila.etiqueta.className = 'parametro-etiqueta';
+      fila.etiqueta.maxLength = 60;
+      fila.etiqueta.value = typeof etiqueta === 'string' ? etiqueta : '';
+      fila.etiqueta.addEventListener('input', alCambiar);
+      fila.ayuda.type = 'text';
+      fila.ayuda.autocomplete = 'off';
+      fila.ayuda.className = 'parametro-ayuda-texto';
+      fila.ayuda.maxLength = 240;
+      fila.ayuda.value = typeof ayuda === 'string' ? ayuda : '';
+      fila.ayuda.addEventListener('input', alCambiar);
+    }
 
     // The value control is labeled with the nombre it fills, and follows it as typed.
     var rotuloValor = conValor ? rotular(nombre === '' ? 'Valor' : nombre, fila.valor) : null;
@@ -2634,6 +2654,10 @@ function crearEditorParametros(contenedor, alCambiar, conValor) {
 
     fila.nodo.appendChild(rotular('Nombre', fila.nombre));
     fila.nodo.appendChild(rotular('Tipo', fila.tipo));
+    if (conTextos) {
+      fila.nodo.appendChild(rotular('Rótulo para el operador', fila.etiqueta));
+      fila.nodo.appendChild(rotular('Ayuda', fila.ayuda));
+    }
     if (conValor) { fila.nodo.appendChild(rotuloValor); }
     fila.nodo.appendChild(quitar);
     contenedor.appendChild(fila.nodo);
@@ -2653,6 +2677,19 @@ function crearEditorParametros(contenedor, alCambiar, conValor) {
     });
   }
 
+  // CH-57: {nombre, tipo} plus each operator text that is not blank once trimmed. Feeds the save body and the
+  // unsaved-changes snapshot, never the test fingerprint.
+  function declaracionConTextos() {
+    return filas.map(function (fila) {
+      var parametro = { nombre: fila.nombre.value.trim(), tipo: fila.tipo.value };
+      var etiquetaEscrita = fila.etiqueta ? fila.etiqueta.value.trim() : '';
+      var ayudaEscrita = fila.ayuda ? fila.ayuda.value.trim() : '';
+      if (etiquetaEscrita !== '') { parametro.etiqueta = etiquetaEscrita; }
+      if (ayudaEscrita !== '') { parametro.ayuda = ayudaEscrita; }
+      return parametro;
+    });
+  }
+
   // {nombre, tipo, valor} per row, the shape valoresDe reads (only an editor built conValor has a control).
   function entradas() {
     return filas.map(function (fila) {
@@ -2660,7 +2697,7 @@ function crearEditorParametros(contenedor, alCambiar, conValor) {
     });
   }
 
-  return { agregar: agregar, limpiar: limpiar, declaracion: declaracion, entradas: entradas };
+  return { agregar: agregar, limpiar: limpiar, declaracion: declaracion, declaracionConTextos: declaracionConTextos, entradas: entradas };
 }
 
 // The query pop-up's editor. Declared where the factory is, so the callers below read it as before.
@@ -3435,8 +3472,10 @@ function reiniciarAlta() {
 }
 
 // CH-44 (DEC-197): what Telegram hides and says, on the two forms. The recipients field keeps what it held.
-var AYUDA_MINIMO_CORREO = 'El correo sale solo si la consulta devuelve al menos esta cantidad de filas.';
-var AYUDA_MINIMO_TELEGRAM = 'El mensaje sale solo si la consulta devuelve al menos esta cantidad de filas.';
+// CH-57 (DEC-209): both texts carry the second sentence, which tells the minimum apart from the condition's value.
+var EXPLICACION_MINIMO = ' Es cuántos productos tienen que cumplir la condición, no el valor de la condición: con 3, solo avisa cuando hay 3 o más productos.';
+var AYUDA_MINIMO_CORREO = 'El correo sale solo si la consulta devuelve al menos esta cantidad de filas.' + EXPLICACION_MINIMO;
+var AYUDA_MINIMO_TELEGRAM = 'El mensaje sale solo si la consulta devuelve al menos esta cantidad de filas.' + EXPLICACION_MINIMO;
 
 function alternarDestinatarios(prefijo, enTelegram) {
   document.getElementById(prefijo + '-destinatario-etiqueta').hidden = enTelegram;
@@ -3676,7 +3715,16 @@ var PARAMETROS_PLANTILLA = {
   }
 };
 
+// CH-57 (DEC-209): the declaration's own texts come first (a template written from the console carries them), then the
+// fixed map above for the built-in templates, then the bare name.
 function descripcionDeParametro(plantilla, nombre) {
+  var declarados = plantilla !== null && typeof plantilla === 'object' && Array.isArray(plantilla.parametros) ? plantilla.parametros : [];
+  for (var i = 0; i < declarados.length; i += 1) {
+    var declarado = declarados[i];
+    if (declarado !== null && typeof declarado === 'object' && String(declarado.nombre) === nombre && typeof declarado.etiqueta === 'string') {
+      return { etiqueta: declarado.etiqueta, ayuda: typeof declarado.ayuda === 'string' ? declarado.ayuda : '' };
+    }
+  }
   var etiqueta = plantilla !== null && typeof plantilla === 'object' ? String(plantilla.automatizacion) : '';
   if (Object.prototype.hasOwnProperty.call(PARAMETROS_PLANTILLA, etiqueta)
       && Object.prototype.hasOwnProperty.call(PARAMETROS_PLANTILLA[etiqueta], nombre)) {
@@ -4077,7 +4125,9 @@ function estadoAjuste() {
 }
 
 function aplicarCanalAjuste() {
-  alternarDestinatarios('aj', selectorCanalAjuste.value === 'telegram');
+  var enTelegram = selectorCanalAjuste.value === 'telegram';
+  alternarDestinatarios('aj', enTelegram);
+  document.getElementById('aj-minimo-ayuda').textContent = enTelegram ? AYUDA_MINIMO_TELEGRAM : AYUDA_MINIMO_CORREO;
 }
 
 selectorCanalAjuste.addEventListener('change', aplicarCanalAjuste);
@@ -6740,7 +6790,7 @@ var entradasValoresPlantilla = [];
 var firmaDeclaracionPlantilla = '[]';
 var casillasEntidades = [];
 
-var editorPlantilla = crearEditorParametros(document.getElementById('plantilla-f-parametros'), alCambiarDeclaracionPlantilla, false);
+var editorPlantilla = crearEditorParametros(document.getElementById('plantilla-f-parametros'), alCambiarDeclaracionPlantilla, false, true);
 
 ENTIDADES_PLANTILLA.forEach(function (entidad) {
   var rotulo = document.createElement('label');
@@ -6767,7 +6817,8 @@ function huellaPlantilla() {
 }
 
 function instantaneaDeFormularioPlantilla() {
-  return JSON.stringify([entradaNombrePlantilla.value, entradaSqlPlantilla.value, editorPlantilla.declaracion(), entidadesMarcadas(),
+  // CH-57: the parameter texts count as unsaved changes, so this one reads declaracionConTextos().
+  return JSON.stringify([entradaNombrePlantilla.value, entradaSqlPlantilla.value, editorPlantilla.declaracionConTextos(), entidadesMarcadas(),
     selectorAutomatizacionPlantilla.value, selectorFormatoPlantilla.value, entradaToleranciaPlantilla.value,
     entradaTituloPlantilla.value, entradaDescripcionPlantilla.value, entradaEncabezadoPlantilla.value, entradaLineaPlantilla.value]);
 }
@@ -6780,7 +6831,7 @@ function cuerpoPlantilla() {
   return {
     nombre: entradaNombrePlantilla.value.trim(),
     sql: entradaSqlPlantilla.value,
-    parametros: editorPlantilla.declaracion(),
+    parametros: editorPlantilla.declaracionConTextos(),
     entidades: entidadesMarcadas(),
     automatizacion: selectorAutomatizacionPlantilla.value,
     formato: selectorFormatoPlantilla.value,
@@ -6965,7 +7016,8 @@ function llenarFormularioPlantilla(modo, plantilla) {
   entradaSqlPlantilla.value = cargada ? String(plantilla.sql) : '';
   editorPlantilla.limpiar();
   (cargada && Array.isArray(plantilla.parametros) ? plantilla.parametros : []).forEach(function (parametro) {
-    editorPlantilla.agregar(String(parametro.nombre), String(parametro.tipo));
+    // CH-57: the operator texts are the template's own content, so a copy keeps them.
+    editorPlantilla.agregar(String(parametro.nombre), String(parametro.tipo), parametro.etiqueta, parametro.ayuda);
   });
   var marcadas = cargada && Array.isArray(plantilla.entidades) ? plantilla.entidades.map(String) : [];
   casillasEntidades.forEach(function (casilla) { casilla.caja.checked = marcadas.indexOf(casilla.valor) !== -1; });

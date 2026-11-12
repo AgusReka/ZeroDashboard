@@ -4688,6 +4688,55 @@ Cómo se provoca la falla en vivo:
 
 ---
 
+### DEC-209 — CH-57: los parámetros de una plantilla pueden llevar un rótulo y una ayuda para el operador
+
+**Contexto.**
+- En el alta y el ajuste de una automatización, el umbral y el mínimo de filas (DEC-186) se confundían.
+- La revisión de UX (pantalla C-13) rotuló el `umbral` de las dos plantillas sembradas con un mapa fijo en la consola (`PARAMETROS_PLANTILLA`), siguiendo el precedente de DEC-131. Cualquier otra plantilla muestra el nombre crudo del parámetro y no lleva ayuda.
+- Una plantilla escrita desde la consola (DEC-182) no tiene de dónde sacar un rótulo: la declaración de un parámetro es solo `{nombre, tipo}` (DEC-48, DEC-49), y la ruta descarta cualquier otra clave.
+- El guion del video escribe una plantilla en vivo y después la usa en el alta.
+
+**Opciones.**
+- (a) Un rótulo y una ayuda opcionales en la declaración de los parámetros de la plantilla, cargados en el editor.
+- (b) Solo front: corregir la ayuda del mínimo y dejar el nombre crudo en las plantillas escritas desde la consola.
+
+**Decisión.** (a).
+
+**Forma.**
+- **Solo plantillas.** Cada entrada de `Plantilla.parametros` acepta `etiqueta` y `ayuda`, las dos opcionales.
+  - La declaración compartida (`DeclaracionParametro`, `validarDeclaracion`) no cambia: consultas guardadas, reportes y el panel siguen leyendo `{nombre, tipo}`.
+  - Sin migración: la columna ya es JSON.
+- **Textos.**
+  - `etiqueta` tiene hasta 60 caracteres y `ayuda` hasta 240, después de recortar los espacios.
+  - Un texto vacío o solo con espacios se guarda como ausente.
+  - Un texto más largo responde 400 con el campo.
+- **Rótulo en el alta y el ajuste.** Se toma el primero que exista:
+  1. el texto de la declaración;
+  2. el mapa fijo de la consola, que sigue para las filas ya sembradas, porque la siembra no pisa filas existentes (DEC-125);
+  3. el nombre del parámetro.
+- **Huella.** La huella de la prueba (DEC-191) usa solo `nombre` y `tipo` de cada parámetro. Cambiar un rótulo o una ayuda no obliga a volver a probar, como pasa con los textos para el cliente.
+- **Duplicar.** «Duplicar y editar» conserva los rótulos y las ayudas. Son textos para P1, así que no corre la razón de DEC-191 para vaciar los textos del cliente.
+- **Plantilla en uso.** Cambiar un rótulo es un `PUT` como cualquier otro, así que una plantilla en uso responde 409 y se duplica (DEC-182, DEC-191).
+- **Panel.** No cambia: sigue con «Cantidad mínima» y su ayuda fija (P-06, DEC-205).
+- **Mínimo de filas.** Su ayuda explica, en el alta y en el ajuste y con los dos canales, que es la cantidad de filas y no el valor de la condición.
+
+**Por qué.**
+- Es la única opción que rotula la plantilla escrita en el video.
+- Pone el texto junto al parámetro que describe, donde el operador lo escribe una sola vez.
+- El precedente de DEC-131 (mapa por rótulo) sirve para el catálogo fijo, pero no para un catálogo que escribe P1.
+
+**Se resigna.**
+- Hay dos fuentes para el rótulo de las plantillas sembradas: el mapa y la declaración. Para unificarlas habría que escribir en las filas ya sembradas, y DEC-125 lo descarta.
+- Una plantilla en uso no puede corregir su rótulo sin duplicarse.
+
+**Aplicación.** CH-57. Modifica las specs `automation-templates` y `query-console`.
+
+**Decidido por:** el usuario, 2026-11-12, al cerrar la exploración de CH-57. Eligió (a), que la copia conserve los textos y que el panel no cambie.
+
+**Estado:** firme.
+
+---
+
 ## Compuertas abiertas
 
 No bloquean el R0. Bloquean el R2. Cerrarlas antes de modelar la persistencia definitiva.
