@@ -243,15 +243,21 @@ const IDS = [
   'plantilla-probar',
   'plantilla-prueba-aviso',
   'plantilla-prueba-tabla',
-  // CH-38 (DEC-191): the header action, the drawer's client texts and actions, and the template pop-up.
+  // CH-38 (DEC-191): the header action, the drawer's client texts and actions, and the template editor.
+  // CH-56 (DEC-208): the editor is a page subview; the list and the not-found state take turns with it.
   'plantilla-nueva',
+  'plantillas-lista',
+  'plantilla-no-encontrada',
+  'plantilla-editor',
+  'plantilla-editor-titulo',
+  'prueba-sobre-plantilla-editor',
+  'plantilla-copia-aviso',
+  'plantilla-copia-original',
   'plantilla-textos',
   'plantilla-mensaje',
   'plantilla-en-uso-aviso',
   'plantilla-editar',
   'plantilla-duplicar',
-  'plantilla-dialogo',
-  'plantilla-dialogo-titulo',
   'plantilla-form',
   'plantilla-f-nombre',
   'plantilla-f-sql',
@@ -265,13 +271,12 @@ const IDS = [
   'plantilla-f-descripcion',
   'plantilla-f-encabezado',
   'plantilla-f-linea',
-  'plantilla-f-aviso-copia',
   'plantilla-f-conexion',
   'plantilla-f-valores',
   'plantilla-f-probar',
   'plantilla-f-resultado',
   'plantilla-f-tabla',
-  'plantilla-dialogo-estado',
+  'plantilla-motivo',
   'plantilla-confirmar',
   'plantilla-descartar',
   'plantilla-seguir',
@@ -584,7 +589,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 /** CH-21c: the wizard nodes the markup starts hidden, so the fake starts them hidden too. */
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
-const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-dialogo', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-f-aviso-copia', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar', 'auto-canal-ayuda', 'aj-canal-ayuda',
+const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-editor', 'plantilla-no-encontrada', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-copia-aviso', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar', 'auto-canal-ayuda', 'aj-canal-ayuda',
   'pantalla-reportes', 'reporte-panel', 'reporte-prueba-periodo-caja', 'reporte-dialogo', 'reporte-confirmar', 'reporte-f-periodo-campos', 'reporte-f-agregar-columna', 'reporte-f-prueba-periodo-caja',
   'reporte-en-uso-aviso', 'reporte-editar', 'reporte-duplicar', 'reporte-dialogo-duplicar', 'pantalla-tablero',
   'tenant-cambio', 'tc-confirmar', 'auto-vacio', 'mapeo-automatizaciones-bloque', 'tenant-siguiente',
@@ -686,6 +691,12 @@ function ejecutarConsola(script: string, escenario: Escenario): void {
       },
       reload: (): void => {
         escenario.recargas += 1;
+      },
+    },
+    // CH-56: the 409 → copy conversion replaces the editor's address; like a browser, it fires no hashchange.
+    history: {
+      replaceState: (_estado: unknown, _titulo: string, url: string): void => {
+        escenario.ubicacion.hash = url;
       },
     },
     addEventListener: (tipo: string, fn: () => void): void => {
@@ -5433,12 +5444,13 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(opciones('plantilla-f-formato'), [...FORMATOS]);
   });
 
-  test('CH-38 the pop-up and the header action are in the markup, hidden and typed as they must be', () => {
+  test('CH-38 CH-56 the editor subview and the header action are in the markup, hidden and typed as they must be', () => {
     const html = marcado();
-    assert.match(html, /<div id="plantilla-dialogo" class="zd-dialog-backdrop" hidden>/);
+    assert.match(html, /<div id="plantilla-editor" aria-labelledby="plantilla-editor-titulo" hidden>/);
+    assert.ok(!html.includes('plantilla-dialogo"'), 'no pop-up wrapper is left (DEC-208)');
     assert.match(html, /<button id="plantilla-nueva"[^>]*type="button"/);
     assert.ok(html.indexOf('id="plantilla-nueva"') < html.indexOf('id="plantillas-aviso"'), 'the primary action is in the header');
-    const dialogo = html.slice(html.indexOf('id="plantilla-dialogo"'), html.indexOf('</section>', html.indexOf('id="plantilla-dialogo"')));
+    const dialogo = html.slice(html.indexOf('id="plantilla-editor"'), html.indexOf('</section>', html.indexOf('id="plantilla-editor"')));
     for (const boton of dialogo.match(/<button[^>]*>/g) ?? []) {
       assert.match(boton, /type="(button|submit)"/, boton);
     }
@@ -5449,18 +5461,19 @@ describe('the console document, served by the real route', () => {
     assert.match(dialogo, /<textarea id="plantilla-f-linea"[^>]*maxlength="300"/);
     assert.match(dialogo, /<input id="plantilla-f-tolerancia"[^>]*type="number" min="0"/);
     assert.match(dialogo, /<p id="plantilla-f-resultado"[^>]*role="status"/);
-    assert.match(dialogo, /<p id="plantilla-dialogo-estado"[^>]*role="status"/);
+    assert.match(dialogo, /<p id="plantilla-motivo"[^>]*role="status"/);
+    assert.match(dialogo, /<nav class="zd-pagehead__crumbs" aria-label="Ubicación"><a href="#plantillas">Plantillas<\/a> › <h2 id="plantilla-editor-titulo"/);
   });
 
   test('CH-38 «Nueva plantilla» opens a blank pop-up with Guardar closed and says why', async () => {
     const escenario = await abrirNuevaCH38();
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
-    assert.equal(nodo(escenario, 'plantilla-dialogo-titulo').textContent, 'Nueva plantilla');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Nueva plantilla');
     assert.equal(nodo(escenario, 'plantilla-f-nombre').value, '');
     assert.equal(nodo(escenario, 'plantilla-f-sql').value, '');
-    assert.equal(nodo(escenario, 'plantilla-f-aviso-copia').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, true);
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true);
-    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, 'Probá la plantilla antes de guardarla.');
+    assert.equal(nodo(escenario, 'plantilla-motivo').textContent, 'Probá la plantilla antes de guardarla.');
     // The entity boxes follow the contract order, none checked; the connections of the tenant are listed.
     const rotulos = buscar(nodo(escenario, 'plantilla-f-entidades'), (n) => n.tagName === 'label').map((n) => n.textContent);
     assert.deepEqual(rotulos, [...ENTIDADES_CANONICAS]);
@@ -5499,7 +5512,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'plantilla-f-resultado').textContent, '1 fila.');
     assert.deepEqual(buscar(nodo(escenario, 'plantilla-f-tabla'), (n) => n.tagName === 'tr').map((tr) => tr.hijos.map((c) => c.textContent)), [['n'], ['1']]);
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
-    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, '');
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^Última prueba: OK · \d\d:\d\d · 1 fila$/);
     assert.equal(escriturasCH38(escenario).length, 0, 'testing writes nothing');
 
     // Pressing «Guardar»: the POST, then the list is reloaded and the saved template opens in the panel.
@@ -5529,7 +5542,7 @@ describe('the console document, served by the real route', () => {
     });
     assert.equal(lista.url, '/plantillas');
     assert.equal(detalle.url, '/plantillas/p-20');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true, 'the pop-up closes');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true, 'the pop-up closes');
     assert.equal(nodo(escenario, 'plantilla-panel').hidden, false);
     assert.equal(nodo(escenario, 'plantilla-editar').hidden, false, 'a new template is free: it can be edited');
   });
@@ -5561,7 +5574,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false, 'texts, name, tag and tolerance keep the test');
     escribirCH38(escenario, 'plantilla-f-sql', 'SELECT n FROM v_producto WHERE n < :umbral AND n > 0');
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true);
-    assert.match(nodo(escenario, 'plantilla-dialogo-estado').textContent, /^Cambió la plantilla desde la última prueba\./);
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^Cambió la plantilla desde la última prueba\./);
   });
 
   test('CH-38 the declaration, the entities and the connection are part of the fingerprint', async () => {
@@ -5591,7 +5604,7 @@ describe('the console document, served by the real route', () => {
     await probarCH38(escenario, { status: 200, cuerpo: { resultado: 'fallo', fase: 'x', categoria: 'y', codigo: '42P01' } });
     assert.equal(nodo(escenario, 'plantilla-f-resultado').textContent, 'La ejecución falló y la consola no pudo identificar el motivo. (SQLSTATE 42P01)');
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true);
-    assert.match(nodo(escenario, 'plantilla-dialogo-estado').textContent, /^La última prueba falló\./);
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^La última prueba falló\./);
     await probarCH38(escenario, { status: 409, cuerpo: { error: 'vista-canonica-no-aprobada', entidades: ['producto'] } });
     assert.match(nodo(escenario, 'plantilla-f-resultado').textContent, /producto.*Mapeo y validación/);
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true);
@@ -5634,13 +5647,13 @@ describe('the console document, served by the real route', () => {
     const antes = escenario.peticiones.length;
     nodo(escenario, 'plantilla-nueva').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
     assert.equal(nodo(escenario, 'plantilla-f-resultado').textContent, 'Elegí un tenant para probar la plantilla.');
     nodo(escenario, 'plantilla-f-probar').disparar('click');
     await asentarVarias();
     assert.equal(escenario.peticiones.length, antes);
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true);
-    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, 'Elegí un tenant para probar la plantilla.');
+    assert.equal(nodo(escenario, 'plantilla-motivo').textContent, 'Elegí un tenant para probar la plantilla.');
   });
 
   test('CH-38 Probar with no connection chosen says so and sends nothing', async () => {
@@ -5657,21 +5670,21 @@ describe('the console document, served by the real route', () => {
   test('CH-38 Cancelar asks before dropping what was typed, and closes at once on a clean form', async () => {
     const escenario = await abrirNuevaCH38();
     nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true, 'nothing typed: it closes');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true, 'nothing typed: it closes');
 
     escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
     nodo(escenario, 'plantilla-nueva').disparar('click');
     await asentarVarias();
     escribirCH38(escenario, 'plantilla-f-nombre', 'Algo');
     nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
     assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false);
     nodo(escenario, 'plantilla-seguir').disparar('click');
     assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, true);
-    nodo(escenario, 'plantilla-dialogo').disparar('keydown', { key: 'Escape' });
+    nodo(escenario, 'plantilla-editor').disparar('keydown', { key: 'Escape' });
     assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false, 'Escape asks too');
     nodo(escenario, 'plantilla-descartar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
     assert.equal(escriturasCH38(escenario).length, 0);
   });
 
@@ -5680,7 +5693,7 @@ describe('the console document, served by the real route', () => {
     llenarCH38(escenario);
     await probarCH38(escenario);
     await elegirTenant(escenario, [], [], 't-2');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
     assert.equal(nodo(escenario, 'plantilla-f-tabla').hijos.length, 0);
     assert.equal(nodo(escenario, 'plantilla-f-resultado').textContent, '');
   });
@@ -5723,8 +5736,8 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
     nodo(escenario, 'plantilla-duplicar').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
-    assert.equal(nodo(escenario, 'plantilla-dialogo-titulo').textContent, 'Duplicar plantilla');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Copia de Stock diario');
     assert.equal(nodo(escenario, 'plantilla-f-nombre').value, 'Stock diario (copia)');
     assert.equal(nodo(escenario, 'plantilla-f-sql').value, PLANTILLA_CH38.sql);
     assert.equal(nodo(escenario, 'plantilla-f-automatizacion').value, 'stock-fisico');
@@ -5732,7 +5745,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'plantilla-f-tolerancia').value, '60');
     assert.equal(nodo(escenario, 'plantilla-f-titulo').value, '');
     assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
-    assert.equal(nodo(escenario, 'plantilla-f-aviso-copia').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, false);
     assert.deepEqual(buscar(nodo(escenario, 'plantilla-f-entidades'), (n) => n.tagName === 'input').map((n) => n.checked), [true, false, false, true, false]);
     const filaParametro = buscar(nodo(escenario, 'plantilla-f-parametros'), (n) => n.tagName === 'input').map((n) => n.value);
     assert.deepEqual(filaParametro, ['umbral']);
@@ -5740,7 +5753,7 @@ describe('the console document, served by the real route', () => {
     assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/conexiones'], 'only the connections are read');
     // Cancelar on the untouched copy closes without asking.
     nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
   });
 
   test('CH-38 the copy notice goes once the copy has its own title and description', async () => {
@@ -5751,9 +5764,9 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'plantilla-duplicar').disparar('click');
     await asentarVarias();
     escribirCH38(escenario, 'plantilla-f-titulo', 'Mi título');
-    assert.equal(nodo(escenario, 'plantilla-f-aviso-copia').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, false);
     escribirCH38(escenario, 'plantilla-f-descripcion', 'Mi descripción');
-    assert.equal(nodo(escenario, 'plantilla-f-aviso-copia').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, true);
   });
 
   test('CH-38 «Editar» loads the template with its texts and Guardar sends a PUT with both of them', async () => {
@@ -5763,11 +5776,11 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
     nodo(escenario, 'plantilla-editar').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'plantilla-dialogo-titulo').textContent, 'Editar plantilla');
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Stock diario');
     assert.equal(nodo(escenario, 'plantilla-f-nombre').value, 'Stock diario');
     assert.equal(nodo(escenario, 'plantilla-f-titulo').value, 'Stock bajo');
     assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, 'Te avisamos cuando queda poco stock.');
-    assert.equal(nodo(escenario, 'plantilla-f-aviso-copia').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, true);
 
     escribirCH38(escenario, 'plantilla-f-conexion', 'c-1');
     await probarCH38(escenario);
@@ -5784,7 +5797,7 @@ describe('the console document, served by the real route', () => {
     const cuerpo = escenario.peticiones[inicio].cuerpo as Record<string, unknown>;
     assert.equal(cuerpo.titulo, 'Stock bajo');
     assert.equal(cuerpo.descripcion, '', 'a blank text is sent, the route stores no text');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
   });
 
   test('CH-38 a 409 plantilla-en-uso keeps the pop-up open and offers «Duplicar y editar», which turns it into a copy', async () => {
@@ -5799,19 +5812,19 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 409, cuerpo: { error: 'plantilla-en-uso' } });
     nodo(escenario, 'plantilla-form').disparar('submit');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
-    assert.match(nodo(escenario, 'plantilla-dialogo-estado').textContent, /^Esta plantilla ahora tiene automatizaciones activas/);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^Esta plantilla ahora tiene automatizaciones activas/);
     assert.equal(nodo(escenario, 'plantilla-dialogo-duplicar').hidden, false);
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false, 'the test still holds');
 
     nodo(escenario, 'plantilla-dialogo-duplicar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo-titulo').textContent, 'Duplicar plantilla');
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Copia de Stock diario');
     assert.equal(nodo(escenario, 'plantilla-f-nombre').value, 'Stock diario (copia)');
     assert.equal(nodo(escenario, 'plantilla-f-titulo').value, '', 'a copy starts without client texts (DEC-191)');
     assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
-    assert.equal(nodo(escenario, 'plantilla-f-aviso-copia').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, false);
     assert.equal(nodo(escenario, 'plantilla-dialogo-duplicar').hidden, true);
-    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, '');
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^Última prueba: OK · \d\d:\d\d · 1 fila$/);
 
     // Saving the copy is a POST, not the PUT that was refused.
     escenario.respuestas.push({ status: 201, cuerpo: { plantilla: { ...PLANTILLA_CH38, id: 'p-30', enUso: false } } });
@@ -5832,13 +5845,13 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/descripcion'], terminos: ['consulta'] } });
     nodo(escenario, 'plantilla-form').disparar('submit');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
-    const texto = nodo(escenario, 'plantilla-dialogo-estado').textContent;
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+    const texto = nodo(escenario, 'plantilla-motivo').textContent;
     assert.ok(texto.startsWith('Revisá estos campos: descripción para el cliente.'), texto);
     assert.ok(texto.includes('«consulta»'), texto);
     // Editing the form retires the refusal.
     escribirCH38(escenario, 'plantilla-f-descripcion', 'Sin términos.');
-    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, '');
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^Última prueba: OK · \d\d:\d\d · 1 fila$/);
   });
 
   test('CH-38 the other refusals of a save are legible and keep the pop-up open', async () => {
@@ -5849,8 +5862,8 @@ describe('the console document, served by the real route', () => {
       escenario.respuestas.push(respuesta);
       nodo(escenario, 'plantilla-form').disparar('submit');
       await asentarVarias();
-      assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
-      return nodo(escenario, 'plantilla-dialogo-estado').textContent;
+      assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+      return nodo(escenario, 'plantilla-motivo').textContent;
     };
     assert.equal(await guardar({ status: 500, cuerpo: { error: 'x' } }), 'La consola tuvo un error interno al guardar la plantilla. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.');
     assert.equal(await guardar({ status: 200, cuerpo: {}, falla: true }), 'No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.');
@@ -5888,7 +5901,7 @@ describe('the console document, served by the real route', () => {
   }
 
   test('CH-39b the pop-up holds the two message fields with their caps, and the hint says how they work', () => {
-    const dialogo = marcado().slice(marcado().indexOf('id="plantilla-dialogo"'), marcado().indexOf('</section>', marcado().indexOf('id="plantilla-dialogo"')));
+    const dialogo = marcado().slice(marcado().indexOf('id="plantilla-editor"'), marcado().indexOf('</section>', marcado().indexOf('id="plantilla-editor"')));
     assert.match(dialogo, /<label for="plantilla-f-encabezado" class="zd-label">Encabezado del mensaje<\/label>/);
     assert.match(dialogo, /<input id="plantilla-f-encabezado"[^>]*maxlength="200"/);
     assert.match(dialogo, /<label for="plantilla-f-linea" class="zd-label">Línea por fila<\/label>/);
@@ -5933,7 +5946,7 @@ describe('the console document, served by the real route', () => {
       lineaMensaje: LINEA_CH39,
       columnasPrueba: ['producto', 'cantidad'],
     });
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
   });
 
   /** Spec "Editing the line keeps saving enabled". */
@@ -5947,7 +5960,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
     escribirCH38(escenario, 'plantilla-f-encabezado', 'Otro encabezado');
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
-    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, '');
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^Última prueba: OK · \d\d:\d\d · 1 fila$/);
     assert.equal(escenario.peticiones.length, pedidas, 'editing a text sends nothing');
   });
 
@@ -5960,14 +5973,217 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/lineaMensaje'], marcadores: ['stock', 'insumo'] } });
     nodo(escenario, 'plantilla-form').disparar('submit');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
     assert.equal(
-      nodo(escenario, 'plantilla-dialogo-estado').textContent,
+      nodo(escenario, 'plantilla-motivo').textContent,
       'Revisá estos campos: línea por fila. No están entre las columnas de la última prueba: stock, insumo.',
     );
     // Editing the form retires the refusal.
     escribirCH38(escenario, 'plantilla-f-linea', '{producto}');
-    assert.equal(nodo(escenario, 'plantilla-dialogo-estado').textContent, '');
+    assert.match(nodo(escenario, 'plantilla-motivo').textContent, /^Última prueba: OK · \d\d:\d\d · 1 fila$/);
+  });
+
+  // ---- CH-56a (DEC-208): the template editor is a page subview with numbered sections ----------
+
+  /** Boots with a tenant on the Plantillas list. */
+  async function enPlantillasCH56(): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otro' }]);
+    await elegirTenant(escenario);
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: false } });
+    irA(escenario, '#plantillas');
+    await asentarVarias();
+    return escenario;
+  }
+
+  /** Goes to an editor address as a link or the back button would: the list is read, then the template. */
+  async function irAEditorCH56(escenario: Escenario, hash: string, detalle: { status: number; cuerpo: unknown } | null, conexiones = true): Promise<void> {
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: false } });
+    if (detalle !== null) escenario.respuestas.push(detalle);
+    if (conexiones) escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    irA(escenario, hash);
+    await asentarVarias();
+  }
+
+  test('CH-56 the editor has four numbered sections in order, each field in its own, and the footer holds the save', () => {
+    const html = marcado();
+    const editor = html.slice(html.indexOf('id="plantilla-editor"'), html.indexOf('</footer>', html.indexOf('id="plantilla-editor"')));
+    const secciones = editor.slice(editor.indexOf('<ol class="editor-secciones">'), editor.indexOf('</ol>')).split('<li>').slice(1);
+    assert.deepEqual(secciones.map((s) => s.match(/<h3 class="zd-h3">([^<]*)<\/h3>/)?.[1]), ['Qué es', 'Datos', 'Salida', 'Prueba']);
+    for (const seccion of secciones) assert.match(seccion, /<\/h3>\s*<p class="ayuda">[^<]+<\/p>/, 'each section says what it is for');
+    const campos = (i: number): string[] => [...secciones[i].matchAll(/ id="(plantilla-f-[a-z-]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(campos(0), ['plantilla-f-nombre', 'plantilla-f-automatizacion', 'plantilla-f-formato', 'plantilla-f-tolerancia', 'plantilla-f-titulo', 'plantilla-f-descripcion']);
+    assert.deepEqual(campos(1), ['plantilla-f-entidades', 'plantilla-f-sql', 'plantilla-f-parametros', 'plantilla-f-agregar-parametro']);
+    assert.deepEqual(campos(2), ['plantilla-f-encabezado', 'plantilla-f-linea']);
+    assert.deepEqual(campos(3), ['plantilla-f-conexion', 'plantilla-f-valores', 'plantilla-f-probar', 'plantilla-f-resultado', 'plantilla-f-tabla']);
+    const pie = editor.slice(editor.indexOf('<footer class="editor-pie">'));
+    assert.ok(pie.indexOf('id="plantilla-dialogo-cancelar"') < pie.indexOf('id="plantilla-motivo"'));
+    assert.ok(pie.indexOf('id="plantilla-motivo"') < pie.indexOf('id="plantilla-dialogo-guardar"'));
+    assert.match(html, /\.editor-pie \{ position: sticky; bottom: 0;/);
+  });
+
+  test('CH-56 «Nueva plantilla», «Editar» and «Duplicar y editar» set the editor address, and no pop-up is left', async () => {
+    const escenario = await abrirNuevaCH38();
+    assert.equal(escenario.ubicacion.hash, '#plantillas/nueva');
+    assert.equal(nodo(escenario, 'plantillas-lista').hidden, true, 'the list is hidden while the editor is open');
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Nueva plantilla');
+
+    const libre = await arrancar();
+    await elegirTenant(libre);
+    await abrirDrawerCH38(libre, { ...PLANTILLA_CH38, enUso: false });
+    libre.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(libre, 'plantilla-editar').disparar('click');
+    await asentarVarias();
+    assert.equal(libre.ubicacion.hash, '#plantillas/p-9');
+    assert.equal(nodo(libre, 'plantilla-panel').hidden, true, 'the side panel gives way to the editor');
+
+    const enUso = await arrancar();
+    await elegirTenant(enUso);
+    await abrirDrawerCH38(enUso, PLANTILLA_CH38);
+    enUso.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(enUso, 'plantilla-duplicar').disparar('click');
+    await asentarVarias();
+    assert.equal(enUso.ubicacion.hash, '#plantillas/p-9/duplicar');
+  });
+
+  test('CH-56 #plantillas/{id} opens a free template for edit, and {id}/duplicar a copy, from the catalog', async () => {
+    const escenario = await enPlantillasCH56();
+    await irAEditorCH56(escenario, '#plantillas/p-9', { status: 200, cuerpo: { plantilla: { ...PLANTILLA_CH38, enUso: false } } });
+    assert.equal(escenario.peticiones.some((p) => p.url === '/plantillas/p-9'), true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Stock diario');
+    assert.equal(nodo(escenario, 'plantilla-f-titulo').value, 'Stock bajo', 'an edit keeps the client texts');
+
+    const copia = await enPlantillasCH56();
+    await irAEditorCH56(copia, '#plantillas/p-9/duplicar', { status: 200, cuerpo: { plantilla: { ...PLANTILLA_CH38, enUso: false } } });
+    assert.equal(nodo(copia, 'plantilla-editor-titulo').textContent, 'Copia de Stock diario');
+    assert.equal(nodo(copia, 'plantilla-f-nombre').value, 'Stock diario (copia)');
+    assert.equal(nodo(copia, 'plantilla-copia-aviso').hidden, true, 'the banner is only for a copy of a template in use');
+  });
+
+  test('CH-56 #plantillas/{id} of a template in use goes to the list with the side panel on it', async () => {
+    const escenario = await enPlantillasCH56();
+    await irAEditorCH56(escenario, '#plantillas/p-9', { status: 200, cuerpo: { plantilla: PLANTILLA_CH38 } });
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
+    assert.equal(escenario.ubicacion.hash, '#plantillas');
+    assert.equal(nodo(escenario, 'plantillas-lista').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-panel').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-duplicar').hidden, false);
+    assert.equal(escenario.peticiones.filter((p) => p.url === '/plantillas/p-9').length, 1, 'the template is read once');
+  });
+
+  test('CH-56 an address whose id is not in the catalog, or that names no mode, says so with a link to the list', async () => {
+    const escenario = await enPlantillasCH56();
+    await irAEditorCH56(escenario, '#plantillas/p-404', { status: 404, cuerpo: { error: 'no-encontrada' } }, false);
+    assert.equal(nodo(escenario, 'plantilla-no-encontrada').hidden, false);
+    assert.equal(nodo(escenario, 'plantillas-lista').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
+    assert.match(marcado(), /<p class="zd-state__title">No encontramos esa plantilla\.<\/p>[\s\S]*?<a class="zd-btn zd-btn--secondary" href="#plantillas">Ir a Plantillas<\/a>/);
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: false } });
+    irA(escenario, '#plantillas');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'plantilla-no-encontrada').hidden, true);
+    assert.equal(nodo(escenario, 'plantillas-lista').hidden, false);
+
+    const otra = await enPlantillasCH56();
+    const antes = otra.peticiones.length;
+    await irAEditorCH56(otra, '#plantillas/p-9/borrar', null, false);
+    assert.equal(nodo(otra, 'plantilla-no-encontrada').hidden, false);
+    assert.deepEqual(otra.peticiones.slice(antes).map((p) => p.url), ['/plantillas'], 'only the list is read');
+  });
+
+  test('CH-56 the copy banner names an original in use, says what the copy needs, and goes once it has its texts', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirDrawerCH38(escenario, PLANTILLA_CH38);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
+    nodo(escenario, 'plantilla-duplicar').disparar('click');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-copia-original').textContent, '«Stock diario» tiene automatizaciones activas.');
+    assert.match(marcado(), /<div id="plantilla-copia-aviso" class="zd-banner zd-banner--neutral" role="status" hidden>[\s\S]*?Esta copia no aparece en el panel del cliente hasta que tenga su propio título y descripción\./);
+  });
+
+  test('CH-56 leaving the editor with changes puts the address back and asks; «Seguir editando» keeps it, «Descartar» goes on', async () => {
+    const escenario = await abrirNuevaCH38();
+    escribirCH38(escenario, 'plantilla-f-sql', 'SELECT 1');
+    irA(escenario, '#plantillas');
+    assert.equal(escenario.ubicacion.hash, '#plantillas/nueva', 'the crumb is undone until the operator chooses');
+    assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false);
+    nodo(escenario, 'plantilla-seguir').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-f-sql').value, 'SELECT 1');
+
+    irA(escenario, '#tenants');
+    assert.equal(escenario.ubicacion.hash, '#plantillas/nueva');
+    nodo(escenario, 'plantilla-descartar').disparar('click');
+    assert.equal(escenario.ubicacion.hash, '#tenants', 'the discard goes where the operator was going');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
+    assert.equal(escriturasCH38(escenario).length, 0);
+  });
+
+  test('CH-56 leaving a clean editor needs no question, and «Cancelar» goes back to the list address', async () => {
+    const escenario = await abrirNuevaCH38();
+    nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
+    assert.equal(escenario.ubicacion.hash, '#plantillas');
+    assert.equal(nodo(escenario, 'plantillas-lista').hidden, false);
+
+    const otro = await abrirNuevaCH38();
+    irA(otro, '#tenants');
+    assert.equal(nodo(otro, 'plantilla-editor').hidden, true);
+    assert.equal(otro.ubicacion.hash, '#tenants');
+  });
+
+  test('CH-56 the tenant pop-up names Plantillas when the editor has changes, and the switch returns to the list', async () => {
+    const escenario = await abrirNuevaCH38();
+    escribirCH38(escenario, 'plantilla-f-nombre', 'Algo');
+    nodo(escenario, 'tenant-cambiar').disparar('click');
+    assert.equal(nodo(escenario, 'tc-sin-guardar').hidden, false);
+    assert.equal(nodo(escenario, 'tc-sin-guardar-texto').textContent, 'Tenés cambios sin guardar en Plantillas. Si cambiás de tenant, se descartan.');
+    nodo(escenario, 'tc-cancelar').disparar('click');
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
+    assert.equal(escenario.ubicacion.hash, '#plantillas');
+    assert.equal(nodo(escenario, 'plantillas-lista').hidden, false);
+  });
+
+  test('CH-56 the 409 conversion moves the address to the copy without a reload and keeps «Guardar plantilla» open', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirDrawerCH38(escenario, { ...PLANTILLA_CH38, enUso: false });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'plantilla-editar').disparar('click');
+    await asentarVarias();
+    escribirCH38(escenario, 'plantilla-f-conexion', 'c-1');
+    await probarCH38(escenario);
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'plantilla-en-uso' } });
+    nodo(escenario, 'plantilla-form').disparar('submit');
+    await asentarVarias();
+    nodo(escenario, 'plantilla-dialogo-duplicar').disparar('click');
+    assert.equal(escenario.ubicacion.hash, '#plantillas/p-9/duplicar');
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Copia de Stock diario');
+    assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, false, 'the original is in use now');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
+    assert.equal(escenario.recargas, 0);
+    // The address is the editor's own, so it is not taken for a way out.
+    irA(escenario, '#plantillas/p-9/duplicar');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, true);
+  });
+
+  test('CH-56 saving returns to #plantillas with the saved template in the side panel', async () => {
+    const escenario = await abrirNuevaCH38();
+    llenarCH38(escenario);
+    await probarCH38(escenario);
+    escenario.respuestas.push({ status: 201, cuerpo: { plantilla: { ...PLANTILLA_CH38, id: 'p-20', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: { ...PLANTILLA_CH38, id: 'p-20', enUso: false } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
+    nodo(escenario, 'plantilla-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.ubicacion.hash, '#plantillas');
+    assert.equal(nodo(escenario, 'plantillas-lista').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-panel').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-titulo').textContent, 'Stock diario');
   });
 
   test('CH-39b a 400 with marcadores on the header says the header takes no columns; a pairing refusal names its field', async () => {
@@ -5995,7 +6211,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
     // The copy is untouched, so Cancelar closes without asking.
     nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
   });
 
   test('CH-39b «Editar» fills both message texts, and a template without them fills blanks', async () => {
@@ -6014,7 +6230,7 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'plantilla-form').disparar('submit');
     await asentarVarias();
     nodo(escenario, 'plantilla-dialogo-duplicar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo-titulo').textContent, 'Duplicar plantilla');
+    assert.equal(nodo(escenario, 'plantilla-editor-titulo').textContent, 'Copia de Stock diario');
     assert.equal(nodo(escenario, 'plantilla-f-titulo').value, '');
     assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
     assert.equal(nodo(escenario, 'plantilla-f-encabezado').value, ENCABEZADO_CH39);
@@ -6025,17 +6241,17 @@ describe('the console document, served by the real route', () => {
     const escenario = await abrirNuevaCH38();
     escribirCH38(escenario, 'plantilla-f-linea', '{producto}');
     nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
     assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false);
     nodo(escenario, 'plantilla-descartar').disparar('click');
-    assert.equal(nodo(escenario, 'plantilla-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
 
     escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
     nodo(escenario, 'plantilla-nueva').disparar('click');
     await asentarVarias();
     assert.equal(nodo(escenario, 'plantilla-f-linea').value, '', 'a new pop-up starts without the previous text');
     escribirCH38(escenario, 'plantilla-f-encabezado', 'Algo');
-    nodo(escenario, 'plantilla-dialogo').disparar('keydown', { key: 'Escape' });
+    nodo(escenario, 'plantilla-editor').disparar('keydown', { key: 'Escape' });
     assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false);
   });
 

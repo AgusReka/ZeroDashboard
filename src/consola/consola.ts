@@ -258,8 +258,16 @@ function documentoConsola(nombreOperador: string): string {
   .puesta-en-marcha > span[data-actual] { font-weight: var(--weight-semibold); }
   .zd-sidenav__meta[data-tono="ok"] { color: var(--ok-text); border-style: solid; }
   .consulta-ejecutar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
-  /* CH-38 (DEC-191): the template pop-up is wide like the query one; its entity boxes are built by the script. */
-  #plantilla-dialogo .zd-dialog { width: min(900px, 100%); }
+  /* CH-56 (DEC-208, K3): the template and report editors share one skeleton: numbered sections, each with its purpose,
+     and a footer that stays at the bottom of the window while the page scrolls. Bridge rules set by the server (G3'). */
+  .editor-secciones { list-style: none; counter-reset: seccion; display: grid; gap: var(--space-8); margin: var(--space-6) 0 0; padding: 0; }
+  .editor-secciones > li { counter-increment: seccion; display: grid; gap: var(--space-5); padding-top: var(--space-6); border-top: var(--border-width) solid var(--border-1); }
+  .editor-secciones > li > h3 { margin: 0; }
+  .editor-secciones > li > h3::before { content: counter(seccion) ". "; color: var(--text-3); }
+  .editor-pie { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4);
+    margin-top: var(--space-8); padding: var(--space-4) 0; border-top: var(--border-width) solid var(--border-1); background: var(--surface-page); }
+  .editor-pie > p { flex: 1 1 16rem; margin: 0; }
+  /* CH-38 (DEC-191): the template editor's entity boxes are built by the script. */
   .entidades-plantilla { margin: 0; padding: 0; border: 0; min-width: 0; }
   .entidad-opcion { display: inline-flex; align-items: center; gap: var(--space-3); margin: 0 var(--space-6) var(--space-3) 0;
     font-size: var(--text-body); color: var(--text-1); }
@@ -793,9 +801,12 @@ ${estadoSinTenant('tiempos')}
 <!--
   CH-30d (DEC-61, screen C-03): the template catalog, global. A template's statement is written as text.
   CH-38 (DEC-191): no longer read-only. «Nueva plantilla» (header) and the drawer's «Editar» or
-  «Duplicar y editar» open one pop-up; a template with active automations is duplicated, not edited.
+  «Duplicar y editar» open one editor; a template with active automations is duplicated, not edited.
+  CH-56 (DEC-208): the editor is a page subview at #plantillas/nueva, #plantillas/{id} or #plantillas/{id}/duplicar,
+  and the list is hidden while it is open.
 -->
 <section id="pantalla-plantillas" aria-labelledby="titulo-plantillas" hidden>
+<div id="plantillas-lista">
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span><span id="prueba-sobre-plantillas" class="prueba-sobre">Prueba sobre: ningún tenant (elegí uno para probar o guardar)</span></div>
@@ -812,6 +823,13 @@ ${estadoSinTenant('tiempos')}
     <thead><tr><th>Nombre</th><th>Automatización</th><th>Formato</th><th>Tolera</th><th></th></tr></thead>
     <tbody id="plantillas-cuerpo"></tbody>
   </table>
+</div>
+</div>
+<!-- CH-56: an editor address whose id is not in the catalog. -->
+<div id="plantilla-no-encontrada" class="zd-state" hidden>
+  <p class="zd-state__title">No encontramos esa plantilla.</p>
+  <p class="zd-state__body">Puede que se haya borrado o que el enlace esté mal escrito.</p>
+  <div class="zd-state__actions"><a class="zd-btn zd-btn--secondary" href="#plantillas">Ir a Plantillas</a></div>
 </div>
 <aside id="plantilla-panel" class="zd-drawer" aria-labelledby="plantilla-titulo" hidden>
   <div class="zd-drawer__head"><h2 id="plantilla-titulo" class="zd-h2"></h2></div>
@@ -842,90 +860,117 @@ ${estadoSinTenant('tiempos')}
   </div>
 </aside>
 <!--
-  CH-38 (DEC-173, DEC-191): one pop-up for «Nueva plantilla», «Editar» and «Duplicar y editar». «Guardar» opens
+  CH-38 (DEC-173, DEC-191): one editor for «Nueva plantilla», «Editar» and «Duplicar y editar». «Guardar» opens
   only after a passing test of exactly this SQL, declaration, entities and connection (POST /plantillas/prueba,
   nothing is saved by it); the name, tag, format, tolerance and client texts do not need a new test. The
   entity boxes and the parameter rows are built by the script; the options of both lists are static.
-  A refusal, and the reason «Guardar» is closed, are written in #plantilla-dialogo-estado.
+  CH-56 (DEC-208, K3): a page subview with four numbered sections and a footer that stays in sight. A refusal, and
+  the reason «Guardar» is closed, are written in #plantilla-motivo.
 -->
-<div id="plantilla-dialogo" class="zd-dialog-backdrop" hidden>
-  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="plantilla-dialogo-titulo">
-    <h2 id="plantilla-dialogo-titulo" class="zd-dialog__title">Nueva plantilla</h2>
-    <p id="plantilla-f-aviso-copia" class="ayuda" hidden>Esta copia no aparece en el panel del cliente hasta que tenga su propio título y descripción.</p>
-    <form id="plantilla-form" class="zd-form">
-      <div><label for="plantilla-f-nombre" class="zd-label">Nombre</label><input id="plantilla-f-nombre" class="zd-input" type="text" autocomplete="off"></div>
-      <div>
-        <label for="plantilla-f-sql" class="zd-label">Sentencia SQL</label>
-        <textarea id="plantilla-f-sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false"></textarea>
-        <p class="ayuda">Leé las vistas canónicas por su nombre, por ejemplo v_producto. Cada :nombre que use la sentencia se declara abajo.</p>
-      </div>
-      <div>
-        <p class="zd-label">Parámetros</p>
-        <div id="plantilla-f-parametros"></div>
-        <button id="plantilla-f-agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
-      </div>
-      <fieldset id="plantilla-f-entidades" class="entidades-plantilla"><legend class="zd-label">Entidades que necesita</legend></fieldset>
-      <div>
-        <label for="plantilla-f-automatizacion" class="zd-label">Automatización</label>
-        <select id="plantilla-f-automatizacion" class="zd-select">
-          <option value="stock-fisico">stock-fisico</option>
-          <option value="stock-producible">stock-producible</option>
-          <option value="reporte-diario">reporte-diario</option>
-        </select>
-      </div>
-      <div>
-        <label for="plantilla-f-formato" class="zd-label">Formato</label>
-        <select id="plantilla-f-formato" class="zd-select">
-          <option value="correo-html">correo-html</option>
-        </select>
-      </div>
-      <div>
-        <label for="plantilla-f-tolerancia" class="zd-label">Tolerancia de frescura (minutos)</label>
-        <input id="plantilla-f-tolerancia" class="zd-input" type="number" min="0" step="1" value="60">
-      </div>
-      <div>
-        <label for="plantilla-f-titulo" class="zd-label">Título para el cliente</label>
-        <input id="plantilla-f-titulo" class="zd-input" type="text" maxlength="80" autocomplete="off">
-        <p class="ayuda">Hasta 80 caracteres. Es lo que ve el cliente en su panel; sin términos técnicos.</p>
-      </div>
-      <div>
-        <label for="plantilla-f-descripcion" class="zd-label">Descripción para el cliente</label>
-        <textarea id="plantilla-f-descripcion" class="zd-textarea" rows="3" maxlength="200"></textarea>
-        <p class="ayuda">Hasta 200 caracteres. Sin ambos textos, la plantilla no aparece en el panel del cliente.</p>
-      </div>
-      <!-- CH-39 (DEC-188, DEC-192): the text of the email. Not part of the test: editing it keeps «Guardar» open. -->
-      <div>
-        <label for="plantilla-f-encabezado" class="zd-label">Encabezado del mensaje</label>
-        <input id="plantilla-f-encabezado" class="zd-input" type="text" maxlength="200" autocomplete="off">
-        <p class="ayuda">Hasta 200 caracteres. Va una sola vez, arriba de las líneas, y no admite columnas.</p>
-      </div>
-      <div>
-        <label for="plantilla-f-linea" class="zd-label">Línea por fila</label>
-        <textarea id="plantilla-f-linea" class="zd-textarea" rows="3" maxlength="300"></textarea>
-        <p class="ayuda">Hasta 300 caracteres. {columna} se reemplaza por el valor de esa columna en cada fila. Los dos textos van juntos; sin ellos, el correo muestra la tabla.</p>
-      </div>
-      <div>
-        <h3 class="zd-h3">Probar antes de guardar</h3>
-        <label for="plantilla-f-conexion" class="zd-label">Conexión</label>
-        <select id="plantilla-f-conexion" class="zd-select"></select>
-        <div id="plantilla-f-valores"></div>
-        <button id="plantilla-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar plantilla</button>
-        <p id="plantilla-f-resultado" class="ayuda" role="status"></p>
-        <div class="zd-table-wrap zd-table-scroll"><table id="plantilla-f-tabla" class="zd-table"></table></div>
-      </div>
-    </form>
-    <p id="plantilla-dialogo-estado" class="ayuda" role="status"></p>
-    <div class="zd-dialog__actions">
-      <span id="plantilla-confirmar" hidden>
-        Hay cambios sin guardar.
-        <button id="plantilla-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
-        <button id="plantilla-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
-      </span>
-      <button id="plantilla-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
-      <button id="plantilla-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="plantilla-form" aria-describedby="plantilla-dialogo-estado" disabled>Guardar plantilla</button>
-      <button id="plantilla-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+<div id="plantilla-editor" aria-labelledby="plantilla-editor-titulo" hidden>
+  <header class="zd-pagehead">
+    <div class="zd-pagehead__text">
+      <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span><span id="prueba-sobre-plantilla-editor" class="prueba-sobre">Prueba sobre: ningún tenant (elegí uno para probar o guardar)</span></div>
+      <nav class="zd-pagehead__crumbs" aria-label="Ubicación"><a href="#plantillas">Plantillas</a> › <h2 id="plantilla-editor-titulo" class="consulta-editor__titulo">Nueva plantilla</h2></nav>
+    </div>
+  </header>
+  <!-- CH-56 (F5): a copy of a template in use says why it is a copy and what it still needs. -->
+  <div id="plantilla-copia-aviso" class="zd-banner zd-banner--neutral" role="status" hidden>
+    <div>
+      <p id="plantilla-copia-original" class="zd-banner__title"></p>
+      <p class="zd-banner__body">Por eso se duplica en lugar de editarse. Esta copia no aparece en el panel del cliente hasta que tenga su propio título y descripción.</p>
     </div>
   </div>
+  <form id="plantilla-form" class="zd-form">
+    <ol class="editor-secciones">
+      <li>
+        <h3 class="zd-h3">Qué es</h3>
+        <p class="ayuda">Cómo se llama, qué automatización la usa y cómo la ve el cliente.</p>
+        <div><label for="plantilla-f-nombre" class="zd-label">Nombre</label><input id="plantilla-f-nombre" class="zd-input" type="text" autocomplete="off"></div>
+        <div>
+          <label for="plantilla-f-automatizacion" class="zd-label">Automatización</label>
+          <select id="plantilla-f-automatizacion" class="zd-select">
+            <option value="stock-fisico">stock-fisico</option>
+            <option value="stock-producible">stock-producible</option>
+            <option value="reporte-diario">reporte-diario</option>
+          </select>
+        </div>
+        <div>
+          <label for="plantilla-f-formato" class="zd-label">Formato</label>
+          <select id="plantilla-f-formato" class="zd-select">
+            <option value="correo-html">correo-html</option>
+          </select>
+        </div>
+        <div>
+          <label for="plantilla-f-tolerancia" class="zd-label">Tolerancia de frescura (minutos)</label>
+          <input id="plantilla-f-tolerancia" class="zd-input" type="number" min="0" step="1" value="60">
+        </div>
+        <div>
+          <label for="plantilla-f-titulo" class="zd-label">Título para el cliente</label>
+          <input id="plantilla-f-titulo" class="zd-input" type="text" maxlength="80" autocomplete="off">
+          <p class="ayuda">Hasta 80 caracteres. Es lo que ve el cliente en su panel; sin términos técnicos.</p>
+        </div>
+        <div>
+          <label for="plantilla-f-descripcion" class="zd-label">Descripción para el cliente</label>
+          <textarea id="plantilla-f-descripcion" class="zd-textarea" rows="3" maxlength="200"></textarea>
+          <p class="ayuda">Hasta 200 caracteres. Sin ambos textos, la plantilla no aparece en el panel del cliente.</p>
+        </div>
+      </li>
+      <li>
+        <h3 class="zd-h3">Datos</h3>
+        <p class="ayuda">Qué lee: las entidades que necesita, la sentencia y sus parámetros.</p>
+        <fieldset id="plantilla-f-entidades" class="entidades-plantilla"><legend class="zd-label">Entidades que necesita</legend></fieldset>
+        <div>
+          <label for="plantilla-f-sql" class="zd-label">Sentencia SQL</label>
+          <textarea id="plantilla-f-sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false"></textarea>
+          <p class="ayuda">Leé las vistas canónicas por su nombre, por ejemplo v_producto. Cada :nombre que use la sentencia se declara abajo.</p>
+        </div>
+        <div>
+          <p class="zd-label">Parámetros</p>
+          <div id="plantilla-f-parametros"></div>
+          <button id="plantilla-f-agregar-parametro" class="zd-btn zd-btn--secondary" type="button">Agregar parámetro</button>
+        </div>
+      </li>
+      <li>
+        <h3 class="zd-h3">Salida</h3>
+        <p class="ayuda">El texto del correo que se arma con las filas del resultado.</p>
+        <!-- CH-39 (DEC-188, DEC-192): the text of the email. Not part of the test: editing it keeps «Guardar» open. -->
+        <div>
+          <label for="plantilla-f-encabezado" class="zd-label">Encabezado del mensaje</label>
+          <input id="plantilla-f-encabezado" class="zd-input" type="text" maxlength="200" autocomplete="off">
+          <p class="ayuda">Hasta 200 caracteres. Va una sola vez, arriba de las líneas, y no admite columnas.</p>
+        </div>
+        <div>
+          <label for="plantilla-f-linea" class="zd-label">Línea por fila</label>
+          <textarea id="plantilla-f-linea" class="zd-textarea" rows="3" maxlength="300"></textarea>
+          <p class="ayuda">Hasta 300 caracteres. {columna} se reemplaza por el valor de esa columna en cada fila. Los dos textos van juntos; sin ellos, el correo muestra la tabla.</p>
+        </div>
+      </li>
+      <li>
+        <h3 class="zd-h3">Prueba</h3>
+        <p class="ayuda">Corré la plantilla en una conexión del tenant activo. Para guardarla hace falta una prueba que pase.</p>
+        <div>
+          <label for="plantilla-f-conexion" class="zd-label">Conexión</label>
+          <select id="plantilla-f-conexion" class="zd-select"></select>
+        </div>
+        <div id="plantilla-f-valores"></div>
+        <div><button id="plantilla-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar plantilla</button></div>
+        <p id="plantilla-f-resultado" class="ayuda" role="status"></p>
+        <div class="zd-table-wrap zd-table-scroll"><table id="plantilla-f-tabla" class="zd-table"></table></div>
+      </li>
+    </ol>
+  </form>
+  <footer class="editor-pie">
+    <button id="plantilla-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    <p id="plantilla-motivo" class="ayuda" role="status"></p>
+    <span id="plantilla-confirmar" hidden>
+      Hay cambios sin guardar.
+      <button id="plantilla-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+      <button id="plantilla-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+    </span>
+    <button id="plantilla-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
+    <button id="plantilla-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="plantilla-form" aria-describedby="plantilla-motivo" disabled>Guardar plantilla</button>
+  </footer>
 </div>
 </section>
 
@@ -2309,6 +2354,7 @@ function fijarTenant(id) {
     ? 'Prueba sobre: ningún tenant (elegí uno para probar o guardar)'
     : 'Prueba sobre: ' + (nombre === '' ? 'Tenant' : nombre);
   document.getElementById('prueba-sobre-plantillas').textContent = pruebaSobre;
+  document.getElementById('prueba-sobre-plantilla-editor').textContent = pruebaSobre;
   document.getElementById('prueba-sobre-reportes').textContent = pruebaSobre;
   escribirTenantGuardado(tenantActivo);
   // CH-55: the setup state belongs to the tenant it was read for.
@@ -4999,6 +5045,62 @@ function fijarHashDelScript(nuevo) {
   window.location.hash = nuevo;
 }
 
+// CH-56 (DEC-208, K3): the template and report editors are page subviews like the query editor, at #{pantalla}/{sub}.
+// crearSubvista takes crearDialogo's options plus pantalla, and remembers the open sub and where a discard goes.
+// Closed, the address goes back to the list only when it still names the editor; a change of address that closed it
+// is left alone.
+var subvistas = [];
+function crearSubvista(opciones) {
+  var subvista = { pantalla: opciones.pantalla, sub: null, destino: null, hayCambios: opciones.hayCambios };
+  var alCerrarPropio = opciones.alCerrar;
+  opciones.pagina = true;
+  opciones.alCerrar = function () {
+    if (alCerrarPropio) { alCerrarPropio(); }
+    var propia = subvista.sub === null ? null : '#' + subvista.pantalla + '/' + subvista.sub;
+    subvista.sub = null;
+    var destino = subvista.destino;
+    subvista.destino = null;
+    if (destino !== null) { window.location.hash = destino; return; }
+    if (propia !== null && String(window.location.hash || '') === propia) { fijarHashDelScript('#' + subvista.pantalla); }
+  };
+  subvista.dialogo = crearDialogo(opciones);
+  // «Seguir editando» after a change of address keeps the editor and forgets where the operator was going.
+  opciones.seguir.addEventListener('click', function () { subvista.destino = null; });
+  subvista.abrir = function (sub) {
+    subvista.sub = String(sub);
+    fijarHashDelScript('#' + subvista.pantalla + '/' + subvista.sub);
+    subvista.dialogo.abrir();
+  };
+  // The 409 → copy conversion: the address follows without a new history entry or a hashchange.
+  subvista.reemplazarSub = function (sub) {
+    subvista.sub = String(sub);
+    if (window.history && typeof window.history.replaceState === 'function') {
+      window.history.replaceState(null, '', '#' + subvista.pantalla + '/' + subvista.sub);
+    }
+  };
+  subvistas.push(subvista);
+  return subvista;
+}
+
+// Called by mostrarPantalla for a new address. Leaving an open subview with changes puts its address back and asks;
+// true means the address must not be acted on.
+function salirDeSubvistas(pedida, sub, hashActual) {
+  for (var i = 0; i < subvistas.length; i += 1) {
+    var subvista = subvistas[i];
+    if (!subvista.dialogo.abierto() || (pedida === subvista.pantalla && sub === subvista.sub)) { continue; }
+    if (subvista.hayCambios()) {
+      subvista.destino = hashActual === '' ? '#' + subvista.pantalla : hashActual;
+      fijarHashDelScript('#' + subvista.pantalla + '/' + subvista.sub);
+      subvista.dialogo.pedirCerrar();
+      return true;
+    }
+    subvista.destino = null;
+    subvista.dialogo.cerrar();
+    if (String(window.location.hash || '') !== hashActual) { return true; }
+  }
+  return false;
+}
+
 function abrirConsulta(sub) {
   if (sub !== undefined) {
     subConsultaAbierta = String(sub);
@@ -5237,9 +5339,12 @@ var dialogoCambioTenant = crearDialogo({
     var sinGuardar = [];
     if (tableroCambiado()) { sinGuardar.push('Tablero del cliente'); }
     if (dialogoDeConsulta.abierto() && hayCambiosSinGuardar()) { sinGuardar.push('Consultas'); }
-    document.getElementById('tc-sin-guardar').hidden = sinGuardar.length === 0;
-    document.getElementById('tc-sin-guardar-texto').textContent = 'Tenés cambios sin guardar en ' + sinGuardar.join(' y ') +
-      '. Si cambiás de tenant, se descartan.';
+    // CH-56: and the template editor's.
+    if (subvistaPlantilla.dialogo.abierto() && subvistaPlantilla.hayCambios()) { sinGuardar.push('Plantillas'); }
+    var ultima = sinGuardar.pop();
+    document.getElementById('tc-sin-guardar').hidden = ultima === undefined;
+    document.getElementById('tc-sin-guardar-texto').textContent = 'Tenés cambios sin guardar en ' +
+      (sinGuardar.length === 0 ? '' : sinGuardar.join(', ') + ' y ') + ultima + '. Si cambiás de tenant, se descartan.';
   }
 });
 
@@ -6488,7 +6593,11 @@ function textoMensajeDe(plantilla) {
 async function verPlantilla(id) {
   var cuerpo = await leerGlobal('/plantillas/' + encodeURIComponent(id), avisoPlantillas);
   if (cuerpo === null || cuerpo.plantilla === undefined) { return; }
-  var plantilla = cuerpo.plantilla;
+  mostrarPanelPlantilla(id, cuerpo.plantilla);
+}
+
+// The side panel for a template already read (CH-56: also from an address that names a template in use).
+function mostrarPanelPlantilla(id, plantilla) {
   document.getElementById('plantilla-titulo').textContent = String(plantilla.nombre);
   var entidades = Array.isArray(plantilla.entidades) ? plantilla.entidades : [];
   document.getElementById('plantilla-entidades').textContent = 'Necesita: ' + (entidades.length === 0 ? '—' : entidades.join(', '));
@@ -6564,18 +6673,22 @@ var contenedorValoresPlantilla = document.getElementById('plantilla-f-valores');
 var botonProbarPlantilla = document.getElementById('plantilla-f-probar');
 var avisoResultadoPlantilla = document.getElementById('plantilla-f-resultado');
 var tablaResultadoPlantilla = document.getElementById('plantilla-f-tabla');
-var estadoDialogoPlantilla = document.getElementById('plantilla-dialogo-estado');
-var avisoCopiaPlantilla = document.getElementById('plantilla-f-aviso-copia');
+var estadoDialogoPlantilla = document.getElementById('plantilla-motivo');
+var avisoCopiaPlantilla = document.getElementById('plantilla-copia-aviso');
 var botonGuardarPlantilla = document.getElementById('plantilla-dialogo-guardar');
 var botonDuplicarDialogo = document.getElementById('plantilla-dialogo-duplicar');
-var tituloDialogoPlantilla = document.getElementById('plantilla-dialogo-titulo');
+var tituloDialogoPlantilla = document.getElementById('plantilla-editor-titulo');
 var formularioPlantilla = document.getElementById('plantilla-form');
 
 // 'nueva' | 'editar' | 'duplicar', and the id of the template being edited.
 var modoPlantilla = 'nueva';
 var plantillaEditadaId = '';
-// {huella, ok, columnas} of the last test answer (columnas: the result's columns when it passed); null before any,
-// and while one is on its way. The message texts are not in the fingerprint: they are checked against columnas.
+// CH-56: the template the editor was opened from (its name for the crumb and the copy banner), and whether it was in use.
+var nombreOriginalPlantilla = '';
+var originalEnUsoPlantilla = false;
+// {huella, ok, columnas, hora, filas} of the last test answer (columnas: the result's columns when it passed; hora and
+// filas, for the footer line); null before any, and while one is on its way. The message texts are not in the
+// fingerprint: they are checked against columnas.
 var ultimaPruebaPlantilla = null;
 var probandoPlantilla = false;
 var guardandoPlantilla = false;
@@ -6658,15 +6771,21 @@ function motivoGuardadoPlantilla() {
   return 'Escribí un nombre para poder guardarla.';
 }
 
+// CH-56 (F4): once «Guardar» is open, the footer says when the test that opened it ran and what it returned.
+function lineaUltimaPruebaPlantilla() {
+  var filas = ultimaPruebaPlantilla.filas;
+  return 'Última prueba: OK · ' + ultimaPruebaPlantilla.hora + ' · ' + filas + (filas === 1 ? ' fila' : ' filas');
+}
+
 function actualizarGuardadoPlantilla() {
   var cerrado = guardandoPlantilla || !guardadoPlantillaHabilitado();
   botonGuardarPlantilla.disabled = cerrado;
-  estadoDialogoPlantilla.textContent = rechazoPlantilla !== '' ? rechazoPlantilla : (cerrado ? motivoGuardadoPlantilla() : '');
+  estadoDialogoPlantilla.textContent = rechazoPlantilla !== '' ? rechazoPlantilla : (cerrado ? motivoGuardadoPlantilla() : lineaUltimaPruebaPlantilla());
 }
 
-// The copy notice stays until the copy has both its own client texts.
+// CH-56 (F5): the copy banner, only for a copy of a template in use, until the copy has both its own client texts.
 function reflejarAvisoCopiaPlantilla() {
-  avisoCopiaPlantilla.hidden = !(modoPlantilla === 'duplicar'
+  avisoCopiaPlantilla.hidden = !(modoPlantilla === 'duplicar' && originalEnUsoPlantilla
     && (entradaTituloPlantilla.value.trim() === '' || entradaDescripcionPlantilla.value.trim() === ''));
 }
 
@@ -6795,7 +6914,9 @@ async function cargarConexionesPlantilla() {
 // texts are filled in every mode.
 function llenarFormularioPlantilla(modo, plantilla) {
   var cargada = plantilla !== null && plantilla !== undefined;
-  tituloDialogoPlantilla.textContent = modo === 'editar' ? 'Editar plantilla' : (modo === 'duplicar' ? 'Duplicar plantilla' : 'Nueva plantilla');
+  // CH-56: the crumb after «Plantillas ›».
+  tituloDialogoPlantilla.textContent = !cargada ? 'Nueva plantilla'
+    : (modo === 'duplicar' ? 'Copia de ' + String(plantilla.nombre) : String(plantilla.nombre));
   entradaNombrePlantilla.value = !cargada ? '' : (modo === 'duplicar' ? String(plantilla.nombre) + SUFIJO_COPIA : String(plantilla.nombre));
   entradaSqlPlantilla.value = cargada ? String(plantilla.sql) : '';
   editorPlantilla.limpiar();
@@ -6815,35 +6936,102 @@ function llenarFormularioPlantilla(modo, plantilla) {
   entradaLineaPlantilla.value = cargada && typeof plantilla.lineaMensaje === 'string' ? plantilla.lineaMensaje : '';
 }
 
-var dialogoPlantilla = crearDialogo({
-  fondo: document.getElementById('plantilla-dialogo'),
+var listaPlantillas = document.getElementById('plantillas-lista');
+var plantillaNoEncontrada = document.getElementById('plantilla-no-encontrada');
+
+// CH-56 (DEC-208): the list, the not-found state and the editor take turns on the screen.
+function listaDePlantillas() {
+  listaPlantillas.hidden = false;
+  plantillaNoEncontrada.hidden = true;
+}
+
+function mostrarPlantillaNoEncontrada() {
+  listaPlantillas.hidden = true;
+  panelPlantilla.hidden = true;
+  plantillaNoEncontrada.hidden = false;
+}
+
+// The editor's unsaved-changes logic is the shared one (crearDialogo, through crearSubvista); leaving by the crumb,
+// «Cancelar» or another address asks first. Closed (also at a tenant switch), the list comes back.
+var subvistaPlantilla = crearSubvista({
+  pantalla: 'plantillas',
+  fondo: document.getElementById('plantilla-editor'),
   primerCampo: entradaNombrePlantilla,
   cancelar: document.getElementById('plantilla-dialogo-cancelar'),
   confirmar: document.getElementById('plantilla-confirmar'),
   descartar: document.getElementById('plantilla-descartar'),
   seguir: document.getElementById('plantilla-seguir'),
   hayCambios: function () { return instantaneaDeFormularioPlantilla() !== instantaneaPlantilla; },
-  alCerrar: reiniciarDialogoPlantilla
+  alAbrir: function () {
+    listaPlantillas.hidden = true;
+    plantillaNoEncontrada.hidden = true;
+    panelPlantilla.hidden = true;
+    limpiarPruebaPlantilla();
+  },
+  alCerrar: function () {
+    reiniciarDialogoPlantilla();
+    listaDePlantillas();
+  }
 });
 
 function abrirDialogoPlantilla(modo, plantilla) {
   reiniciarDialogoPlantilla();
   modoPlantilla = modo;
   plantillaEditadaId = modo === 'editar' && plantilla ? String(plantilla.id) : '';
+  nombreOriginalPlantilla = plantilla ? String(plantilla.nombre) : '';
+  // A missing enUso reads as in use, as in the side panel.
+  originalEnUsoPlantilla = modo === 'duplicar' && plantilla !== null && plantilla.enUso !== false;
+  document.getElementById('plantilla-copia-original').textContent = '«' + nombreOriginalPlantilla + '» tiene automatizaciones activas.';
   llenarFormularioPlantilla(modo, plantilla);
   instantaneaPlantilla = instantaneaDeFormularioPlantilla();
   reflejarAvisoCopiaPlantilla();
   actualizarGuardadoPlantilla();
-  dialogoPlantilla.abrir();
+  subvistaPlantilla.abrir(modo === 'nueva' ? 'nueva' : String(plantilla.id) + (modo === 'duplicar' ? '/duplicar' : ''));
   cargarConexionesPlantilla();
 }
 
-// The save found the template in use: the pop-up stays open and becomes a copy, with what is in the form now.
+// CH-56 (DEC-208): an editor address. An id in use is not edited (DEC-191): its address goes to the list with the side
+// panel open on it, where «Duplicar y editar» is. An id the catalog does not have shows the not-found state.
+async function abrirRutaPlantilla(sub) {
+  if (sub === 'nueva') { abrirDialogoPlantilla('nueva', null); return; }
+  var partes = sub.split('/');
+  var duplicar = partes.length === 2 && partes[1] === 'duplicar';
+  if (partes[0] === '' || partes.length > 2 || (partes.length === 2 && !duplicar)) { mostrarPlantillaNoEncontrada(); return; }
+  var id = partes[0];
+  var respuesta;
+  try { respuesta = await fetch('/plantillas/' + encodeURIComponent(id)).then(siNoAutenticado); } catch (fallaDeRed) {
+    respuesta = null;
+  }
+  // Another address, or the editor opened meanwhile: this answer is not wanted any more.
+  if (String(window.location.hash || '') !== '#plantillas/' + sub || subvistaPlantilla.dialogo.abierto()) { return; }
+  if (respuesta !== null && respuesta.status === 404) { mostrarPlantillaNoEncontrada(); return; }
+  var cuerpo = null;
+  if (respuesta !== null) { try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; } }
+  if (respuesta === null || respuesta.status !== 200 || cuerpo === null || cuerpo.plantilla === null || typeof cuerpo.plantilla !== 'object') {
+    fijarHashDelScript('#plantillas');
+    listaDePlantillas();
+    avisoPlantillas.textContent = respuesta === null ? AVISO_SIN_RED : mensajeHttp(respuesta.status, 'cargar la plantilla');
+    return;
+  }
+  var plantilla = cuerpo.plantilla;
+  if (!duplicar && plantilla.enUso !== false) {
+    fijarHashDelScript('#plantillas');
+    listaDePlantillas();
+    mostrarPanelPlantilla(id, plantilla);
+    return;
+  }
+  abrirDialogoPlantilla(duplicar ? 'duplicar' : 'editar', plantilla);
+}
+
+// The save found the template in use: the editor stays open and becomes a copy, with what is in the form now.
 // The client texts are cleared, as on any copy (DEC-191), so the copy does not reach the client panel by accident.
+// CH-56: the address becomes the copy's without a new history entry.
 function pasarAduplicarPlantilla() {
+  subvistaPlantilla.reemplazarSub(plantillaEditadaId + '/duplicar');
   modoPlantilla = 'duplicar';
   plantillaEditadaId = '';
-  tituloDialogoPlantilla.textContent = 'Duplicar plantilla';
+  originalEnUsoPlantilla = true;
+  tituloDialogoPlantilla.textContent = 'Copia de ' + nombreOriginalPlantilla;
   var nombre = entradaNombrePlantilla.value;
   if (nombre.slice(-SUFIJO_COPIA.length) !== SUFIJO_COPIA) { entradaNombrePlantilla.value = nombre + SUFIJO_COPIA; }
   entradaTituloPlantilla.value = '';
@@ -6887,7 +7075,13 @@ async function probarEnDialogoPlantilla() {
     ok = mostrarResultadoPrueba({ aviso: avisoResultadoPlantilla, tabla: tablaResultadoPlantilla }, leido);
   }
   var columnas = ok && leido.cuerpo !== null && Array.isArray(leido.cuerpo.columnas) ? leido.cuerpo.columnas.map(String) : [];
-  ultimaPruebaPlantilla = { huella: huella, ok: ok, columnas: columnas };
+  var ahora = new Date();
+  var dosCifras = function (n) { return (n < 10 ? '0' : '') + n; };
+  ultimaPruebaPlantilla = {
+    huella: huella, ok: ok, columnas: columnas,
+    hora: dosCifras(ahora.getHours()) + ':' + dosCifras(ahora.getMinutes()),
+    filas: ok && Array.isArray(leido.cuerpo.filas) ? leido.cuerpo.filas.length : 0
+  };
   actualizarGuardadoPlantilla();
 }
 
@@ -6936,7 +7130,8 @@ formularioPlantilla.addEventListener('submit', async function (evento) {
   }
   if (guardada) {
     var idGuardada = String(cuerpo.plantilla.id);
-    dialogoPlantilla.cerrar();
+    // CH-56: back to #plantillas, with the saved template in the side panel.
+    subvistaPlantilla.dialogo.cerrar();
     await cargarPantallaPlantillas();
     await verPlantilla(idGuardada);
     return;
@@ -8900,6 +9095,8 @@ function mostrarPantalla() {
     dialogoDeConsulta.cerrar();
     if (String(window.location.hash || '') !== hashActual) { return; }
   }
+  // CH-56: the template editor, and any other page subview, the same way.
+  if (salirDeSubvistas(pedida, sub, hashActual)) { return; }
   // CH-50 (N9): a hash that names no screen opens the unknown-section screen, with no link marked as current.
   var activa = hashVacio() ? pantallaInicial() : (PANTALLAS.indexOf(pedida) === -1 ? 'desconocida' : pedida);
   pantallaMostrada = activa;
@@ -8933,6 +9130,10 @@ function mostrarPantalla() {
   if (activa === 'consultas' && sub !== null && !dialogoDeConsulta.abierto() && tenantActivo !== null) {
     if (sub === 'nueva') { empezarConsultaNueva(); abrirConsulta('nueva'); } else { abrirGuardada(sub); }
   }
+  // CH-56 (DEC-208): #plantillas/nueva, #plantillas/{id} and #plantillas/{id}/duplicar open the template editor.
+  if (activa === 'plantillas' && !subvistaPlantilla.dialogo.abierto()) {
+    if (sub === null) { listaDePlantillas(); } else { abrirRutaPlantilla(sub); }
+  }
 }
 window.addEventListener('hashchange', mostrarPantalla);
 // C-02: until the tenant list answers there is no tenant, and the screens of the tenant say so.
@@ -8953,6 +9154,8 @@ cargarTenants().then(function () {
   if (hashVacio() && pantallaMostrada !== pantallaInicial()) { mostrarPantalla(); }
   // CH-53: an editor address opened before the tenant was known opens now.
   if (String(window.location.hash || '').length > '#consultas/'.length && String(window.location.hash).indexOf('#consultas/') === 0 && !dialogoDeConsulta.abierto()) { mostrarPantalla(); }
+  // CH-56: a template editor opened before the tenant was known reads that tenant's connections now.
+  if (subvistaPlantilla.dialogo.abierto()) { cargarConexionesPlantilla(); actualizarGuardadoPlantilla(); }
 });
 </script>
 </body>
