@@ -33,7 +33,7 @@ After a passing test, the reason line SHALL read «Última prueba: OK · {hora} 
 - for a template, that it has active automations and that the copy will not appear in the client panel until it has its own title and description;
 - for a report, that it is on a client dashboard.
 
-**Leaving.** Leaving an editor with unsaved changes, by the breadcrumb, «Cancelar» or a change of address, SHALL ask «¿Descartar los cambios?» with «Descartar cambios» and «Seguir editando», as in Leaving the Query Editor With Unsaved Changes. A tenant switch SHALL return to the list, after the tenant pop-up's unsaved-changes warning names the screen.
+**Leaving.** Leaving an editor with unsaved changes, by the breadcrumb, «Cancelar» or a change of address, SHALL put the editor's address back and show the editor's own unsaved-changes line «Hay cambios sin guardar.» with «Descartar cambios» and «Seguir editando», as in Leaving the Query Editor With Unsaved Changes. Escape asks the same way. A tenant switch SHALL return to the list, after the tenant pop-up's unsaved-changes warning names the screen.
 
 **Not found.** An address whose id is not in the catalog SHALL show «No encontramos esa plantilla.» or «No encontramos ese reporte.» with a link to the list.
 
@@ -57,7 +57,7 @@ After a passing test, the reason line SHALL read «Última prueba: OK · {hora} 
 #### Scenario: Leaving with changes
 - **GIVEN** the operator edited the SQL of a new report
 - **WHEN** the operator presses the «Reportes» breadcrumb
-- **THEN** the discard confirmation opens, and «Seguir editando» keeps the editor and its values
+- **THEN** the address stays `#reportes/nuevo`, the editor says «Hay cambios sin guardar.», and «Seguir editando» keeps the editor and its values
 
 ## MODIFIED Requirements
 
