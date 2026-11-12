@@ -70,6 +70,14 @@ Chain strategy: stacked-to-main
   - existing report cases moved to hash-based opening.
 
 ## Verify
-- [ ] v.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass after each slice.
-- [ ] v.2 Every request sent by the template and report flows is identical to before: same routes, same bodies.
-- [ ] v.3 Check `guidelines/admin.md` §14 for both editors. K4 stays flagged, not changed.
+- [x] v.1 `npm test`, `npx tsc -p tsconfig.json --noEmit` and `scripts/smoke.sh` pass after each slice.
+  - On master after both merges: `consola.test.ts` 536/536; `npm run test:db` 2360/2364; `tsc` clean. The 4 failures are the known `conexiones` false positives with the `postgres` password. One CH-44 case in `panel-ajustes-rutas.test.ts` failed in one 56b run and passes alone and in this run.
+  - `scripts/smoke.sh` stops at CH-03 «reachable target». It stops at the same step on `53bb1a5` (before CH-56), so CH-56 did not cause it.
+- [x] v.2 Every request sent by the template and report flows is identical to before: same routes, same bodies.
+  - No request assertion was removed or changed in `consola.test.ts`, and no test or save request changed in the script.
+  - The one new request is the read `GET /plantillas/:id` or `GET /reportes/:id` when an editor is opened by its address; the buttons add none.
+- [x] v.3 Check `guidelines/admin.md` §14 for both editors. K4 stays flagged, not changed.
+  - Both editors keep the scope tag and the «Prueba sobre» line in the header, have one primary action, and give feedback next to its control (test result in section 4, reason line next to «Guardar»).
+  - They cover loading, empty, error, blocked, success and not found, and keep the ids. Focus goes to the name field when an editor opens.
+  - Spec drift fixed: the leave guard uses the editor's own line «Hay cambios sin guardar.», as CH-53 does, not a «¿Descartar los cambios?» dialog. The delta now says so.
+  - K4 is unchanged: a template copy still starts without client texts.
