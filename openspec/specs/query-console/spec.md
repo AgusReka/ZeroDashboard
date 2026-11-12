@@ -62,34 +62,59 @@ WHEN a submitted query fails to execute (for any reason, including rejection, a 
 - **AND** the console SHALL NOT display a raw driver error object or a stack trace
 - **AND** the console SHALL NOT remain silent about the failure
 ### Requirement: Saving the Current Statement From the Console
-The console SHALL save a query only from the query pop-up. With no saved query loaded, its save control «Guardar consulta» SHALL submit the name, description, SQL and parameter declaration to the saved-queries create endpoint. With a saved query loaded, the only save control SHALL be «Guardar como versión N+1», which updates that query (CH-25); no control SHALL create a separate query (DEC-172). Either control SHALL be enabled only while the last «Probar» of exactly the current connection, SQL and parameter declaration succeeded. While it is disabled, a line next to it SHALL say why in words (not tested yet, the last test failed, the content changed after the test, or no name).
-(Previously: the create control lived on the screen and created a new query even with a saved query loaded, and nothing required a successful run.)
+The console SHALL save a query only from the query editor.
+- **No saved query loaded:** its save control «Guardar consulta» SHALL submit the name, description, SQL and parameter declaration to the saved-queries create endpoint.
+- **A saved query loaded:** the only save control SHALL be «Guardar como versión N+1», which updates that query (CH-25). No control SHALL create a separate query (DEC-172).
+
+Either control SHALL be enabled only while the last «Ejecutar consulta» of exactly the current connection, SQL and parameter declaration succeeded.
+- **While disabled:** a line next to it SHALL say why in words (not executed yet, the last run failed, the content changed after the run, or no name).
+- **When enabled:** that line SHALL read «Última ejecución: OK · {hora} · {n} filas».
+
+On a successful save, the console SHALL return to the list (`#consultas`) and confirm that the statement was saved.
 
 #### Scenario: Saving the statement currently in the editor
-- GIVEN the query pop-up is open with no saved query loaded, a name, a connection and a SQL statement
-- WHEN the operator presses «Probar» and the run succeeds, then «Guardar consulta»
-- THEN the console SHALL submit a create request with the entered `sql` and `nombre`
-- AND on success the console SHALL confirm the statement was saved and close the pop-up
+- **GIVEN** the editor at `#consultas/nueva` holds a name, a connection and a SQL statement
+- **WHEN** the operator presses «Ejecutar consulta» and the run succeeds, then «Guardar consulta»
+- **THEN** the console SHALL submit a create request with the entered `sql` and `nombre`
+- **AND** on success it SHALL show the list and confirm the statement was saved
 
 #### Scenario: A loaded query cannot be saved as a copy
-- GIVEN a saved query is loaded in the pop-up
-- THEN «Guardar consulta» SHALL NOT be offered and «Guardar como versión N+1» SHALL be
+- **GIVEN** a saved query is loaded in the editor
+- **THEN** «Guardar consulta» SHALL NOT be offered and «Guardar como versión N+1» SHALL be
 
-#### Scenario: Saving needs a passing test of the current content
-- GIVEN the last «Probar» succeeded
-- WHEN the operator edits the SQL, the parameters or the connection
-- THEN the save control SHALL be disabled until «Probar» succeeds again
+#### Scenario: Saving needs a passing run of the current content
+- **GIVEN** the last «Ejecutar consulta» succeeded
+- **WHEN** the operator edits the SQL, the parameters or the connection
+- **THEN** the save control SHALL be disabled until a run succeeds again
 
 ### Requirement: Console Displays the List of Saved Queries
+The console SHALL display the tenant's saved queries as a list of rows, using the metadata-only list endpoint. Each row shows:
+- `nombre` and `descripcion`;
+- `actualizadaEn` as «Última edición»;
+- «Abrir» and «Versiones».
 
-The console SHALL display the list of saved queries belonging to the tenant, showing at least each entry's `nombre`, using the metadata-only list endpoint.
+**Search.** Above the table, a search field SHALL filter the loaded rows by name and description as the operator types, without a request, with a counter of the visible rows.
+
+**States.**
+- No saved queries: «Todavía no hay consultas guardadas. Ejecutá una y guardala para volver a usarla.»
+- A search with no match: «Ninguna consulta coincide con "{texto}"» and «Limpiar búsqueda».
+- A failed load: the error with «Reintentar».
+
 
 #### Scenario: Viewing the saved queries list
+- **GIVEN** at least one saved query exists for the tenant
+- **WHEN** the list is shown or refreshed
+- **THEN** each row shows its name, description and last edit
+- **AND** the console SHALL NOT fetch any row's `sql` to render the list
 
-- GIVEN at least one saved query exists for the tenant
-- WHEN the console page is loaded or the list is refreshed
-- THEN the console SHALL display each saved query's `nombre`
-- AND the console SHALL NOT need to fetch each row's `sql` to render the list
+#### Scenario: Searching
+- **GIVEN** the list holds «Stock bajo» and «Ventas del mes»
+- **WHEN** the operator types «stock»
+- **THEN** only «Stock bajo» is shown, the counter says 1, and no request is sent
+
+#### Scenario: No match
+- **WHEN** the operator types «xyz»
+- **THEN** the list says «Ninguna consulta coincide con "xyz"» and offers «Limpiar búsqueda»
 
 ### Requirement: Loading a Saved Query Into the Editor
 
@@ -102,22 +127,37 @@ The console SHALL provide a way to select a saved query from the displayed list 
 - THEN the console SHALL retrieve the full saved query including `sql`
 - AND the editor SHALL be populated with that `sql`, ready to execute
 ### Requirement: Permanent Active-Tenant Indicator (T4)
+The console SHALL display, at all times and without ambiguity, which tenant it is currently operating against.
 
-The console SHALL display, at all times and without ambiguity, which tenant it is currently operating against. The no-active-tenant state MUST remain visually distinct from the active state and MUST still state in text that no tenant is selected.
-(Previously: no requirement on the no-tenant state surviving restyling.)
+With a tenant, the tenant bar SHALL show:
+- the label "Operando sobre";
+- the tenant's name;
+- its short id in mono.
+
+The no-active-tenant state MUST remain visually distinct from the active state, and MUST state in text that no tenant is selected and that the tenant sections need one. Icon and text carry the state, never color alone.
+
+Every screen's page header SHALL state its scope:
+- "Global · todos los tenants" for Tenants, Plantillas, Reportes and Contrato canónico;
+- "Del tenant · {nombre}" for every tenant screen, or "Necesita un tenant" when none is selected.
+
 
 #### Scenario: Indicator is always visible
-
-- GIVEN the console page is loaded with an active tenant selected
-- WHEN any part of the console is viewed
-- THEN the active tenant SHALL be identifiable on screen without further action
+- **GIVEN** the console page is loaded with an active tenant selected
+- **WHEN** any part of the console is viewed
+- **THEN** the active tenant's name and short id are identifiable on screen without further action
 
 #### Scenario: No-tenant state stays distinct
+- **GIVEN** the console page is loaded with no active tenant
+- **WHEN** the tenant bar is rendered with the shared stylesheet
+- **THEN** it SHALL carry text stating no tenant is selected and that the tenant sections need one
+- **AND** its style SHALL differ from the active-tenant state
 
-- GIVEN the console page is loaded with no active tenant
-- WHEN the tenant bar is rendered with the shared stylesheet
-- THEN it SHALL carry text stating no tenant is selected
-- AND its style SHALL differ from the active-tenant state
+#### Scenario: Scope tag names the tenant
+- **GIVEN** tenant "Almacén Don Tito" is active
+- **WHEN** the hash becomes `#conexiones`
+- **THEN** the page header's scope reads "Del tenant · Almacén Don Tito"
+- **WHEN** the hash becomes `#tenants`
+- **THEN** it reads "Global · todos los tenants"
 
 ## Resolved in design
 
@@ -126,14 +166,28 @@ The console SHALL display, at all times and without ambiguity, which tenant it i
 - Unmatched `GET` paths: all give `400 tenant-no-indicado` (DEC-124 accepts this instead of 404).
 - The registrar list and the exemption rows share one exported constant; a missing file stops boot (see `design.md`).
 ### Requirement: Tenant Selector
+The console SHALL provide one path to change the active tenant: the «Cambiar tenant» pop-up.
+- **Choosing:** a tenant is chosen in the list, and nothing changes until «Operar sobre {nombre}» is pressed.
+- **From the Tenants screen:** «Elegir como activo» and «Crear y elegir» SHALL open that same pop-up with the tenant preselected, instead of switching directly.
+- **Unsaved changes:** when the Tablero del cliente screen has unsaved changes (the state that enables its «Guardar»), the pop-up SHALL show, inside it, a warning: «Tenés cambios sin guardar en Tablero del cliente. Si cambiás de tenant, se descartan.» Confirming still discards them (Tenant Dashboard Screen).
 
-The console SHALL provide a control to select the active tenant from the tenants known to it.
 
 #### Scenario: Switching the active tenant
+- **GIVEN** the console page is loaded and more than one tenant exists
+- **WHEN** the operator chooses a different tenant in the pop-up and presses «Operar sobre {nombre}»
+- **THEN** the indicator SHALL update to reflect the newly selected tenant
 
-- GIVEN the console page is loaded and more than one tenant exists
-- WHEN the tenant selector is used to choose a different tenant
-- THEN the indicator SHALL update to reflect the newly selected tenant
+#### Scenario: Choosing from the Tenants screen asks first
+- **GIVEN** tenant A is active and tenant B is listed
+- **WHEN** the operator presses «Elegir como activo» on B
+- **THEN** the «Cambiar tenant» pop-up opens with B preselected and the active tenant is still A
+- **AND** pressing «Operar sobre B» makes B active
+
+#### Scenario: Unsaved dashboard changes are announced
+- **GIVEN** the operator reordered reports in Tablero del cliente and did not save
+- **WHEN** the «Cambiar tenant» pop-up opens
+- **THEN** it shows the unsaved-changes warning
+- **AND** with no unsaved changes it does not
 
 ### Requirement: Active Tenant Forwarded on Every API Call (DEC-15)
 
@@ -337,16 +391,26 @@ ventas@empresa.com» is typed in the recipients field and the form is submitted
 - **THEN** a legible notice SHALL be shown and the rest of the console SHALL keep working
 
 ### Requirement: Console Supports Deactivating an Automation (DEC-79)
+The console SHALL provide a control to deactivate a listed active automation. It SHALL NOT provide a control to delete or reactivate one. Editing is «Ajustar» (DEC-174).
 
-The console SHALL provide a control to deactivate a listed active automation, and SHALL NOT provide a control to delete or reactivate one. Editing is «Ajustar» (DEC-174).
-(Previously: the console offered no control to edit an automation.)
+The deactivate control SHALL open a C2 confirmation:
+- title "¿Desactivar {plantilla} · {conexión}?";
+- the line "No se puede deshacer: una automatización desactivada no se reactiva.";
+- the list item "Sus ejecuciones pasadas siguen disponibles.";
+- the danger button «Desactivar automatización».
+
+Only that button SHALL submit the deactivate action.
 
 #### Scenario: Deactivating from the console
+- **GIVEN** an active automation is listed
+- **WHEN** the deactivate control is used and «Desactivar automatización» is pressed
+- **THEN** the console SHALL submit the deactivate action exactly once
+- **AND** the list SHALL reflect its `activo: false` state
 
-- GIVEN an active automation is listed
-- WHEN the deactivate control is used
-- THEN the console SHALL submit the deactivate action
-- AND the list SHALL reflect its `activo: false` state
+#### Scenario: Changing one's mind
+- **GIVEN** the deactivate confirmation is open
+- **WHEN** the operator presses «Cancelar»
+- **THEN** no request is sent and the automation stays active
 
 ### Requirement: Console Adjusts an Automation in Place (DEC-174)
 
@@ -839,7 +903,13 @@ Each non-current row SHALL offer "Comparar con la actual", which reads that vers
 - **THEN** it is shown as text and never interpreted
 
 ### Requirement: Restore With Confirmation
-"Restaurar" SHALL ask for confirmation inside the panel with a button that repeats the action and the object («Restaurar versión 2») and a cancel button, never "Sí" or "Aceptar". Confirming SHALL send `POST .../versiones/<n>/restaurar` with the optional note, refresh the panel and the saved-query list, and say that a new version was created.
+"Restaurar" SHALL open a C1 confirmation:
+- title «¿Restaurar la versión {n}?»;
+- the line «Se crea la versión {n+1} con el contenido de la versión {n}. No se borra nada.»;
+- the optional note field;
+- the button «Restaurar versión {n}». It is never "Sí" or "Aceptar".
+
+Confirming SHALL send `POST .../versiones/<n>/restaurar` with the optional note, refresh the versions panel and the saved-query list, and say that a new version was created.
 
 #### Scenario: Confirm
 - **WHEN** the operator presses Restaurar on version 2 and confirms
@@ -851,24 +921,32 @@ Each non-current row SHALL offer "Comparar con la actual", which reads that vers
 
 #### Scenario: Refusals
 - **WHEN** the server answers 404, 409 `version-vigente` or any other error
-- **THEN** the panel shows the reason in plain text and keeps the previous rows
+- **THEN** the reason is shown in plain text and the panel keeps the previous rows
 
 ### Requirement: Save as a New Version
-With a saved query loaded in the query pop-up, the console SHALL offer «Guardar como versión N+1» (N being the loaded version) with an optional note field, enabled under the same test gate as «Guardar consulta». It SHALL send `PUT /consultas-guardadas/<id>` with the pop-up's name, description, statement, declared parameters and the note, exactly as the create sends them, then close the pop-up and refresh the list. A `409 sin-cambios` SHALL read "No hay cambios respecto de la versión vigente" and a `409 conflicto-de-edicion` SHALL ask to reload the query, both inside the pop-up, which stays open. The saved-queries help text SHALL still say that a saved query cannot be deleted.
-(Previously: «Guardar como nueva versión» below the list, with no test gate.)
+With a saved query loaded in the editor, the console SHALL offer «Guardar como versión N+1» (N being the loaded version) with an optional note field. It is enabled under the same execution gate as «Guardar consulta».
+
+**Request.** It SHALL send `PUT /consultas-guardadas/<id>` with the editor's name, description, statement, declared parameters and the note, exactly as the create sends them. It SHALL then return to the list and refresh it.
+
+**Refusals.** These answers SHALL appear in the editor, which stays open:
+- `409 sin-cambios` SHALL read «No hay cambios respecto de la versión vigente»;
+- `409 conflicto-de-edicion` SHALL ask to reload the query.
+
+**Help text.** The saved-queries help text SHALL still say that a saved query cannot be deleted.
+
 
 #### Scenario: Save a change
-- **GIVEN** a saved query opened in the pop-up, its statement modified and tested
-- **WHEN** the operator saves it as a new version with the note "Agrega filtro"
-- **THEN** one PUT request is sent for that query's id with the pop-up's content and the note, the pop-up closes and the list is refreshed
+- **GIVEN** a saved query open in the editor, its statement modified and executed
+- **WHEN** the operator saves it as a new version with the note «Agrega filtro»
+- **THEN** one PUT request is sent for that query's id with the editor's content and the note, the list is shown and refreshed
 
 #### Scenario: Nothing loaded
-- **WHEN** no saved query has been loaded
+- **WHEN** the editor is at `#consultas/nueva`
 - **THEN** the save-as-version action is not offered
 
 #### Scenario: Switching tenant forgets the loaded query
 - **WHEN** the operator switches tenant
-- **THEN** the loaded query is forgotten, the pop-up closes and the action disappears
+- **THEN** the loaded query is forgotten, the list of the new tenant is shown and the action disappears
 
 ### Requirement: Console Login Screen
 The login screen SHALL ask for the operator's name and password, send them to `POST /consola/ingresar`, and reload the page on 200. On 401 it SHALL say "Nombre o clave incorrectos." and keep the name typed; on any other failure it SHALL say the console could not be reached. It SHALL follow the project design skill.
@@ -913,16 +991,34 @@ Below the tenant bar, the console document SHALL hold a shell with a side naviga
 - **THEN** each guarded id appears exactly once, and the three screen sections and their navigation links exist
 
 ### Requirement: Navigation by Hash
-The side navigation SHALL link, in this order:
-- a "Global" group with `#tenants`, `#plantillas`, `#reportes` and `#contrato`;
-- a "Puesta en marcha" group with `#conexiones`, `#agentes`, `#mapeo`, `#usuarios`, `#tablero` and `#tiempos`;
-- a "Trabajo diario" group with `#consultas`, `#automatizaciones`, `#frescura` and `#auditoria`.
+The side navigation SHALL hold three titled blocks, in this order:
+- a block headed "Global" with `#tenants`, `#plantillas`, `#reportes` and `#contrato`. `#plantillas` and `#reportes` SHALL carry the meta badge "con tenant", whose title reads "Se prueba con el tenant activo" (the full sentence does not fit the item's badge);
+- a block headed with the active tenant's name and its short id in mono, or "Ningún tenant" when none is selected. It holds:
+  - a "Puesta en marcha" group with `#agentes` (meta "opcional"), `#conexiones`, `#mapeo`, `#usuarios` and `#tablero`, in that order;
+  - a "Trabajo diario" group with `#consultas`, `#automatizaciones`, `#frescura` and `#auditoria`;
+- a footer block headed "Investigación" with `#tiempos`.
 
-On load and on every `hashchange`, exactly one screen SHALL be visible: the one named by the hash, or Consultas when the hash is empty or names no screen. The link of the visible screen SHALL carry `aria-current="page"` and no other link SHALL.
-(Previously: the "Puesta en marcha" group had no `#tablero`.)
+Every link SHALL stay visible and usable with or without an active tenant (N5). Every link id (`nav-*`) SHALL keep its name (DEC-164).
+
+On load and on every `hashchange`, exactly one screen SHALL be visible:
+- the one named by the hash;
+- with an empty hash, Consultas when a tenant is active and Tenants when none is;
+- with a hash that names no screen, the "unknown section" screen (`pantalla-desconocida`). It says «Esta sección no existe» and offers one link to the default screen.
+
+The link of the visible screen SHALL carry `aria-current="page"` and no other link SHALL. `document.title` SHALL name the visible screen from the first render.
+
+#### Scenario: Block order and titles with a tenant
+- **GIVEN** tenant "Almacén Don Tito" is active
+- **WHEN** the console is shown
+- **THEN** the navigation shows "Global", then a block headed "Almacén Don Tito" with its short id, then "Investigación" holding only Tiempos de alta
+- **AND** inside "Puesta en marcha", Agentes (marked "opcional") comes before Conexiones
+
+#### Scenario: Tenant block without a tenant
+- **GIVEN** no tenant is selected
+- **THEN** the tenant block is headed "Ningún tenant" and its links are still visible and usable
 
 #### Scenario: Default screen
-- **GIVEN** the page is opened with no hash
+- **GIVEN** the page is opened with no hash and a tenant is active
 - **THEN** Consultas is visible and its link is current
 
 #### Scenario: Switching screens
@@ -931,7 +1027,7 @@ On load and on every `hashchange`, exactly one screen SHALL be visible: the one 
 
 #### Scenario: Unknown hash
 - **WHEN** the hash is `#no-existe`
-- **THEN** Consultas is visible
+- **THEN** only the unknown-section screen is visible, it says «Esta sección no existe», and no navigation link is current
 
 #### Scenario: The reports screen
 - **WHEN** the hash becomes `#reportes`
@@ -942,12 +1038,11 @@ On load and on every `hashchange`, exactly one screen SHALL be visible: the one 
 - **THEN** only Tablero del cliente is visible and its link is current
 
 ### Requirement: Result Next to the Execute Button
-Inside the query pop-up, the status line, the results table and the pager SHALL come right after the query form and before the pop-up's actions («Probar» and the save control); the pop-up comes before the saved queries section in the document.
-(Previously: on the Consultas screen, right after the execute button and before the saved queries.)
+In the query editor, the status line, the result area and the pager SHALL come right after the editor and «Ejecutar consulta», and before the save controls' reason line. The reference panel SHALL be beside them, not between them.
 
 #### Scenario: Result placement
 - **WHEN** the console document is served
-- **THEN** the results table appears after the query form and before «Probar», inside the query pop-up, and the pop-up appears before the saved queries section, all inside the Consultas screen
+- **THEN** inside the Consultas section, the editor subview holds the editor, «Ejecutar consulta», the status line and the results table in that order
 
 ### Requirement: Tenants Screen
 The Tenants screen SHALL list every tenant, active and deactivated, with its name, a short id, its state ("Activo" or "Dado de baja") and its creation date, written as text. «Nuevo tenant» SHALL open a pop-up with the name and two actions, «Crear tenant» and «Crear y elegir», plus «Cancelar». Both SHALL send the typed name to `POST /tenants` and, on 201, close the pop-up and reload the list and the tenant selector; «Crear y elegir» SHALL then make the new tenant the console's active tenant, exactly as "Elegir como activo" does. An empty name SHALL be refused inside the pop-up with nothing sent. An active tenant SHALL offer "Elegir como activo", which makes it the console's active tenant, and "Dar de baja", which opens a confirmation pop-up (DEC-175). The pop-up SHALL name the tenant, say that the baja cannot be undone, and hold one text field; its action «Dar de baja {nombre}» SHALL stay disabled until the field is exactly the tenant's name, and SHALL then send `POST /tenants/:id/baja` with `{ "nombre": <the typed text> }`. «Cancelar» and Escape SHALL close it without sending anything and without asking. A refusal SHALL be shown inside the pop-up. A deactivated tenant SHALL offer no action and SHALL NOT be selectable (DEC-168). When the active tenant is deactivated, the console SHALL return to "ningún tenant" and say so.
@@ -1013,7 +1108,12 @@ An agent token or a generated panel password SHALL appear only in the notice of 
 - **THEN** no node of the page contains the password
 
 ### Requirement: Agents Screen
-The Agentes screen SHALL show the active tenant's agent, if any, with its state ("Activo" or "Revocado"), creation date and last token emission date; with no tenant it SHALL say to choose one. With no agent it SHALL offer "Crear agente"; with a revoked one, "Emitir un token nuevo"; both send `POST /agentes` and show the token once. An active agent SHALL offer "Revocar", which asks for an inline confirmation saying the agent's connections stop working until a new token is emitted, before `POST /agentes/:id/revocar`.
+The Agentes screen SHALL show the active tenant's agent, if any, with its state ("Activo" or "Revocado"), creation date and last token emission date. With no tenant it SHALL say to choose one.
+- With no agent, it SHALL offer "Crear agente".
+- With a revoked one, it SHALL offer "Emitir un token nuevo".
+- Both send `POST /agentes` and show the token once.
+
+An active agent SHALL offer "Revocar". It opens a C2 confirmation saying that the agent and its connections stop working until a new token is emitted, with the danger button «Revocar token». Only that button sends `POST /agentes/:id/revocar`.
 
 #### Scenario: Create an agent
 - **GIVEN** the tenant has no agent
@@ -1021,7 +1121,7 @@ The Agentes screen SHALL show the active tenant's agent, if any, with its state 
 - **THEN** the token is shown once and the agent is listed as active
 
 #### Scenario: Revoke
-- **WHEN** the operator presses "Revocar" and confirms
+- **WHEN** the operator presses "Revocar" and confirms «Revocar token»
 - **THEN** the agent is listed as revoked and offers "Emitir un token nuevo"
 
 ### Requirement: Connection Through the Agent
@@ -1034,8 +1134,18 @@ The new-connection pop-up SHALL offer how the connection reaches the replica: di
 - **THEN** the registration carries that `agenteId`
 
 ### Requirement: Panel Users Screen
-The Usuarios del panel screen SHALL list the active tenant's panel users with email, name, state ("Activo" or "Desactivado") and creation date; with no tenant it SHALL say to choose one. «Nuevo usuario» SHALL open a pop-up with the email and the optional name; «Crear usuario» SHALL send them to `POST /usuarios` and, on 201, close the pop-up and show the generated password once in the screen's notice. Each active user SHALL offer «Reponer clave» and "Desactivar"; each deactivated user, "Reactivar" and «Reponer clave». «Reponer clave» SHALL ask for an inline confirmation «Reponer clave de {correo}», saying that the user's open sessions will be closed, before `POST /usuarios/:id/clave`; the new password is then shown once. "Desactivar" SHALL ask for an inline confirmation. A `409 correo-en-uso` SHALL say, inside the pop-up, that the email is already in use.
-(Previously: "Nuevo usuario" was an inline form and «Reponer clave» was sent on the first click.)
+The Usuarios del panel screen SHALL list the active tenant's panel users with email, name, state ("Activo" or "Desactivado") and creation date. With no tenant it SHALL say to choose one.
+
+**Creation:**
+- «Nuevo usuario» SHALL open a pop-up with the email and the optional name.
+- «Crear usuario» SHALL send them to `POST /usuarios` and, on 201, close the pop-up and show the generated password once in the screen's notice.
+- A `409 correo-en-uso` SHALL say, inside the pop-up, that the email is already in use.
+
+**Row actions:**
+- Each active user SHALL offer «Reponer clave» and "Desactivar"; each deactivated user, "Reactivar" and «Reponer clave».
+- «Reponer clave» SHALL open a C1 confirmation «¿Reponer la clave de {correo}?» saying that the current password stops working and the user's open sessions are closed. Only «Reponer clave» in it sends `POST /usuarios/:id/clave`, and the new password is then shown once.
+- "Desactivar" SHALL open a C1 confirmation «¿Desactivar a {correo}?» saying the user cannot enter the panel until reactivated. Only «Desactivar usuario» in it sends the deactivation.
+
 
 #### Scenario: Create a user
 - **WHEN** the operator creates "ana@negocio.com"
@@ -1047,7 +1157,7 @@ The Usuarios del panel screen SHALL list the active tenant's panel users with em
 
 #### Scenario: Reset a password after confirming
 - **WHEN** the operator presses «Reponer clave» on "ana@negocio.com"
-- **THEN** nothing is sent and the row asks «Reponer clave de ana@negocio.com», saying that the user's sessions will be closed
+- **THEN** nothing is sent and the confirmation pop-up asks «¿Reponer la clave de ana@negocio.com?»
 - **AND** confirming sends `POST /usuarios/:id/clave` and shows the new password once
 
 #### Scenario: Cancel the reset
@@ -1113,78 +1223,119 @@ With no active tenant, the block SHALL say «Elegí un tenant para probar la pla
 - **WHEN** the operator opens it
 - **THEN** the panel says it has no message text and the email shows the table
 
-### Requirement: Template Pop-Up for Create, Edit and Duplicate (DEC-173, DEC-191)
-One pop-up SHALL serve «Nueva plantilla», «Editar» and «Duplicar y editar». Its fields SHALL be, each with a visible label:
-- name, SQL (monospace) and the parameter declaration, with the same editor and rules as the query pop-up;
+### Requirement: Template Pop-Up for Create, Edit and Duplicate (DEC-173, DEC-191, DEC-208)
+One editor subview SHALL serve «Nueva plantilla», «Editar» and «Duplicar y editar».
+
+**Fields.** Each has a visible label and sits in the section given in Template and Report Editor Subview:
+- name, SQL (monospace) and the parameter declaration, with the same editor and rules as the query editor;
 - entities, one checkbox per canonical entity in contract order, at least one;
 - automation tag, a select over the closed list;
 - format, a select over the closed list;
 - freshness tolerance in minutes, an integer of 0 or more;
 - client title and client description, with their length caps shown.
 
-It SHALL hold a test block with a connection select of the active tenant, one input per declared parameter and «Probar», which sends `POST /plantillas/prueba` with the form's template, the active tenant, the `conexionId` and the `valores`, and shows the answers as the side-panel block does.
+**Test block** (section 4):
+- a connection select of the active tenant;
+- one input per declared parameter;
+- «Probar».
 
-«Guardar» SHALL be enabled only when the last test answered `200` with `resultado: "ok"` and its fingerprint equals the form's current one. The fingerprint SHALL be the SQL, the parameter declaration, the entities and the connection. Changing the name, the automation tag, the format, the tolerance or the client texts SHALL NOT clear it. While «Guardar» is disabled, the pop-up SHALL say why: no test yet, the last test failed, or the template changed since the last test. «Guardar» SHALL send `POST /plantillas` for a new template or a duplicate and `PUT /plantillas/:id` for an edit, always with both client texts. A `400` SHALL be shown in the pop-up naming the offending fields («Revisá estos campos»), with the glossary terms when present. A `409 plantilla-en-uso` SHALL say that the template now has active automations and offer «Duplicar y editar». On success the pop-up SHALL close, the list SHALL reload and the side panel SHALL show the saved template.
+«Probar» sends `POST /plantillas/prueba` with the form's template, the active tenant, the `conexionId` and the `valores`, and shows the answers as the side-panel block does.
 
-«Duplicar y editar» SHALL open the pop-up with the original's name followed by « (copia)», its SQL, parameters, entities, automation tag, format and tolerance, and empty client texts. The pop-up SHALL say that the copy will not appear in the client panel until it has its own title and description. Nothing SHALL be written until «Guardar». With no active tenant, the test block SHALL say «Elegí un tenant para probar la plantilla» and «Guardar» SHALL stay disabled. Cancel and Escape SHALL ask before discarding changes, and switching the active tenant SHALL close the pop-up.
+**Save gate.**
+- «Guardar plantilla» SHALL be enabled only when the last test answered `200` with `resultado: "ok"` and its fingerprint equals the form's current one.
+- The fingerprint SHALL be the SQL, the parameter declaration, the entities and the connection.
+- Changing the name, the automation tag, the format, the tolerance or the client texts SHALL NOT clear it.
+- While «Guardar plantilla» is disabled, the footer SHALL say why: no test yet, the last test failed, or the template changed since the last test.
+
+**Saving.**
+- «Guardar plantilla» SHALL send `POST /plantillas` for a new template or a duplicate and `PUT /plantillas/:id` for an edit, always with both client texts.
+- A `400` SHALL be shown in the editor, naming the offending fields («Revisá estos campos»), with the glossary terms when present.
+- A `409 plantilla-en-uso` SHALL say that the template now has active automations and offer «Duplicar y editar».
+- On success, the console SHALL return to the list, reload it, and show the saved template in the side panel.
+
+**Duplicating.** «Duplicar y editar» SHALL open `#plantillas/{id}/duplicar` with:
+- the original's name followed by « (copia)»;
+- its SQL, parameters, entities, automation tag, format and tolerance;
+- empty client texts.
+
+The editor SHALL say that the copy will not appear in the client panel until it has its own title and description. Nothing SHALL be written until «Guardar plantilla».
+
+**Without an active tenant**, the test block SHALL say «Elegí un tenant para probar la plantilla» and «Guardar plantilla» SHALL stay disabled.
+
 
 #### Scenario: Creating a template after a passing test
 - **GIVEN** an active tenant with connection "food-store" whose views are approved
 - **WHEN** the operator presses «Nueva plantilla», fills every field, chooses "food-store" and presses «Probar», and the test answers `200` with `resultado: "ok"`
-- **THEN** «Guardar» is enabled
-- **AND** pressing it sends one `POST /plantillas` with the form's template and both client texts
+- **THEN** «Guardar plantilla» is enabled
+- **AND** pressing it sends one `POST /plantillas` with the form's template and both client texts, and the list is shown
 
 #### Scenario: Changing the SQL after a test disables saving
-- **GIVEN** a passing test in the pop-up
+- **GIVEN** a passing test in the editor
 - **WHEN** the operator edits the SQL
-- **THEN** «Guardar» is disabled and the pop-up says the template changed since the last test
+- **THEN** «Guardar plantilla» is disabled and the footer says the template changed since the last test
 
 #### Scenario: Changing the client title keeps saving enabled
-- **GIVEN** a passing test in the pop-up
+- **GIVEN** a passing test in the editor
 - **WHEN** the operator edits the client title
-- **THEN** «Guardar» stays enabled
+- **THEN** «Guardar plantilla» stays enabled
 
 #### Scenario: Duplicating a template in use
 - **GIVEN** a template "Stock diario" with `enUso: true` and client texts
 - **WHEN** the operator presses «Duplicar y editar»
-- **THEN** the pop-up opens with name "Stock diario (copia)", the original's SQL, parameters, entities, tag, format and tolerance, and empty client texts
-- **AND** no request that writes is sent until «Guardar»
+- **THEN** the editor opens with name "Stock diario (copia)", the original's SQL, parameters, entities, tag, format and tolerance, and empty client texts
+- **AND** no request that writes is sent until «Guardar plantilla»
 
 #### Scenario: The template became in use while editing
 - **GIVEN** the operator edits a template that was free
-- **WHEN** «Guardar» answers `409 plantilla-en-uso`
-- **THEN** the pop-up says the template now has active automations and offers «Duplicar y editar», and stays open
+- **WHEN** «Guardar plantilla» answers `409 plantilla-en-uso`
+- **THEN** the editor says the template now has active automations, offers «Duplicar y editar», and stays open
 
 #### Scenario: A forbidden term in the client description
-- **WHEN** «Guardar» answers `400` with `campos` `["/descripcion"]` and `terminos` `["consulta"]`
-- **THEN** the pop-up names the description field and the term "consulta", and stays open
+- **WHEN** «Guardar plantilla» answers `400` with `campos` `["/descripcion"]` and `terminos` `["consulta"]`
+- **THEN** the editor names the description field and the term "consulta", and stays open
 
 ### Requirement: Template Message Texts in the Pop-Up (DEC-188, DEC-192)
+Section 3 of the template editor SHALL hold two fields, each with a visible label and its length cap shown:
+- «Encabezado del mensaje», at most 200 characters;
+- «Línea por fila», at most 300 characters.
 
-The template pop-up SHALL hold two more fields, each with a visible label and its length cap shown: «Encabezado del mensaje» (at most 200 characters) and «Línea por fila» (at most 300 characters). A hint SHALL say that `{columna}` in the line is replaced by that column's value in each row, that the header takes no columns, that both go together, and that without them the email shows the table.
+A hint SHALL say that:
+- `{columna}` in the line is replaced by that column's value in each row;
+- the header takes no columns;
+- both go together;
+- without them, the email shows the table.
 
-The texts SHALL NOT be part of the test fingerprint: editing them SHALL NOT disable «Guardar». The pop-up SHALL keep the `columnas` of the last passing test with its fingerprint. «Guardar» SHALL send both texts and `columnasPrueba` equal to those `columnas`. The test request SHALL send both texts and no `columnasPrueba`.
+**Fingerprint.** The texts SHALL NOT be part of the test fingerprint: editing them SHALL NOT disable «Guardar plantilla». The editor SHALL keep the `columnas` of the last passing test with its fingerprint.
 
-A `400` with `marcadores` SHALL name the message field and say that those columns are not in the last test, listing them. «Editar» SHALL fill both texts from the template. «Duplicar y editar» SHALL copy both texts. Cancel and Escape SHALL count a change to either text as a change to discard.
+**Requests.**
+- «Guardar plantilla» SHALL send both texts and `columnasPrueba` equal to those `columnas`.
+- The test request SHALL send both texts and no `columnasPrueba`.
+
+**Answers and copies.**
+- A `400` with `marcadores` SHALL name the message field and say that those columns are not in the last test, listing them.
+- «Editar» SHALL fill both texts from the template.
+- «Duplicar y editar» SHALL copy both texts.
+- Leaving the editor SHALL count a change to either text as a change to discard.
+
 
 #### Scenario: Saving with message texts
 - **GIVEN** a passing test whose `columnas` are `producto, cantidad`
-- **WHEN** the operator fills the header and the line "{producto}: quedan {cantidad}" and presses «Guardar»
+- **WHEN** the operator fills the header and the line "{producto}: quedan {cantidad}" and presses «Guardar plantilla»
 - **THEN** one request is sent with both texts and `columnasPrueba` `["producto", "cantidad"]`
 
 #### Scenario: Editing the line keeps saving enabled
-- **GIVEN** a passing test in the pop-up
+- **GIVEN** a passing test in the editor
 - **WHEN** the operator edits the line
-- **THEN** «Guardar» stays enabled
+- **THEN** «Guardar plantilla» stays enabled
 
 #### Scenario: An unknown column
-- **WHEN** «Guardar» answers `400` with `campos` `["/lineaMensaje"]` and `marcadores` `["stock"]`
-- **THEN** the pop-up names «Línea por fila», says `stock` is not among the columns of the last test, and stays open
+- **WHEN** «Guardar plantilla» answers `400` with `campos` `["/lineaMensaje"]` and `marcadores` `["stock"]`
+- **THEN** the editor names «Línea por fila», says `stock` is not among the columns of the last test, and stays open
 
 #### Scenario: Duplicating keeps the message texts
 - **GIVEN** a template with `enUso: true` and both message texts
 - **WHEN** the operator presses «Duplicar y editar»
-- **THEN** the pop-up shows both message texts and empty client texts
+- **THEN** the editor shows both message texts and empty client texts
 
 ### Requirement: Reports Screen (R1h, DEC-183, DEC-198)
 The Reportes screen (`pantalla-reportes`) SHALL be global, like Plantillas. It SHALL list the report catalog (`GET /reportes`), with name, client title and visualization written as text, and say when the list was cut. The visualization SHALL be shown as «Número», «Tabla», «Barras» or «Línea».
@@ -1248,8 +1399,10 @@ With no active tenant, the block SHALL say «Elegí un tenant para probar el rep
 - **WHEN** the operator opens it
 - **THEN** the panel shows «Duplicar y editar» and says it is on a client dashboard, and shows no «Editar»
 
-### Requirement: Report Pop-Up for Create and Edit (DEC-173, DEC-198)
-One pop-up SHALL serve «Nuevo reporte», «Editar» and «Duplicar y editar». Its fields SHALL be, each with a visible label:
+### Requirement: Report Pop-Up for Create and Edit (DEC-173, DEC-198, DEC-208)
+One editor subview SHALL serve «Nuevo reporte», «Editar» and «Duplicar y editar».
+
+**Fields.** Each has a visible label and sits in the section given in Template and Report Editor Subview:
 - name;
 - client title and client description, with their length caps shown;
 - entities, one checkbox per canonical entity in contract order, at least one;
@@ -1258,44 +1411,51 @@ One pop-up SHALL serve «Nuevo reporte», «Editar» and «Duplicar y editar». 
 - visualization, a select over «Número», «Tabla», «Barras» and «Línea»;
 - the columns of the chosen visualization: one row per role, each with a column select and a title input. For «Tabla», «Agregar columna» adds a row, up to 10, and «Quitar» removes one, down to 1.
 
-It SHALL hold a test block with:
+**Test block** (section 4):
 - a connection select of the active tenant;
 - a period select over the days typed in the form;
 - «Probar».
 
-«Probar» SHALL send `POST /reportes/prueba` with the form's report without `columnas` (the test is what produces them), the active tenant, the `conexionId` and `dias`, and SHALL show the returned columns and rows as a table. After a passing test, each column select SHALL offer the test's columns. Before one, the selects SHALL be empty and the pop-up SHALL say «Probá el reporte para elegir sus columnas».
+«Probar» SHALL send `POST /reportes/prueba` with the form's report without `columnas` (the test is what produces them), the active tenant, the `conexionId` and `dias`. It SHALL show the returned columns and rows as a table.
 
-«Guardar» SHALL be enabled only when the last test answered `200` with `resultado: "ok"` and its fingerprint equals the form's current one. The fingerprint SHALL be the SQL, the period, the entities and the connection. Changing the name, the client texts, the visualization or the columns SHALL NOT clear it. While «Guardar» is disabled, the pop-up SHALL say why: no test yet, the last test failed, or the report changed since the last test.
+**Column selects.** After a passing test, each column select SHALL offer the test's columns. Before one, the selects SHALL be empty and the editor SHALL say «Probá el reporte para elegir sus columnas».
 
-«Guardar» SHALL send `POST /reportes` for a new report or a duplicate and `PUT /reportes/:id` for an edit, with `columnasPrueba` holding the last test's columns. Changing the visualization SHALL keep the rows whose role still exists and empty the rest.
+**Save gate.**
+- «Guardar reporte» SHALL be enabled only when the last test answered `200` with `resultado: "ok"` and its fingerprint equals the form's current one.
+- The fingerprint SHALL be the SQL, the period, the entities and the connection.
+- Changing the name, the client texts, the visualization or the columns SHALL NOT clear it.
+- While «Guardar reporte» is disabled, the footer SHALL say why: no test yet, the last test failed, or the report changed since the last test.
 
-How the answers are shown:
-- A `400` SHALL be shown in the pop-up, naming the offending fields («Revisá estos campos»), with the glossary terms and the missing columns when present.
-- On success, the pop-up SHALL close, the list SHALL reload and the side panel SHALL show the saved report.
+**Saving.**
+- «Guardar reporte» SHALL send `POST /reportes` for a new report or a duplicate and `PUT /reportes/:id` for an edit, with `columnasPrueba` holding the last test's columns.
+- Changing the visualization SHALL keep the rows whose role still exists and empty the rest.
+- A `400` SHALL be shown in the editor, naming the offending fields («Revisá estos campos»), with the glossary terms and the missing columns when present.
+- On success, the console SHALL return to the list, reload it, and show the saved report in the side panel.
 
-How the pop-up closes:
-- With no active tenant, the test block SHALL say «Elegí un tenant para probar el reporte» and «Guardar» SHALL stay disabled.
-- Cancel and Escape SHALL ask before discarding changes.
-- Switching the active tenant SHALL close the pop-up.
+**Without an active tenant**, the test block SHALL say «Elegí un tenant para probar el reporte» and «Guardar reporte» SHALL stay disabled.
 
-«Duplicar y editar» SHALL open the pop-up with the original's name followed by « (copia)» and every other field of the original. Nothing SHALL be written until «Guardar», and a copy opened from the side panel SHALL need its own passing test like a new report. A `409 reporte-en-uso` on an edit SHALL say that the report is now on a client dashboard and offer «Duplicar y editar», keeping the pop-up open. Choosing it there SHALL turn the open pop-up into a copy of what was just tested, so a passing test whose fingerprint still matches keeps «Guardar» enabled, as for templates (CH-38).
-(Previously: the pop-up served only create and edit, and an edit could not be refused for use.)
+**Duplicating.** «Duplicar y editar» SHALL open `#reportes/{id}/duplicar` with the original's name followed by « (copia)» and every other field of the original.
+- Nothing SHALL be written until «Guardar reporte».
+- A copy opened from the side panel SHALL need its own passing test, like a new report.
+
+**In-use refusal.** A `409 reporte-en-uso` on an edit SHALL say that the report is now on a client dashboard and offer «Duplicar y editar», keeping the editor open. Choosing it there SHALL turn the open editor into a copy of what was just tested, so a passing test whose fingerprint still matches keeps «Guardar reporte» enabled, as for templates (CH-38).
+
 
 #### Scenario: Creating a bar report after a passing test
 - **GIVEN** an active tenant with connection "food-store" whose views are approved
 - **WHEN** the operator fills the form with «Barras», presses «Probar», and the test answers `200` `ok` with columns `producto` and `unidades`
 - **AND** chooses `producto` as the label and `unidades` as the value, with their titles
-- **THEN** «Guardar» is enabled, and pressing it sends one `POST /reportes` with the assigned columns and `columnasPrueba` ["producto", "unidades"]
+- **THEN** «Guardar reporte» is enabled, and pressing it sends one `POST /reportes` with the assigned columns and `columnasPrueba` ["producto", "unidades"]
 
 #### Scenario: Changing the SQL after a test disables saving
-- **GIVEN** a passing test in the pop-up
+- **GIVEN** a passing test in the editor
 - **WHEN** the operator edits the SQL
-- **THEN** «Guardar» is disabled and the pop-up says the report changed since the last test
+- **THEN** «Guardar reporte» is disabled and the footer says the report changed since the last test
 
 #### Scenario: Changing the visualization keeps saving enabled
 - **GIVEN** a passing test and a «Barras» report
 - **WHEN** the operator switches to «Línea»
-- **THEN** «Guardar» stays enabled and both column rows keep their choices
+- **THEN** «Guardar reporte» stays enabled and both column rows keep their choices
 
 #### Scenario: A table with too many columns
 - **GIVEN** a «Tabla» report with 10 column rows
@@ -1304,13 +1464,13 @@ How the pop-up closes:
 #### Scenario: Duplicating a report in use
 - **GIVEN** a report "Ventas por producto" with `enUso: true`
 - **WHEN** the operator presses «Duplicar y editar»
-- **THEN** the pop-up opens with name "Ventas por producto (copia)" and the original's fields
-- **AND** no request that writes is sent until «Guardar», which sends `POST /reportes`
+- **THEN** the editor opens with name "Ventas por producto (copia)" and the original's fields
+- **AND** no request that writes is sent until «Guardar reporte», which sends `POST /reportes`
 
 #### Scenario: The report became in use while editing
 - **GIVEN** the operator edits a report that was free
-- **WHEN** «Guardar» answers `409 reporte-en-uso`
-- **THEN** the pop-up says the report is now on a client dashboard and offers «Duplicar y editar», and stays open
+- **WHEN** «Guardar reporte» answers `409 reporte-en-uso`
+- **THEN** the editor says the report is now on a client dashboard, offers «Duplicar y editar», and stays open
 
 ### Requirement: Tenant Dashboard Screen (R2h, DEC-199)
 The «Tablero del cliente» screen (`pantalla-tablero`) SHALL be scoped to the active tenant. Each time it is shown, and when the active tenant changes while it is shown, it SHALL read `GET /tablero`, `GET /conexiones` and `GET /reportes`. Switching the tenant SHALL discard unsaved changes. With no active tenant it SHALL say «Elegí un tenant para armar su tablero.» and send nothing.
@@ -1362,24 +1522,89 @@ The Contrato screen SHALL show the canonical contract (`GET /contrato`): one blo
 - **THEN** the five entities appear in contract order, each with its fields
 
 ### Requirement: Mapping and Validation Screen
-The Mapeo y validación screen SHALL, for the active tenant, let the operator choose one of its connections and then show, for each of the five contract entities in contract order: its obligatoriness, its state ("Sin mapear", "Sin validar", "Válida" or "Inválida"), its SQL in an editor, an example, and its last diagnostics per field (verdict, column, observed type and cast hint). "Guardar" SHALL send the entity's SQL to `PUT /conexiones/:id/vistas-canonicas/:entidad` and then show the entity as "Sin validar". "Validar" SHALL send `POST /conexiones/:id/validacion-mapeo` and show the new report; when the answer is a session failure (`resultado: "fallo"`), it SHALL show the phase, category and code apart and keep showing the last stored report. The three automations SHALL appear with their state and every reason. With no tenant, or no connection chosen, the screen SHALL say what to choose and send nothing. Every SQL statement, example and diagnostic SHALL be written as text.
+The Mapeo y validación screen SHALL, for the active tenant, let the operator choose one of its connections. It SHALL then show three columns.
 
-Above the entities, the screen SHALL show a collapsible step-by-step guide, «Cómo mapear», in the static markup, stating in order: choose the connection; per entity, write one SELECT over the client's replica whose columns are named exactly like the contract fields, camelCase names in double quotes, with the contract's types; «Guardar» each entity; «Validar mapeo» and read each field's verdict and cast hint; the automations table says which automations the mapping enables. It SHALL say that optional entities can stay unmapped.
+**Entity list:**
+- the five contract entities in contract order, each with its obligatoriness and its state ("Sin mapear", "Sin validar", "Válida" or "Inválida"), shown as icon and text;
+- one entity is selected at a time and carries `aria-current`;
+- on load, the first entity that is not "Válida" is selected, or the first one when all are.
 
-Each entity block SHALL show, collapsed, that entity's fixed example over the food_store demo replica (DEC-176), labelled as an example over the demo schema, and a «Usar de punto de partida» action. The action SHALL copy the example into that entity's editor only when the editor is empty or holds only whitespace. Otherwise it SHALL leave the editor unchanged and say that the editor already has SQL. The action SHALL NOT send any request nor change the entity's state. Each example SHALL name every field of its entity in the contract as a column alias, quoted when camelCase, and no other alias.
-(Previously: no guide and no example; editors started empty with no help beyond the page description.)
+**The selected entity's block:**
+- its SQL in an editor with an associated label «SELECT de {entidad}»;
+- «Guardar mapeo»;
+- its example, as today.
+
+**Expected fields:** each contract field of the selected entity with its name, type and whether it is obligatory. They are taken from the canonical contract embedded in the page, before any validation. When the last report has a diagnostic for that entity, each field SHALL also show its verdict in words:
+- `ok` → «Coincide»;
+- `ausente` → «Falta en el SELECT»;
+- `tipo-incorrecto` → «Tipo distinto: llega {tipo observado}»;
+- `alias-sin-comillas` → «Usá el alias entre comillas dobles»;
+- `duplicada` → «La columna aparece dos veces».
+
+The cast hint goes in mono, as «Probá castear con {pista}». A probe that did not run, and columns the contract does not have («Columna que sobra: …»), concern the whole statement and are listed in the entity block, under its editor.
+
+**Actions:**
+- "Guardar" SHALL send the entity's SQL to `PUT /conexiones/:id/vistas-canonicas/:entidad` and then show the entity as "Sin validar".
+- "Validar" SHALL send `POST /conexiones/:id/validacion-mapeo` and show the new report.
+- When the answer is a session failure (`resultado: "fallo"`), it SHALL show the phase, category and code apart, and keep showing the last stored report.
+
+**Summary:** the summary of the last report SHALL say «{n} de {m} entidades válidas». Under it, each pending entity (invalid, not validated, or obligatory and unmapped) SHALL have a button «Ir a {entidad}» that selects that entity. Above «Validar mapeo», one line SHALL state what makes the mapping valid: each obligatory entity mapped, probed without error and with every field matching.
+
+**Automations:** the three automations SHALL appear with their state, as icon and text, and every reason.
+
+**Empty and blocked states:**
+- With no tenant, or no connection chosen, the screen SHALL say what to choose and send nothing.
+- With a tenant that has no connections, it SHALL show «Primero registrá una conexión. El mapeo se escribe sobre la réplica que llega por esa conexión.» with «Ir a Conexiones».
+
+Every SQL statement, example, field name and diagnostic SHALL be written as text.
+
+**Guide.** Above the entities, the screen SHALL show a collapsible step-by-step guide, «Cómo mapear», in the static markup, stating in order:
+1. choose the connection;
+2. per entity, write one SELECT over the client's replica whose columns are named exactly like the contract fields shown beside the editor, camelCase names in double quotes, with the contract's types;
+3. «Guardar» each entity;
+4. «Validar mapeo» and read each field's verdict and cast hint;
+5. read the automations table, which says which automations the mapping enables.
+
+It SHALL say that optional entities can stay unmapped.
+
+**Examples.** Each entity block SHALL show, collapsed, that entity's fixed example over the food_store demo replica (DEC-176), labelled as an example over the demo schema, with a «Usar de punto de partida» action.
+- The action SHALL copy the example into that entity's editor only when the editor is empty or holds only whitespace.
+- Otherwise it SHALL leave the editor unchanged and say that the editor already has SQL.
+- The action SHALL NOT send any request nor change the entity's state.
+- Each example SHALL name every field of its entity in the contract as a column alias, quoted when camelCase, and no other alias.
+
 
 #### Scenario: Saving an entity
-- **WHEN** the operator edits the SQL of `producto` and presses "Guardar"
+- **WHEN** the operator selects `producto`, edits its SQL and presses "Guardar"
 - **THEN** the statement is sent to `PUT …/vistas-canonicas/producto` and the entity shows "Sin validar"
 
 #### Scenario: A session failure
 - **WHEN** "Validar" answers `resultado: "fallo"` with category `credenciales-invalidas`
 - **THEN** the screen says so, and the entities keep their previous states
 
-#### Scenario: An invalid field
-- **GIVEN** the report says `stockDisponible` has verdict `tipo-incorrecto` with the hint `::numeric`
-- **THEN** the entity shows that field, its verdict and the hint
+#### Scenario: Expected fields before validating
+- **GIVEN** `producto` has never been validated
+- **WHEN** the operator selects `producto`
+- **THEN** the field column lists every contract field of `producto` with its type and obligatoriness, and no verdict
+
+#### Scenario: An invalid field in words
+- **GIVEN** the report says `stockDisponible` has verdict `tipo-incorrecto`, observed type `texto` and the hint `::numeric`
+- **WHEN** the operator selects that entity
+- **THEN** the field reads «Tipo distinto: llega texto» and shows `::numeric` in mono
+
+#### Scenario: The summary leads to the work
+- **GIVEN** the report has `pedido` as "Inválida"
+- **WHEN** the operator presses the `pedido` link in the summary
+- **THEN** `pedido` becomes the selected entity
+
+#### Scenario: No connections
+- **GIVEN** tenant A has no connections
+- **WHEN** the hash becomes `#mapeo`
+- **THEN** the screen shows the blocked state with «Ir a Conexiones» and sends no validation request
+
+#### Scenario: Labelled editors
+- **WHEN** the console document is served
+- **THEN** each of the five entity editors has a label associated to it
 
 #### Scenario: The guide is part of the screen
 - **WHEN** the operator opens Mapeo y validación
@@ -1401,53 +1626,89 @@ Each entity block SHALL show, collapsed, that entity's fixed example over the fo
 - **WHEN** the aliases of each example are compared with its entity's fields in `CONTRATO_CANONICO`
 - **THEN** they are the same set, camelCase names quoted
 
-### Requirement: Create and Edit Forms Open in a Pop-up (DEC-173)
-In the console, every form that creates or modifies a record SHALL open in a pop-up over the screen (`.zd-dialog` on `.zd-dialog-backdrop`), holding every field of the record, with a title, the main action (verb + object) and «Cancelar» at its foot. This covers the query pop-up, «Nuevo tenant», «Nueva conexión», «Nuevo usuario», the automation wizard and the automation adjust. A create pop-up SHALL be opened from its screen's page header; an edit pop-up from its record's row. On opening, the focus SHALL go to its first field. «Cancelar» and the Escape key SHALL close it without sending anything; when there are unsaved changes they SHALL first ask «Descartar cambios», offering «Descartar cambios» and «Seguir editando». A switch of the active tenant SHALL close any open pop-up without asking. Such a form SHALL NOT be rendered inline above or below a table, nor in a side panel. Read-only detail (version history, template detail) stays in the side panel. Inline confirmations of destructive actions are outside this rule, except a tenant's baja, which is confirmed in its own pop-up by typing the name (DEC-175).
-(Previously: did not cover the automation adjust nor the tenant baja confirmation, and every pop-up opened from the page header.)
+### Requirement: Create and Edit Forms Open in a Pop-up (DEC-173, DEC-208)
+In the console, every form that creates or modifies a record SHALL open in a pop-up over the screen (`.zd-dialog` on `.zd-dialog-backdrop`). The pop-up holds every field of the record, a title, and at its foot the main action (verb + object) and «Cancelar».
+
+**Coverage.**
+- The rule covers «Nuevo tenant», «Nueva conexión», «Nuevo usuario», the automation wizard and the automation adjust.
+- **Exception (DEC-208):** the query, template and report editors are subviews of their screens (Query Editor Subview; Template and Report Editor Subview), not pop-ups.
+
+**Opening.**
+- A create pop-up SHALL be opened from its screen's page header; an edit pop-up from its record's row.
+- On opening, the focus SHALL go to its first field.
+
+**Closing.**
+- «Cancelar» and the Escape key SHALL close it without sending anything.
+- When there are unsaved changes, they SHALL first ask «Descartar cambios», offering «Descartar cambios» and «Seguir editando».
+- A switch of the active tenant SHALL close any open pop-up without asking.
+
+**Placement.** Such a form SHALL NOT be rendered inline above or below a table, nor in a side panel. Read-only detail (version history, template detail, report detail) stays in the side panel.
+
+Destructive actions confirm in the graded confirmation pop-up. A tenant's baja is confirmed in its own pop-up by typing the name (DEC-175).
+
 
 #### Scenario: Cancelling a form with no changes
-- GIVEN a create or edit pop-up is open and nothing was changed
-- WHEN the operator presses «Cancelar» or Escape
-- THEN the pop-up closes and no request is sent
+- **GIVEN** a create or edit pop-up is open and nothing was changed
+- **WHEN** the operator presses «Cancelar» or Escape
+- **THEN** the pop-up closes and no request is sent
 
 #### Scenario: Cancelling a form with changes
-- GIVEN the operator changed a field
-- WHEN «Cancelar» or Escape is pressed
-- THEN the pop-up asks «Descartar cambios» and stays open until that is confirmed
-- AND «Seguir editando» keeps the pop-up open with the typed values
+- **GIVEN** the operator changed a field
+- **WHEN** «Cancelar» or Escape is pressed
+- **THEN** the pop-up asks «Descartar cambios» and stays open until that is confirmed
+- **AND** «Seguir editando» keeps the pop-up open with the typed values
 
 #### Scenario: Opening puts the focus on the first field
-- WHEN the operator presses «Nuevo usuario»
-- THEN the pop-up opens and the focus is on the email field
+- **WHEN** the operator presses «Nuevo usuario»
+- **THEN** the pop-up opens and the focus is on the email field
 
 #### Scenario: A tenant switch closes an open pop-up
-- GIVEN the «Nueva conexión» pop-up is open with a host typed
-- WHEN the operator switches the active tenant
-- THEN the pop-up closes without asking and nothing is sent
+- **GIVEN** the «Nueva conexión» pop-up is open with a host typed
+- **WHEN** the operator switches the active tenant
+- **THEN** the pop-up closes without asking and nothing is sent
 
-### Requirement: Query Screen and Query Pop-up (DEC-172, DEC-173)
-The Consultas screen SHALL show a page header with «Nueva consulta» and the saved queries list, each entry with «Abrir» and «Versiones». «Nueva consulta» SHALL open the query pop-up empty, titled «Nueva consulta»; «Abrir» SHALL open it with that query loaded, titled with its name and «versión N». The pop-up SHALL hold, in order: name, description, connection, SQL, parameters (declaration and test values) and, for a loaded query, the version note; and the actions «Probar», the save control and «Cancelar». «Probar» SHALL run the statement against the chosen connection and show the result, paginated, inside the pop-up. The pop-up SHALL close on a successful save and on a tenant switch. The version history SHALL open in a wide side panel.
+### Requirement: Query Screen and Query Pop-up (DEC-172, DEC-208)
+The Consultas screen SHALL have two views under one section.
 
-#### Scenario: Writing and testing a new query
-- WHEN the operator presses «Nueva consulta», chooses a connection, writes a statement and presses «Probar»
-- THEN the result appears inside the pop-up and «Guardar consulta» becomes enabled once a name is typed
+**The list (`#consultas`):** a page header with «Nueva consulta», and the saved queries list (Console Displays the List of Saved Queries).
+
+**The editor (Query Editor Subview):**
+- «Nueva consulta» SHALL navigate to `#consultas/nueva`, with the editor empty and the breadcrumb «Consultas › Nueva consulta».
+- «Abrir» SHALL navigate to `#consultas/{id}`, with that query loaded and the breadcrumb «Consultas › {nombre} · versión N».
+- An address whose id is not a saved query of the active tenant SHALL go back to the list (`#consultas`) and say «Esa consulta guardada ya no existe. Se actualizó la lista.»
+
+**The version history** SHALL open in a wide side panel, from the list and from the editor's header.
+
 
 #### Scenario: Opening a saved query
-- GIVEN saved query «Stock bajo» at version 3
-- WHEN the operator presses «Abrir» on it
-- THEN the pop-up is titled «Stock bajo · versión 3», holds its name, description, SQL and parameter declaration, keeps the last chosen connection, and offers «Guardar como versión 4»
+- **GIVEN** saved query «Stock bajo» at version 3
+- **WHEN** the operator presses «Abrir» on it
+- **THEN** the hash becomes `#consultas/{id}`, the breadcrumb reads «Consultas › Stock bajo · versión 3», the editor holds its name, description, SQL and parameter declaration, keeps the last chosen connection, and offers «Guardar como versión 4»
+
+#### Scenario: An unknown query address
+- **WHEN** the hash is `#consultas/no-existe`
+- **THEN** the address goes back to `#consultas`, the list is shown, and the page says «Esa consulta guardada ya no existe. Se actualizó la lista.»
 
 ### Requirement: Connection Picker
-The connection in the query pop-up SHALL be chosen from a list of the active tenant's connections (`GET /conexiones`), each shown by its name and a short id (as in the automation wizard) with the full id as the value. It SHALL be loaded when the active tenant is set and when the Consultas screen is shown, with loading, empty (pointing to Conexiones), truncated and error («Reintentar») states. The connection is used to test and is not saved with the query (DEC-11). The last choice SHALL be kept when another query is opened. «Probar» with no connection chosen SHALL say «Elegí una conexión para ejecutar» and send nothing.
+The connection in the query editor's context bar SHALL be chosen from a list of the active tenant's connections (`GET /conexiones`). Each is shown by its name and a short id, with the full id as the value.
+
+**Loading.** The list SHALL be loaded when the active tenant is set and when the Consultas screen is shown. It SHALL have loading, empty (pointing to Conexiones), truncated and error («Reintentar») states.
+
+**Behaviour.**
+- The connection is used to execute and is not saved with the query (DEC-11).
+- The last choice SHALL be kept when another query is opened.
+- When the tenant has exactly one connection, it SHALL come preselected.
+- «Ejecutar consulta» with no connection chosen SHALL say «Elegí una conexión para ejecutar» and send nothing.
+
 
 #### Scenario: Picking a connection
-- GIVEN the tenant has connections "food-store" and "replica-b"
-- WHEN the operator opens the query pop-up
-- THEN the picker lists both by name and short id, and «Probar» sends the chosen one's id as `conexionId`
+- **GIVEN** the tenant has connections "food-store" and "replica-b"
+- **WHEN** the operator opens the editor
+- **THEN** the context bar lists both by name and short id, and «Ejecutar consulta» sends the chosen one's id as `conexionId`
 
 #### Scenario: No connection chosen
-- WHEN the operator presses «Probar» without choosing a connection
-- THEN the console says «Elegí una conexión para ejecutar» and sends no execution request
+- **WHEN** the operator presses «Ejecutar consulta» without choosing a connection
+- **THEN** the console says «Elegí una conexión para ejecutar» and sends no execution request
 
 ### Requirement: Audit Screen
 The Auditoría screen SHALL be scoped to the active tenant. Each time it is shown, and when the active tenant changes while it is shown, it SHALL read `GET /auditoria` with the current filters and list the rows newest first. With no active tenant it SHALL say «Elegí un tenant para ver su auditoría.» and send nothing.
@@ -1594,3 +1855,360 @@ An execution answered `categoria` "no-es-lectura" with a `palabra` SHALL be show
 ### Requirement: Last Connection Test (UX review C-05)
 
 The Conexiones list SHALL show the connection's `ultimaPrueba` in a column «Última prueba» as an icon, a word (OK, Falló or Sin probar) and the date, and the row's «Probar conexión» SHALL update it with the result it gets. Every connection selector SHALL add «· última prueba OK», «· última prueba falló» or «· sin probar» to the connection's name when the list carries `ultimaPrueba`, and nothing when it does not. Choosing in Mapeo a connection whose last test failed SHALL show a warning banner with the reason until another connection is chosen; the mapping stays readable.
+
+### Requirement: Catalog Screens State Their Test Tenant (N4, M6)
+The Plantillas and Reportes screens SHALL keep their "Global · todos los tenants" scope. Next to it, they SHALL show the line "Prueba sobre: {nombre del tenant}", or "Prueba sobre: ningún tenant (elegí uno para probar o guardar)" when none is selected.
+
+Without an active tenant, the existing rules of the template and report pop-ups keep applying: «Probar» says «Elegí un tenant para probar la plantilla» (or «…el reporte») and sends nothing, and the save control stays disabled with that reason next to it. Listing and the read-only side panel SHALL keep working.
+
+The server-side rules (DEC-191, DEC-198) do not change.
+
+#### Scenario: No tenant on Plantillas
+- **GIVEN** no tenant is selected
+- **WHEN** the operator opens «Nueva plantilla»
+- **THEN** the header says "Prueba sobre: ningún tenant (elegí uno para probar o guardar)"
+- **AND** pressing «Probar» says «Elegí un tenant para probar la plantilla», the save control stays disabled, and no test request is sent
+
+#### Scenario: With a tenant
+- **GIVEN** tenant A is active
+- **WHEN** the hash becomes `#reportes`
+- **THEN** the header shows "Prueba sobre: A"
+
+### Requirement: Every Screen States Its Purpose (P2, P3)
+Every screen's page header SHALL hold exactly one title and one purpose line (`zd-pagehead__desc`) that says what is done there and what it is for in the flow.
+- **Frescura de datos:** it SHALL NOT repeat its title as a second heading.
+- **Consultas:** its purpose line SHALL read «Explorá la réplica del tenant activo con SQL de solo lectura. Usala para revisar un mapeo, una plantilla o un reporte antes de guardarlos. Plantillas y automatizaciones no usan estas consultas.»
+
+#### Scenario: Frescura has one title
+- **WHEN** the console document is served
+- **THEN** `pantalla-frescura` holds one heading "Frescura de datos" and a purpose line
+
+#### Scenario: Consultas says what it is for
+- **WHEN** the hash becomes `#consultas`
+- **THEN** the purpose line says that templates and automations do not use these queries
+
+### Requirement: Graded Confirmation Pop-up (C0–C3)
+The console SHALL confirm destructive or impactful actions in one confirmation pop-up (`confirmacion-dialogo`), never inline in a row or panel.
+
+The pop-up SHALL hold:
+- a title that asks the action over the named object ("¿{Acción} {objeto}?");
+- one line with the consequence;
+- an optional short list of further consequences;
+- «Cancelar» on the left;
+- one action button on the right, whose text repeats the verb and the object. It is never "Sí" or "Aceptar".
+
+Two levels SHALL be used:
+- **C1** (reversible with impact): primary action button. The focus starts on it.
+- **C2** (irreversible): the line "No se puede deshacer." is included, and the action button is danger. The focus starts on «Cancelar».
+
+«Cancelar» and Escape SHALL close the pop-up without sending anything. Actions that are reversible and harmless (test, execute, duplicate, preview: C0) SHALL NOT ask. A tenant's baja keeps its own pop-up with the typed name (C3, DEC-175), with a danger action button; its focus starts on the name field, because typing the name is the safeguard of C3 and the action stays disabled until it matches.
+
+#### Scenario: Cancel sends nothing
+- **GIVEN** the confirmation pop-up is open for any action
+- **WHEN** the operator presses «Cancelar» or Escape
+- **THEN** the pop-up closes and no request is sent
+
+#### Scenario: Irreversible starts safe
+- **WHEN** a C2 confirmation opens
+- **THEN** it says "No se puede deshacer.", its action button is the danger variant, and the focus is on «Cancelar»
+
+### Requirement: Destructive Row Actions Look Destructive (T4)
+Every row action that deactivates, revokes or gives a baja SHALL be the last control of its row and SHALL carry `data-tono="error"`, which the console's bridge style renders in the error tone with an icon. Harmless row actions SHALL NOT carry it.
+
+#### Scenario: Automation row
+- **WHEN** the automations list renders an active automation
+- **THEN** «Desactivar» is the last button of the row and carries `data-tono="error"`, and «Ver ejecuciones», «Vista previa» and «Ajustar» do not
+
+### Requirement: Pop-ups Keep and Return the Focus
+While any console pop-up is open, Tab and Shift+Tab SHALL move the focus only among its controls. When the pop-up closes, by its action, «Cancelar», Escape or a tenant switch, the focus SHALL return to the control that opened it, if that control is still in the document. Escape and the other closing rules of DEC-173 do not change.
+
+#### Scenario: Focus returns to the opener
+- **GIVEN** the operator opened «Nuevo usuario» from its button
+- **WHEN** the pop-up is cancelled
+- **THEN** the focus is on «Nuevo usuario»
+
+#### Scenario: Tab stays inside
+- **GIVEN** a pop-up is open and the focus is on its last control
+- **WHEN** the operator presses Tab
+- **THEN** the focus moves to its first control
+
+### Requirement: One Feedback Component, Placed by Scope (E1, E3)
+Every notice in the console SHALL be a `zd-banner` rendered by the server, whose tone (`ok`, `warn`, `error`) the script sets with `data-tono`. The script SHALL NOT assign a class to a notice.
+
+Each notice SHALL go where its scope is:
+- the result of an action, next to the control that triggered it;
+- the state of a screen, under its page header;
+- the global state (no tenant, tenant deactivated), in the tenant bar.
+
+While a pop-up is open, every refusal or result of that pop-up's action SHALL appear inside the pop-up, never behind it.
+
+An action SHALL report success with a success notice or with its result, not both.
+
+#### Scenario: Refusal inside an open pop-up
+- **GIVEN** the «Nueva conexión» pop-up is open
+- **WHEN** the registration fails with a network error
+- **THEN** the sentence appears inside the pop-up, and the page banner stays hidden
+
+#### Scenario: Tone by attribute
+- **WHEN** the page banner shows a success
+- **THEN** it carries `data-tono="ok"` and its `class` attribute is the one the server rendered
+
+### Requirement: Errors Read as Sentences (E4)
+When a console request fails, the console SHALL show:
+- what could not be done;
+- what to do;
+- at the end, the technical code as «Código: HTTP {n}.».
+
+It SHALL NOT show an API path or a bare "HTTP n" sentence. Each message names its action as an infinitive phrase («cargar la lista de tenants», «guardar la plantilla»).
+
+| Failure | Text |
+|---|---|
+| No answer / network | «No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.» |
+| 400, 422 | The console's specific message for that answer when there is one; otherwise «No se pudo {acción}. Revisá los datos y probá de nuevo.» |
+| 403 | «Tu sesión no tiene permiso para {acción}. Volvé a ingresar.» |
+| 404 | The specific message when there is one; otherwise «No se pudo {acción}: no encontramos lo que pediste. Puede que lo hayan dado de baja.» |
+| 409 | The specific message when there is one; otherwise «No se pudo {acción}: algo cambió o está en uso. Recargá la pantalla y probá de nuevo.» |
+| 5xx | «La consola tuvo un error interno al {acción}. Probá de nuevo; si se repite, revisá el log del servidor.» |
+| An answer it cannot read | «La consola recibió una respuesta que no pudo leer al {acción}. Probá de nuevo; si se repite, revisá el log del servidor.» |
+
+A 401 SHALL keep returning to the login screen (A 401 Returns to the Login Screen). Messages that already exist for a specific code or execution category SHALL keep their text.
+
+Most notices are plain-text lines, so the code is written as text at the end rather than in a mono block. A mono technical detail is part of the query workbench's in-place error (CH-53, W6).
+
+#### Scenario: A list fails to load
+- **WHEN** `GET /plantillas` answers 500
+- **THEN** the screen says «La consola tuvo un error interno al cargar las plantillas. Probá de nuevo; si se repite, revisá el log del servidor. Código: HTTP 500.», and no text contains `/plantillas`
+
+#### Scenario: No answer
+- **WHEN** a request fails before any answer
+- **THEN** the screen says «No pudimos conectar con el servidor de la consola. Revisá tu conexión y probá de nuevo.»
+
+### Requirement: Busy Buttons (E2)
+While the request a button triggered is pending, that button SHALL be `disabled`, carry `aria-busy="true"` and show a gerund of its verb («Probando…», «Validando…», «Guardando…», «Ejecutando…»). When the request settles, it SHALL return to its label and state. The layout SHALL NOT shift.
+
+#### Scenario: Testing a connection
+- **WHEN** the operator presses «Probar» on a connection and the answer has not arrived
+- **THEN** that button says «Probando…», is disabled and carries `aria-busy="true"`
+- **AND** when the answer arrives it says «Probar» again
+
+### Requirement: Console Copy Uses Voseo and Names Controls (M4, M5)
+Every console text addressed to the operator SHALL use voseo. A text that refers to a control SHALL name it exactly as the control is labelled.
+
+#### Scenario: The save hint of Consultas
+- **GIVEN** the query has not been executed
+- **THEN** the hint next to the save control says «Ejecutá la consulta para poder guardarla.»
+
+### Requirement: Dates State Their Zone (T7)
+Every column that shows a date and time SHALL state which zone it uses, in its header:
+- Auditoría and the automations list format in the browser zone: «Fecha y hora (hora de tu navegador)» and «Creada (hora de tu navegador)»;
+- the runs table shows each instant as stored, in UTC: «Inicio (UTC)» and «Fin (UTC)».
+
+The next-run sentences already name the deployment zone they use («zona horaria …»), and keep doing so. Columns that show only a day (Alta) need no zone. No date SHALL be converted between zones by this rule.
+
+#### Scenario: Audit screen
+- **WHEN** the hash becomes `#auditoria` with rows
+- **THEN** the date column is headed «Fecha y hora (hora de tu navegador)»
+
+#### Scenario: Runs of an automation
+- **WHEN** the operator opens «Ver ejecuciones»
+- **THEN** the columns read «Inicio (UTC)» and «Fin (UTC)»
+
+### Requirement: Query Editor Subview (W, DEC-208)
+The query editor SHALL be laid out in this order.
+
+**1. Header.** The breadcrumb, the version history action for a loaded query, and the save control.
+
+**2. Context bar**, above the editor:
+- the connection picker;
+- «Filas por página».
+
+**3. The SQL editor**, at least 8 lines tall, then:
+- the parameter rows: name, type and test value, the value labelled with the name it fills;
+- «Ejecutar consulta», with the text «Ctrl + Enter» next to it.
+
+**4. Below the editor:**
+- the status line with rows, duration and connection, plus the existing cap notice when the result was cut;
+- the result area with the table and the pager.
+
+**5. Beside them, the reference panel:**
+- the canonical contract (entities and fields) embedded in the page;
+- the declared parameters;
+- the line «Consultas lee las tablas propias de la réplica; las plantillas y los reportes leen las vistas canónicas que arma el mapeo.»;
+- the links «Ir a Mapeo y validación» and «Ir a Plantillas».
+
+It SHALL NOT read or list replica metadata.
+
+**Keyboard.** Ctrl + Enter or Cmd + Enter in the editor SHALL run the query; Enter alone SHALL insert a newline.
+
+**Result states.**
+- Before the first run: «Ejecutá la consulta para ver el resultado acá (Ctrl + Enter).»
+- While running: the previous result keeps its place with `aria-busy="true"`.
+- A failed run: the error replaces the result, with the engine code and message in a mono block.
+
+#### Scenario: Keyboard run
+- **GIVEN** the editor holds `SELECT 1` and a connection is chosen
+- **WHEN** the operator presses Ctrl + Enter in the editor
+- **THEN** exactly one execution request is sent
+
+#### Scenario: Plain Enter
+- **WHEN** the operator presses Enter in the editor
+- **THEN** no request is sent
+
+#### Scenario: Empty state before running
+- **WHEN** the editor opens at `#consultas/nueva`
+- **THEN** the result area says «Ejecutá la consulta para ver el resultado acá (Ctrl + Enter).»
+
+#### Scenario: Reference panel uses no new data
+- **WHEN** the editor is shown
+- **THEN** the reference panel lists the contract's entities and fields, and no request other than the existing ones is sent
+
+### Requirement: Leaving the Query Editor With Unsaved Changes (DEC-208)
+The editor has unsaved changes when its name, description, SQL, parameter declaration or note differ from the loaded or empty state.
+
+**Leaving by address.** Leaving with unsaved changes, by the breadcrumb or by any change of address, SHALL put the editor's address back and show the editor's own unsaved-changes line «Hay cambios sin guardar.» with «Descartar cambios» and «Seguir editando» (the same one «Cancelar» and Escape show).
+- «Descartar cambios» SHALL close the editor and go on to the address the operator asked for.
+- «Seguir editando» SHALL keep the editor, its address and every typed value.
+
+**Leaving by tenant switch.** The «Cambiar tenant» pop-up SHALL include Consultas in its unsaved-changes warning. Confirming the switch discards the changes.
+
+#### Scenario: Breadcrumb with changes
+- **GIVEN** the operator typed SQL at `#consultas/nueva`
+- **WHEN** the operator presses the «Consultas» breadcrumb
+- **THEN** the address stays `#consultas/nueva`, the editor says «Hay cambios sin guardar.», and «Seguir editando» keeps the SQL
+
+#### Scenario: Tenant switch with changes
+- **GIVEN** the editor has unsaved changes
+- **WHEN** the «Cambiar tenant» pop-up opens
+- **THEN** it warns that Consultas has unsaved changes
+
+### Requirement: Setup Strip (G1)
+Agentes, Conexiones, Mapeo y validación, Usuarios del panel and Tablero del cliente SHALL show, under their page header, a setup strip for the active tenant.
+
+**Stages.** The strip lists, in order:
+
+| Stage | Done when | Known from |
+|---|---|---|
+| Conexión | at least one connection | the connection lists the console already reads (Consultas picker, Conexiones, Mapeo) |
+| Mapeo | a connection's report has every obligatory entity "Válida" | the Mapeo screen's report and validation |
+| Usuarios del panel | at least one active panel user | the Usuarios del panel screen |
+| Tablero | the dashboard holds at least one report | the Tablero del cliente screen and its save |
+| Primera automatización | at least one active automation | the automations list read with the tenant |
+
+**Each stage** SHALL be shown as a mark and text: «✓ Hecho», «○ Pendiente», or «? Sin revisar» when it has not been checked yet in this visit.
+
+**The current screen's stage** SHALL be marked «(estás acá)». Agentes is not a stage, and its screen marks none.
+
+**The next step.** The strip SHALL end with «Siguiente: {first stage not done} →», linking to its screen, or with «Puesta en marcha completa» when every stage is done.
+
+**The guide never blocks and never asks.** It SHALL NOT disable, hide or reorder any control or screen, and it SHALL NOT send any request of its own.
+
+**Without a tenant**, the strip is hidden.
+
+**On a tenant change**, the state starts over.
+
+#### Scenario: Strip after choosing a tenant
+- **GIVEN** tenant A has one connection and no automations
+- **WHEN** the operator opens Agentes
+- **THEN** the strip shows Conexión «✓ Hecho», Mapeo, Usuarios del panel and Tablero «? Sin revisar», Primera automatización «○ Pendiente», and «Siguiente: Mapeo →»
+
+#### Scenario: A mapping becomes valid
+- **GIVEN** the Mapeo screen shows a report with an obligatory entity "Inválida"
+- **THEN** its strip reads «Mapeo ○ Pendiente (estás acá)»
+- **WHEN** a validation answers every obligatory entity "Válida"
+- **THEN** it reads «Mapeo ✓ Hecho (estás acá)»
+
+#### Scenario: The guide sends nothing
+- **WHEN** the operator chooses a tenant and opens a setup screen
+- **THEN** the only requests are the ones the tenant change and that screen already sent before this change
+
+### Requirement: Setup Marks in the Navigation (N6)
+With an active tenant, the navigation items Conexiones, Mapeo y validación, Usuarios del panel and Tablero del cliente SHALL each carry a mark, «✓ Hecho» or «○ Pendiente», from the same state as the setup strip.
+- A stage not checked yet shows no mark.
+- Agentes carries none.
+- The marks SHALL NOT change whether an item is usable (N5).
+- Without a tenant the marks are hidden.
+
+#### Scenario: Marks follow the strip
+- **GIVEN** tenant A has a connection and Mapeo was not visited
+- **THEN** Conexiones is marked «✓ Hecho» and Mapeo y validación has no mark
+
+### Requirement: Next Step After Completing a Stage (G2)
+When an action completes a stage, the setup strip of the screen the operator is on SHALL update at once, and its «Siguiente» link SHALL name the next stage that is not done.
+
+#### Scenario: First user
+- **GIVEN** the operator is on Usuarios del panel with no active user
+- **WHEN** the list shows an active user
+- **THEN** the strip reads «Usuarios del panel ✓ Hecho (estás acá)» and «Siguiente» names the first stage still open
+
+### Requirement: One Connection Comes Preselected (G3)
+In Mapeo y validación, when the active tenant has exactly one connection, it SHALL come selected and its report SHALL be read. With two or more, none SHALL be preselected. (Consultas does the same since CH-53.)
+
+#### Scenario: One connection
+- **GIVEN** tenant A has only "food-store"
+- **WHEN** the operator opens Mapeo y validación
+- **THEN** "food-store" is selected and its report is requested
+
+#### Scenario: Two connections
+- **GIVEN** tenant A has "food-store" and "replica-b"
+- **WHEN** the operator opens Mapeo y validación
+- **THEN** no connection is selected
+
+### Requirement: Setup Screens State Their Step (M1)
+The purpose line of Conexiones, Mapeo y validación, Usuarios del panel and Tablero del cliente SHALL start with «Paso {n} de la puesta en marcha.», numbered in the order of the setup strip. Agentes' purpose line SHALL start with «Opcional: solo hace falta si la réplica está en una red privada.»
+
+#### Scenario: Mapping step
+- **WHEN** the hash becomes `#mapeo`
+- **THEN** the purpose line starts with «Paso 2 de la puesta en marcha.»
+
+### Requirement: Template and Report Editor Subview (DEC-208, F1, F4, F7, K3)
+The template and report editors SHALL be subviews of their screens, at these addresses:
+- `#plantillas/nueva`, `#plantillas/{id}` and `#plantillas/{id}/duplicar`;
+- `#reportes/nuevo`, `#reportes/{id}` and `#reportes/{id}/duplicar`.
+
+**Breadcrumb.** Each editor SHALL show a breadcrumb back to its list: «Plantillas › Nueva plantilla», «Plantillas › {nombre}» or «Plantillas › Copia de {nombre}», and the same for Reportes.
+
+**Sections.** Each editor SHALL hold four numbered sections, in this order, each with a title and a one-line purpose:
+
+| # | Section | Plantillas | Reportes |
+|---|---|---|---|
+| 1 | Qué es | name, automation tag, format, freshness tolerance, client title and description | name, client title and description |
+| 2 | Datos | entities, SQL, parameter declaration | entities, SQL, period |
+| 3 | Salida | message header and line per row | visualization and columns by role |
+| 4 | Prueba | the test block | the test block |
+
+**Footer.** A footer fixed at the bottom of the subview SHALL hold:
+- «Cancelar»;
+- the save gate's reason line;
+- «Guardar plantilla» or «Guardar reporte».
+
+After a passing test, the reason line SHALL read «Última prueba: OK · {hora} · {n} filas».
+
+**In-use copy banner.** When a copy is opened from an original with `enUso: true`, a neutral banner at the top SHALL name the original:
+- for a template, that it has active automations and that the copy will not appear in the client panel until it has its own title and description;
+- for a report, that it is on a client dashboard.
+
+**Leaving.** Leaving an editor with unsaved changes, by the breadcrumb, «Cancelar» or a change of address, SHALL put the editor's address back and show the editor's own unsaved-changes line «Hay cambios sin guardar.» with «Descartar cambios» and «Seguir editando», as in Leaving the Query Editor With Unsaved Changes. Escape asks the same way. A tenant switch SHALL return to the list, after the tenant pop-up's unsaved-changes warning names the screen.
+
+**Not found.** An address whose id is not in the catalog SHALL show «No encontramos esa plantilla.» or «No encontramos ese reporte.» with a link to the list.
+
+#### Scenario: Opening a new template
+- **WHEN** the operator presses «Nueva plantilla»
+- **THEN** the hash becomes `#plantillas/nueva`, the four sections are shown in order, and no pop-up opens
+
+#### Scenario: Same skeleton
+- **WHEN** the template and report editors are compared
+- **THEN** both show sections 1, 2, 3 and 4 with the same titles, and only section 3's fields differ
+
+#### Scenario: Footer after a passing test
+- **GIVEN** the last test passed with 12 rows at 14:02
+- **THEN** the footer says «Última prueba: OK · 14:02 · 12 filas» and «Guardar plantilla» is enabled
+
+#### Scenario: Copy of an in-use template
+- **GIVEN** «Stock diario» has `enUso: true`
+- **WHEN** the operator presses «Duplicar y editar»
+- **THEN** the hash becomes `#plantillas/{id}/duplicar`, and the top banner names «Stock diario», says it has active automations, and says the copy needs its own client title and description
+
+#### Scenario: Leaving with changes
+- **GIVEN** the operator edited the SQL of a new report
+- **WHEN** the operator presses the «Reportes» breadcrumb
+- **THEN** the address stays `#reportes/nuevo`, the editor says «Hay cambios sin guardar.», and «Seguir editando» keeps the editor and its values

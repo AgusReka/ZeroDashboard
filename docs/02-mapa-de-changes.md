@@ -82,13 +82,13 @@ Todos son de front. No cambian reglas de negocio, endpoints ni datos, y ninguno 
 
 | Orden | ID | Change | Depende de | Notas |
 |---|---|---|---|---|
-| 14 | CH-50 | Navegación y orientación: el bloque del tenant lleva el nombre del tenant como título, el orden sigue la dependencia real, Tiempos de alta pasa al pie, un solo camino para cambiar de tenant y aviso de sección inexistente | — | Solo front |
-| 15 | CH-51 | Confirmaciones graduadas (C0 a C3) en un solo diálogo, desactivar una automatización con confirmación, acciones destructivas en el tono de error y foco en los diálogos | — | ⚠ |
-| 16 | CH-52 | Un solo sistema de avisos (`zd-banner`), errores en lenguaje humano, voseo en todo y zona horaria rotulada | — | ⚠ |
-| 17 | CH-54 | Mapeo con los campos esperados del contrato, veredicto por campo y resumen de la validación | CH-52 | Sin API nueva |
-| 18 | CH-53 | Consultas como subvista de página con el esqueleto de banco de trabajo | CH-51, CH-52 | ⚠ DEC-208 (enmienda DEC-173). Sin el cambio de backend de la versión en la lista |
-| 19 | CH-55 | Guía de puesta en marcha como capa visual, no obligatoria: franja de etapas, marcas en la navegación y «Siguiente» | CH-50 | Solo lee datos que la consola ya obtiene |
-| 20 | CH-56 | Editor de Plantillas y Reportes en una subvista con secciones numeradas | CH-53 | ⚠ DEC-208. Dos cortes: CH-56a (Plantillas) y CH-56b (Reportes) |
+| 14 | CH-50 | Navegación y orientación: el bloque del tenant lleva el nombre del tenant como título, el orden sigue la dependencia real, Tiempos de alta pasa al pie, un solo camino para cambiar de tenant y aviso de sección inexistente | — | Solo front. PR #266. Archivado el 2026-11-12. |
+| 15 | CH-51 | Confirmaciones graduadas (C0 a C3) en un solo diálogo, desactivar una automatización con confirmación, acciones destructivas en el tono de error y foco en los diálogos | — | ⚠ PR #267. Archivado el 2026-11-12. |
+| 16 | CH-52 | Un solo sistema de avisos (`zd-banner`), errores en lenguaje humano, voseo en todo y zona horaria rotulada | — | ⚠ PRs #268, #269. Archivado el 2026-11-12. |
+| 17 | CH-54 | Mapeo con los campos esperados del contrato, veredicto por campo y resumen de la validación | CH-52 | Sin API nueva. PR #270. Archivado el 2026-11-12. |
+| 18 | CH-53 | Consultas como subvista de página con el esqueleto de banco de trabajo | CH-51, CH-52 | ⚠ DEC-208 (enmienda DEC-173). Sin el cambio de backend de la versión en la lista. PRs #271, #272. Archivado el 2026-11-12. |
+| 19 | CH-55 | Guía de puesta en marcha como capa visual, no obligatoria: franja de etapas, marcas en la navegación y «Siguiente» | CH-50 | Solo lee datos que la consola ya obtiene. PR #273. Archivado el 2026-11-12. |
+| 20 | CH-56 | Editor de Plantillas y Reportes en una subvista con secciones numeradas | CH-53 | ⚠ DEC-208. Dos cortes: CH-56a (Plantillas) y CH-56b (Reportes). PRs #274, #275, #276. Archivado el 2026-11-12. |
 
 ---
 
