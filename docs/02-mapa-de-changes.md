@@ -89,7 +89,7 @@ Todos son de front. No cambian reglas de negocio, endpoints ni datos, y ninguno 
 | 18 | CH-53 | Consultas como subvista de página con el esqueleto de banco de trabajo | CH-51, CH-52 | ⚠ DEC-208 (enmienda DEC-173). Sin el cambio de backend de la versión en la lista. PRs #271, #272. Archivado el 2026-11-12. |
 | 19 | CH-55 | Guía de puesta en marcha como capa visual, no obligatoria: franja de etapas, marcas en la navegación y «Siguiente» | CH-50 | Solo lee datos que la consola ya obtiene. PR #273. Archivado el 2026-11-12. |
 | 20 | CH-56 | Editor de Plantillas y Reportes en una subvista con secciones numeradas | CH-53 | ⚠ DEC-208. Dos cortes: CH-56a (Plantillas) y CH-56b (Reportes). PRs #274, #275, #276. Archivado el 2026-11-12. |
-| 21 | CH-57 | El umbral y el mínimo de filas se distinguen: rótulo y ayuda opcionales por parámetro de plantilla, cargados en el editor, y la ayuda del mínimo completa en el alta y el ajuste | CH-56 | DEC-209. Toca la API de plantillas (sin migración) y la consola. El panel no cambia. |
+| 21 | CH-57 | El umbral y el mínimo de filas se distinguen: rótulo y ayuda opcionales por parámetro de plantilla, cargados en el editor, y la ayuda del mínimo completa en el alta y el ajuste | CH-56 | DEC-209. Toca la API de plantillas (sin migración) y la consola. El panel no cambia. PR #280. Archivado el 2026-11-12. |
 
 ---
 
