@@ -309,8 +309,14 @@ const IDS = [
   'reporte-probar',
   'reporte-prueba-aviso',
   'reporte-prueba-tabla',
-  'reporte-dialogo',
-  'reporte-dialogo-titulo',
+  // CH-56b (DEC-208): the report editor is a page subview on the template editor's skeleton.
+  'reportes-lista',
+  'reporte-no-encontrado',
+  'reporte-editor',
+  'reporte-editor-titulo',
+  'prueba-sobre-reporte-editor',
+  'reporte-copia-aviso',
+  'reporte-copia-original',
   'reporte-form',
   'reporte-f-nombre',
   'reporte-f-titulo',
@@ -331,7 +337,7 @@ const IDS = [
   'reporte-f-probar',
   'reporte-f-resultado',
   'reporte-f-tabla',
-  'reporte-dialogo-estado',
+  'reporte-motivo',
   'reporte-confirmar',
   'reporte-descartar',
   'reporte-seguir',
@@ -590,7 +596,7 @@ const IDS_RETIRADOS = ['consulta-franja', 'franja-sin-guardar', 'guardar-abrir',
 const IDS_OCULTOS_ALTA = ['auto-alta', 'auto-paso-2', 'auto-aviso'];
 /** Every node the markup starts hidden: the wizard's, plus CH-25's versions panel and save-as-version block, and CH-32a's retry button, query pop-up, confirmation and its version-only nodes. */
 const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conexion-reintentar', 'consulta-dialogo', 'consulta-nueva-confirmar', 'version-campos', 'version-boton', 'pantalla-automatizaciones', 'pantalla-frescura', 'pantalla-auditoria', 'pantalla-tiempos', 'pantalla-tenants', 'pantalla-conexiones', 'pantalla-agentes', 'agente-secreto', 'pantalla-usuarios', 'usuario-secreto', 'pantalla-plantillas', 'plantilla-panel', 'pantalla-contrato', 'pantalla-mapeo', 'tenant-dialogo', 'tenant-confirmar', 'tenant-baja', 'tb-confirmar', 'auto-ajuste', 'aj-confirmar', 'usuario-dialogo', 'usuario-confirmar', 'conexion-dialogo', 'conexion-confirmar', 'auto-confirmar', 'plantilla-editor', 'plantilla-no-encontrada', 'plantilla-confirmar', 'plantilla-dialogo-duplicar', 'plantilla-copia-aviso', 'plantilla-editar', 'plantilla-duplicar', 'plantilla-en-uso-aviso', 'auto-vista-previa', 'vp-mensaje', 'vp-confirmar', 'auto-canal-ayuda', 'aj-canal-ayuda',
-  'pantalla-reportes', 'reporte-panel', 'reporte-prueba-periodo-caja', 'reporte-dialogo', 'reporte-confirmar', 'reporte-f-periodo-campos', 'reporte-f-agregar-columna', 'reporte-f-prueba-periodo-caja',
+  'pantalla-reportes', 'reporte-panel', 'reporte-prueba-periodo-caja', 'reporte-editor', 'reporte-no-encontrado', 'reporte-copia-aviso', 'reporte-confirmar', 'reporte-f-periodo-campos', 'reporte-f-agregar-columna', 'reporte-f-prueba-periodo-caja',
   'reporte-en-uso-aviso', 'reporte-editar', 'reporte-duplicar', 'reporte-dialogo-duplicar', 'pantalla-tablero',
   'tenant-cambio', 'tc-confirmar', 'auto-vacio', 'mapeo-automatizaciones-bloque', 'tenant-siguiente',
   'tenant-activo-id', 'nav-tenant-id', 'tc-sin-guardar', 'pantalla-desconocida',
@@ -6442,7 +6448,7 @@ describe('the console document, served by the real route', () => {
 
   const guardarAbiertoCH45 = (escenario: Escenario): boolean => !nodo(escenario, 'reporte-dialogo-guardar').disabled;
 
-  test('CH-45 Reportes follows Plantillas in the Global group, and its screen and pop-up start hidden', () => {
+  test('CH-45 CH-56 Reportes follows Plantillas in the Global group, and its screen and editor start hidden', () => {
     const html = marcado();
     const en = (id: string): number => html.indexOf(`id="${id}"`);
     assert.ok(en('nav-plantillas') < en('nav-reportes'));
@@ -6451,12 +6457,14 @@ describe('the console document, served by the real route', () => {
     assert.match(html, /<a id="nav-reportes" class="zd-sidenav__item" href="#reportes"><span>Reportes<\/span><span class="zd-sidenav__meta" title="Se prueba con el tenant activo">con tenant<\/span><\/a>/);
     assert.match(html, /<section id="pantalla-reportes"[^>]*hidden>/);
     assert.match(html, /<aside id="reporte-panel"[^>]*hidden>/);
-    assert.match(html, /<div id="reporte-dialogo" class="zd-dialog-backdrop" hidden>/);
+    assert.match(html, /<div id="reporte-editor" aria-labelledby="reporte-editor-titulo" hidden>/);
+    assert.ok(!html.includes('reporte-dialogo"'), 'no pop-up wrapper is left (DEC-208)');
+    assert.match(html, /<nav class="zd-pagehead__crumbs" aria-label="Ubicación"><a href="#reportes">Reportes<\/a> › <h2 id="reporte-editor-titulo"/);
     assert.ok(en('reporte-nuevo') < en('reportes-aviso'), 'the primary action is in the header');
     // The test block sits in the side panel, after the columns and before Cerrar.
     assert.ok(en('reporte-columnas') < en('reporte-prueba-conexion'));
     assert.ok(en('reporte-prueba-tabla') < en('reporte-cerrar'));
-    const seccion = html.slice(en('pantalla-reportes'), html.indexOf('</section>', en('reporte-dialogo')));
+    const seccion = html.slice(en('pantalla-reportes'), html.indexOf('</section>', en('reporte-editor')));
     for (const boton of seccion.match(/<button[^>]*>/g) ?? []) {
       assert.match(boton, /type="(button|submit)"/, boton);
     }
@@ -6647,14 +6655,14 @@ describe('the console document, served by the real route', () => {
 
   test('CH-45 «Nuevo reporte» opens a blank pop-up with empty column selects and Guardar closed, and says why', async () => {
     const escenario = await abrirNuevoCH45();
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
-    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Nuevo reporte');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-editor-titulo').textContent, 'Nuevo reporte');
     assert.equal(nodo(escenario, 'reporte-f-nombre').value, '');
     assert.equal(nodo(escenario, 'reporte-f-periodo').value, 'no');
     assert.equal(nodo(escenario, 'reporte-f-periodo-campos').hidden, true);
     assert.equal(nodo(escenario, 'reporte-f-prueba-periodo-caja').hidden, true);
     assert.equal(nodo(escenario, 'reporte-dialogo-guardar').disabled, true);
-    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Probá el reporte antes de guardarlo.');
+    assert.equal(nodo(escenario, 'reporte-motivo').textContent, 'Probá el reporte antes de guardarlo.');
     const rotulos = buscar(nodo(escenario, 'reporte-f-entidades'), (n) => n.tagName === 'label').map((n) => n.textContent);
     assert.deepEqual(rotulos, [...ENTIDADES_CANONICAS]);
     // A table to start with: one column row whose select offers nothing until a test passes.
@@ -6699,7 +6707,7 @@ describe('the console document, served by the real route', () => {
     asignarCH45(escenario, 0, 'producto', 'Producto');
     asignarCH45(escenario, 1, 'unidades', 'Unidades');
     assert.equal(guardarAbiertoCH45(escenario), true);
-    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, '');
+    assert.match(nodo(escenario, 'reporte-motivo').textContent, /^Última prueba: OK · \d\d:\d\d · 1 fila$/);
 
     escenario.respuestas.push({ status: 201, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-20' } } });
     escenario.respuestas.push({ status: 200, cuerpo: { reportes: [REPORTE_LISTADO, { ...REPORTE_LISTADO, id: 'r-20' }], truncado: false } });
@@ -6729,7 +6737,7 @@ describe('the console document, served by the real route', () => {
     });
     assert.equal(lista.url, '/reportes');
     assert.equal(detalle.url, '/reportes/r-20');
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true, 'the pop-up closes');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, true, 'the pop-up closes');
     assert.equal(nodo(escenario, 'reporte-panel').hidden, false, 'and the panel shows the saved report');
   });
 
@@ -6748,7 +6756,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(guardarAbiertoCH45(escenario), true);
     escribirCH38(escenario, 'reporte-f-sql', 'SELECT producto, unidades FROM v_item_pedido WHERE fecha > :desde');
     assert.equal(guardarAbiertoCH45(escenario), false);
-    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Cambió el reporte desde la última prueba. Probalo de nuevo para poder guardarlo.');
+    assert.equal(nodo(escenario, 'reporte-motivo').textContent, 'Cambió el reporte desde la última prueba. Probalo de nuevo para poder guardarlo.');
   });
 
   test('CH-45 the period, the entities and the connection are part of the fingerprint', async () => {
@@ -6780,7 +6788,7 @@ describe('the console document, served by the real route', () => {
     await probarDialogoCH45(escenario, { status: 200, cuerpo: { resultado: 'fallo', fase: 'x', categoria: 'y', codigo: '42P01', periodo: null } });
     assert.equal(nodo(escenario, 'reporte-f-resultado').textContent, 'La ejecución falló y la consola no pudo identificar el motivo. (SQLSTATE 42P01)');
     assert.equal(guardarAbiertoCH45(escenario), false);
-    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'La última prueba falló. Corregí el reporte y probalo de nuevo para poder guardarlo.');
+    assert.equal(nodo(escenario, 'reporte-motivo').textContent, 'La última prueba falló. Corregí el reporte y probalo de nuevo para poder guardarlo.');
     assert.deepEqual(filasColumnasCH45(escenario)[0].selector.options.map((o) => o.value), ['']);
     await probarDialogoCH45(escenario, {
       status: 400,
@@ -6838,14 +6846,14 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'reporte-form').disparar('submit');
     await asentarVarias();
     assert.equal(
-      nodo(escenario, 'reporte-dialogo-estado').textContent,
+      nodo(escenario, 'reporte-motivo').textContent,
       'Revisá estos campos: título de la columna 2, título para el cliente. Estos términos no se admiten en los textos para el cliente: «sql».',
     );
     escenario.respuestas.push({ status: 400, cuerpo: { error: 'solicitud-invalida', campos: ['/columnas'], faltantes: ['total'] } });
     nodo(escenario, 'reporte-form').disparar('submit');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Revisá estos campos: columnas. No están entre las columnas de la última prueba: total.');
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-motivo').textContent, 'Revisá estos campos: columnas. No están entre las columnas de la última prueba: total.');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, false);
   });
 
   test('CH-45 «Editar» opens the stored report and saves it with one PUT', async () => {
@@ -6853,7 +6861,7 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
     nodo(escenario, 'reporte-editar').disparar('click');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Editar reporte');
+    assert.equal(nodo(escenario, 'reporte-editor-titulo').textContent, 'Ventas por producto');
     assert.equal(nodo(escenario, 'reporte-f-nombre').value, 'Ventas por producto');
     assert.equal(nodo(escenario, 'reporte-f-periodo').value, 'si');
     assert.equal(nodo(escenario, 'reporte-f-dias').value, '30, 7');
@@ -6876,7 +6884,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(cambio.tenant, null);
     assert.deepEqual((cambio.cuerpo as Record<string, unknown>).columnas, REPORTE_CH45.columnas);
     assert.deepEqual((cambio.cuerpo as Record<string, unknown>).columnasPrueba, ['unidades', 'producto', 'extra']);
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, true);
   });
 
   test('CH-45 with no active tenant the pop-up test says so, sends nothing and Guardar stays closed', async () => {
@@ -6890,25 +6898,25 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     assert.equal(escenario.peticiones.length, antes);
     assert.equal(guardarAbiertoCH45(escenario), false);
-    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, 'Elegí un tenant para probar el reporte.');
+    assert.equal(nodo(escenario, 'reporte-motivo').textContent, 'Elegí un tenant para probar el reporte.');
   });
 
   test('CH-45 Cancelar and Escape ask before dropping what was typed; a tenant switch closes the pop-up', async () => {
     const escenario = await abrirNuevoCH45();
     nodo(escenario, 'reporte-dialogo-cancelar').disparar('click');
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true, 'nothing typed: it closes');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, true, 'nothing typed: it closes');
     escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
     nodo(escenario, 'reporte-nuevo').disparar('click');
     await asentarVarias();
     escribirCH38(escenario, 'reporte-f-nombre', 'Algo');
-    nodo(escenario, 'reporte-dialogo').disparar('keydown', { key: 'Escape' });
+    nodo(escenario, 'reporte-editor').disparar('keydown', { key: 'Escape' });
     assert.equal(nodo(escenario, 'reporte-confirmar').hidden, false);
     nodo(escenario, 'reporte-seguir').disparar('click');
     assert.equal(nodo(escenario, 'reporte-confirmar').hidden, true);
     llenarCH45(escenario);
     await probarDialogoCH45(escenario);
     await elegirTenant(escenario, [], [], 't-2');
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, true);
     assert.equal(nodo(escenario, 'reporte-f-tabla').hijos.length, 0);
     assert.equal(escenario.peticiones.filter((p) => p.url === '/reportes' && p.cuerpo !== null).length, 0);
   });
@@ -7216,8 +7224,8 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'reporte-duplicar').disparar('click');
     await asentarVarias();
     assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/conexiones'], 'only the connections are read');
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
-    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Duplicar reporte');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-editor-titulo').textContent, 'Copia de Ventas por producto');
     assert.equal(nodo(escenario, 'reporte-f-nombre').value, 'Ventas por producto (copia)');
     assert.equal(nodo(escenario, 'reporte-f-titulo').value, 'Lo que más se vende', 'the copy keeps the client texts');
     assert.equal(nodo(escenario, 'reporte-f-descripcion').value, 'Las unidades vendidas por producto.');
@@ -7237,7 +7245,7 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     assert.equal(escenario.peticiones[inicio].url, '/reportes', 'a copy is a POST, never a PUT of the original');
     assert.equal((escenario.peticiones[inicio].cuerpo as { nombre: string }).nombre, 'Ventas por producto (copia)');
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, true);
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, true);
   });
 
   test('CH-46 a 409 reporte-en-uso keeps the pop-up open and offers «Duplicar y editar», which turns the edit into a copy', async () => {
@@ -7251,19 +7259,19 @@ describe('the console document, served by the real route', () => {
     escenario.respuestas.push({ status: 409, cuerpo: { error: 'reporte-en-uso' } });
     nodo(escenario, 'reporte-form').disparar('submit');
     await asentarVarias();
-    assert.equal(nodo(escenario, 'reporte-dialogo').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, false);
     assert.equal(
-      nodo(escenario, 'reporte-dialogo-estado').textContent,
+      nodo(escenario, 'reporte-motivo').textContent,
       'Este reporte ahora está en el tablero de un cliente y no se puede editar. Duplicalo para guardar tus cambios como un reporte nuevo.',
     );
     assert.equal(nodo(escenario, 'reporte-dialogo-duplicar').hidden, false);
 
     nodo(escenario, 'reporte-dialogo-duplicar').disparar('click');
-    assert.equal(nodo(escenario, 'reporte-dialogo-titulo').textContent, 'Duplicar reporte');
+    assert.equal(nodo(escenario, 'reporte-editor-titulo').textContent, 'Copia de Ventas por producto');
     assert.equal(nodo(escenario, 'reporte-f-nombre').value, 'Ventas por producto (copia)');
     assert.equal(nodo(escenario, 'reporte-f-titulo').value, 'Lo que más se vende');
     assert.equal(nodo(escenario, 'reporte-dialogo-duplicar').hidden, true);
-    assert.equal(nodo(escenario, 'reporte-dialogo-estado').textContent, '');
+    assert.match(nodo(escenario, 'reporte-motivo').textContent, /^Última prueba: OK · \d\d:\d\d · 2 filas$/);
     assert.equal(guardarAbiertoCH45(escenario), true, 'the test of this same content still holds');
 
     escenario.respuestas.push({ status: 201, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-41', enUso: false } } });
@@ -7275,6 +7283,157 @@ describe('the console document, served by the real route', () => {
     await asentarVarias();
     assert.equal(escenario.peticiones[inicio].url, '/reportes');
     assert.equal((escenario.peticiones[inicio].cuerpo as { nombre: string }).nombre, 'Ventas por producto (copia)');
+  });
+
+  // ---- CH-56b (DEC-208): the report editor on the template editor's skeleton --------------------
+
+  /** Boots with a tenant on the Reportes list. */
+  async function enReportesCH56(): Promise<Escenario> {
+    const escenario = await arrancar([{ id: 't-1', nombre: 'Food Store' }, { id: 't-2', nombre: 'Otro' }]);
+    await elegirTenant(escenario);
+    await abrirReportes(escenario);
+    return escenario;
+  }
+
+  /** Goes to a report editor address as a link would: the list is read, then the report. */
+  async function irAReporteCH56(escenario: Escenario, hash: string, detalle: { status: number; cuerpo: unknown } | null, conexiones = true): Promise<void> {
+    escenario.respuestas.push({ status: 200, cuerpo: { reportes: [REPORTE_LISTADO], truncado: false } });
+    if (detalle !== null) escenario.respuestas.push(detalle);
+    if (conexiones) escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    irA(escenario, hash);
+    await asentarVarias();
+  }
+
+  /** The section titles and the ids of the fields in each section of an editor's markup. */
+  function seccionesDe(id: string): Array<{ titulo: string; campos: string[] }> {
+    const html = marcado();
+    const editor = html.slice(html.indexOf('id="' + id + '"'), html.indexOf('</footer>', html.indexOf('id="' + id + '"')));
+    return editor.slice(editor.indexOf('<ol class="editor-secciones">'), editor.indexOf('</ol>')).split('<li>').slice(1).map((s) => ({
+      titulo: s.match(/<h3 class="zd-h3">([^<]*)<\/h3>/)?.[1] ?? '',
+      campos: [...s.matchAll(/ id="((?:plantilla|reporte)-f-[a-z-]+)"/g)].map((m) => m[1]),
+    }));
+  }
+
+  test('CH-56 K3 both editors show the same four section titles, and only section 3 holds other fields', () => {
+    const plantilla = seccionesDe('plantilla-editor');
+    const reporte = seccionesDe('reporte-editor');
+    assert.deepEqual(reporte.map((s) => s.titulo), ['Qué es', 'Datos', 'Salida', 'Prueba']);
+    assert.deepEqual(reporte.map((s) => s.titulo), plantilla.map((s) => s.titulo));
+    assert.deepEqual(reporte[0].campos, ['reporte-f-nombre', 'reporte-f-titulo', 'reporte-f-descripcion']);
+    assert.deepEqual(reporte[1].campos, ['reporte-f-entidades', 'reporte-f-sql', 'reporte-f-periodo', 'reporte-f-periodo-campos', 'reporte-f-parametro', 'reporte-f-dias']);
+    assert.deepEqual(reporte[2].campos, ['reporte-f-visualizacion', 'reporte-f-columnas-aviso', 'reporte-f-columnas', 'reporte-f-agregar-columna']);
+    assert.deepEqual(reporte[3].campos, ['reporte-f-conexion', 'reporte-f-prueba-periodo-caja', 'reporte-f-prueba-periodo', 'reporte-f-probar', 'reporte-f-resultado', 'reporte-f-tabla']);
+    const html = marcado();
+    const pie = html.slice(html.indexOf('id="reporte-editor"'));
+    assert.ok(pie.indexOf('<footer class="editor-pie">') < pie.indexOf('id="reporte-dialogo-cancelar"'));
+    assert.ok(pie.indexOf('id="reporte-motivo"') < pie.indexOf('id="reporte-dialogo-guardar"'));
+  });
+
+  test('CH-56 «Nuevo reporte», «Editar» and «Duplicar y editar» set the report editor address', async () => {
+    const nuevo = await abrirNuevoCH45();
+    assert.equal(nuevo.ubicacion.hash, '#reportes/nuevo');
+    assert.equal(nodo(nuevo, 'reportes-lista').hidden, true);
+
+    const libre = await reporteListoParaProbar();
+    libre.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(libre, 'reporte-editar').disparar('click');
+    await asentarVarias();
+    assert.equal(libre.ubicacion.hash, '#reportes/r-1');
+    assert.equal(nodo(libre, 'reporte-panel').hidden, true, 'the side panel gives way to the editor');
+    assert.equal(nodo(libre, 'reporte-copia-aviso').hidden, true);
+
+    const enUso = await reporteListoParaProbar({ ...REPORTE_CH45, enUso: true });
+    enUso.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(enUso, 'reporte-duplicar').disparar('click');
+    await asentarVarias();
+    assert.equal(enUso.ubicacion.hash, '#reportes/r-1/duplicar');
+    assert.equal(nodo(enUso, 'reporte-copia-aviso').hidden, false, 'a copy of a report in use says so');
+    assert.equal(nodo(enUso, 'reporte-copia-original').textContent, '«Ventas por producto» está en el tablero de un cliente.');
+  });
+
+  test('CH-56 #reportes/{id} edits a free report, {id}/duplicar copies it, and an id in use goes to the side panel', async () => {
+    const escenario = await enReportesCH56();
+    await irAReporteCH56(escenario, '#reportes/r-1', { status: 200, cuerpo: { reporte: REPORTE_CH45 } });
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-editor-titulo').textContent, 'Ventas por producto');
+
+    const copia = await enReportesCH56();
+    await irAReporteCH56(copia, '#reportes/r-1/duplicar', { status: 200, cuerpo: { reporte: REPORTE_CH45 } });
+    assert.equal(nodo(copia, 'reporte-editor-titulo').textContent, 'Copia de Ventas por producto');
+    assert.equal(nodo(copia, 'reporte-f-nombre').value, 'Ventas por producto (copia)');
+    assert.equal(nodo(copia, 'reporte-copia-aviso').hidden, true, 'the original is on no dashboard');
+
+    const enUso = await enReportesCH56();
+    await irAReporteCH56(enUso, '#reportes/r-1', { status: 200, cuerpo: { reporte: { ...REPORTE_CH45, enUso: true } } });
+    assert.equal(nodo(enUso, 'reporte-editor').hidden, true);
+    assert.equal(enUso.ubicacion.hash, '#reportes');
+    assert.equal(nodo(enUso, 'reporte-panel').hidden, false);
+    assert.equal(nodo(enUso, 'reporte-duplicar').hidden, false);
+  });
+
+  test('CH-56 a report address whose id is not in the catalog says «No encontramos ese reporte.»', async () => {
+    const escenario = await enReportesCH56();
+    await irAReporteCH56(escenario, '#reportes/r-404', { status: 404, cuerpo: { error: 'no-encontrado' } }, false);
+    assert.equal(nodo(escenario, 'reporte-no-encontrado').hidden, false);
+    assert.equal(nodo(escenario, 'reportes-lista').hidden, true);
+    assert.match(marcado(), /<p class="zd-state__title">No encontramos ese reporte\.<\/p>[\s\S]*?<a class="zd-btn zd-btn--secondary" href="#reportes">Ir a Reportes<\/a>/);
+    await abrirReportes(escenario);
+    assert.equal(nodo(escenario, 'reporte-no-encontrado').hidden, true);
+    assert.equal(nodo(escenario, 'reportes-lista').hidden, false);
+  });
+
+  test('CH-56 leaving the report editor with changes asks first; «Seguir editando» keeps the editor and its values', async () => {
+    const escenario = await abrirNuevoCH45();
+    escribirCH38(escenario, 'reporte-f-sql', 'SELECT 1');
+    irA(escenario, '#reportes');
+    assert.equal(escenario.ubicacion.hash, '#reportes/nuevo');
+    assert.equal(nodo(escenario, 'reporte-confirmar').hidden, false);
+    nodo(escenario, 'reporte-seguir').disparar('click');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-f-sql').value, 'SELECT 1');
+    irA(escenario, '#tenants');
+    nodo(escenario, 'reporte-descartar').disparar('click');
+    assert.equal(escenario.ubicacion.hash, '#tenants');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, true);
+  });
+
+  test('CH-56 the tenant pop-up names Reportes when its editor has changes, and the switch returns to the list', async () => {
+    const escenario = await abrirNuevoCH45();
+    escribirCH38(escenario, 'reporte-f-nombre', 'Algo');
+    nodo(escenario, 'tenant-cambiar').disparar('click');
+    assert.equal(nodo(escenario, 'tc-sin-guardar-texto').textContent, 'Tenés cambios sin guardar en Reportes. Si cambiás de tenant, se descartan.');
+    nodo(escenario, 'tc-cancelar').disparar('click');
+    await elegirTenant(escenario, [], [], 't-2');
+    assert.equal(nodo(escenario, 'reporte-editor').hidden, true);
+    assert.equal(escenario.ubicacion.hash, '#reportes');
+    assert.equal(nodo(escenario, 'reportes-lista').hidden, false);
+  });
+
+  test('CH-56 the report 409 conversion moves the address to the copy and keeps «Guardar reporte» open; saving returns to the list', async () => {
+    const escenario = await reporteListoParaProbar();
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'reporte-editar').disparar('click');
+    await asentarVarias();
+    escribirCH38(escenario, 'reporte-f-conexion', 'c-1');
+    await probarDialogoCH45(escenario);
+    escenario.respuestas.push({ status: 409, cuerpo: { error: 'reporte-en-uso' } });
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    nodo(escenario, 'reporte-dialogo-duplicar').disparar('click');
+    assert.equal(escenario.ubicacion.hash, '#reportes/r-1/duplicar');
+    assert.equal(nodo(escenario, 'reporte-copia-aviso').hidden, false, 'the original is on a dashboard now');
+    assert.equal(guardarAbiertoCH45(escenario), true);
+    assert.equal(escenario.recargas, 0);
+
+    escenario.respuestas.push({ status: 201, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-41' } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reportes: [REPORTE_LISTADO], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { reporte: { ...REPORTE_CH45, id: 'r-41' } } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
+    nodo(escenario, 'reporte-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.ubicacion.hash, '#reportes');
+    assert.equal(nodo(escenario, 'reportes-lista').hidden, false);
+    assert.equal(nodo(escenario, 'reporte-panel').hidden, false);
   });
 
   // ---- CH-30e1 (DEC-163, screen C-12): the Auditoría screen -----------------------------------

@@ -60,11 +60,11 @@ Chain strategy: stacked-to-main
   - existing template cases moved to hash-based opening.
 
 ## 56b — Reportes on the same skeleton
-- [ ] b.1 `#reporte-editor` markup on the same skeleton (section 3 is «Salida»: visualization and columns by role). Move every field node of `#reporte-dialogo`, keeping the ids, and remove the wrapper.
-- [ ] b.2 Sub-routes for `reportes`: `nuevo`, `{id}` and `{id}/duplicar`, plus not found and the in-use redirect. Wire the buttons.
-- [ ] b.3 409 `reporte-en-uso` → in-place duplicate with `replaceState`.
-- [ ] b.4 Footer line, copy banner («la original está en un tablero de cliente»), leave guard, tenant switch, and save returning to the list.
-- [ ] b.5 Tests:
+- [x] b.1 `#reporte-editor` markup on the same skeleton (section 3 is «Salida»: visualization and columns by role). Move every field node of `#reporte-dialogo`, keeping the ids, and remove the wrapper.
+- [x] b.2 Sub-routes for `reportes`: `nuevo`, `{id}` and `{id}/duplicar`, plus not found and the in-use redirect. Wire the buttons.
+- [x] b.3 409 `reporte-en-uso` → in-place duplicate with `replaceState`.
+- [x] b.4 Footer line, copy banner («la original está en un tablero de cliente»), leave guard, tenant switch, and save returning to the list.
+- [x] b.5 Tests:
   - the same set as a.9 for reports;
   - a structural check that both editors expose the same four section titles (K3);
   - existing report cases moved to hash-based opening.
