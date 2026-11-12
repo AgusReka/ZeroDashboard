@@ -81,6 +81,14 @@ interface CuerpoPrueba {
 }
 
 /** One TCP handshake, no driver: decides whether this suite has a server to talk to. */
+/**
+ * True when a raw response body repeats `secreto` outside the `motor` field. The engine name
+ * comes from a closed list, so a test password that equals it (the local `postgres`) is not a leak.
+ */
+function repiteSecreto(crudo: string, secreto: string): boolean {
+  return crudo.replace(/"motor":"[^"]*"/g, '"motor":""').includes(secreto);
+}
+
 function esAlcanzable(host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.connect({ host, port });
@@ -227,7 +235,7 @@ describe(
       });
       assert.equal(respuesta.statusCode, 201, respuesta.body);
       assert.ok(
-        !respuesta.body.includes(cuerpo.credencial),
+        !repiteSecreto(respuesta.body, cuerpo.credencial),
         'the registration response must not echo the submitted credential',
       );
       const { conexion } = respuesta.json() as { conexion: { id: string } };
@@ -256,7 +264,7 @@ describe(
       assert.equal(cuerpo.puerto, objetivo.port);
       assert.ok(Number.isInteger(cuerpo.duracionMs) && cuerpo.duracionMs >= 0);
       assert.ok(
-        !crudo.includes(objetivo.password),
+        !repiteSecreto(crudo, objetivo.password),
         'a successful test must not echo the credential',
       );
     });
@@ -455,7 +463,7 @@ describe(
       const { cuerpo, crudo } = await probar(id);
 
       assert.equal(cuerpo.resultado, 'ok', crudo);
-      assert.ok(!crudo.includes(objetivo.password), 'the deciphered value must not be echoed');
+      assert.ok(!repiteSecreto(crudo, objetivo.password), 'the deciphered value must not be echoed');
     });
 
     /**

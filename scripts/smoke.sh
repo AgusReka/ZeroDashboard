@@ -32,6 +32,11 @@ fail() {
 # Reads one value out of .env without sourcing (and executing) the file.
 env_value() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
 
+# repite_secreto <secreto> <archivo>: true when the file repeats the secret outside the
+# `motor` field. The engine name is a closed list, so a password equal to it (the local
+# `postgres`) is not a leak.
+repite_secreto() { sed 's/"motor":"[^"]*"/"motor":""/g' "$2" | grep -qF -- "$1"; }
+
 # The entrypoint migrates and seeds before the server listens, so a fixed sleep
 # races a freshly recreated container instead of waiting for it.
 wait_for_app() {
@@ -210,7 +215,7 @@ registrar() {
     -d "{\"nombre\":\"CH-03 smoke $1\",\"motor\":\"postgres\",\"host\":\"$2\",\"puerto\":5432,\"baseDeDatos\":\"$3\",\"usuarioDb\":\"$DB_USER\",\"credencial\":\"$4\"}" \
     --max-time 10)
   [ "$code" = "201" ] || fail "expected HTTP 201 registering '$1', got $code ($(cat /tmp/smoke-conexion.json))"
-  if grep -q "$4" /tmp/smoke-conexion.json; then fail "the registration response echoed the credential"; fi
+  if repite_secreto "$4" /tmp/smoke-conexion.json; then fail "the registration response echoed the credential"; fi
   sed -n 's/.*"id":"\([^"]*\)".*/\1/p' /tmp/smoke-conexion.json
 }
 
@@ -225,7 +230,7 @@ probar() {
     grep -q "$fragmento" /tmp/smoke-prueba.json ||
       fail "expected $fragmento in the test response, got $(cat /tmp/smoke-prueba.json)"
   done
-  if grep -q "$credencial" /tmp/smoke-prueba.json; then fail "the test response echoed the credential"; fi
+  if repite_secreto "$credencial" /tmp/smoke-prueba.json; then fail "the test response echoed the credential"; fi
 }
 
 echo "-- reachable target (Connectivity Test Uses a Fixed PostgreSQL Probe) --"
@@ -240,7 +245,7 @@ code=$(curl -s -o /tmp/smoke-conexiones.json -w '%{http_code}' \
   http://localhost:3000/conexiones -H "X-Tenant-Id: $TENANT_A" --max-time 10)
 [ "$code" = "200" ] || fail "expected HTTP 200 listing connections, got $code ($(cat /tmp/smoke-conexiones.json))"
 grep -q "\"id\":\"$id\"" /tmp/smoke-conexiones.json || fail "the registered connection is missing from the listing"
-if grep -q -e 'credencial' -e "$DB_PASSWORD" /tmp/smoke-conexiones.json; then fail "the listing exposed a credential"; fi
+if grep -q 'credencial' /tmp/smoke-conexiones.json || repite_secreto "$DB_PASSWORD" /tmp/smoke-conexiones.json; then fail "the listing exposed a credential"; fi
 echo "OK: no header -> 400; tenant A -> 200 with its connection and no credential"
 
 echo "-- wrong password (Distinguishable Failure Categories) --"
@@ -324,7 +329,7 @@ ejecutar_ch04() {
     grep -q "$fragmento" /tmp/smoke-consulta.json ||
       fail "expected $fragmento in the execution response, got $(cat /tmp/smoke-consulta.json)"
   done
-  if grep -q "$credencial" /tmp/smoke-consulta.json; then fail "the execution response echoed the credential"; fi
+  if repite_secreto "$credencial" /tmp/smoke-consulta.json; then fail "the execution response echoed the credential"; fi
 }
 
 contar_articulos() {
