@@ -32,25 +32,25 @@ Chain strategy: stacked-to-main
 | 56b | Reportes editor on the same skeleton | same | `npm test`; typecheck; smoke | Revert 56b (report pop-up returns) |
 
 ## 56a — Shared skeleton and Plantillas
-- [ ] a.1 Bridge rules `editor-secciones` (numbered sections) and `editor-pie` (sticky footer, bottom padding).
-- [ ] a.2 `#plantilla-editor` markup:
+- [x] a.1 Bridge rules `editor-secciones` (numbered sections) and `editor-pie` (sticky footer, bottom padding).
+- [x] a.2 `#plantilla-editor` markup:
   - crumbs and the «Prueba sobre» line;
   - `#plantilla-copia-aviso`;
   - four sections with titles and purpose lines;
   - the footer with «Cancelar», `#plantilla-motivo` and «Guardar plantilla».
   
   Move every field node of `#plantilla-dialogo` into its section, keeping the ids, and remove the wrapper and its `dialogos` entry.
-- [ ] a.3 Sub-routes for `plantillas`:
+- [x] a.3 Sub-routes for `plantillas`:
   - `nueva`, `{id}` and `{id}/duplicar`, plus not found;
   - an in-use `{id}` goes to the list with the side panel.
   
   «Nueva plantilla», «Editar» and «Duplicar y editar» set the hash.
-- [ ] a.4 409 `plantilla-en-uso` → «Duplicar y editar» switches the mode in place and calls `history.replaceState` to `#plantillas/{id}/duplicar`.
-- [ ] a.5 Footer reason line: the existing reason, or «Última prueba: OK · {hh:mm} · {n} filas».
-- [ ] a.6 Copy banner from an in-use original. The existing "copy will not appear in the client panel…" line moves into it.
-- [ ] a.7 Leave guard (CH-53) with the editor's `hayCambios`. `tc-sin-guardar` lists Plantillas. A tenant switch returns to the list.
-- [ ] a.8 Saving returns to `#plantillas` with the side panel on the saved template.
-- [ ] a.9 Tests:
+- [x] a.4 409 `plantilla-en-uso` → «Duplicar y editar» switches the mode in place and calls `history.replaceState` to `#plantillas/{id}/duplicar`.
+- [x] a.5 Footer reason line: the existing reason, or «Última prueba: OK · {hh:mm} · {n} filas».
+- [x] a.6 Copy banner from an in-use original. The existing "copy will not appear in the client panel…" line moves into it.
+- [x] a.7 Leave guard (CH-53) with the editor's `hayCambios`. `tc-sin-guardar` lists Plantillas. A tenant switch returns to the list.
+- [x] a.8 Saving returns to `#plantillas` with the side panel on the saved template.
+- [x] a.9 Tests:
   - addresses and modes; in-use redirect; not found;
   - section order and titles;
   - the footer lines;
