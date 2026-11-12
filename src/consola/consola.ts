@@ -273,9 +273,8 @@ function documentoConsola(nombreOperador: string): string {
     font-size: var(--text-body); color: var(--text-1); }
   #plantilla-textos, #plantilla-mensaje { white-space: pre-line; }
   #plantilla-f-agregar-parametro { margin-top: var(--space-4); }
-  /* CH-45 (DEC-198): the report pop-up is wide like the template one; its entity boxes and column rows are built
-     by the script, so they take local classes (G3'). */
-  #reporte-dialogo .zd-dialog { width: min(900px, 100%); }
+  /* CH-45 (DEC-198): the report editor's entity boxes and column rows are built by the script, so they take local
+     classes (G3'). */
   #reporte-entidades, #reporte-periodo, #reporte-textos, #reporte-columnas { white-space: pre-line; }
   .columna-reporte { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); margin-top: var(--space-4); }
   .columna-reporte label { display: flex; flex: 1 1 10rem; flex-direction: column; gap: var(--space-2); min-width: 0;
@@ -982,6 +981,8 @@ ${estadoSinTenant('tiempos')}
   entities and connection. The entity boxes, the column rows and the period options are built by the script.
 -->
 <section id="pantalla-reportes" aria-labelledby="titulo-reportes" data-change="CH-45" data-estado="existe" hidden>
+<!-- CH-56 (DEC-208): the editor is a page subview at #reportes/nuevo, #reportes/{id} or #reportes/{id}/duplicar. -->
+<div id="reportes-lista">
 <header class="zd-pagehead">
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span><span id="prueba-sobre-reportes" class="prueba-sobre">Prueba sobre: ningún tenant (elegí uno para probar o guardar)</span></div>
@@ -998,6 +999,13 @@ ${estadoSinTenant('tiempos')}
     <thead><tr><th>Nombre</th><th>Título para el cliente</th><th>Visualización</th><th></th></tr></thead>
     <tbody id="reportes-cuerpo"></tbody>
   </table>
+</div>
+</div>
+<!-- CH-56: an editor address whose id is not in the catalog. -->
+<div id="reporte-no-encontrado" class="zd-state" hidden>
+  <p class="zd-state__title">No encontramos ese reporte.</p>
+  <p class="zd-state__body">Puede que se haya borrado o que el enlace esté mal escrito.</p>
+  <div class="zd-state__actions"><a class="zd-btn zd-btn--secondary" href="#reportes">Ir a Reportes</a></div>
 </div>
 <aside id="reporte-panel" class="zd-drawer" aria-labelledby="reporte-titulo" hidden>
   <div class="zd-drawer__head"><h2 id="reporte-titulo" class="zd-h2"></h2></div>
@@ -1031,90 +1039,118 @@ ${estadoSinTenant('tiempos')}
   </div>
 </aside>
 <!--
-  One pop-up for «Nuevo reporte», «Editar» and, since CH-46, «Duplicar y editar» (DEC-173, DEC-199). The test
-  (POST /reportes/prueba) saves nothing and sends no columns: it is what produces them. A refusal, and the reason
-  «Guardar» is closed, are written in #reporte-dialogo-estado; a 409 reporte-en-uso also shows #reporte-dialogo-duplicar.
+  One editor for «Nuevo reporte», «Editar» and, since CH-46, «Duplicar y editar» (DEC-173, DEC-199). The test
+  (POST /reportes/prueba) saves nothing and sends no columns: it is what produces them. CH-56 (DEC-208, K3): a page
+  subview on the template editor's skeleton. A refusal, and the reason «Guardar» is closed, are written in
+  #reporte-motivo; a 409 reporte-en-uso also shows #reporte-dialogo-duplicar.
 -->
-<div id="reporte-dialogo" class="zd-dialog-backdrop" hidden>
-  <div class="zd-dialog" role="dialog" aria-modal="true" aria-labelledby="reporte-dialogo-titulo">
-    <h2 id="reporte-dialogo-titulo" class="zd-dialog__title">Nuevo reporte</h2>
-    <form id="reporte-form" class="zd-form">
-      <div>
-        <label for="reporte-f-nombre" class="zd-label">Nombre</label>
-        <input id="reporte-f-nombre" class="zd-input" type="text" maxlength="80" autocomplete="off">
-        <p class="ayuda">Hasta 80 caracteres. Lo ve solo la consola.</p>
-      </div>
-      <div>
-        <label for="reporte-f-titulo" class="zd-label">Título para el cliente</label>
-        <input id="reporte-f-titulo" class="zd-input" type="text" maxlength="80" autocomplete="off">
-        <p class="ayuda">Hasta 80 caracteres. Es lo que ve el cliente en su tablero; sin términos técnicos.</p>
-      </div>
-      <div>
-        <label for="reporte-f-descripcion" class="zd-label">Descripción para el cliente</label>
-        <textarea id="reporte-f-descripcion" class="zd-textarea" rows="3" maxlength="200"></textarea>
-        <p class="ayuda">Hasta 200 caracteres. Opcional.</p>
-      </div>
-      <fieldset id="reporte-f-entidades" class="entidades-plantilla"><legend class="zd-label">Entidades que lee</legend></fieldset>
-      <div>
-        <label for="reporte-f-sql" class="zd-label">Sentencia SQL</label>
-        <textarea id="reporte-f-sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false"></textarea>
-        <p class="ayuda">Leé las vistas canónicas por su nombre, por ejemplo v_pedido. Con período, la sentencia usa :desde (o el nombre que declares) como una fecha.</p>
-      </div>
-      <div>
-        <label for="reporte-f-periodo" class="zd-label">Período</label>
-        <select id="reporte-f-periodo" class="zd-select">
-          <option value="no">Sin período</option>
-          <option value="si">Con período</option>
-        </select>
-        <div id="reporte-f-periodo-campos" hidden>
-          <label for="reporte-f-parametro" class="zd-label">Nombre del parámetro</label>
-          <input id="reporte-f-parametro" class="zd-input" type="text" autocomplete="off" spellcheck="false" value="desde">
-          <label for="reporte-f-dias" class="zd-label">Días</label>
-          <input id="reporte-f-dias" class="zd-input" type="text" inputmode="numeric" autocomplete="off" placeholder="30, 7">
-          <p class="ayuda">De 1 a 6 cantidades de días, separadas por comas, cada una de 1 a 366. La primera es la que el cliente ve primero.</p>
+<div id="reporte-editor" aria-labelledby="reporte-editor-titulo" hidden>
+  <header class="zd-pagehead">
+    <div class="zd-pagehead__text">
+      <div class="zd-pagehead__meta"><span class="zd-scope zd-scope--global">Global · todos los tenants</span><span id="prueba-sobre-reporte-editor" class="prueba-sobre">Prueba sobre: ningún tenant (elegí uno para probar o guardar)</span></div>
+      <nav class="zd-pagehead__crumbs" aria-label="Ubicación"><a href="#reportes">Reportes</a> › <h2 id="reporte-editor-titulo" class="consulta-editor__titulo">Nuevo reporte</h2></nav>
+    </div>
+  </header>
+  <!-- CH-56 (F5): a copy of a report on a client dashboard says why it is a copy. -->
+  <div id="reporte-copia-aviso" class="zd-banner zd-banner--neutral" role="status" hidden>
+    <div>
+      <p id="reporte-copia-original" class="zd-banner__title"></p>
+      <p class="zd-banner__body">Por eso se duplica en lugar de editarse. La copia no está en ningún tablero hasta que la agregues en Tablero del cliente.</p>
+    </div>
+  </div>
+  <form id="reporte-form" class="zd-form">
+    <ol class="editor-secciones">
+      <li>
+        <h3 class="zd-h3">Qué es</h3>
+        <p class="ayuda">Cómo se llama y cómo lo ve el cliente en su tablero.</p>
+        <div>
+          <label for="reporte-f-nombre" class="zd-label">Nombre</label>
+          <input id="reporte-f-nombre" class="zd-input" type="text" maxlength="80" autocomplete="off">
+          <p class="ayuda">Hasta 80 caracteres. Lo ve solo la consola.</p>
         </div>
-      </div>
-      <div>
-        <label for="reporte-f-visualizacion" class="zd-label">Visualización</label>
-        <select id="reporte-f-visualizacion" class="zd-select">
-          <option value="numero">Número</option>
-          <option value="tabla">Tabla</option>
-          <option value="barras">Barras</option>
-          <option value="linea">Línea</option>
-        </select>
-      </div>
-      <div>
-        <p class="zd-label">Columnas</p>
-        <p id="reporte-f-columnas-aviso" class="ayuda" role="status"></p>
-        <div id="reporte-f-columnas"></div>
-        <button id="reporte-f-agregar-columna" class="zd-btn zd-btn--secondary" type="button" hidden>Agregar columna</button>
-        <p class="ayuda">Cada título va al cliente: hasta 40 caracteres y sin términos técnicos. Una tabla lleva de 1 a 10 columnas.</p>
-      </div>
-      <div>
-        <h3 class="zd-h3">Probar antes de guardar</h3>
-        <label for="reporte-f-conexion" class="zd-label">Conexión</label>
-        <select id="reporte-f-conexion" class="zd-select"></select>
+        <div>
+          <label for="reporte-f-titulo" class="zd-label">Título para el cliente</label>
+          <input id="reporte-f-titulo" class="zd-input" type="text" maxlength="80" autocomplete="off">
+          <p class="ayuda">Hasta 80 caracteres. Es lo que ve el cliente en su tablero; sin términos técnicos.</p>
+        </div>
+        <div>
+          <label for="reporte-f-descripcion" class="zd-label">Descripción para el cliente</label>
+          <textarea id="reporte-f-descripcion" class="zd-textarea" rows="3" maxlength="200"></textarea>
+          <p class="ayuda">Hasta 200 caracteres. Opcional.</p>
+        </div>
+      </li>
+      <li>
+        <h3 class="zd-h3">Datos</h3>
+        <p class="ayuda">Qué lee: las entidades, la sentencia y el período que puede elegir el cliente.</p>
+        <fieldset id="reporte-f-entidades" class="entidades-plantilla"><legend class="zd-label">Entidades que lee</legend></fieldset>
+        <div>
+          <label for="reporte-f-sql" class="zd-label">Sentencia SQL</label>
+          <textarea id="reporte-f-sql" class="zd-textarea zd-textarea--code" rows="8" spellcheck="false"></textarea>
+          <p class="ayuda">Leé las vistas canónicas por su nombre, por ejemplo v_pedido. Con período, la sentencia usa :desde (o el nombre que declares) como una fecha.</p>
+        </div>
+        <div>
+          <label for="reporte-f-periodo" class="zd-label">Período</label>
+          <select id="reporte-f-periodo" class="zd-select">
+            <option value="no">Sin período</option>
+            <option value="si">Con período</option>
+          </select>
+          <div id="reporte-f-periodo-campos" hidden>
+            <label for="reporte-f-parametro" class="zd-label">Nombre del parámetro</label>
+            <input id="reporte-f-parametro" class="zd-input" type="text" autocomplete="off" spellcheck="false" value="desde">
+            <label for="reporte-f-dias" class="zd-label">Días</label>
+            <input id="reporte-f-dias" class="zd-input" type="text" inputmode="numeric" autocomplete="off" placeholder="30, 7">
+            <p class="ayuda">De 1 a 6 cantidades de días, separadas por comas, cada una de 1 a 366. La primera es la que el cliente ve primero.</p>
+          </div>
+        </div>
+      </li>
+      <li>
+        <h3 class="zd-h3">Salida</h3>
+        <p class="ayuda">Cómo se muestra: la visualización y qué columna ocupa cada lugar.</p>
+        <div>
+          <label for="reporte-f-visualizacion" class="zd-label">Visualización</label>
+          <select id="reporte-f-visualizacion" class="zd-select">
+            <option value="numero">Número</option>
+            <option value="tabla">Tabla</option>
+            <option value="barras">Barras</option>
+            <option value="linea">Línea</option>
+          </select>
+        </div>
+        <div>
+          <p class="zd-label">Columnas</p>
+          <p id="reporte-f-columnas-aviso" class="ayuda" role="status"></p>
+          <div id="reporte-f-columnas"></div>
+          <button id="reporte-f-agregar-columna" class="zd-btn zd-btn--secondary" type="button" hidden>Agregar columna</button>
+          <p class="ayuda">Cada título va al cliente: hasta 40 caracteres y sin términos técnicos. Una tabla lleva de 1 a 10 columnas.</p>
+        </div>
+      </li>
+      <li>
+        <h3 class="zd-h3">Prueba</h3>
+        <p class="ayuda">Corré el reporte en una conexión del tenant activo. Para guardarlo hace falta una prueba que pase.</p>
+        <div>
+          <label for="reporte-f-conexion" class="zd-label">Conexión</label>
+          <select id="reporte-f-conexion" class="zd-select"></select>
+        </div>
         <div id="reporte-f-prueba-periodo-caja" hidden>
           <label for="reporte-f-prueba-periodo" class="zd-label">Período de la prueba</label>
           <select id="reporte-f-prueba-periodo" class="zd-select"></select>
         </div>
-        <button id="reporte-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar reporte</button>
+        <div><button id="reporte-f-probar" class="zd-btn zd-btn--secondary" type="button">Probar reporte</button></div>
         <p id="reporte-f-resultado" class="ayuda" role="status"></p>
         <div class="zd-table-wrap zd-table-scroll"><table id="reporte-f-tabla" class="zd-table"></table></div>
-      </div>
-    </form>
-    <p id="reporte-dialogo-estado" class="ayuda" role="status"></p>
-    <div class="zd-dialog__actions">
-      <span id="reporte-confirmar" hidden>
-        Hay cambios sin guardar.
-        <button id="reporte-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
-        <button id="reporte-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
-      </span>
-      <button id="reporte-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
-      <button id="reporte-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="reporte-form" aria-describedby="reporte-dialogo-estado" disabled>Guardar reporte</button>
-      <button id="reporte-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
-    </div>
-  </div>
+      </li>
+    </ol>
+  </form>
+  <footer class="editor-pie">
+    <button id="reporte-dialogo-cancelar" class="zd-btn zd-btn--ghost" type="button">Cancelar</button>
+    <p id="reporte-motivo" class="ayuda" role="status"></p>
+    <span id="reporte-confirmar" hidden>
+      Hay cambios sin guardar.
+      <button id="reporte-descartar" class="zd-btn zd-btn--secondary" type="button">Descartar cambios</button>
+      <button id="reporte-seguir" class="zd-btn zd-btn--secondary" type="button">Seguir editando</button>
+    </span>
+    <button id="reporte-dialogo-duplicar" class="zd-btn zd-btn--secondary" type="button" hidden>Duplicar y editar</button>
+    <button id="reporte-dialogo-guardar" class="zd-btn zd-btn--primary" type="submit" form="reporte-form" aria-describedby="reporte-motivo" disabled>Guardar reporte</button>
+  </footer>
 </div>
 </section>
 
@@ -2356,6 +2392,7 @@ function fijarTenant(id) {
   document.getElementById('prueba-sobre-plantillas').textContent = pruebaSobre;
   document.getElementById('prueba-sobre-plantilla-editor').textContent = pruebaSobre;
   document.getElementById('prueba-sobre-reportes').textContent = pruebaSobre;
+  document.getElementById('prueba-sobre-reporte-editor').textContent = pruebaSobre;
   escribirTenantGuardado(tenantActivo);
   // CH-55: the setup state belongs to the tenant it was read for.
   puestaEnMarcha = {};
@@ -5339,8 +5376,9 @@ var dialogoCambioTenant = crearDialogo({
     var sinGuardar = [];
     if (tableroCambiado()) { sinGuardar.push('Tablero del cliente'); }
     if (dialogoDeConsulta.abierto() && hayCambiosSinGuardar()) { sinGuardar.push('Consultas'); }
-    // CH-56: and the template editor's.
+    // CH-56: and the template and report editors'.
     if (subvistaPlantilla.dialogo.abierto() && subvistaPlantilla.hayCambios()) { sinGuardar.push('Plantillas'); }
+    if (subvistaReporte.dialogo.abierto() && subvistaReporte.hayCambios()) { sinGuardar.push('Reportes'); }
     var ultima = sinGuardar.pop();
     document.getElementById('tc-sin-guardar').hidden = ultima === undefined;
     document.getElementById('tc-sin-guardar-texto').textContent = 'Tenés cambios sin guardar en ' +
@@ -6771,16 +6809,22 @@ function motivoGuardadoPlantilla() {
   return 'Escribí un nombre para poder guardarla.';
 }
 
-// CH-56 (F4): once «Guardar» is open, the footer says when the test that opened it ran and what it returned.
-function lineaUltimaPruebaPlantilla() {
-  var filas = ultimaPruebaPlantilla.filas;
-  return 'Última prueba: OK · ' + ultimaPruebaPlantilla.hora + ' · ' + filas + (filas === 1 ? ' fila' : ' filas');
+// CH-56 (F4): once «Guardar» is open, the footer says when the test that opened it ran and what it returned. Shared by
+// the template and report editors; prueba is their last test, {hora, filas, ...}.
+function lineaUltimaPrueba(prueba) {
+  return 'Última prueba: OK · ' + prueba.hora + ' · ' + prueba.filas + (prueba.filas === 1 ? ' fila' : ' filas');
+}
+
+function horaDeAhora() {
+  var ahora = new Date();
+  var dosCifras = function (n) { return (n < 10 ? '0' : '') + n; };
+  return dosCifras(ahora.getHours()) + ':' + dosCifras(ahora.getMinutes());
 }
 
 function actualizarGuardadoPlantilla() {
   var cerrado = guardandoPlantilla || !guardadoPlantillaHabilitado();
   botonGuardarPlantilla.disabled = cerrado;
-  estadoDialogoPlantilla.textContent = rechazoPlantilla !== '' ? rechazoPlantilla : (cerrado ? motivoGuardadoPlantilla() : lineaUltimaPruebaPlantilla());
+  estadoDialogoPlantilla.textContent = rechazoPlantilla !== '' ? rechazoPlantilla : (cerrado ? motivoGuardadoPlantilla() : lineaUltimaPrueba(ultimaPruebaPlantilla));
 }
 
 // CH-56 (F5): the copy banner, only for a copy of a template in use, until the copy has both its own client texts.
@@ -6994,33 +7038,43 @@ function abrirDialogoPlantilla(modo, plantilla) {
 // panel open on it, where «Duplicar y editar» is. An id the catalog does not have shows the not-found state.
 async function abrirRutaPlantilla(sub) {
   if (sub === 'nueva') { abrirDialogoPlantilla('nueva', null); return; }
-  var partes = sub.split('/');
+  await abrirRutaDeEditor({
+    sub: sub, pantalla: 'plantillas', clave: 'plantilla', accion: 'cargar la plantilla', subvista: subvistaPlantilla,
+    aviso: avisoPlantillas, lista: listaDePlantillas, noEncontrado: mostrarPlantillaNoEncontrada,
+    panel: mostrarPanelPlantilla, abrir: abrirDialogoPlantilla
+  });
+}
+
+// CH-56 (K3): {id} and {id}/duplicar for either editor. o: { sub, pantalla, clave (the key of the record in the GET
+// answer), accion, subvista, aviso, lista(), noEncontrado(), panel(id, dato), abrir(modo, dato) }.
+async function abrirRutaDeEditor(o) {
+  var partes = o.sub.split('/');
   var duplicar = partes.length === 2 && partes[1] === 'duplicar';
-  if (partes[0] === '' || partes.length > 2 || (partes.length === 2 && !duplicar)) { mostrarPlantillaNoEncontrada(); return; }
+  if (partes[0] === '' || partes.length > 2 || (partes.length === 2 && !duplicar)) { o.noEncontrado(); return; }
   var id = partes[0];
   var respuesta;
-  try { respuesta = await fetch('/plantillas/' + encodeURIComponent(id)).then(siNoAutenticado); } catch (fallaDeRed) {
+  try { respuesta = await fetch('/' + o.pantalla + '/' + encodeURIComponent(id)).then(siNoAutenticado); } catch (fallaDeRed) {
     respuesta = null;
   }
   // Another address, or the editor opened meanwhile: this answer is not wanted any more.
-  if (String(window.location.hash || '') !== '#plantillas/' + sub || subvistaPlantilla.dialogo.abierto()) { return; }
-  if (respuesta !== null && respuesta.status === 404) { mostrarPlantillaNoEncontrada(); return; }
+  if (String(window.location.hash || '') !== '#' + o.pantalla + '/' + o.sub || o.subvista.dialogo.abierto()) { return; }
+  if (respuesta !== null && respuesta.status === 404) { o.noEncontrado(); return; }
   var cuerpo = null;
   if (respuesta !== null) { try { cuerpo = await respuesta.json(); } catch (noEsJson) { cuerpo = null; } }
-  if (respuesta === null || respuesta.status !== 200 || cuerpo === null || cuerpo.plantilla === null || typeof cuerpo.plantilla !== 'object') {
-    fijarHashDelScript('#plantillas');
-    listaDePlantillas();
-    avisoPlantillas.textContent = respuesta === null ? AVISO_SIN_RED : mensajeHttp(respuesta.status, 'cargar la plantilla');
+  var dato = cuerpo !== null && typeof cuerpo === 'object' ? cuerpo[o.clave] : null;
+  if (respuesta === null || respuesta.status !== 200 || dato === null || typeof dato !== 'object') {
+    fijarHashDelScript('#' + o.pantalla);
+    o.lista();
+    o.aviso.textContent = respuesta === null ? AVISO_SIN_RED : mensajeHttp(respuesta.status, o.accion);
     return;
   }
-  var plantilla = cuerpo.plantilla;
-  if (!duplicar && plantilla.enUso !== false) {
-    fijarHashDelScript('#plantillas');
-    listaDePlantillas();
-    mostrarPanelPlantilla(id, plantilla);
+  if (!duplicar && dato.enUso !== false) {
+    fijarHashDelScript('#' + o.pantalla);
+    o.lista();
+    o.panel(id, dato);
     return;
   }
-  abrirDialogoPlantilla(duplicar ? 'duplicar' : 'editar', plantilla);
+  o.abrir(duplicar ? 'duplicar' : 'editar', dato);
 }
 
 // The save found the template in use: the editor stays open and becomes a copy, with what is in the form now.
@@ -7075,11 +7129,8 @@ async function probarEnDialogoPlantilla() {
     ok = mostrarResultadoPrueba({ aviso: avisoResultadoPlantilla, tabla: tablaResultadoPlantilla }, leido);
   }
   var columnas = ok && leido.cuerpo !== null && Array.isArray(leido.cuerpo.columnas) ? leido.cuerpo.columnas.map(String) : [];
-  var ahora = new Date();
-  var dosCifras = function (n) { return (n < 10 ? '0' : '') + n; };
   ultimaPruebaPlantilla = {
-    huella: huella, ok: ok, columnas: columnas,
-    hora: dosCifras(ahora.getHours()) + ':' + dosCifras(ahora.getMinutes()),
+    huella: huella, ok: ok, columnas: columnas, hora: horaDeAhora(),
     filas: ok && Array.isArray(leido.cuerpo.filas) ? leido.cuerpo.filas.length : 0
   };
   actualizarGuardadoPlantilla();
@@ -7398,7 +7449,11 @@ function textoColumnasReporte(columnas) {
 async function verReporte(id) {
   var cuerpo = await leerGlobal('/reportes/' + encodeURIComponent(id), avisoReportes);
   if (cuerpo === null || cuerpo.reporte === null || typeof cuerpo.reporte !== 'object') { return; }
-  var reporte = cuerpo.reporte;
+  mostrarPanelReporte(id, cuerpo.reporte);
+}
+
+// The side panel for a report already read (CH-56: also from an address that names a report in use).
+function mostrarPanelReporte(id, reporte) {
   var periodo = periodoLeido(reporte.periodo);
   var columnas = columnasLeidas(reporte.columnas);
   var entidades = Array.isArray(reporte.entidades) ? reporte.entidades.map(String) : [];
@@ -7497,9 +7552,10 @@ var selectorPeriodoFormReporte = document.getElementById('reporte-f-prueba-perio
 var botonProbarFormReporte = document.getElementById('reporte-f-probar');
 var avisoResultadoReporte = document.getElementById('reporte-f-resultado');
 var tablaResultadoReporte = document.getElementById('reporte-f-tabla');
-var estadoDialogoReporte = document.getElementById('reporte-dialogo-estado');
+var estadoDialogoReporte = document.getElementById('reporte-motivo');
 var botonGuardarReporte = document.getElementById('reporte-dialogo-guardar');
-var tituloDialogoReporte = document.getElementById('reporte-dialogo-titulo');
+var tituloDialogoReporte = document.getElementById('reporte-editor-titulo');
+var avisoCopiaReporte = document.getElementById('reporte-copia-aviso');
 var formularioReporte = document.getElementById('reporte-form');
 var botonDuplicarDialogoReporte = document.getElementById('reporte-dialogo-duplicar');
 
@@ -7507,7 +7563,10 @@ var botonDuplicarDialogoReporte = document.getElementById('reporte-dialogo-dupli
 var reporteEditadoId = '';
 // CH-46 (DEC-199): 'nueva', 'editar' or 'duplicar'.
 var modoReporte = 'nueva';
-// {huella, ok, columnas} of the last test answer; null before any, and while one is on its way.
+// CH-56: the report the editor was opened from (its name for the crumb and the copy banner), and whether it was in use.
+var nombreOriginalReporte = '';
+var originalEnUsoReporte = false;
+// {huella, ok, columnas, hora, filas} of the last test answer; null before any, and while one is on its way.
 var ultimaPruebaReporte = null;
 // The columns the selects offer: those of the last passing test, kept until the pop-up closes.
 var columnasOfrecidasReporte = [];
@@ -7614,7 +7673,7 @@ function motivoGuardadoReporte() {
 function actualizarGuardadoReporte() {
   var cerrado = guardandoReporte || !guardadoReporteHabilitado();
   botonGuardarReporte.disabled = cerrado;
-  estadoDialogoReporte.textContent = rechazoReporte !== '' ? rechazoReporte : (cerrado ? motivoGuardadoReporte() : '');
+  estadoDialogoReporte.textContent = rechazoReporte !== '' ? rechazoReporte : (cerrado ? motivoGuardadoReporte() : lineaUltimaPrueba(ultimaPruebaReporte));
 }
 
 // Any edit of the form: a refusal shown for the old content goes, and so does the offer to duplicate (CH-46).
@@ -7712,14 +7771,13 @@ function reiniciarDialogoReporte() {
   avisoResultadoReporte.textContent = '';
 }
 
-var TITULOS_DIALOGO_REPORTE = { nueva: 'Nuevo reporte', editar: 'Editar reporte', duplicar: 'Duplicar reporte' };
-
 // Fills the form for a mode. nueva: blank. editar: the stored report. duplicar (CH-46, DEC-199): the stored report
 // named «… (copia)», with every other field, client texts included: a report's title is required, and the copy is on
 // no dashboard until P1 puts it there.
 function llenarFormularioReporte(modo, reporte) {
   var cargado = reporte !== null && reporte !== undefined;
-  tituloDialogoReporte.textContent = TITULOS_DIALOGO_REPORTE[modo];
+  // CH-56: the crumb after «Reportes ›».
+  tituloDialogoReporte.textContent = !cargado ? 'Nuevo reporte' : (modo === 'duplicar' ? 'Copia de ' : '') + String(reporte.nombre);
   entradaNombreReporte.value = !cargado ? '' : String(reporte.nombre) + (modo === 'duplicar' ? SUFIJO_COPIA : '');
   entradaTituloReporte.value = cargado ? String(reporte.titulo) : '';
   entradaDescripcionReporte.value = cargado && typeof reporte.descripcion === 'string' ? reporte.descripcion : '';
@@ -7736,34 +7794,83 @@ function llenarFormularioReporte(modo, reporte) {
   dibujarColumnasReporte();
 }
 
-var dialogoReporte = crearDialogo({
-  fondo: document.getElementById('reporte-dialogo'),
+var listaReportes = document.getElementById('reportes-lista');
+var reporteNoEncontrado = document.getElementById('reporte-no-encontrado');
+
+// CH-56 (DEC-208): the list, the not-found state and the editor take turns on the screen, as in Plantillas.
+function listaDeReportes() {
+  listaReportes.hidden = false;
+  reporteNoEncontrado.hidden = true;
+}
+
+function mostrarReporteNoEncontrado() {
+  listaReportes.hidden = true;
+  panelReporte.hidden = true;
+  reporteNoEncontrado.hidden = false;
+}
+
+// CH-56 (F5): the copy banner, only for a copy of a report on a client dashboard.
+function reflejarAvisoCopiaReporte() {
+  avisoCopiaReporte.hidden = !(modoReporte === 'duplicar' && originalEnUsoReporte);
+  document.getElementById('reporte-copia-original').textContent = '«' + nombreOriginalReporte + '» está en el tablero de un cliente.';
+}
+
+var subvistaReporte = crearSubvista({
+  pantalla: 'reportes',
+  fondo: document.getElementById('reporte-editor'),
   primerCampo: entradaNombreReporte,
   cancelar: document.getElementById('reporte-dialogo-cancelar'),
   confirmar: document.getElementById('reporte-confirmar'),
   descartar: document.getElementById('reporte-descartar'),
   seguir: document.getElementById('reporte-seguir'),
   hayCambios: function () { return instantaneaDeFormularioReporte() !== instantaneaReporte; },
-  alCerrar: reiniciarDialogoReporte
+  alAbrir: function () {
+    listaReportes.hidden = true;
+    reporteNoEncontrado.hidden = true;
+    panelReporte.hidden = true;
+    limpiarPruebaReporte();
+  },
+  alCerrar: function () {
+    reiniciarDialogoReporte();
+    listaDeReportes();
+  }
 });
 
 function abrirDialogoReporte(modo, reporte) {
   reiniciarDialogoReporte();
   modoReporte = modo;
   reporteEditadoId = modo === 'editar' && reporte ? String(reporte.id) : '';
+  nombreOriginalReporte = reporte ? String(reporte.nombre) : '';
+  // A missing enUso reads as in use, as in the side panel.
+  originalEnUsoReporte = modo === 'duplicar' && reporte !== null && reporte.enUso !== false;
   llenarFormularioReporte(modo, reporte);
   instantaneaReporte = instantaneaDeFormularioReporte();
+  reflejarAvisoCopiaReporte();
   actualizarGuardadoReporte();
-  dialogoReporte.abrir();
+  subvistaReporte.abrir(modo === 'nueva' ? 'nuevo' : String(reporte.id) + (modo === 'duplicar' ? '/duplicar' : ''));
   cargarConexionesReporte();
+}
+
+// CH-56 (DEC-208): #reportes/nuevo, #reportes/{id} and #reportes/{id}/duplicar, by the same rules as Plantillas.
+async function abrirRutaReporte(sub) {
+  if (sub === 'nuevo') { abrirDialogoReporte('nueva', null); return; }
+  await abrirRutaDeEditor({
+    sub: sub, pantalla: 'reportes', clave: 'reporte', accion: 'cargar el reporte', subvista: subvistaReporte,
+    aviso: avisoReportes, lista: listaDeReportes, noEncontrado: mostrarReporteNoEncontrado,
+    panel: mostrarPanelReporte, abrir: abrirDialogoReporte
+  });
 }
 
 // CH-46 (DEC-199): the save found the report on a client dashboard. The pop-up stays open and becomes a copy, with
 // what is in the form now; the test of this same content still holds, so «Guardar» sends it as a POST.
+// CH-56: the address becomes the copy's without a new history entry.
 function pasarAduplicarReporte() {
+  subvistaReporte.reemplazarSub(reporteEditadoId + '/duplicar');
   modoReporte = 'duplicar';
   reporteEditadoId = '';
-  tituloDialogoReporte.textContent = TITULOS_DIALOGO_REPORTE.duplicar;
+  originalEnUsoReporte = true;
+  tituloDialogoReporte.textContent = 'Copia de ' + nombreOriginalReporte;
+  reflejarAvisoCopiaReporte();
   var nombre = entradaNombreReporte.value;
   if (nombre.slice(-SUFIJO_COPIA.length) !== SUFIJO_COPIA) { entradaNombreReporte.value = nombre + SUFIJO_COPIA; }
   alEditarReporte();
@@ -7799,7 +7906,10 @@ async function probarEnDialogoReporte() {
   if (leido === null) { avisoResultadoReporte.textContent = ''; actualizarGuardadoReporte(); return; }
   var ok = mostrarResultadoReporte({ aviso: avisoResultadoReporte, tabla: tablaResultadoReporte }, leido, null);
   var columnas = ok && Array.isArray(leido.cuerpo.columnas) ? leido.cuerpo.columnas.map(String) : [];
-  ultimaPruebaReporte = { huella: huella, ok: ok, columnas: columnas };
+  ultimaPruebaReporte = {
+    huella: huella, ok: ok, columnas: columnas, hora: horaDeAhora(),
+    filas: ok && Array.isArray(leido.cuerpo.filas) ? leido.cuerpo.filas.length : 0
+  };
   if (ok) {
     columnasOfrecidasReporte = columnas;
     filasColumnasReporte.forEach(function (fila) { if (columnas.indexOf(fila.columna) === -1) { fila.columna = ''; } });
@@ -7836,7 +7946,8 @@ formularioReporte.addEventListener('submit', async function (evento) {
   }
   if (guardado) {
     var idGuardado = String(cuerpo.reporte.id);
-    dialogoReporte.cerrar();
+    // CH-56: back to #reportes, with the saved report in the side panel.
+    subvistaReporte.dialogo.cerrar();
     await cargarPantallaReportes();
     await verReporte(idGuardado);
     return;
@@ -9134,6 +9245,9 @@ function mostrarPantalla() {
   if (activa === 'plantillas' && !subvistaPlantilla.dialogo.abierto()) {
     if (sub === null) { listaDePlantillas(); } else { abrirRutaPlantilla(sub); }
   }
+  if (activa === 'reportes' && !subvistaReporte.dialogo.abierto()) {
+    if (sub === null) { listaDeReportes(); } else { abrirRutaReporte(sub); }
+  }
 }
 window.addEventListener('hashchange', mostrarPantalla);
 // C-02: until the tenant list answers there is no tenant, and the screens of the tenant say so.
@@ -9154,8 +9268,9 @@ cargarTenants().then(function () {
   if (hashVacio() && pantallaMostrada !== pantallaInicial()) { mostrarPantalla(); }
   // CH-53: an editor address opened before the tenant was known opens now.
   if (String(window.location.hash || '').length > '#consultas/'.length && String(window.location.hash).indexOf('#consultas/') === 0 && !dialogoDeConsulta.abierto()) { mostrarPantalla(); }
-  // CH-56: a template editor opened before the tenant was known reads that tenant's connections now.
+  // CH-56: a template or report editor opened before the tenant was known reads that tenant's connections now.
   if (subvistaPlantilla.dialogo.abierto()) { cargarConexionesPlantilla(); actualizarGuardadoPlantilla(); }
+  if (subvistaReporte.dialogo.abierto()) { cargarConexionesReporte(); actualizarGuardadoReporte(); }
 });
 </script>
 </body>
