@@ -3,15 +3,25 @@
 Sistema visual y especificación de pantallas de **ZeroDashboard**: plataforma multi-tenant de automatización de reportes y alertas para e-commerce PYME. Se conecta en **solo lectura** a la base de la tienda, corre automatizaciones programadas con un patrón fijo (**consulta → condición → notificación → registro**) y envía el resultado por correo. Catálogo inicial: alerta de stock físico, alerta de stock producible, reporte diario.
 
 ## Fuentes
-- `docs/design/prompt-claude-design.md` (en la raíz del repositorio) — brief del producto (superficies, matriz de pantallas con historia/change/estado al 2026-10-03, restricciones de alcance y técnicas). **Única fuente.** No se recibió código, Figma, screenshots ni logo.
-- Repositorio referido por el brief (no adjunto): `src/consola/consola.ts` (la UI actual se sirve como string de TypeScript desde Fastify), `AGENTS.md` (regla 1: nada de SQL en el panel), `openspec/changes/archive`, `docs/01-decisiones.md`.
-- Decisión pendiente (no tomada acá): cómo se sirven los archivos de UI (string en `src/consola/consola.ts` vs. estáticos). Se registra antes de CH-22.
+- `uploads/prompt-claude-design.md` — brief del producto (superficies, matriz de pantallas con historia/change/estado al 2026-10-03, restricciones de alcance y técnicas). **Única fuente.** No se recibió código, Figma, screenshots ni logo.
+- Repositorio referido por el brief (no adjunto): `src/consola.ts` (la UI actual se sirve como string de TypeScript desde Fastify), `AGENTS.md` (regla 1: nada de SQL en el panel), `openspec/changes/archive`, `docs/01-decisiones.md`.
+- Decisión pendiente (no tomada acá): cómo se sirven los archivos de UI (string en `src/consola.ts` vs. estáticos). Se registra antes de CH-22.
+- **EXPLORE (2026-11)**: auditoría funcional y UX/UI de la consola real, hecha leyendo `src/consola/consola.ts` (referencias `Lnnn`). Es la fuente del **comportamiento actual**; manda sobre `consola.md` donde difieren.
+- **Referencias visuales externas** (capturas de Metabase, 2026-11): usadas solo para patrones de distribución e interacción, nunca de identidad. Qué se tomó y qué no: `guidelines/admin.md` §1.
+
+## Uso en el flujo SDD (PROPOSE · APPLY)
+Orden de lectura para cualquier propuesta sobre la consola:
+1. Este README (fundamentos, tokens, qué no hacer).
+2. `guidelines/admin.md`: patrones de interfaz administrativa con ids citables (N, P, W, F, T, E, C, M, G, K), restricción G3' y checklist.
+3. `guidelines/consola.md`: especificación de pantallas (leer primero su "Estado real").
+4. `guidelines/lenguaje.md`: glosario, fórmulas de error y microcopy.
+
+Autoridad cuando no coinciden: **comportamiento** → código y EXPLORE · **patrón** → `admin.md` · **pantallas** → `consola.md` · **visual** → este README y `tokens.json`. El diseño evoluciona la consola existente: no la reconstruye ni agrega capacidades.
 
 ## Superficies
 1. **CONSOLA** (P1 · Implementador) — herramienta interna del proveedor; ve todos los tenants; usuario técnico. Densa, utilitaria, escritorio primero.
 2. **PANEL** (P2 · Administrador PYME) — el cliente; ve solo su tenant (deducido de la sesión); no técnico; **nunca ve SQL ni términos de base de datos**. Más aire, lenguaje de negocio, móvil primero.
 3. **CORREO** — reporte HTML (tablas + estilos inline) con versión "sin datos".
-4. **INICIO** — página estática en `GET /` con dos puertas, «Ir a mi panel» (principal) e «Ir a la consola» (secundaria). Sin datos ni sesión (DEC-203; `guidelines/pantallas.md`, I-01).
 
 Mismos tokens y componentes; la diferencia se hace con `data-surface="panel"` en `<body>` (cuerpo 16 px, controles 44 px, más espacio) y con el lenguaje.
 
@@ -21,11 +31,14 @@ Mismos tokens y componentes; la diferencia se hace con `data-surface="panel"` en
 3. **Consola = precisión.** Monoespaciada para SQL e ids, tablas compactas, errores con el dato técnico.
 4. **Panel = tranquilidad.** Frases completas, qué pasó y qué hacemos. Sin jerga.
 5. **Lineal y fijo.** No hay flujos, nodos ni ramificaciones: el diseño nunca sugiere que se pueden encadenar pasos.
+6. **Lo que depende, se ve.** Toda pantalla dice su alcance (global o tenant), de qué paso previo depende y qué habilita. Un prerrequisito faltante se explica en la pantalla; nunca se oculta el ítem.
+7. **Explicar antes que esconder.** Los comportamientos intencionales (probar antes de guardar, conexiones que solo se duplican, tokens y claves que se muestran una vez) se dicen en la interfaz antes de que el usuario choque con ellos.
+8. **Un patrón por problema.** Misma acción, mismo verbo, misma posición y misma confirmación en todas las vistas (`guidelines/admin.md` §8 y §11).
 
 ---
 
 ## CONTENT FUNDAMENTALS
-- **Idioma**: español rioplatense neutro con **voseo** ("elegí", "tenés", "podés"). Sin lunfardo.
+- **Idioma**: español rioplatense neutro con **voseo** ("elegí", "tenés", "podés") en **todas** las superficies. "Usted" es un defecto a corregir. Sin lunfardo.
 - **Persona**: el producto habla como "nosotros" y al usuario de "vos". "Te avisamos por correo…", "No pudimos armar tu resumen…".
 - **Casing**: sentence case en todo (títulos, botones, menús). Eyebrows en MAYÚSCULAS chicas con tracking (`.zd-eyebrow`).
 - **Botones**: verbo en infinitivo + objeto. "Ejecutar consulta", "Probar conexión", "Revocar token", "Activar de todos modos". Nunca "OK", "Sí", "Enviar" a secas.
@@ -74,6 +87,7 @@ Ejemplos:
 - `tokens/colors.css`, `tokens/typography.css`, `tokens/spacing.css` — tokens (base + alias, claro/oscuro, densidad por superficie).
 - `components/components.css` — clases `.zd-*` usables desde **HTML plano sin build**.
 - `components/<grupo>/` — componentes React (`.jsx` + `.d.ts` + `.prompt.md` + card).
+- `guidelines/admin.md` — **patrones de interfaz administrativa**: navegación multi-tenant, anatomía de pantalla, banco de trabajo SQL, formularios técnicos, tablas, estados, confirmaciones graduadas, microcopy, flujos guiados, consistencia, guarda G3', aplicación a las vistas prioritarias y checklist PROPOSE/APPLY.
 - `guidelines/consola.md` — **consola v2**: arquitectura de información, especificación por pantalla, tabla change → pantallas, componentes nuevos, adopción incremental, propuestas.
 - `guidelines/pantallas.md` — especificación del **panel** y el **correo** (la sección consola es histórica: manda `consola.md`).
 - `guidelines/lenguaje.md` — glosario negocio/técnico y fórmulas de copy.
@@ -84,7 +98,7 @@ Ejemplos:
 - `ui_kits/panel/` — mockup navegable del panel.
 - `ui_kits/correo/` — correo con datos y sin datos (HTML de correo real).
 - `assets/icons/` — SVGs de Lucide.
-- `SKILL.md` — skill para Claude Code.
+- `assets/notes/SKILL.from-standalone.md` — skill para Claude Code.
 
 ## Components
 Cada uno mapea a una clase CSS para la implementación sin framework.
@@ -114,6 +128,8 @@ Cada uno mapea a una clase CSS para la implementación sin framework.
 ## Implementación (restricciones técnicas del brief)
 La interfaz real es **HTML + CSS + JS plano** servido por Fastify, sin build. Los componentes React existen para que este sistema sea navegable y reutilizable en prototipos; **el agente que implementa debe usar `styles.css` + el markup de clases `.zd-*`** (ver cada `.prompt.md` y el DOM renderizado de los mockups). Una hoja compartida, un HTML por pantalla, JS plano. Agregar `data-change` y `data-estado` al contenedor de cada pantalla.
 
+**Guarda G3'**: en la consola real el HTML se arma en el servidor, el JS es inline sin framework y **el script no puede asignar clases `zd-*`** (puente en `src/consola/consola.ts` L110–320). Los estados que cambian en el cliente se expresan con atributos (`hidden`, `disabled`, `aria-*`, `data-estado`, `data-tone`). Una propuesta que necesite clases dinámicas debe decir "propone cambiar G3'". Detalle en `guidelines/admin.md` §12.
+
 ## Qué NO hacer (anti-alcance y anti-patrones)
 - Nada de editor SQL, constructor visual de consultas ni consola en el **PANEL**.
 - Nada de editor visual de flujos, nodos, ramificaciones, bucles ni transformaciones encadenadas.
@@ -124,6 +140,9 @@ La interfaz real es **HTML + CSS + JS plano** servido por Fastify, sin build. Lo
 - No usar el violeta `--tenant` fuera de la barra de tenant.
 - No comunicar estado solo con color; no usar placeholder como etiqueta; no mostrar ids, códigos ni términos técnicos en el panel.
 - No gradientes, ilustraciones, emoji ni tarjetas con borde de color a la izquierda.
+- No copiar la identidad de referencias externas (colores, tipografía, ilustraciones, mascotas, asistentes de IA): de ellas se toman solo patrones de distribución e interacción.
+- No adoptar un patrón de referencia que necesite datos o APIs que la consola no tiene (p. ej. listar tablas de la réplica, búsqueda global, "recientes").
+- No usar botones de solo ícono en barras de herramientas de la consola, salvo acciones universales (cerrar, copiar, actualizar) con `aria-label` + `title`.
 - No React/Tailwind ni dependencias con build en la implementación real.
 
 ## Sugerencias fuera de alcance (anotadas, no diseñadas)
@@ -131,3 +150,9 @@ La interfaz real es **HTML + CSS + JS plano** servido por Fastify, sin build. Lo
 - Pausar una automatización desde el panel (hoy solo ajustar).
 - Notificación al implementador cuando un agente pasa a desconectado.
 - Comparación lado a lado de versiones de consulta (CH-25 la menciona como acción; el diff visual no está diseñado).
+
+## Formato Design System
+- `tokens.json` — tokens (colores claro/oscuro, tipografía, espaciado, radios, sombras, tamaños); `tokens.css` se genera desde ahí.
+- `components/bundle.js` (`window.ZeroDashboardDesignSystem_589ca0`), `components/bundle.css` (clases `.zd-*`, alias de rol y densidad por superficie) y `components/index.d.ts` (tipos).
+- `components/<Componente>/` — `README.md` (guía) y `preview.html` (vista en vivo) por componente; `components/Cover/` es la portada.
+- `styles.css`, `tokens/*.css`, `components/components.css` y `_ds_bundle.js` siguen siendo lo que cargan los mockups de `ui_kits/`.

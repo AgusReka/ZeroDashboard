@@ -1,11 +1,16 @@
 ---
 name: zerodashboard-design
-description: Use this skill to generate well-branded interfaces and assets for ZeroDashboard, either for production or throwaway prototypes/mocks/etc. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for protoyping.
+description: Use this skill to design or evolve ZeroDashboard interfaces (console P1, client panel P2, email) for production or prototypes, and in the PROPOSE and APPLY stages of the SDD flow. Contains brand foundations, tokens, components, admin-UI patterns with citable rule ids, copy rules and per-screen specs.
 user-invocable: true
 ---
 
-Read the readme.md file within this skill, and explore the other available files (guidelines/pantallas.md for per-screen specs and the change → screens table, guidelines/lenguaje.md for copy rules, guidelines/consola.md for the console's navigation and screens — read its section 7 before implementing any of them).
-If creating visual artifacts (slides, mocks, throwaway prototypes, etc), copy assets out and create static HTML files for the user to view. If working on production code, you can copy assets and read the rules here to become an expert in designing with this brand — production is plain HTML + CSS + JS (no build): link styles.css and use the .zd-* classes.
-If the user invokes this skill without any other guidance, ask them what they want to build or design, ask some questions, and act as an expert designer who outputs HTML artifacts _or_ production code, depending on the need.
+Read the README.md file within this skill first, then:
+- guidelines/admin.md for admin-interface patterns (multi-tenant navigation, page anatomy, SQL workbench, technical forms, tables, states, graded confirmations, microcopy, guided flows, consistency, the G3' constraint) and the PROPOSE/APPLY checklist. Cite its rule ids (N3, W6, C2…) in proposals.
+- guidelines/consola.md for console screen specs: read its "Estado real" table first, because the implemented console differs from the v2 spec.
+- guidelines/lenguaje.md for glossary, error formulas and copy rules; guidelines/pantallas.md for the panel and email.
 
-Alcance: CH-27 / P-06 "Último resultado" está fuera de alcance (DEC-93, D-1): no diseñes ni implementes vistas con filas guardadas de una ejecución. El tablero del panel (P-08, CH-48) sí muestra resultados: se ejecutan en vivo, solo con las columnas asignadas, y no se guardan (DEC-183).
+Authority when sources disagree: behaviour → the current code and the EXPLORE audit; interface pattern → guidelines/admin.md; screens → guidelines/consola.md; visuals → README.md and tokens.json.
+
+Evolve the existing console; never rebuild it, never invent capabilities, never copy the visual identity of external references (take only layout and interaction patterns). Production is plain HTML + CSS + inline JS (no build): link styles.css and use the .zd-* classes rendered by the server; client-side state goes through attributes (hidden, disabled, aria-*, data-*), because the G3' guard forbids the script from assigning zd-* classes.
+
+If creating visual artifacts (mocks, throwaway prototypes), copy assets out and create static HTML files for the user to view. If the user invokes this skill without other guidance, ask what they want to build or design and act as an expert designer who outputs HTML artifacts or production code, depending on the need.
