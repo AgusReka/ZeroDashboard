@@ -8,6 +8,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { extenderConAislamiento, type PrismaAislado } from '../aislamiento/aislamiento-prisma.js';
 import { registrarContextoTenant } from '../aislamiento/contexto-tenant.js';
 import { LIMITE_LISTADO } from '../consultas/consultas-guardadas.js';
+import { registerPlantillaPruebaRoute } from './plantilla-prueba.js';
 import { registerPlantillaRoutes, type UsoDePlantillas } from './plantillas-rutas.js';
 
 /**
@@ -200,6 +201,38 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () 
     assert.deepEqual((await rechazar({ titulo: { uno: 1 } })).campos, ['/titulo']);
   });
 
+  test('3.1 CH-57 a parameter text over its cap is refused naming the entry and the field, after trimming', async () => {
+    const entrada = (extra: Record<string, unknown>) => [{ nombre: 'umbral', tipo: 'numero', ...extra }];
+    assert.deepEqual((await rechazar({ parametros: entrada({ etiqueta: 'a'.repeat(61) }) })).campos, [
+      '/parametros/0/etiqueta',
+    ]);
+    assert.deepEqual((await rechazar({ parametros: entrada({ ayuda: 'a'.repeat(241) }) })).campos, [
+      '/parametros/0/ayuda',
+    ]);
+    assert.deepEqual((await rechazar({ parametros: entrada({ ayuda: `  ${'a'.repeat(241)}  ` }) })).campos, [
+      '/parametros/0/ayuda',
+    ]);
+    // The index is the entry's own, and both texts of one entry are named in order.
+    const dos = [
+      { nombre: 'minimo', tipo: 'numero' },
+      { nombre: 'umbral', tipo: 'numero', etiqueta: 'a'.repeat(61), ayuda: 'a'.repeat(241) },
+    ];
+    const cuerpo = await rechazar({ parametros: dos, sql: 'SELECT * FROM v_producto WHERE "stockDisponible" < :umbral AND :minimo > 0' });
+    assert.deepEqual(cuerpo.campos, ['/parametros/1/etiqueta', '/parametros/1/ayuda']);
+  });
+
+  test('3.1 CH-57 a parameter text that is not a string is refused, never coerced', async () => {
+    const entrada = (extra: Record<string, unknown>) => [{ nombre: 'umbral', tipo: 'numero', ...extra }];
+    assert.deepEqual((await rechazar({ parametros: entrada({ etiqueta: 5 }) })).campos, ['/parametros/0/etiqueta']);
+    assert.deepEqual((await rechazar({ parametros: entrada({ ayuda: { uno: 1 } }) })).campos, ['/parametros/0/ayuda']);
+    assert.deepEqual((await rechazar({ parametros: entrada({ ayuda: null }) })).campos, ['/parametros/0/ayuda']);
+  });
+
+  test('3.1 CH-57 any other key in a parameter entry is still refused', async () => {
+    const cuerpo = await rechazar({ parametros: [{ nombre: 'umbral', tipo: 'numero', descripcion: 'x' }] });
+    assert.ok(cuerpo.campos.every((campo) => campo.startsWith('/parametros/0')), cuerpo.campos.join());
+  });
+
   test('3.1 CH-39 a placeholder outside the test columns is refused naming each unknown name once', async () => {
     const cuerpo = await rechazar({ ...MENSAJE, lineaMensaje: '{producto}: {stock} ({stock})' });
     assert.deepEqual(cuerpo.campos, ['/lineaMensaje']);
@@ -348,6 +381,55 @@ describe('plantilla catalog — save-time rejections (CH-12 3.1, 3.2, 4.1)', () 
 });
 
 // ---- CH-38 the use rule's HTTP mapping, with a fake port and no database -----------
+
+describe('plantilla catalog — parameter texts on the unsaved-template test route (CH-57, DEC-209)', () => {
+  let app!: FastifyInstance;
+
+  /** Every model method throws except the tenant lookup the hooks make. */
+  const clienteSoloTenant = new Proxy({}, {
+    get: (_objetivo, modelo) =>
+      modelo === 'tenant'
+        ? { findUnique: async () => ({ id: 't-activo', nombre: 'Activo', activo: true }) }
+        : new Proxy({}, {
+            get: () => async () => {
+              throw new Error(`la ruta leyó ${String(modelo)} antes de tiempo`);
+            },
+          }),
+  }) as unknown as PrismaAislado;
+
+  before(async () => {
+    app = Fastify({ logger: false });
+    registrarContextoTenant(app, clienteSoloTenant);
+    registerPlantillaPruebaRoute(app, clienteSoloTenant);
+    await app.ready();
+  });
+
+  after(async () => {
+    await app.close();
+  });
+
+  function probar(parametros: Record<string, unknown>[]) {
+    return app.inject({
+      method: 'POST',
+      url: '/plantillas/prueba',
+      headers: { 'x-tenant-id': 't-activo' },
+      payload: { ...VALIDA, conexionId: 'c', valores: { umbral: 3 }, parametros },
+    });
+  }
+
+  test('a body with parameter texts passes the save-time checks, then reaches the connection lookup', async () => {
+    // Past validation the route reads the connection, which this client refuses with a thrown
+    // error: a 500 (and not a 400 `solicitud-invalida`) proves the texts were accepted.
+    const respuesta = await probar([{ nombre: 'umbral', tipo: 'numero', etiqueta: 'Stock mínimo', ayuda: 'Avisa con esto.' }]);
+    assert.equal(respuesta.statusCode, 500, respuesta.body);
+  });
+
+  test('a parameter text over its cap is refused here as on the save routes', async () => {
+    const respuesta = await probar([{ nombre: 'umbral', tipo: 'numero', ayuda: 'a'.repeat(241) }]);
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual(respuesta.json(), { error: 'solicitud-invalida', campos: ['/parametros/0/ayuda'] });
+  });
+});
 
 describe('plantilla catalog — use rule over a fake port (CH-38, DEC-191)', () => {
   const FILA = {
@@ -627,6 +709,75 @@ describe('plantilla catalog — create, list, get, replace (CH-12 3.1, 3.3, 4.1)
       assert.equal(respuesta.statusCode, 404, respuesta.body);
       assert.deepEqual(respuesta.json(), { error: 'plantilla-no-encontrada' });
     }
+  });
+
+  test('3.1 CH-57 parameter texts are stored trimmed, returned by get-by-id, and a blank one is absent', async () => {
+    const creada = await crear({
+      nombre: `${marca} textos de parametro`,
+      parametros: [
+        { nombre: 'umbral', tipo: 'numero', etiqueta: '  Stock mínimo  ', ayuda: 'Avisa con esta cantidad o menos.' },
+      ],
+    });
+    assert.deepEqual(creada.parametros, [
+      { nombre: 'umbral', tipo: 'numero', etiqueta: 'Stock mínimo', ayuda: 'Avisa con esta cantidad o menos.' },
+    ]);
+    const respuesta = await app.inject({ method: 'GET', url: `/plantillas/${String(creada.id)}` });
+    assert.deepEqual(respuesta.json(), { plantilla: creada });
+    const guardada = await prisma.plantilla.findUnique({ where: { id: String(creada.id) } });
+    assert.deepEqual(guardada?.parametros, creada.parametros);
+
+    const enBlanco = await crear({
+      nombre: `${marca} textos en blanco`,
+      parametros: [{ nombre: 'umbral', tipo: 'numero', etiqueta: '   ', ayuda: '' }],
+    });
+    assert.deepEqual(enBlanco.parametros, [{ nombre: 'umbral', tipo: 'numero' }]);
+    const sinTextos = await crear({ nombre: `${marca} sin textos de parametro` });
+    assert.deepEqual(sinTextos.parametros, [{ nombre: 'umbral', tipo: 'numero' }]);
+  });
+
+  test('3.1 CH-57 parameter texts exactly at their caps are accepted, and a refused one writes no row', async () => {
+    const enElTope = await crear({
+      nombre: `${marca} tope textos de parametro`,
+      parametros: [{ nombre: 'umbral', tipo: 'numero', etiqueta: ` ${'e'.repeat(60)} `, ayuda: 'a'.repeat(240) }],
+    });
+    assert.deepEqual(enElTope.parametros, [
+      { nombre: 'umbral', tipo: 'numero', etiqueta: 'e'.repeat(60), ayuda: 'a'.repeat(240) },
+    ]);
+    const nombre = `${marca} texto de parametro rechazado`;
+    const respuesta = await app.inject({
+      method: 'POST',
+      url: '/plantillas',
+      payload: { ...VALIDA, nombre, parametros: [{ nombre: 'umbral', tipo: 'numero', ayuda: 'a'.repeat(241) }] },
+    });
+    assert.equal(respuesta.statusCode, 400, respuesta.body);
+    assert.deepEqual((respuesta.json() as { campos: string[] }).campos, ['/parametros/0/ayuda']);
+    assert.equal(await prisma.plantilla.count({ where: { nombre } }), 0);
+  });
+
+  test('4.1 CH-57 a PUT keeps the parameter texts, and one without them drops them', async () => {
+    const creada = await crear({ nombre: `${marca} textos al reemplazar` });
+    const url = `/plantillas/${String(creada.id)}`;
+    const conTextos = [{ nombre: 'umbral', tipo: 'numero', etiqueta: 'Stock mínimo', ayuda: 'Avisa con esto o menos.' }];
+    const reemplazada = await app.inject({
+      method: 'PUT',
+      url,
+      payload: { ...VALIDA, nombre: `${marca} textos al reemplazar`, parametros: conTextos },
+    });
+    assert.equal(reemplazada.statusCode, 200, reemplazada.body);
+    assert.deepEqual((reemplazada.json() as { plantilla: { parametros: unknown } }).plantilla.parametros, conTextos);
+    const leida = await app.inject({ method: 'GET', url });
+    assert.deepEqual((leida.json() as { plantilla: { parametros: unknown } }).plantilla.parametros, conTextos);
+
+    const sinTextos = await app.inject({
+      method: 'PUT',
+      url,
+      payload: { ...VALIDA, nombre: `${marca} textos al reemplazar` },
+    });
+    assert.equal(sinTextos.statusCode, 200, sinTextos.body);
+    assert.deepEqual(
+      (sinTextos.json() as { plantilla: { parametros: unknown } }).plantilla.parametros,
+      [{ nombre: 'umbral', tipo: 'numero' }],
+    );
   });
 
   test('4.1 round-trip: get returns the original, a headerless PUT replaces it in place', async () => {

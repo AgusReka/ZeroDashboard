@@ -18,7 +18,7 @@ La versión 1.0 está cerrada: tag `v1.0.0`. Su mapa, con CH-01 a CH-35 y la sec
 
 **Después de cada change:** entrada en la bitácora con fecha, fricciones encontradas y tiempo invertido.
 
-**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-57 y la próxima decisión, DEC-209. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
+**Numeración.** Los números siguen corriendo desde la v1: el próximo change nuevo es CH-58 y la próxima decisión, DEC-210. No se reinician, para que ningún identificador signifique dos cosas. Los candidatos que vienen de la v1 conservan el suyo.
 
 ---
 
@@ -47,7 +47,7 @@ Un candidato pasa a la tabla de changes recién cuando se explora y se decide. S
 
 | ID | Qué resuelve | Historia | Estado | Notas |
 |---|---|---|---|---|
-| — | En el alta y el ajuste de la consola, el umbral y el mínimo de filas se confunden: el parámetro se rotula con su nombre crudo (`umbral`), sin explicar qué hace | D2 | Anotado el 2026-11-03, en la prueba manual de CH-41 | El umbral decide qué filas entran en el resultado (por ejemplo, productos con 5 unidades o menos); el mínimo decide si con esas filas se avisa (por ejemplo, solo si son al menos 3). Hoy la declaración de un parámetro solo tiene `nombre` y `tipo`, así que no hay de dónde sacar una descripción. Opciones a explorar: una `descripcion` opcional en la declaración del parámetro, cargada desde la pantalla de plantillas (CH-38); o renombrar los rótulos y sumar una ayuda fija para el mínimo que lo contraste con el umbral. El panel ya lo resuelve: rotula el umbral «Cantidad mínima», con su ayuda |
+| — | En el alta y el ajuste de la consola, el umbral y el mínimo de filas se confunden | D2 | Pasó a CH-57 el 2026-11-12 | DEC-209 |
 
 ### Changes de la v2
 
@@ -89,6 +89,7 @@ Todos son de front. No cambian reglas de negocio, endpoints ni datos, y ninguno 
 | 18 | CH-53 | Consultas como subvista de página con el esqueleto de banco de trabajo | CH-51, CH-52 | ⚠ DEC-208 (enmienda DEC-173). Sin el cambio de backend de la versión en la lista. PRs #271, #272. Archivado el 2026-11-12. |
 | 19 | CH-55 | Guía de puesta en marcha como capa visual, no obligatoria: franja de etapas, marcas en la navegación y «Siguiente» | CH-50 | Solo lee datos que la consola ya obtiene. PR #273. Archivado el 2026-11-12. |
 | 20 | CH-56 | Editor de Plantillas y Reportes en una subvista con secciones numeradas | CH-53 | ⚠ DEC-208. Dos cortes: CH-56a (Plantillas) y CH-56b (Reportes). PRs #274, #275, #276. Archivado el 2026-11-12. |
+| 21 | CH-57 | El umbral y el mínimo de filas se distinguen: rótulo y ayuda opcionales por parámetro de plantilla, cargados en el editor, y la ayuda del mínimo completa en el alta y el ajuste | CH-56 | DEC-209. Toca la API de plantillas (sin migración) y la consola. El panel no cambia. |
 
 ---
 

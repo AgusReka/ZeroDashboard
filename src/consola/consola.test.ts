@@ -43,6 +43,7 @@ class Nodo {
   tagName: string;
   id = '';
   className = '';
+  maxLength = 0;
   type = '';
   hidden = false;
   disabled = false;
@@ -491,6 +492,7 @@ const IDS = [
   'aj-destinatario',
   'aj-destinatario-ayuda',
   'aj-minimo',
+  'aj-minimo-ayuda',
   'aj-aviso',
   'aj-confirmar',
   'aj-descartar',
@@ -1735,6 +1737,9 @@ describe('the console document, served by the real route', () => {
 
   // ---- CH-33 (DEC-174): «Ajustar» opens a pop-up prefilled from the stored automation --------------
 
+  /** CH-57: the second sentence of the minimum's help, on both channels and both forms. */
+  const EXPLICACION_MINIMO_CH57 = ' Es cuántos productos tienen que cumplir la condición, no el valor de la condición: con 3, solo avisa cuando hay 3 o más productos.';
+
   const PLANTILLA_AJUSTABLE = {
     id: 'p-1',
     nombre: 'Stock diario',
@@ -2114,13 +2119,13 @@ describe('the console document, served by the real route', () => {
       assert.equal(nodo(escenario, id).hidden, true, id);
     }
     assert.equal(nodo(escenario, 'auto-canal-ayuda').hidden, false);
-    assert.equal(nodo(escenario, 'auto-minimo-ayuda').textContent, 'El mensaje sale solo si la consulta devuelve al menos esta cantidad de filas.');
+    assert.equal(nodo(escenario, 'auto-minimo-ayuda').textContent, 'El mensaje sale solo si la consulta devuelve al menos esta cantidad de filas.' + EXPLICACION_MINIMO_CH57);
     nodo(escenario, 'auto-canal').value = 'correo';
     nodo(escenario, 'auto-canal').disparar('change');
     assert.equal(nodo(escenario, 'auto-destinatario').hidden, false);
     assert.equal(nodo(escenario, 'auto-destinatario').value, 'a@b.com', 'the field keeps what it held');
     assert.equal(nodo(escenario, 'auto-vista-correo').hidden, false);
-    assert.equal(nodo(escenario, 'auto-minimo-ayuda').textContent, 'El correo sale solo si la consulta devuelve al menos esta cantidad de filas.');
+    assert.equal(nodo(escenario, 'auto-minimo-ayuda').textContent, 'El correo sale solo si la consulta devuelve al menos esta cantidad de filas.' + EXPLICACION_MINIMO_CH57);
   });
 
   test('CH-44 creating on Telegram sends the channel and no recipients; on email, no channel', async () => {
@@ -5638,7 +5643,8 @@ describe('the console document, served by the real route', () => {
     nodo(escenario, 'plantilla-f-agregar-parametro').disparar('click');
     assert.equal(entradas().length, 1, 'a row with no name asks for no value');
     assert.equal(entradas()[0].value, '7', 'the typed value survives a rebuild');
-    const segundo = buscar(nodo(escenario, 'plantilla-f-parametros'), (n) => n.tagName === 'input')[1];
+    // CH-57: each row also holds its two operator texts, so the name inputs are picked by class.
+    const segundo = nodo(escenario, 'plantilla-f-parametros').porClase('parametro-nombre')[1];
     segundo.value = 'corte';
     segundo.disparar('input');
     assert.equal(entradas().length, 2);
@@ -5753,7 +5759,7 @@ describe('the console document, served by the real route', () => {
     assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
     assert.equal(nodo(escenario, 'plantilla-copia-aviso').hidden, false);
     assert.deepEqual(buscar(nodo(escenario, 'plantilla-f-entidades'), (n) => n.tagName === 'input').map((n) => n.checked), [true, false, false, true, false]);
-    const filaParametro = buscar(nodo(escenario, 'plantilla-f-parametros'), (n) => n.tagName === 'input').map((n) => n.value);
+    const filaParametro = nodo(escenario, 'plantilla-f-parametros').porClase('parametro-nombre').map((n) => n.value);
     assert.deepEqual(filaParametro, ['umbral']);
     assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true);
     assert.deepEqual(escenario.peticiones.slice(antes).map((p) => p.url), ['/conexiones'], 'only the connections are read');
@@ -5804,6 +5810,113 @@ describe('the console document, served by the real route', () => {
     assert.equal(cuerpo.titulo, 'Stock bajo');
     assert.equal(cuerpo.descripcion, '', 'a blank text is sent, the route stores no text');
     assert.equal(nodo(escenario, 'plantilla-editor').hidden, true);
+  });
+
+  // ---- CH-57 (DEC-209): the operator texts of a template parameter ---------------------------------
+
+  const AYUDA_UMBRAL_CH57 = 'Avisa con esta cantidad o menos.';
+  /** A free template whose only parameter already carries its two operator texts. */
+  const PLANTILLA_TEXTOS_CH57 = {
+    ...PLANTILLA_CH38,
+    enUso: false,
+    parametros: [{ nombre: 'umbral', tipo: 'numero', etiqueta: 'Stock mínimo', ayuda: AYUDA_UMBRAL_CH57 }],
+  };
+
+  /** Opens «Editar» on `plantilla`, chooses the connection and passes the test. */
+  async function editarProbadaCH57(plantilla: Record<string, unknown>): Promise<Escenario> {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirDrawerCH38(escenario, plantilla);
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'plantilla-editar').disparar('click');
+    await asentarVarias();
+    escribirCH38(escenario, 'plantilla-f-conexion', 'c-1');
+    await probarCH38(escenario);
+    return escenario;
+  }
+
+  const textosDeFilaCH57 = (escenario: Escenario) => ({
+    etiquetas: nodo(escenario, 'plantilla-f-parametros').porClase('parametro-etiqueta'),
+    ayudas: nodo(escenario, 'plantilla-f-parametros').porClase('parametro-ayuda-texto'),
+  });
+
+  test("CH-57 each parameter row of the template editor holds «Rótulo para el operador» and «Ayuda» after Nombre and Tipo; the query editor's rows do not", async () => {
+    const escenario = await abrirNuevaCH38();
+    nodo(escenario, 'plantilla-f-agregar-parametro').disparar('click');
+    const rotulos = buscar(nodo(escenario, 'plantilla-f-parametros'), (n) => n.tagName === 'label').map((n) => n.hijos[0].textContent);
+    assert.deepEqual(rotulos, ['Nombre', 'Tipo', 'Rótulo para el operador', 'Ayuda']);
+    const { etiquetas, ayudas } = textosDeFilaCH57(escenario);
+    assert.equal(etiquetas.length, 1);
+    assert.equal(ayudas.length, 1);
+    assert.equal(etiquetas[0].maxLength, 60);
+    assert.equal(ayudas[0].maxLength, 240);
+    assert.equal(etiquetas[0].value, '');
+    // The query editor shares the factory but is built without the texts.
+    nodo(escenario, 'agregar-parametro').disparar('click');
+    const consulta = nodo(escenario, 'parametros');
+    assert.equal(consulta.porClase('parametro-nombre').length, 1);
+    assert.equal(consulta.porClase('parametro-etiqueta').length, 0);
+    assert.equal(consulta.porClase('parametro-ayuda-texto').length, 0);
+    assert.deepEqual(buscar(consulta, (n) => n.tagName === 'label').map((n) => n.hijos[0].textContent), ['Nombre', 'Tipo', 'Valor']);
+  });
+
+  test('CH-57 a label change keeps the last passing test valid and counts as an unsaved change', async () => {
+    const escenario = await editarProbadaCH57({ ...PLANTILLA_CH38, enUso: false });
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false, 'tested as it was loaded');
+    const { etiquetas, ayudas } = textosDeFilaCH57(escenario);
+    etiquetas[0].value = 'Stock mínimo';
+    etiquetas[0].disparar('input');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false, 'the label is not in the fingerprint');
+    ayudas[0].value = AYUDA_UMBRAL_CH57;
+    ayudas[0].disparar('input');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false, 'neither is the help');
+    nodo(escenario, 'plantilla-dialogo-cancelar').disparar('click');
+    assert.equal(nodo(escenario, 'plantilla-confirmar').hidden, false, 'a typed text is an unsaved change');
+    assert.equal(nodo(escenario, 'plantilla-editor').hidden, false);
+  });
+
+  test('CH-57 the tipo is still part of the fingerprint, with the texts typed', async () => {
+    const escenario = await editarProbadaCH57(PLANTILLA_TEXTOS_CH57);
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, false);
+    const tipo = buscar(nodo(escenario, 'plantilla-f-parametros'), (n) => n.tagName === 'select')[0];
+    tipo.value = 'texto';
+    tipo.disparar('change');
+    assert.equal(nodo(escenario, 'plantilla-dialogo-guardar').disabled, true, 'a tipo change invalidates the test');
+  });
+
+  test('CH-57 «Editar» fills the texts, and the save body carries the ones that are not blank, trimmed', async () => {
+    const escenario = await editarProbadaCH57(PLANTILLA_TEXTOS_CH57);
+    const { etiquetas, ayudas } = textosDeFilaCH57(escenario);
+    assert.equal(etiquetas[0].value, 'Stock mínimo');
+    assert.equal(ayudas[0].value, AYUDA_UMBRAL_CH57);
+    etiquetas[0].value = '  Stock crítico  ';
+    etiquetas[0].disparar('input');
+    ayudas[0].value = '   ';
+    ayudas[0].disparar('input');
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: PLANTILLA_TEXTOS_CH57 } });
+    escenario.respuestas.push({ status: 200, cuerpo: { plantillas: [PLANTILLA_LISTADA], truncado: false } });
+    escenario.respuestas.push({ status: 200, cuerpo: { plantilla: PLANTILLA_TEXTOS_CH57 } });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [], truncado: false } });
+    const inicio = escenario.peticiones.length;
+    nodo(escenario, 'plantilla-form').disparar('submit');
+    await asentarVarias();
+    assert.equal(escenario.peticiones[inicio].url, '/plantillas/p-9');
+    const cuerpo = escenario.peticiones[inicio].cuerpo as { parametros: unknown };
+    assert.deepEqual(cuerpo.parametros, [{ nombre: 'umbral', tipo: 'numero', etiqueta: 'Stock crítico' }]);
+  });
+
+  test('CH-57 «Duplicar y editar» keeps the parameter texts while the client texts start empty', async () => {
+    const escenario = await arrancar();
+    await elegirTenant(escenario);
+    await abrirDrawerCH38(escenario, { ...PLANTILLA_TEXTOS_CH57, enUso: true });
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: CONEXIONES_CH35, truncado: false } });
+    nodo(escenario, 'plantilla-duplicar').disparar('click');
+    await asentarVarias();
+    const { etiquetas, ayudas } = textosDeFilaCH57(escenario);
+    assert.deepEqual(etiquetas.map((n) => n.value), ['Stock mínimo']);
+    assert.deepEqual(ayudas.map((n) => n.value), [AYUDA_UMBRAL_CH57]);
+    assert.equal(nodo(escenario, 'plantilla-f-titulo').value, '');
+    assert.equal(nodo(escenario, 'plantilla-f-descripcion').value, '');
   });
 
   test('CH-38 a 409 plantilla-en-uso keeps the pop-up open and offers «Duplicar y editar», which turns it into a copy', async () => {
@@ -10585,6 +10698,68 @@ describe('the console document, served by the real route', () => {
   test('C-13 the minimum of rows says what it counts, with an example', () => {
     const ayuda = marcado().match(/<p id="auto-minimo-ayuda"[^>]*>([^<]*)<\/p>/)?.[1] ?? '';
     assert.match(ayuda, /con 3, solo avisa cuando hay 3 o más productos/);
+  });
+
+  test('CH-57 a template written from the console is labeled by its declaration and described by its help', async () => {
+    const escenario = await paso2ConPlantilla('otra', [{ nombre: 'umbral', tipo: 'numero', etiqueta: 'Stock mínimo', ayuda: 'Avisa con esta cantidad o menos.' }]);
+    const [rotulo] = nodo(escenario, 'auto-valores').hijos;
+    assert.equal(rotulo.hijos[0].textContent, 'Stock mínimo');
+    assert.equal(rotulo.hijos[2].textContent, 'Avisa con esta cantidad o menos.');
+    assert.equal(rotulo.hijos[1].getAttribute('aria-describedby'), rotulo.hijos[2].id, 'the help is attached to the control');
+  });
+
+  test('CH-57 the declaration wins over the fixed map, and a label with no help gets none', async () => {
+    const propia = await paso2ConPlantilla('stock-fisico', [{ nombre: 'umbral', tipo: 'numero', etiqueta: 'Mínimo propio' }]);
+    const [rotulo] = nodo(propia, 'auto-valores').hijos;
+    assert.equal(rotulo.hijos[0].textContent, 'Mínimo propio', 'not «Stock mínimo por producto»');
+    assert.equal(rotulo.hijos.length, 2, "no help span is invented, and the map's help does not leak in");
+    // An entry with only a help falls through to the map, as one with no texts does.
+    const soloAyuda = await paso2ConPlantilla('stock-fisico', [{ nombre: 'umbral', tipo: 'numero', ayuda: 'Texto huérfano' }]);
+    assert.equal(nodo(soloAyuda, 'auto-valores').hijos[0].hijos[0].textContent, 'Stock mínimo por producto');
+    // Neither the declaration nor the map: the bare name, as before.
+    const sinTextos = await paso2ConPlantilla('otra', [{ nombre: 'umbral', tipo: 'numero' }]);
+    assert.equal(nodo(sinTextos, 'auto-valores').hijos[0].hijos[0].textContent, 'umbral');
+  });
+
+  test('CH-57 the adjust pop-up labels a console-written parameter by its declaration', async () => {
+    const escenario = await arrancar();
+    await abrirAjuste(escenario, AJUSTABLE, {
+      ...PLANTILLA_AJUSTABLE,
+      parametros: [{ nombre: 'umbral', tipo: 'numero', etiqueta: 'Stock mínimo', ayuda: 'Avisa con esta cantidad o menos.' }],
+    });
+    const [rotulo] = nodo(escenario, 'aj-valores').hijos;
+    assert.equal(rotulo.hijos[0].textContent, 'Stock mínimo');
+    assert.equal(rotulo.hijos[2].textContent, 'Avisa con esta cantidad o menos.');
+    assert.equal(rotulo.hijos[1].getAttribute('aria-describedby'), rotulo.hijos[2].id);
+  });
+
+  test("CH-57 the minimum's help still tells it apart from the condition after Telegram and back", async () => {
+    const escenario = await arrancar();
+    const ayuda = () => nodo(escenario, 'auto-minimo-ayuda').textContent;
+    assert.match(marcado(), /<p id="auto-minimo-ayuda"[^>]*>El correo sale solo si[^<]*no el valor de la condición[^<]*<\/p>/, 'the markup');
+    nodo(escenario, 'auto-canal').value = 'telegram';
+    nodo(escenario, 'auto-canal').disparar('change');
+    assert.ok(ayuda().startsWith('El mensaje sale solo si'));
+    assert.ok(ayuda().includes('no el valor de la condición'), 'on Telegram');
+    nodo(escenario, 'auto-canal').value = 'correo';
+    nodo(escenario, 'auto-canal').disparar('change');
+    assert.ok(ayuda().startsWith('El correo sale solo si'));
+    assert.ok(ayuda().includes('no el valor de la condición'), 'back on email');
+  });
+
+  test("CH-57 the adjust pop-up describes its minimum, with the channel's sentence", async () => {
+    const markup = marcado();
+    assert.match(markup, /<input id="aj-minimo"[^>]*aria-describedby="aj-minimo-ayuda"/);
+    assert.match(markup, /<p id="aj-minimo-ayuda" class="ayuda">El correo sale solo si[^<]*no el valor de la condición[^<]*<\/p>/);
+    const escenario = await arrancar();
+    await abrirAjuste(escenario, { ...AJUSTABLE, canal: 'telegram' });
+    const ayuda = () => nodo(escenario, 'aj-minimo-ayuda').textContent;
+    assert.ok(ayuda().startsWith('El mensaje sale solo si'));
+    assert.ok(ayuda().includes('no el valor de la condición'));
+    nodo(escenario, 'aj-canal').value = 'correo';
+    nodo(escenario, 'aj-canal').disparar('change');
+    assert.ok(ayuda().startsWith('El correo sale solo si'));
+    assert.ok(ayuda().includes('no el valor de la condición'));
   });
 
   test('C-14 a new panel user comes with «Qué enviarle al usuario»: the panel address, the email and the password, cleared together', async () => {
