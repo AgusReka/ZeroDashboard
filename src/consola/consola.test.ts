@@ -573,6 +573,9 @@ const IDS = [
   // CH-53b: the saved list's search, counter and no-match state; the editor's versions button and reference panel.
   'consultas-busqueda', 'consultas-contador', 'consultas-sin-coincidencias', 'consultas-sin-coincidencias-texto', 'consultas-limpiar',
   'consulta-versiones', 'consultas-referencia', 'consultas-referencia-parametros', 'consultas-referencia-contrato',
+  // CH-55: the setup strip of each setup screen and the navigation marks.
+  'pm-agentes', 'pm-conexiones', 'pm-mapeo', 'pm-usuarios', 'pm-tablero',
+  'nav-marca-conexiones', 'nav-marca-mapeo', 'nav-marca-usuarios', 'nav-marca-tablero',
 ] as const;
 
 /** The ids of the first PR2 version (strip and save side panel), replaced before merge: they must not come back. */
@@ -588,6 +591,8 @@ const IDS_OCULTOS = [...IDS_OCULTOS_ALTA, 'versiones', 'version-guardar', 'conex
   'tenant-activo-id', 'nav-tenant-id', 'tc-sin-guardar', 'pantalla-desconocida',
   'confirmacion-dialogo', 'confirmacion-lista', 'confirmacion-extra', 'confirmacion-primaria', 'confirmacion-peligro',
   'mapeo-campos', 'mapeo-pendientes', 'mapeo-bloqueado', 'consultas-sin-coincidencias', 'consulta-versiones',
+  'pm-agentes', 'pm-conexiones', 'pm-mapeo', 'pm-usuarios', 'pm-tablero',
+  'nav-marca-conexiones', 'nav-marca-mapeo', 'nav-marca-usuarios', 'nav-marca-tablero',
   ...PANTALLAS_DEL_TENANT.map((nombre) => 'sin-tenant-' + nombre), ...BANNERS_DE_RESULTADO];
 
 /**
@@ -6749,7 +6754,8 @@ describe('the console document, served by the real route', () => {
     const en = (id: string): number => html.indexOf(`id="${id}"`);
     assert.ok(en('nav-usuarios') < en('nav-tablero'));
     assert.ok(en('nav-tablero') < en('nav-tiempos'));
-    assert.match(html, /<a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente<\/span><\/a>/);
+    // CH-55 (N6): the link carries its setup mark, hidden until the stage was checked.
+    assert.match(html, /<a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente<\/span><span id="nav-marca-tablero" class="zd-sidenav__meta" hidden><\/span><\/a>/);
     assert.match(html, /<section id="pantalla-tablero"[^>]*data-change="CH-46"[^>]*hidden>/);
     const seccion = html.slice(en('pantalla-tablero'), html.indexOf('</section>', en('pantalla-tablero')));
     assert.match(seccion, /<span id="alcance-tablero" class="zd-scope zd-scope--tenant">/);
@@ -7468,18 +7474,16 @@ describe('the console document, served by the real route', () => {
   async function abrirMapeo(plantillas?: unknown[]): Promise<Escenario> {
     const escenario = await arrancar();
     await elegirTenant(escenario, [], [], 't-1', plantillas);
-    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CONEXION_LISTADA], truncado: false } });
-    irA(escenario, '#mapeo');
-    await asentarVarias();
+    // CH-55 (G3): the tenant's only connection comes chosen, so its report is read right after the list.
     escenario.respuestas.push(
+      { status: 200, cuerpo: { conexiones: [CONEXION_LISTADA], truncado: false } },
       { status: 200, cuerpo: { validacionMapeo: informeDePrueba() } },
       { status: 200, cuerpo: { vistasCanonicas: [{ id: 'v-1', entidad: 'producto', creadaEn: '2026-10-01T10:00:00.000Z', actualizadaEn: '2026-10-01T10:00:00.000Z' }] } },
       { status: 200, cuerpo: { vistaCanonica: { id: 'v-1', entidad: 'producto', sql: SQL_PRODUCTO } } },
     );
-    const selector = nodo(escenario, 'mapeo-conexion');
-    selector.value = 'c-1';
-    selector.disparar('change');
+    irA(escenario, '#mapeo');
     await asentarVarias();
+    assert.equal(nodo(escenario, 'mapeo-conexion').value, 'c-1', 'the only connection is chosen');
     return escenario;
   }
 
@@ -7507,11 +7511,13 @@ describe('the console document, served by the real route', () => {
 
     const escenario = await arrancar();
     await elegirTenant(escenario);
-    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CONEXION_LISTADA], truncado: false } });
+    // With two connections there is a choice to make (CH-55 G3 preselects only a single one).
+    escenario.respuestas.push({ status: 200, cuerpo: { conexiones: [CONEXION_LISTADA, { ...CONEXION_LISTADA, id: 'c-2', nombre: 'replica-b' }], truncado: false } });
     irA(escenario, '#mapeo');
     await asentarVarias();
     assert.equal(escenario.peticiones[escenario.peticiones.length - 1].url, '/conexiones');
-    assert.deepEqual(nodo(escenario, 'mapeo-conexion').options.map((o) => o.value), ['', 'c-1']);
+    assert.deepEqual(nodo(escenario, 'mapeo-conexion').options.map((o) => o.value), ['', 'c-1', 'c-2']);
+    assert.equal(nodo(escenario, 'mapeo-conexion').value, '');
     assert.equal(nodo(escenario, 'mapeo-aviso').textContent, 'Elegí una conexión para ver su mapeo.');
   });
 
@@ -7582,6 +7588,73 @@ describe('the console document, served by the real route', () => {
   test('CH-54 the embedded contract is the one the server serves, and the validity rule is stated', () => {
     assert.ok(script.includes('var CONTRATO = ' + jsonEnScript(CONTRATO_CANONICO) + ';'));
     assert.match(marcado(), /<p id="mapeo-regla" class="ayuda">El mapeo es válido cuando cada entidad obligatoria/);
+  });
+
+  // ---- CH-55: the setup guide, fed by what the console already read -------------------------------------
+
+  const tiraPuesta = (escenario: Escenario, pantalla: string): string[] => nodo(escenario, 'pm-' + pantalla).hijos.map((n) => n.textContent);
+
+  test('CH-55 the setup strip shows what is known after choosing a tenant, marks the current screen and links the next stage', async () => {
+    const escenario = await arrancar();
+    const antes = escenario.peticiones.length;
+    await elegirTenant(escenario, [], [], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    const lecturas = escenario.peticiones.length - antes;
+    escenario.respuestas.push({ status: 200, cuerpo: { agentes: [] } });
+    irA(escenario, '#agentes');
+    await asentarVarias();
+    assert.equal(nodo(escenario, 'pm-agentes').hidden, false);
+    // Connections and automations were read with the tenant; the rest have not been checked in this visit.
+    assert.deepEqual(tiraPuesta(escenario, 'agentes'), [
+      'Puesta en marcha:',
+      'Conexión ✓ Hecho',
+      'Mapeo ? Sin revisar',
+      'Usuarios del panel ? Sin revisar',
+      'Tablero ? Sin revisar',
+      'Primera automatización ○ Pendiente',
+      'Siguiente: Mapeo →',
+    ]);
+    assert.equal(nodo(escenario, 'pm-agentes').hijos[6].getAttribute('href'), '#mapeo');
+    assert.equal(lecturas, escenario.peticiones.length - antes - 1, 'the guide asked for nothing of its own: only Agentes read its agent');
+    // N6: the marks follow the strip; an unchecked stage shows none.
+    assert.equal(nodo(escenario, 'nav-marca-conexiones').hidden, false);
+    assert.equal(nodo(escenario, 'nav-marca-conexiones').textContent, '✓ Hecho');
+    assert.equal(nodo(escenario, 'nav-marca-mapeo').hidden, true);
+  });
+
+  test('CH-55 visiting Mapeo records it: a valid mapping marks the stage done, «estás acá» on its own strip', async () => {
+    const escenario = await abrirMapeo();
+    // informeDePrueba has producto invalid: the stage is pending.
+    assert.ok(tiraPuesta(escenario, 'mapeo').includes('Mapeo ○ Pendiente (estás acá)'));
+    assert.equal(nodo(escenario, 'nav-marca-mapeo').textContent, '○ Pendiente');
+    const valido = informeDePrueba();
+    (valido.entidades as Array<{ estado: string }>).forEach((e) => { e.estado = 'valida'; });
+    escenario.respuestas.push({ status: 200, cuerpo: { validacionMapeo: valido } });
+    nodo(escenario, 'mapeo-validar').disparar('click');
+    await asentarVarias();
+    assert.ok(tiraPuesta(escenario, 'mapeo').includes('Mapeo ✓ Hecho (estás acá)'));
+    assert.equal(nodo(escenario, 'nav-marca-mapeo').textContent, '✓ Hecho');
+  });
+
+  test('CH-55 a visited screen records its stage and the next one is the first still open; with no tenant the strip is hidden', async () => {
+    const sinTenant = await arrancar();
+    assert.equal(nodo(sinTenant, 'pm-conexiones').hidden, true);
+    assert.equal(nodo(sinTenant, 'nav-marca-conexiones').hidden, true);
+    const escenario = await arrancar();
+    await elegirTenant(escenario, [], [automatizacion()], 't-1', undefined, [{ id: 'c-1', nombre: 'food-store' }]);
+    escenario.respuestas.push({ status: 200, cuerpo: { usuarios: [{ id: 'u-1', correo: 'ana@negocio.com', nombre: null, activo: true, creadoEn: '2026-10-01T10:00:00.000Z' }], truncado: false } });
+    irA(escenario, '#usuarios');
+    await asentarVarias();
+    assert.ok(tiraPuesta(escenario, 'usuarios').includes('Usuarios del panel ✓ Hecho (estás acá)'));
+    assert.equal(tiraPuesta(escenario, 'usuarios').at(-1), 'Siguiente: Mapeo →');
+  });
+
+  test('CH-55 each setup screen says its step; Agentes says it is optional', () => {
+    const html = marcado();
+    for (const [pantalla, paso] of [['conexiones', 1], ['mapeo', 2], ['usuarios', 3], ['tablero', 4]] as const) {
+      const seccion = html.slice(html.indexOf(`id="pantalla-${pantalla}"`));
+      assert.match(seccion, new RegExp(`<p class="zd-pagehead__desc">Paso ${paso} de la puesta en marcha\\.`), pantalla);
+    }
+    assert.match(html.slice(html.indexOf('id="pantalla-agentes"')), /<p class="zd-pagehead__desc">Opcional: solo hace falta si la réplica está en una red privada\./);
   });
 
   test('CH-54 with no connections the screen shows the blocked state, pointing to Conexiones', async () => {

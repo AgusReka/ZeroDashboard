@@ -251,6 +251,12 @@ function documentoConsola(nombreOperador: string): string {
   .lista-guardadas { margin: 0; padding: 0; list-style: none; }
   .lista-guardadas > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); padding: var(--space-4) 0; border-bottom: var(--border-width) solid var(--border-1); }
   .lista-guardadas > li > span:first-child { font-weight: var(--weight-semibold); }
+  /* CH-55 (G1, N6): the setup strip and the navigation marks; the state is data-tono, set by the script (G3'). */
+  .puesta-en-marcha { flex-wrap: wrap; margin-top: var(--space-3); }
+  .puesta-en-marcha > span[data-tono="ok"] { color: var(--ok-text); }
+  .puesta-en-marcha > span[data-tono="pendiente"] { color: var(--warn-text); }
+  .puesta-en-marcha > span[data-actual] { font-weight: var(--weight-semibold); }
+  .zd-sidenav__meta[data-tono="ok"] { color: var(--ok-text); border-style: solid; }
   .consulta-ejecutar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
   /* CH-38 (DEC-191): the template pop-up is wide like the query one; its entity boxes are built by the script. */
   #plantilla-dialogo .zd-dialog { width: min(900px, 100%); }
@@ -472,10 +478,10 @@ function documentoConsola(nombreOperador: string): string {
     </div>
     <span class="zd-sidenav__subheading">Puesta en marcha</span>
     <a id="nav-agentes" class="zd-sidenav__item" href="#agentes"><span>Agentes</span><span class="zd-sidenav__meta">opcional</span></a>
-    <a id="nav-conexiones" class="zd-sidenav__item" href="#conexiones"><span>Conexiones</span></a>
-    <a id="nav-mapeo" class="zd-sidenav__item" href="#mapeo"><span>Mapeo y validación</span></a>
-    <a id="nav-usuarios" class="zd-sidenav__item" href="#usuarios"><span>Usuarios del panel</span></a>
-    <a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente</span></a>
+    <a id="nav-conexiones" class="zd-sidenav__item" href="#conexiones"><span>Conexiones</span><span id="nav-marca-conexiones" class="zd-sidenav__meta" hidden></span></a>
+    <a id="nav-mapeo" class="zd-sidenav__item" href="#mapeo"><span>Mapeo y validación</span><span id="nav-marca-mapeo" class="zd-sidenav__meta" hidden></span></a>
+    <a id="nav-usuarios" class="zd-sidenav__item" href="#usuarios"><span>Usuarios del panel</span><span id="nav-marca-usuarios" class="zd-sidenav__meta" hidden></span></a>
+    <a id="nav-tablero" class="zd-sidenav__item" href="#tablero"><span>Tablero del cliente</span><span id="nav-marca-tablero" class="zd-sidenav__meta" hidden></span></a>
     <span class="zd-sidenav__subheading">Trabajo diario</span>
     <a id="nav-consultas" class="zd-sidenav__item" href="#consultas"><span>Consultas</span></a>
     <a id="nav-automatizaciones" class="zd-sidenav__item" href="#automatizaciones"><span>Automatizaciones</span></a>
@@ -577,7 +583,8 @@ ${avisoResultado('tenant-banner', '<a id="tenant-siguiente" class="zd-btn zd-btn
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span id="alcance-conexiones" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-conexiones" class="zd-h1">Conexiones</h1>
-    <p class="zd-pagehead__desc">Cómo llega la consola a la réplica del tenant. Probá cada conexión antes de usarla.</p>
+    <p class="zd-pagehead__desc">Paso 1 de la puesta en marcha. Cómo llega la consola a la réplica del tenant. Probá cada conexión antes de usarla.</p>
+    <p id="pm-conexiones" class="zd-statusline puesta-en-marcha" aria-label="Puesta en marcha" hidden></p>
   </div>
   <div class="zd-pagehead__actions">
     <button id="conexion-nueva" class="zd-btn zd-btn--primary" type="button">Nueva conexión</button>
@@ -644,7 +651,8 @@ ${avisoResultado('conexion-banner')}
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span id="alcance-agentes" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-agentes" class="zd-h1">Agentes</h1>
-    <p class="zd-pagehead__desc">El agente corre en la red del cliente y abre la conexión hacia la consola: el cliente no expone puertos.</p>
+    <p class="zd-pagehead__desc">Opcional: solo hace falta si la réplica está en una red privada. El agente corre en la red del cliente y abre la conexión hacia la consola: el cliente no expone puertos.</p>
+    <p id="pm-agentes" class="zd-statusline puesta-en-marcha" aria-label="Puesta en marcha" hidden></p>
   </div>
 </header>
 ${estadoSinTenant('agentes')}
@@ -670,7 +678,8 @@ ${estadoSinTenant('agentes')}
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span id="alcance-usuarios" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-usuarios" class="zd-h1">Usuarios del panel</h1>
-    <p class="zd-pagehead__desc">Quién del negocio entra al panel. La clave la genera el sistema y se muestra una sola vez.</p>
+    <p class="zd-pagehead__desc">Paso 3 de la puesta en marcha. Quién del negocio entra al panel. La clave la genera el sistema y se muestra una sola vez.</p>
+    <p id="pm-usuarios" class="zd-statusline puesta-en-marcha" aria-label="Puesta en marcha" hidden></p>
   </div>
   <div class="zd-pagehead__actions">
     <button id="usuario-nuevo" class="zd-btn zd-btn--primary" type="button">Nuevo usuario</button>
@@ -734,7 +743,8 @@ ${estadoSinTenant('usuarios')}
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span id="alcance-tablero" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-tablero" class="zd-h1">Tablero del cliente</h1>
-    <p class="zd-pagehead__desc">Qué reportes ve el cliente en su panel y en qué orden. Hasta 8, todos sobre la misma conexión.</p>
+    <p class="zd-pagehead__desc">Paso 4 de la puesta en marcha. Qué reportes ve el cliente en su panel y en qué orden. Hasta 8, todos sobre la misma conexión.</p>
+    <p id="pm-tablero" class="zd-statusline puesta-en-marcha" aria-label="Puesta en marcha" hidden></p>
   </div>
   <div class="zd-pagehead__actions">
     <button id="tablero-guardar" class="zd-btn zd-btn--primary" type="button" disabled>Guardar tablero</button>
@@ -1094,7 +1104,8 @@ ${estadoSinTenant('tiempos')}
   <div class="zd-pagehead__text">
     <div class="zd-pagehead__meta"><span id="alcance-mapeo" class="zd-scope zd-scope--tenant">Del tenant activo</span></div>
     <h1 id="titulo-mapeo" class="zd-h1">Mapeo y validación</h1>
-    <p class="zd-pagehead__desc">Por cada entidad del contrato, la consulta que la arma desde la réplica del cliente. Validar la prueba sin leer filas.</p>
+    <p class="zd-pagehead__desc">Paso 2 de la puesta en marcha. Escribí un SELECT por entidad y validalo: sin mapeo validado no se pueden probar plantillas ni reportes.</p>
+    <p id="pm-mapeo" class="zd-statusline puesta-en-marcha" aria-label="Puesta en marcha" hidden></p>
   </div>
   <div class="zd-pagehead__actions">
     <button id="mapeo-validar" class="zd-btn zd-btn--primary" type="button">Validar mapeo</button>
@@ -2300,6 +2311,9 @@ function fijarTenant(id) {
   document.getElementById('prueba-sobre-plantillas').textContent = pruebaSobre;
   document.getElementById('prueba-sobre-reportes').textContent = pruebaSobre;
   escribirTenantGuardado(tenantActivo);
+  // CH-55: the setup state belongs to the tenant it was read for.
+  puestaEnMarcha = {};
+  if (typeof renderizarPuestaEnMarcha === 'function') { renderizarPuestaEnMarcha(); }
   botonCambiarTenant.textContent = tenantActivo === null ? 'Elegir tenant' : 'Cambiar tenant';
   aplicarSinTenant();
   mostrarFrescura();
@@ -2692,6 +2706,7 @@ async function cargarConexionesConsulta() {
   }
 
   var filas = resultado.cuerpo.conexiones;
+  anotarEtapa('conexion', filas.length > 0);
   ponerOpcionesConexion(filas, filas.length === 0 ? 'No hay conexiones registradas' : 'Elegí una conexión');
   // CH-53 (G3): with a single connection there is nothing to choose.
   if (filas.length === 1 && entradaConexion.value === '') {
@@ -3781,6 +3796,7 @@ async function listarAutomatizaciones() {
   if (resultado === null) { return; }
   if (resultado.status !== 200) { mostrarRechazo(resultado); return; }
   var filas = Array.isArray(resultado.cuerpo.automatizaciones) ? resultado.cuerpo.automatizaciones : [];
+  anotarEtapa('automatizacion', filas.some(function (fila) { return fila.activo === true; }));
   renderizarTabla(
     tablaAutomatizaciones,
     ['Plantilla', 'Conexión', 'Horario', 'Estado', 'Creada (hora de tu navegador)', 'Acciones'],
@@ -5777,6 +5793,7 @@ async function cargarPantallaConexiones() {
     return;
   }
   renderizarPantallaConexiones(cuerpo.conexiones);
+  anotarEtapa('conexion', cuerpo.conexiones.length > 0);
 }
 
 // CH-30c: "Cómo llega" offers the tenant's agent only while it is active. Each call moves the token, so
@@ -6218,6 +6235,7 @@ async function cargarPantallaUsuarios() {
     return;
   }
   renderizarUsuarios(cuerpo.usuarios);
+  anotarEtapa('usuarios', cuerpo.usuarios.some(function (u) { return u.activo === true; }));
   if (cuerpo.usuarios.length === 0) { avisoUsuarios.textContent = AVISO_USUARIOS_VACIO; }
   else if (avisoUsuarios.textContent === AVISO_USUARIOS_VACIO) { avisoUsuarios.textContent = ''; }
 }
@@ -7932,6 +7950,11 @@ function bloqueDeEntidad(fila) {
 // (the probe did not run, columns the contract does not have).
 function renderizarInforme(informe) {
   ultimoInformeMapeo = informe;
+  // CH-55: the mapping stage is done once a connection has every obligatory entity valid; another connection that is
+  // not valid does not undo it.
+  var filasInforme = Array.isArray(informe.entidades) ? informe.entidades : [];
+  var mapeoValido = filasInforme.length > 0 && filasInforme.every(function (e) { return e.obligatoriedad !== 'obligatorio' || e.estado === 'valida'; });
+  if (mapeoValido || puestaEnMarcha.mapeo !== true) { anotarEtapa('mapeo', mapeoValido); }
   (Array.isArray(informe.entidades) ? informe.entidades : []).forEach(function (fila) {
     var bloque = bloqueDeEntidad(fila);
     bloque.estado.textContent = textoDeEstado(fila.estado);
@@ -8118,6 +8141,12 @@ async function cargarPantallaMapeo() {
     : 'Elegí una conexión para ver su mapeo.';
   // CH-54 (E6): with no connection there is nothing to map: the blocked state says what is missing and where.
   document.getElementById('mapeo-bloqueado').hidden = leido.cuerpo.conexiones.length !== 0;
+  anotarEtapa('conexion', leido.cuerpo.conexiones.length > 0);
+  // CH-55 (G3): with a single connection there is nothing to choose.
+  if (leido.cuerpo.conexiones.length === 1) {
+    selectorMapeo.value = String(leido.cuerpo.conexiones[0].id);
+    await cargarMapeoDeConexion(selectorMapeo.value);
+  }
 }
 
 selectorMapeo.addEventListener('change', function () { cargarMapeoDeConexion(selectorMapeo.value); });
@@ -8501,6 +8530,7 @@ function respuestaTableroValida(cuerpo) {
 
 // A GET or PUT /tablero answer: the saved dashboard, each report's texts and its pending entities.
 function leerRespuestaTablero(cuerpo) {
+  anotarEtapa('tablero', Array.isArray(cuerpo.reportes) && cuerpo.reportes.length > 0);
   pendientesTablero = Object.create(null);
   var ids = [];
   cuerpo.reportes.forEach(function (entrada) {
@@ -8761,6 +8791,69 @@ botonAgregarTablero.addEventListener('click', function () {
 });
 botonGuardarTablero.addEventListener('click', guardarTablero);
 
+// --- CH-55 (G1, N6): setup guide ---------------------------------------------------------------
+// Each stage is true (done), false (pending) or absent (not checked yet in this visit). It is written by the loaders
+// that already read that data: the connections and automations when the tenant is chosen, Mapeo, Usuarios and
+// Tablero when their screen is shown. The guide never asks for anything itself and never disables anything.
+var ETAPAS_PUESTA = [
+  { clave: 'conexion', nombre: 'Conexión', pantalla: 'conexiones' },
+  { clave: 'mapeo', nombre: 'Mapeo', pantalla: 'mapeo' },
+  { clave: 'usuarios', nombre: 'Usuarios del panel', pantalla: 'usuarios' },
+  { clave: 'tablero', nombre: 'Tablero', pantalla: 'tablero' },
+  { clave: 'automatizacion', nombre: 'Primera automatización', pantalla: 'automatizaciones' }
+];
+var PANTALLAS_PUESTA = ['agentes', 'conexiones', 'mapeo', 'usuarios', 'tablero'];
+var puestaEnMarcha = {};
+
+function anotarEtapa(clave, hecha) {
+  if (tenantActivo === null) { return; }
+  puestaEnMarcha[clave] = hecha === true;
+  renderizarPuestaEnMarcha();
+}
+
+function textoDeEtapa(estado) {
+  return estado === true ? '✓ Hecho' : (estado === false ? '○ Pendiente' : '? Sin revisar');
+}
+
+function renderizarPuestaEnMarcha() {
+  var sin = tenantActivo === null;
+  var siguiente = null;
+  ETAPAS_PUESTA.forEach(function (etapa) { if (siguiente === null && puestaEnMarcha[etapa.clave] !== true) { siguiente = etapa; } });
+  PANTALLAS_PUESTA.forEach(function (pantalla) {
+    var linea = document.getElementById('pm-' + pantalla);
+    vaciar(linea);
+    linea.hidden = sin;
+    if (sin) { return; }
+    linea.appendChild(document.createTextNode('Puesta en marcha:'));
+    ETAPAS_PUESTA.forEach(function (etapa) {
+      var estado = puestaEnMarcha[etapa.clave];
+      var parte = document.createElement('span');
+      parte.setAttribute('data-tono', estado === true ? 'ok' : (estado === false ? 'pendiente' : 'neutro'));
+      if (etapa.pantalla === pantalla) { parte.setAttribute('data-actual', ''); }
+      parte.textContent = etapa.nombre + ' ' + textoDeEtapa(estado) + (etapa.pantalla === pantalla ? ' (estás acá)' : '');
+      linea.appendChild(parte);
+    });
+    if (siguiente === null) {
+      var completa = document.createElement('span');
+      completa.setAttribute('data-tono', 'ok');
+      completa.textContent = 'Puesta en marcha completa';
+      linea.appendChild(completa);
+    } else {
+      var enlace = document.createElement('a');
+      enlace.setAttribute('href', '#' + siguiente.pantalla);
+      enlace.textContent = 'Siguiente: ' + siguiente.nombre + ' →';
+      linea.appendChild(enlace);
+    }
+  });
+  [['conexion', 'conexiones'], ['mapeo', 'mapeo'], ['usuarios', 'usuarios'], ['tablero', 'tablero']].forEach(function (par) {
+    var marca = document.getElementById('nav-marca-' + par[1]);
+    var estado = puestaEnMarcha[par[0]];
+    marca.hidden = sin || (estado !== true && estado !== false);
+    marca.textContent = estado === true ? '✓ Hecho' : '○ Pendiente';
+    marca.setAttribute('data-tono', estado === true ? 'ok' : 'pendiente');
+  });
+}
+
 // CH-30a (DEC-164): one screen at a time, chosen by location.hash; an empty hash shows the start screen and,
 // since CH-50, an unknown one shows the unknown-section screen. Only hidden and aria-current change: every node keeps its id and its
 // place, so nothing else in this script depends on which screen is showing.
@@ -8810,6 +8903,7 @@ function mostrarPantalla() {
   // CH-50 (N9): a hash that names no screen opens the unknown-section screen, with no link marked as current.
   var activa = hashVacio() ? pantallaInicial() : (PANTALLAS.indexOf(pedida) === -1 ? 'desconocida' : pedida);
   pantallaMostrada = activa;
+  renderizarPuestaEnMarcha();
   document.title = (activa === 'desconocida' ? 'Sección no encontrada' : TITULOS_PANTALLA[activa]) + ' — ZeroDashboard';
   olvidarSecretos();
   document.getElementById('pantalla-desconocida').hidden = activa !== 'desconocida';
