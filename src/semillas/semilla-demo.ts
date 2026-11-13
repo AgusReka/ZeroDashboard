@@ -15,10 +15,11 @@ export type { ClienteSemilla } from './demo/comun.js';
  * CH-31 (DEC-171): the opt-in demo seed. With `SEED_DEMO=1` a fresh environment gets a
  * working tenant: the operator `demo`, "Food Store" with its connection to the
  * `replica-demo` service, the five canonical views validated by the same probe as
- * `POST /conexiones/:id/validacion-mapeo`, one saved query, a panel user and an active
- * automation. CH-49 adds a second tenant, "Café del Puerto", on its own replica database; both
- * run the same steps (`demo/tenant.ts`) from a descriptor. `prisma/seed.ts` calls it only when
- * the variable is exactly `1`. With `DEMO_AGENTE_TOKEN` Food Store also gets an agent and its
+ * `POST /conexiones/:id/validacion-mapeo`, one saved query, a panel user and its active
+ * automations (two every-minute ones, `demo/canales.ts`). CH-49 adds a second tenant, "Café del
+ * Puerto", on its own replica database and with a daily automation of its own; both run the same
+ * steps (`demo/tenant.ts`) from a descriptor. `prisma/seed.ts` calls it only when the variable is
+ * exactly `1`. With `DEMO_AGENTE_TOKEN` Food Store also gets an agent and its
  * connection is created bound to it (`demo/agente.ts`, DEC-207).
  *
  * Every row has a fixed id and is created only if absent (DEC-125's rule): an existing row
@@ -46,7 +47,6 @@ export const IDS_DEMO = {
   },
   consulta: '31d00000-0000-4000-8000-000000000021',
   usuario: '31d00000-0000-4000-8000-000000000022',
-  automatizacion: '31d00000-0000-4000-8000-000000000023',
   /** Food Store's dashboard (CH-49 b2). The four reports are global: see `IDS_REPORTES_DEMO`. */
   tablero: '49d00000-0000-4000-8000-000000000031',
   /** Café del Puerto (CH-49): same layout, `49d…` ids. */
@@ -92,7 +92,6 @@ function tenantFoodStore(entorno: EntornoDemo): TenantDemo {
       conexion: IDS_DEMO.conexion,
       vistas: IDS_DEMO.vistas,
       usuario: IDS_DEMO.usuario,
-      automatizacion: IDS_DEMO.automatizacion,
       consulta: IDS_DEMO.consulta,
     },
     nombre: NOMBRE_TENANT,

@@ -1,18 +1,21 @@
 import { cronValido, esCanal } from '../../automatizaciones/automatizaciones.js';
 import { destinatariosDe, minimoFilasValido } from '../../automatizaciones/automatizaciones-rutas.js';
 import { DEFAULT_MAX_FILAS_CONSULTA, DEFAULT_ZONA_HORARIA } from '../../compartido/config.js';
-import { ID_STOCK_FISICO } from '../../plantillas/catalogo-inicial.js';
+import { ID_STOCK_FISICO, ID_STOCK_PRODUCIBLE } from '../../plantillas/catalogo-inicial.js';
 import { crearSiFalta, type ClienteSemilla, type TenantDemo } from './comun.js';
 
 /**
- * CH-49 (c): Food Store's two "every minute" automations and its Telegram link, so a fresh demo
- * shows a notification within two minutes of starting instead of waiting for the 09:00 one.
+ * CH-49 (c): Food Store's two "every minute" automations, one per catalog template and each on
+ * its own channel, and its Telegram link, so a fresh demo shows a notification within two minutes
+ * of starting. They are Food Store's only automations.
  *
- * Both read `stock-fisico`, which the replica's stock (18, 9 and 4 units) leaves with two rows
- * under a threshold of 10, so the minimum of two rows is met and the email goes out on every
- * tick. Raising the threshold in the panel adds a row; lowering it under the minimum makes the
- * run `omitida-bajo-minimo`. They are created on every seeded start, with no opt-in variable,
- * and stopped from the console («Desactivar»).
+ * The email one reads `stock-fisico`, which the replica's stock (18, 9 and 4 units) leaves with
+ * two rows under a threshold of 10, so the minimum of two rows is met and the email goes out on
+ * every tick. The Telegram one reads `stock-producible`, whose replica data (Hamburguesa Picante
+ * 15, Hamburguesa BBQ Bacon 20) leaves two rows under a threshold of 20, with a minimum of one.
+ * Raising a threshold in the panel adds a row; lowering it under the minimum makes the run
+ * `omitida-bajo-minimo`. They are created on every seeded start, with no opt-in variable, and
+ * stopped from the console («Desactivar»).
  *
  * The Telegram link needs a chat id from the environment; the seed never reads the bot token
  * and never logs the chat id. An existing link, even to another chat, is not touched, and
@@ -27,7 +30,6 @@ export const IDS_CANALES_DEMO = {
 } as const;
 
 const CRON_CADA_MINUTO = '* * * * *';
-const UMBRAL_CADA_MINUTO = 10;
 /** `.example` never delivers, so these two are only there to show a list of three. */
 const DESTINATARIOS_FIJOS = ['encargado@food-store.example', 'compras@food-store.example'];
 
@@ -36,6 +38,8 @@ type ClienteCanales = Pick<ClienteSemilla, 'automatizacion' | 'vinculoTelegram'>
 interface AutomatizacionDemo {
   id: string;
   etiqueta: string;
+  plantillaId: string;
+  umbral: number;
   minimoFilas: number;
   canal: 'correo' | 'telegram';
   destinatarios: string[];
@@ -46,6 +50,8 @@ function automatizacionesDeLaDemo(tenant: TenantDemo): AutomatizacionDemo[] {
     {
       id: IDS_CANALES_DEMO.automatizacionCorreo,
       etiqueta: 'automatizacion:correo-cada-minuto',
+      plantillaId: ID_STOCK_FISICO,
+      umbral: 10,
       minimoFilas: 2,
       canal: 'correo',
       destinatarios: [tenant.correoPanel, ...DESTINATARIOS_FIJOS],
@@ -53,6 +59,8 @@ function automatizacionesDeLaDemo(tenant: TenantDemo): AutomatizacionDemo[] {
     {
       id: IDS_CANALES_DEMO.automatizacionTelegram,
       etiqueta: 'automatizacion:telegram-cada-minuto',
+      plantillaId: ID_STOCK_PRODUCIBLE,
+      umbral: 20,
       minimoFilas: 1,
       canal: 'telegram',
       destinatarios: [],
@@ -125,9 +133,9 @@ export async function sembrarCanales(
           data: {
             id: automatizacion.id,
             tenantId,
-            plantillaId: ID_STOCK_FISICO,
+            plantillaId: automatizacion.plantillaId,
             conexionId: tenant.ids.conexion,
-            valores: { umbral: UMBRAL_CADA_MINUTO },
+            valores: { umbral: automatizacion.umbral },
             cron: CRON_CADA_MINUTO,
             destinatarios: listas.get(automatizacion.id) ?? [],
             minimoFilas: automatizacion.minimoFilas,

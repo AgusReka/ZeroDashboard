@@ -89,9 +89,9 @@ curl http://localhost:3000/health   # {"status":"ready","db":"connected"}
 **Qué viene sembrado:**
 
 - Dos negocios: «Food Store» y «Café del Puerto», cada uno con su conexión, su mapeo validado, su usuario del panel y su tablero (cuatro reportes en Food Store, tres en Café). El usuario de Café es `DEMO_PANEL_CORREO` con `+cafe` antes de la `@` (`ana@dominio` pasa a `ana+cafe@dominio`) y la misma `DEMO_PANEL_CLAVE`.
-- Una consulta guardada y la automatización diaria de las 09:00 en Food Store; la de Café, también diaria.
-- Una automatización de Food Store **cada minuto**, por correo, sobre `stock-fisico`: umbral 10, mínimo de 2 filas y tres destinatarios (`DEMO_PANEL_CORREO`, `encargado@food-store.example` y `compras@food-store.example`). En un par de minutos llega a Mailpit, en `http://localhost:8026`.
-- Telegram, solo si están `DEMO_TELEGRAM_CHAT_ID` (el id numérico del chat; negativo si es un grupo) y `TELEGRAM_BOT_TOKEN`, y si quien tiene ese chat ya apretó «Start» en el bot: Food Store queda vinculado y se agrega otra automatización cada minuto, por Telegram. Si ya tenía un vínculo, no se toca. Café nunca se vincula.
+- Una consulta guardada en Food Store y, en Café del Puerto, una automatización diaria de las 09:00.
+- Una automatización de Food Store **cada minuto**, por correo, sobre `stock-fisico` (el stock de los productos sin receta): umbral 10, mínimo de 2 filas y tres destinatarios (`DEMO_PANEL_CORREO`, `encargado@food-store.example` y `compras@food-store.example`). En un par de minutos llega a Mailpit, en `http://localhost:8026`.
+- Telegram, solo si están `DEMO_TELEGRAM_CHAT_ID` (el id numérico del chat; negativo si es un grupo) y `TELEGRAM_BOT_TOKEN`, y si quien tiene ese chat ya apretó «Start» en el bot: Food Store queda vinculado y se agrega otra automatización cada minuto, por Telegram, sobre `stock-producible` (las unidades que alcanzan según los insumos): umbral 20 y mínimo de 1 fila; con los datos de la demo salen dos filas (Hamburguesa Picante 15 y Hamburguesa BBQ Bacon 20). Si ya tenía un vínculo, no se toca. Café nunca se vincula.
 
 Las filas se crean una sola vez: reiniciar no pisa lo que se editó en el panel ni en la consola.
 
@@ -119,15 +119,17 @@ docker compose --profile agente up -d --force-recreate agente
 
 **Falla provocada.** Con el agente arriba, las ejecuciones de Food Store salen bien. `docker compose stop agente` y, en la siguiente ejecución (en un minuto), falla con código `ESINAGENTE`: la consola muestra la ejecución fallida y el panel la muestra «con falla». `docker compose start agente` y la siguiente vuelve a salir bien. No se siembra nada roto.
 
+Si se reinicia Docker, el agente puede quedar detenido (código 255, «cannot join network namespace of a non running container»): arrancó antes que `app`, de la que comparte la red, y Docker no lo reintenta aunque tenga `restart: unless-stopped`. Se levanta con `docker compose --profile agente up -d agente`.
+
 El punto de partida es `http://localhost:3000/`, con las dos puertas. Recorrido por la consola, en `http://localhost:3000/consola`, con el operador `demo` y la clave de `DEMO_OPERADOR_CLAVE`, y el tenant «Food Store» elegido:
 
-1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y las automatizaciones sobre la plantilla `stock-fisico`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
+1. **Consultas, plantillas y automatizaciones.** La demo ya trae una consulta y las automatizaciones sobre las plantillas `stock-fisico` y `stock-producible`. Guías: [Consultas](docs/guia/04-consultas.md), [Plantillas](docs/guia/05-plantillas.md) y [Automatizaciones](docs/guia/06-automatizaciones.md).
 2. **Reportes y tablero del cliente.** Los cuatro reportes y los dos tableros ya están. En **Reportes** se puede crear otro y en **Puesta en marcha → Tablero del cliente** agregarlo. Guía: [Reportes](docs/guia/09-reportes.md#escribir-el-sql).
 3. **Panel del cliente.** En `http://localhost:3000/panel`, con `DEMO_PANEL_CORREO` y `DEMO_PANEL_CLAVE` (o la variante `+cafe`), cada negocio ve su tablero con números distintos.
 
-**Detener los avisos cada minuto.** En la consola, en la automatización, «Desactivar»; no se puede reactivar (DEC-79). Un reinicio no la vuelve a crear: la fila sigue existiendo.
+**Detener los avisos cada minuto.** En la consola, en cada automatización, «Desactivar»; no se puede reactivar (DEC-79). Un reinicio no la vuelve a crear: la fila sigue existiendo.
 
-**Probar el umbral.** En el panel, subir el umbral de la automatización por correo de 10 a 20 agrega una fila al aviso (el stock es 18, 9 y 4). Bajarlo a 5 deja una sola fila, menos que el mínimo de 2, y la ejecución queda «omitida-bajo-minimo»: no se envía nada.
+**Probar el umbral.** En el panel, subir el umbral de la automatización por correo (`stock-fisico`) de 10 a 20 agrega una fila al aviso (el stock es 18, 9 y 4). Bajarlo a 5 deja una sola fila, menos que el mínimo de 2, y la ejecución queda «omitida-bajo-minimo»: no se envía nada.
 
 **Verificar los datos.** El aviso lee los productos sin receta con stock bajo el umbral; con 10 deben salir dos filas:
 

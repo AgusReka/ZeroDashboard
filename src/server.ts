@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client.js';
 import { loadConfig } from './compartido/config.js';
+import { ajustarRedDelProceso } from './compartido/red.js';
 import { cargarEstilos } from './compartido/estilos-rutas.js';
 import { crearRegistroAgentes } from './agente/registro-agentes.js';
 import { registrarRutas } from './app/rutas.js';
@@ -15,6 +16,8 @@ import { crearSondeoTelegram } from './telegram/sondeo-telegram.js';
 import { crearVincular } from './telegram/vincular.js';
 import { crearNotificadorTelegram } from './telegram/notificador-telegram.js';
 
+// Before any outbound connection: the default 250 ms per address attempt cut the Telegram connect.
+ajustarRedDelProceso();
 const config = loadConfig();
 // CH-21a (DEC-124): the five shared stylesheet files are read once, here, before any
 // database client, scheduler or listener exists. A missing or unreadable file throws
